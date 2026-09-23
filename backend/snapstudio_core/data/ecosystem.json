@@ -161,15 +161,13 @@
       "name": "Snapmaker U1 Toolkit",
       "kind": "utility",
       "official": false,
-      "role": "A command-line toolkit that slices headlessly and starts a print only after a human approves it against a fresh photo of the bed.",
+      "role": "A toolkit that slices and uploads prints from a terminal or from your phone over Telegram, and starts a print only after a human approves it against a fresh photo of the bed.",
       "url": "https://github.com/bbolinger/snapmaker-u1-toolkit",
       "license": "MIT",
       "platforms": [
-        "windows",
-        "macos",
         "linux"
       ],
-      "install_hint": "Clone the repository and follow its README. Command-line, no GUI.",
+      "install_hint": "Clone the repository and follow its README. Needs a Linux or WSL host; there is no desktop GUI, though it can be driven from a phone over Telegram.",
       "base_score": 0,
       "handoff": "link",
       "stage": "after-slicing",
@@ -178,11 +176,11 @@
           "trait": "is_sliced",
           "op": "is_true",
           "weight": 8,
-          "reason": "This project is already sliced, so a command-line toolkit can send it to the printer without opening a slicer again."
+          "reason": "This project is already sliced, so this toolkit can send it to the printer without opening a slicer again."
         }
       ],
       "maturity": "preview",
-      "caution": "Command-line only, and young. Its safety gate asks a human to approve every print start — read its README first."
+      "caution": "Young, and it expects a Linux or WSL host rather than native Windows or macOS. Its safety gate asks a human to approve every print start — read its README first."
     },
     {
       "id": "fluidd",
