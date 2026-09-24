@@ -31,6 +31,12 @@ jobs:
     name: Linux build + package (Ubuntu 22.04, x86_64)
     runs-on: ubuntu-latest
     container: ubuntu:22.04
+    # Real CI runs on this branch hung twice (38+ min and 31+ min) before the
+    # per-command `timeout` wrapping was added. GitHub's own default job
+    # timeout is 360 minutes, which is not an acceptable backstop after that
+    # history — cap the whole job well below it so a hang anywhere still
+    # fails fast rather than silently burning CI time for hours.
+    timeout-minutes: 45
     # Container jobs do NOT get the same automatic bash-selection that plain
     # ubuntu-latest runners get — without this, `run:` steps execute under
     # `sh` (dash), which doesn't support `set -o pipefail` at all ("Illegal
@@ -39,6 +45,14 @@ jobs:
     # workflow. This was discovered the hard way: earlier steps happened not
     # to use anything dash-incompatible, so this went unnoticed until the
     # first step that actually needed real bash failed outright.
+    #
+    # DEBIAN_FRONTEND=noninteractive at job level (not just on the one step
+    # that first needed it): the real log from a hung run showed tzdata being
+    # configured mid-install, a classic debconf-prompt-waits-on-stdin-forever
+    # cause that `apt-get -y` alone does not prevent — apply it everywhere
+    # apt runs in this job, not just where it was first diagnosed.
+    env:
+      DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
         shell: bash
@@ -109,19 +123,31 @@ jobs:
         # own interactive questions). Whichever of these was the real cause,
         # this now fails loudly within a bounded time instead of hanging the
         # job for potentially hours.
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
           mkdir -p /etc/apt/keyrings
-          timeout 30 curl -fsSL --max-time 25 \
-            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" \
+          expected_fpr="F23C5A6CF475977595C89F51BA6932366A755776"
+          timeout -k 10 30 curl -fsSL --max-time 25 \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${expected_fpr}" \
             | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
+          # Don't just trust whatever the keyserver returned over TLS — verify
+          # the downloaded key's own fingerprint matches the pinned constant
+          # (add-apt-repository, which this replaced, does the equivalent
+          # check internally). Cheap, and this Python build eventually feeds
+          # the shipped sidecar once this becomes release CI (L7).
+          actual_fpr="$(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '/^fpr/{print $10; exit}')"
+          if [ "$actual_fpr" != "$expected_fpr" ]; then
+            echo "Downloaded deadsnakes key fingerprint mismatch!" >&2
+            echo "Expected: $expected_fpr" >&2
+            echo "Got:      $actual_fpr" >&2
+            exit 1
+          fi
+          echo "Key fingerprint verified: $actual_fpr"
           echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
             > /etc/apt/sources.list.d/deadsnakes.list
-          timeout 120 apt-get update
-          timeout 180 apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
-          timeout 60 python3.13 -m ensurepip --upgrade
-          timeout 60 python3.13 -m pip install --upgrade pip
+          timeout -k 10 120 apt-get update
+          timeout -k 10 180 apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
+          timeout -k 10 60 python3.13 -m ensurepip --upgrade
+          timeout -k 10 60 python3.13 -m pip install --upgrade pip
 
       - uses: actions/setup-node@v4
         with:
@@ -188,11 +214,13 @@ jobs:
           # here would pass even if resources were bundled at the wrong path (e.g. still under
           # bin/linux/snapstudio-api/ instead of flattened to snapstudio-api/), silently certifying
           # a layout the Rust resolver in sidecar.rs cannot actually find at runtime.
-          # No leading "./" here — dpkg -c's path column varies by dpkg
-          # version/build (observed BOTH "./usr/lib/..." and bare
-          # "usr/lib/..." across real CI runs). Each candidate line has any
-          # leading "./" stripped before comparison below, so this matches
-          # either convention rather than assuming one.
+          # No leading "./" here on purpose: an earlier version of this
+          # constant included one and the match silently failed on a real
+          # build where Tauri's archive writer didn't emit it — the leading
+          # `*` in the case pattern below already absorbs ANY prefix (mode
+          # string, size, date columns, and an optional "./" alike), so this
+          # constant only needs to be the path's own final segment; adding a
+          # literal "./" back would just reintroduce the original bug.
           expected_exe="usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
           expected_internal_marker="usr/lib/Snapmaker Studio/snapstudio-api/_internal/"
 
@@ -203,11 +231,10 @@ jobs:
           # found the first fix had only moved, not eliminated: `echo "$var"
           # | grep -q` still pipes into an early-exiting consumer just like
           # `dpkg -c | grep -q` did). `*"$expected_exe"` with no trailing `*`
-          # requires the (./-stripped) line to END with the exact path, not
-          # just contain it.
+          # requires the line to END with the exact path, not just contain it.
           perm_line=""
           while IFS= read -r line; do
-            case "${line#./}" in
+            case "$line" in
               *"$expected_exe")
                 perm_line="$line"
                 break
@@ -292,7 +319,7 @@ jobs:
           port=""
           for _ in $(seq 1 40); do
             if [ -s /tmp/handshake.json ]; then
-              port="$(python3 -c "import json; print(json.load(open('/tmp/handshake.json'))['port'])" 2>/dev/null || true)"
+              port="$(python3.13 -c "import json; print(json.load(open('/tmp/handshake.json'))['port'])" 2>/dev/null || true)"
               [ -n "$port" ] && break
             fi
             sleep 0.5
@@ -396,6 +423,22 @@ jobs:
           # case than what L4 is designed to guarantee — checking it now
           # anyway, as a non-fatal signal, gives L4 an honest CI-observed
           # starting point rather than a claim made from code reading alone.
+          #
+          # Signal the REAL app process, not `$app_pid` (that's `xvfb-run`'s
+          # own wrapper PID — it and the `timeout` it spawns are supervisor
+          # processes, not the app; killing only the wrapper may never
+          # deliver SIGTERM to the app at all, making the orphan check below
+          # measure the wrong thing). `^$bin_path` anchors the full-command-
+          # line match to processes whose argv literally STARTS with the
+          # binary's own path, which only the real exec'd app process does
+          # (xvfb-run's own cmdline starts with "xvfb-run ...", timeout's
+          # starts with "timeout ...").
+          real_app_pid="$(pgrep -o -f "^$bin_path" || true)"
+          if [ -z "$real_app_pid" ]; then
+            echo "Could not find the real app process (distinct from the xvfb-run/timeout wrappers) to signal." >&2
+            real_app_pid="$app_pid"
+          fi
+          kill "$real_app_pid" 2>/dev/null || true
           kill "$app_pid" 2>/dev/null || true
           wait "$app_pid" 2>/dev/null || true
           sleep 1
