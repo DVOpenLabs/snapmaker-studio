@@ -32,10 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:22.04
     steps:
-      - name: Install base tooling (git, curl, ca-certificates)
+      - name: Install base tooling (git, curl, ca-certificates, gnupg)
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
+          # gnupg: required by `add-apt-repository` later to import the
+          # deadsnakes PPA's signing key — without it, add-apt-repository
+          # fails with a gpg CalledProcessError in a minimal container image.
+          apt-get install -y --no-install-recommends git curl ca-certificates gnupg
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
