@@ -188,8 +188,13 @@ jobs:
           # here would pass even if resources were bundled at the wrong path (e.g. still under
           # bin/linux/snapstudio-api/ instead of flattened to snapstudio-api/), silently certifying
           # a layout the Rust resolver in sidecar.rs cannot actually find at runtime.
-          expected_exe="./usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
-          expected_internal_marker="./usr/lib/Snapmaker Studio/snapstudio-api/_internal/"
+          # No leading "./" here — dpkg -c's path column varies by dpkg
+          # version/build (observed BOTH "./usr/lib/..." and bare
+          # "usr/lib/..." across real CI runs). Each candidate line has any
+          # leading "./" stripped before comparison below, so this matches
+          # either convention rather than assuming one.
+          expected_exe="usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          expected_internal_marker="usr/lib/Snapmaker Studio/snapstudio-api/_internal/"
 
           echo "--- Verifying the sidecar is bundled at the EXACT expected path ---"
           # Pure bash — a while-read loop over a here-string, not a pipe into
@@ -198,10 +203,11 @@ jobs:
           # found the first fix had only moved, not eliminated: `echo "$var"
           # | grep -q` still pipes into an early-exiting consumer just like
           # `dpkg -c | grep -q` did). `*"$expected_exe"` with no trailing `*`
-          # requires the line to END with the exact path, not just contain it.
+          # requires the (./-stripped) line to END with the exact path, not
+          # just contain it.
           perm_line=""
           while IFS= read -r line; do
-            case "$line" in
+            case "${line#./}" in
               *"$expected_exe")
                 perm_line="$line"
                 break
