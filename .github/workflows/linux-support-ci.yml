@@ -31,6 +31,17 @@ jobs:
     name: Linux build + package (Ubuntu 22.04, x86_64)
     runs-on: ubuntu-latest
     container: ubuntu:22.04
+    # Container jobs do NOT get the same automatic bash-selection that plain
+    # ubuntu-latest runners get — without this, `run:` steps execute under
+    # `sh` (dash), which doesn't support `set -o pipefail` at all ("Illegal
+    # option -o pipefail") and silently differs on `${var:offset:len}`
+    # substring expansion and `<<<` here-strings, both used throughout this
+    # workflow. This was discovered the hard way: earlier steps happened not
+    # to use anything dash-incompatible, so this went unnoticed until the
+    # first step that actually needed real bash failed outright.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install base tooling (git, curl, ca-certificates, gnupg)
         run: |
