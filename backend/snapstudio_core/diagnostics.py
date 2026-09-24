@@ -209,14 +209,14 @@ def _printer(host: str, port: int) -> dict:
 
 def _ledger(data_dir: str | None = None) -> dict:
     """The fix ledger's exportable form, which already strips local paths."""
-    import os
-
     from . import fix_ledger
+    from .paths import data_dir as _resolve_data_dir
 
-    # The engine's own data directory, resolved the same way the service does —
-    # without importing the service, which would drag the whole API into the core.
-    base = data_dir or os.environ.get("SNAPSTUDIO_DATA_DIR") or os.path.join(
-        os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "SnapmakerStudio")
+    # The engine's own data directory, resolved by the shared resolver —
+    # staying within the core, without importing the API layer. Diagnostics is
+    # read-only: resolve the path without creating it (a missing directory just
+    # means an empty ledger, same as before this resolver was centralized).
+    base = _resolve_data_dir(data_dir, create=False)
     return fix_ledger.export_all(base, limit=20)
 
 
