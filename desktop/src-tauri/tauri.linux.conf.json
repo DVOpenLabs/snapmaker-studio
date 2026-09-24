@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb"],
+    "icon": ["icons/icon.png"],
+    "externalBin": [],
+    "resources": {
+      "bin/linux/snapstudio-api/": "snapstudio-api/"
+    }
+  }
+}

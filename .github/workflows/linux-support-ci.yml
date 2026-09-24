@@ -1,0 +1,367 @@
+name: Linux support (branch CI)
+
+# Branch-scoped CI for the Linux-support work (see linux-support-plan-v5-final.md
+# and the L0-L11 implementation sequence). Does NOT touch ci.yml or release.yml —
+# this is temporary, branch-only verification infrastructure. It becomes part of
+# the permanent Linux CI (L7 of the plan) once the Linux build is proven, or is
+# removed if the approach changes before then.
+#
+# Runs the REAL Linux build+package pipeline: PyInstaller onedir sidecar freeze
+# (desktop/scripts/build-sidecar.sh), then `tauri build` producing a .deb, then
+# inspects the produced package to confirm the sidecar is actually bundled with
+# the right layout and executable permissions. This is what local WSL testing on
+# this machine could not prove (no non-interactive root/sudo for the Tauri Linux
+# system dependencies) — GitHub-hosted Ubuntu runners already run as root.
+
+on:
+  push:
+    branches:
+      - "linux-support/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-support-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-build-and-package:
+    name: Linux build + package (Ubuntu 22.04, x86_64)
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    steps:
+      - name: Install base tooling (git, curl, ca-certificates)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri Linux build dependencies
+        # Standard Tauri 2 Linux prerequisites (webkit2gtk-4.1, not the older
+        # 4.0 series). Installing the runtime libs (not just -dev) explicitly
+        # too, since the smoke-install step near the end needs them present
+        # to satisfy the produced .deb's Depends: without network access.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            file \
+            procps \
+            libwebkit2gtk-4.1-dev \
+            libwebkit2gtk-4.1-0 \
+            libssl-dev \
+            libgtk-3-dev \
+            libgtk-3-0 \
+            libayatana-appindicator3-dev \
+            libayatana-appindicator3-1 \
+            librsvg2-dev \
+            librsvg2-2 \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install backend (for the sidecar freeze)
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r requirements-build.txt
+
+      - name: Freeze the Linux sidecar (onedir)
+        run: bash desktop/scripts/build-sidecar.sh
+
+      - name: Install frontend deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the desktop app + .deb package
+        # tauri.conf.json's beforeBuildCommand (npm run build) runs the
+        # frontend build automatically as part of this.
+        working-directory: desktop
+        run: npx tauri build --bundles deb
+
+      - name: Locate and inspect the produced .deb
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          # `-print -quit` (not `| head -n1`) stops find itself after the
+          # first match — no pipe into an early-exiting consumer at all, so
+          # there's no SIGPIPE-vs-pipefail interaction to reason about.
+          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found under src-tauri/target/release/bundle/deb" >&2
+            find src-tauri/target/release/bundle -maxdepth 3 || true
+            exit 1
+          fi
+          deb_abs="$(readlink -f "$deb")"
+          echo "Found: $deb_abs"
+          echo "deb_path=$deb_abs" >> "$GITHUB_ENV"
+          pkg_name="$(dpkg-deb -f "$deb_abs" Package)"
+          echo "pkg_name=$pkg_name" >> "$GITHUB_ENV"
+
+          # Capture the listing ONCE into a variable rather than grepping a
+          # live `dpkg -c` pipe repeatedly: `grep -q` exits as soon as it
+          # finds a match, which can deliver SIGPIPE to `dpkg` mid-write; with
+          # `set -o pipefail` that can report the whole pipeline as failed
+          # even though the match genuinely existed — a real build could be
+          # falsely reported broken by the check meant to verify it.
+          package_contents="$(dpkg -c "$deb_abs")"
+          echo "--- Package contents ---"
+          echo "$package_contents"
+
+          echo "--- Declared Depends ---"
+          dpkg-deb -f "$deb_abs" Depends
+
+          # Exact-path assertion, not a bare substring grep — Tauri's Manager::path().resource_dir()
+          # on Linux resolves (per tauri-utils, verified against the pinned 2.11.3 source) to
+          # <exe_dir>/../lib/<productName>/ once installed, i.e. usr/lib/<productName>/ in a .deb,
+          # where <productName> is "Snapmaker Studio" (config.app.productName, WITH the space) — not
+          # any arbitrary location a looser substring match would also accept. An unanchored `grep`
+          # here would pass even if resources were bundled at the wrong path (e.g. still under
+          # bin/linux/snapstudio-api/ instead of flattened to snapstudio-api/), silently certifying
+          # a layout the Rust resolver in sidecar.rs cannot actually find at runtime.
+          expected_exe="./usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          expected_internal_marker="./usr/lib/Snapmaker Studio/snapstudio-api/_internal/"
+
+          echo "--- Verifying the sidecar is bundled at the EXACT expected path ---"
+          # Pure bash — a while-read loop over a here-string, not a pipe into
+          # grep — so there is no external producer/consumer pair for an
+          # early exit to SIGPIPE at all (this is the SAME bug class Sol
+          # found the first fix had only moved, not eliminated: `echo "$var"
+          # | grep -q` still pipes into an early-exiting consumer just like
+          # `dpkg -c | grep -q` did). `*"$expected_exe"` with no trailing `*`
+          # requires the line to END with the exact path, not just contain it.
+          perm_line=""
+          while IFS= read -r line; do
+            case "$line" in
+              *"$expected_exe")
+                perm_line="$line"
+                break
+                ;;
+            esac
+          done <<< "$package_contents"
+          if [ -z "$perm_line" ]; then
+            echo "Sidecar executable not found at the exact expected path: $expected_exe" >&2
+            echo "This means resource_dir() in sidecar.rs will NOT find it at runtime." >&2
+            exit 1
+          fi
+          echo "$perm_line"
+
+          echo "--- Verifying _internal/ landed alongside it (not dropped by resource mapping) ---"
+          # Bash glob match on the whole captured variable — no subprocess,
+          # no pipe, nothing that can be SIGPIPE'd.
+          case "$package_contents" in
+            *"$expected_internal_marker"*) ;;
+            *)
+              echo "_internal/ directory not found under the expected sidecar path." >&2
+              exit 1
+              ;;
+          esac
+
+          echo "--- Verifying the sidecar is executable by owner, group, AND other ---"
+          # Both launches in this job run as root (the container's default
+          # user), which would let an owner-only execute bit (-rwx------)
+          # pass here while failing EACCES for an ordinary desktop user after
+          # a real install. Check all three permission classes, not just that
+          # SOME execute bit is set anywhere in the mode string.
+          mode="$(echo "$perm_line" | awk '{print $1}')"
+          echo "Mode: $mode"
+          owner_x="${mode:3:1}"
+          group_x="${mode:6:1}"
+          other_x="${mode:9:1}"
+          if [ "$owner_x" != "x" ] || [ "$group_x" != "x" ] || [ "$other_x" != "x" ]; then
+            echo "Sidecar is not executable by all of owner/group/other (mode: $mode) — would fail for a non-root desktop user." >&2
+            exit 1
+          fi
+          echo "Executable by owner, group, and other."
+
+          echo "--- Verifying no directory symlinks silently dropped their contents ---"
+          # Tauri's resource walker does not follow directory symlinks (WalkDir
+          # default), so a symlinked directory inside onedir's output would be
+          # silently skipped rather than bundled. PyInstaller onedir output
+          # doesn't normally produce these, but check rather than assume.
+          # (-type l -xtype d: the entry IS a symlink, AND what it resolves
+          # to IS a directory — not the reversed/inert `-xtype l -type d`.)
+          symlink_count_source="$(find src-tauri/bin/linux/snapstudio-api -type l -xtype d 2>/dev/null | wc -l || echo 0)"
+          if [ "$symlink_count_source" != "0" ]; then
+            echo "WARNING: $symlink_count_source directory symlink(s) in the source onedir tree — verify they were not silently dropped from the bundle." >&2
+          fi
+
+      - name: Install the .deb and verify a clean install/removal cycle
+        run: |
+          set -euo pipefail
+          apt-get install -y "$deb_path"
+          echo "--- Installed files ---"
+          dpkg -L "$pkg_name"
+          echo "--- Removing ---"
+          apt-get remove -y "$pkg_name"
+          echo "Clean install/removal cycle passed for package: $pkg_name"
+
+      - name: Smoke-test the packaged sidecar starts and answers over loopback
+        run: |
+          set -euo pipefail
+          # Re-extract just the sidecar (the package was removed above) to
+          # prove the FROZEN, PACKAGED artifact — not the pre-bundle build
+          # output — starts and answers. This is the sidecar in isolation;
+          # the next step separately proves the Rust resource_dir() resolver
+          # finds it when launched as part of the real installed app.
+          workdir="$(mktemp -d)"
+          dpkg-deb -x "$deb_path" "$workdir"
+          exe="$workdir/usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          test -x "$exe"
+          "$exe" > /tmp/handshake.json 2>/tmp/sidecar.err &
+          pid=$!
+
+          # Poll rather than a fixed sleep — a cold onedir start on a CI
+          # runner is not guaranteed to finish within any fixed short window,
+          # and a fixed `sleep 1` either wastes time or false-fails flakily.
+          port=""
+          for _ in $(seq 1 40); do
+            if [ -s /tmp/handshake.json ]; then
+              port="$(python3 -c "import json; print(json.load(open('/tmp/handshake.json'))['port'])" 2>/dev/null || true)"
+              [ -n "$port" ] && break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$port" ]; then
+            echo "Sidecar never printed a handshake line within 20s." >&2
+            cat /tmp/sidecar.err >&2
+            kill "$pid" 2>/dev/null || true
+            exit 1
+          fi
+          # Log only the port, never the token, even though this token is
+          # ephemeral and CI-local — avoid the habit of printing secrets.
+          echo "Sidecar handshake received, port=$port"
+
+          status="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/health")"
+          echo "GET /health -> HTTP $status"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "Expected HTTP 200 from /health, got $status" >&2
+            exit 1
+          fi
+          echo "PACKAGE VERIFIED: extracted, packaged sidecar starts and answers /health with 200."
+
+      - name: Install xvfb (for the real headless GUI launch below)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends xvfb dbus-x11
+
+      - name: Reinstall the package and launch the REAL app under Xvfb
+        # This is the step that actually exercises sidecar.rs's resource_dir()
+        # resolver at runtime, inside the real installed application — not just
+        # the sidecar in isolation (the previous step) or static path checks
+        # (the earlier .deb inspection). This is HEADLESS RUNTIME VERIFIED, not
+        # REAL DESKTOP VERIFIED (no real display, no user interaction) and not
+        # REAL U1 VERIFIED (no hardware) — those stay separate claims, per L9/L11.
+        run: |
+          set -euo pipefail
+          command -v pgrep >/dev/null  # fail loudly here, not via a silently-empty poll loop below
+          apt-get install -y "$deb_path"
+          # Pure bash regex match over a captured variable, not a pipe into
+          # `grep | head` — same SIGPIPE-avoidance reasoning as the .deb
+          # inspection step above.
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          while IFS= read -r f; do
+            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+              break
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            echo "$installed_files" >&2
+            exit 1
+          fi
+          echo "App binary: $bin_path"
+
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout 25 "$bin_path" > /tmp/app.log 2>&1 &
+          app_pid=$!
+
+          sidecar_port=""
+          for _ in $(seq 1 40); do
+            # `-o` (oldest matching PID) gives exactly one result directly
+            # from pgrep itself — no `| head -n1` pipe needed at all.
+            sidecar_pid="$(pgrep -o -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+            if [ -n "$sidecar_pid" ]; then
+              break
+            fi
+            sleep 0.5
+          done
+          if [ -z "${sidecar_pid:-}" ]; then
+            echo "Sidecar process never appeared after launching the real installed app." >&2
+            echo "This means resource_dir() failed to locate/launch it at runtime." >&2
+            cat /tmp/app.log >&2
+            kill "$app_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Sidecar process found: PID $sidecar_pid (spawned by the real installed app)"
+          # Confirm it's actually running from the installed location, not some
+          # other copy that happens to share the process name.
+          exe_path="$(readlink -f "/proc/$sidecar_pid/exe" 2>/dev/null || true)"
+          echo "Sidecar exe path: $exe_path"
+          case "$exe_path" in
+            "/usr/lib/Snapmaker Studio/snapstudio-api/"*) ;;
+            *)
+              echo "Sidecar is running from an unexpected path: $exe_path" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "HEADLESS RUNTIME VERIFIED: real installed app launched under Xvfb, resource_dir() located and started the sidecar from the correct installed path."
+
+          # Orphan-on-external-SIGTERM is explicitly L4's scope (PDEATHSIG +
+          # process-group kill land there), not L3's — L3 only wires up
+          # resource_dir() discovery, it adds no Linux lifecycle protection
+          # yet. A raw external `kill` here bypasses Tauri's own
+          # RunEvent::Exit handler entirely (that only fires for in-app close
+          # events, not an external signal), so this is a genuinely harder
+          # case than what L4 is designed to guarantee — checking it now
+          # anyway, as a non-fatal signal, gives L4 an honest CI-observed
+          # starting point rather than a claim made from code reading alone.
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          sleep 1
+          if kill -0 "$sidecar_pid" 2>/dev/null; then
+            echo "::warning::Sidecar process $sidecar_pid still running after external SIGTERM to the app — expected today, L4 adds Linux orphan-prevention (this is not an L3 regression, L3 adds no lifecycle protection)."
+            kill -9 "$sidecar_pid" 2>/dev/null || true
+          else
+            echo "Bonus: sidecar did not survive — no orphan even before L4's lifecycle work landed."
+          fi
+          cat /tmp/app.log
+
+          echo "--- Cleaning up ---"
+          apt-get remove -y "$pkg_name"
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-and-logs
+          path: |
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+            backend/build/**/warn-*.txt
+          if-no-files-found: warn
+          retention-days: 14

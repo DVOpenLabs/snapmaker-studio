@@ -5,10 +5,15 @@
 // `get_api_info` command. The frontend then calls the sidecar over loopback.
 //
 // DEV (debug): runs `python -m snapstudio_api` from <repo>/backend (the live engine).
-// PROD (release): runs the PyInstaller-frozen sidecar bundled via Tauri externalBin,
-//                 which lands next to the app exe as `snapstudio-api.exe`.
+// PROD (release), Windows: runs the PyInstaller-frozen sidecar bundled via Tauri
+//                 externalBin, which lands next to the app exe as `snapstudio-api.exe`.
+// PROD (release), Linux: runs the PyInstaller onedir build bundled via Tauri
+//                 bundle.resources (externalBin can't hold onedir's directory
+//                 output), located at runtime via resource_dir() — see sidecar.rs.
 //
-// The sidecar child is tracked in app state and killed on exit — no orphan process.
+// The sidecar child is tracked in app state and killed on exit — no orphan process
+// (Windows: the Job Object binding in sidecar.rs; Linux: the exit-handler kill()
+// below only, today — process-group kill and the parent-death lifeline are L4).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -476,7 +481,7 @@ fn main() {
             check_for_update
         ])
         .setup(|app| {
-            let (info, child) = spawn_sidecar();
+            let (info, child) = spawn_sidecar(app.handle());
             *app.state::<ApiState>().0.lock().unwrap() = info;
             *app.state::<SidecarProc>().0.lock().unwrap() = Some(child);
             // Pre-build the locked Model Browser window here on the main thread

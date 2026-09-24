@@ -1,16 +1,24 @@
 //! Sidecar process: spawn, handshake, and lifecycle.
 //!
-//! This module is the platform seam for the Python engine sidecar. Behaviour on
-//! Windows is unchanged from before this extraction — this is a pure move, not a
-//! rewrite. Linux-specific process-lifecycle work (process-group kill, the
-//! parent-death signal, the stdin EOF lifeline) lands here behind `#[cfg(unix)]`
-//! in a later step, parallel to the existing `#[cfg(windows)]` Job Object path.
+//! This module is the platform seam for the Python engine sidecar. Windows
+//! behaviour is unchanged from before this extraction. Linux ships the
+//! PyInstaller `onedir` build via Tauri's `bundle.resources` (not
+//! `externalBin`, which cannot hold a directory — see
+//! `desktop/src-tauri/tauri.linux.conf.json` and `desktop/scripts/build-sidecar.sh`),
+//! so locating it needs `AppHandle::path().resource_dir()`, not the
+//! Windows-shaped `current_exe().parent()` join. Linux process-lifecycle work
+//! (process-group kill, the parent-death signal, the stdin EOF lifeline) lands
+//! here behind `#[cfg(unix)]` in a later step, parallel to the existing
+//! `#[cfg(windows)]` Job Object path.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+#[cfg(all(not(debug_assertions), target_os = "linux"))]
+use tauri::Manager;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct ApiInfo {
@@ -21,23 +29,50 @@ pub struct ApiInfo {
 pub struct SidecarProc(pub Mutex<Option<Child>>);
 
 /// Build the command that launches the engine sidecar, choosing dev vs bundled.
-fn sidecar_command() -> Command {
+fn sidecar_command(app: &AppHandle) -> Command {
     #[cfg(debug_assertions)]
     {
+        let _ = app; // only the Linux prod branch below needs it
         // DEV: live engine from <repo>/backend. CARGO_MANIFEST_DIR is
         // <repo>/desktop/src-tauri, so ../../backend points at the engine.
         let backend = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
             .join("backend");
-        let mut cmd = Command::new("python");
+        // Dev mode uses whatever `python` (or `SNAPSTUDIO_PYTHON` if set and
+        // non-empty) resolves to on PATH. On a system where the default isn't
+        // >=3.13 with the backend installed, set SNAPSTUDIO_PYTHON to an
+        // explicit interpreter path.
+        let python = std::env::var("SNAPSTUDIO_PYTHON")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "python".to_string());
+        let mut cmd = Command::new(python);
         cmd.args(["-m", "snapstudio_api"]).current_dir(backend);
         cmd
     }
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(not(debug_assertions), target_os = "linux"))]
     {
-        // PROD: frozen sidecar sits beside the app exe (Tauri strips the target
-        // triple from the externalBin name when bundling).
+        // PROD (Linux): the onedir build ships as a Tauri bundle resource
+        // (bundle.resources in tauri.linux.conf.json), not externalBin — Tauri's
+        // resource_dir() is the only reliable way to find it once installed,
+        // since it can land under /usr/lib/<product>/ (.deb) or another
+        // package-manager-specific location, never a fixed path relative to
+        // the app's own executable the way externalBin's sibling-file
+        // convention assumes.
+        let resource_dir = app
+            .path()
+            .resource_dir()
+            .expect("resource_dir (Linux sidecar resource)");
+        let sidecar_dir = resource_dir.join("snapstudio-api");
+        let exe = sidecar_dir.join("snapstudio-api-x86_64-unknown-linux-gnu");
+        Command::new(exe)
+    }
+    #[cfg(all(not(debug_assertions), not(target_os = "linux")))]
+    {
+        let _ = app; // only the Linux prod branch above needs it
+        // PROD (Windows): frozen sidecar sits beside the app exe (Tauri strips
+        // the target triple from the externalBin name when bundling).
         let exe_dir = std::env::current_exe()
             .expect("current_exe")
             .parent()
@@ -90,8 +125,8 @@ fn bind_to_kill_on_close_job(child: &Child) {
 }
 
 /// Spawn the sidecar and block until its handshake line is read.
-pub fn spawn_sidecar() -> (ApiInfo, Child) {
-    let mut child = sidecar_command()
+pub fn spawn_sidecar(app: &AppHandle) -> (ApiInfo, Child) {
+    let mut child = sidecar_command(app)
         // The sidecar watches this PID and self-exits if the app dies for any
         // reason (close, crash, force-kill) — belt to the exit-handler braces.
         .env("SNAPSTUDIO_PARENT_PID", std::process::id().to_string())

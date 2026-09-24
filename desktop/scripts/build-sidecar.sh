@@ -5,14 +5,15 @@
 # is an executable plus a sibling `_internal/` directory that must stay
 # together — this project uses `externalBin` for the Windows onefile build).
 #
-# L2/L3 scope split (Linux support plan, Phase 6): this script only produces
-# and stages a standalone build — its own acceptance gate is "the frozen
-# sidecar starts standalone and answers over loopback" (see the L2 pre-commit
-# review record for the verification evidence). Nothing in the Tauri config
-# or the Rust spawn path consumes this output yet: tauri.conf.json's Linux
-# bundle.resources entry and main.rs's platform-aware sidecar-path resolver
-# are L3, not this step. That is by design, not an oversight — L2 and L3 are
-# separate, independently reviewable increments.
+# L2/L3 scope split (Linux support plan, Phase 6): this script's own
+# acceptance gate was "the frozen sidecar starts standalone and answers over
+# loopback" (see the L2 pre-commit review record for that verification
+# evidence) — it deliberately did not touch Tauri config or the Rust spawn
+# path, which landed separately in L3: tauri.linux.conf.json's
+# bundle.resources entry (`snapstudio-api/`) and sidecar.rs's
+# `#[cfg(target_os = "linux")]` resource_dir()-based resolver now consume
+# exactly the directory this script stages at
+# desktop/src-tauri/bin/linux/snapstudio-api/.
 #
 # Requires: Python 3.13 with the backend installed (pip install -e backend)
 # plus pyinstaller + lxml (pip install -r backend/requirements-build.txt).
