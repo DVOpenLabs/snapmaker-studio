@@ -130,18 +130,25 @@ jobs:
             "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${expected_fpr}" \
             | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
           # Don't just trust whatever the keyserver returned over TLS — verify
-          # the downloaded key's own fingerprint matches the pinned constant
-          # (add-apt-repository, which this replaced, does the equivalent
-          # check internally). Cheap, and this Python build eventually feeds
-          # the shipped sidecar once this becomes release CI (L7).
-          actual_fpr="$(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '/^fpr/{print $10; exit}')"
-          if [ "$actual_fpr" != "$expected_fpr" ]; then
-            echo "Downloaded deadsnakes key fingerprint mismatch!" >&2
-            echo "Expected: $expected_fpr" >&2
-            echo "Got:      $actual_fpr" >&2
+          # the downloaded keyring contains EXACTLY ONE key, and that its
+          # fingerprint matches the pinned constant (add-apt-repository,
+          # which this replaced, does the equivalent check internally).
+          # Enumerate ALL fpr lines, not just the first: a response smuggling
+          # in the legitimate key plus an attacker-controlled second key
+          # would pass a first-match-only check, and apt's `signed-by` trusts
+          # EVERY key present in the keyring file, not just the one this
+          # script happened to look at — a lone extra key would silently
+          # extend trust to anything it signs. `mapfile` reads the awk
+          # producer to EOF unconditionally (never exits early), so there's
+          # no SIGPIPE-under-pipefail risk here either.
+          mapfile -t all_fprs < <(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '/^fpr/{print $10}')
+          if [ "${#all_fprs[@]}" -ne 1 ] || [ "${all_fprs[0]}" != "$expected_fpr" ]; then
+            echo "Downloaded deadsnakes keyring does not contain EXACTLY one key matching the pinned fingerprint!" >&2
+            echo "Expected exactly 1 key: $expected_fpr" >&2
+            echo "Found ${#all_fprs[@]} key(s): ${all_fprs[*]:-(none)}" >&2
             exit 1
           fi
-          echo "Key fingerprint verified: $actual_fpr"
+          echo "Key fingerprint verified (exactly one key, matches pinned constant): ${all_fprs[0]}"
           echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
             > /etc/apt/sources.list.d/deadsnakes.list
           timeout -k 10 120 apt-get update
