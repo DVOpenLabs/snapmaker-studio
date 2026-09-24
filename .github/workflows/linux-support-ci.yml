@@ -85,20 +85,32 @@ jobs:
         # minutes on a real CI run here (its internal GPG keyserver fetch
         # stalling on the network with no timeout of its own) rather than
         # failing fast. Fetching the signing key directly via `curl` with an
-        # explicit `--max-time`, and writing the sources.list entry manually,
-        # means a network problem fails loudly in <=30s instead of hanging
-        # the job for hours.
+        # explicit `--max-time` fixed THAT specific call, but the step then
+        # hung again at the SAME location on the next run (31+ min, cancelled)
+        # — something after the key fetch (apt-get update against the new
+        # source, the package install, or ensurepip/pip touching the network)
+        # stalled with no timeout of its own. Rather than keep guessing which
+        # one, every network-touching command below is now wrapped in
+        # `timeout`, and DEBIAN_FRONTEND=noninteractive is set explicitly
+        # (a classic silent-hang cause: a package pulling in a debconf prompt
+        # — e.g. tzdata — that waits on stdin forever even with `apt -y`,
+        # which only auto-answers the "continue?" confirmation, not debconf's
+        # own interactive questions). Whichever of these was the real cause,
+        # this now fails loudly within a bounded time instead of hanging the
+        # job for potentially hours.
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           mkdir -p /etc/apt/keyrings
-          curl -fsSL --max-time 30 \
+          timeout 30 curl -fsSL --max-time 25 \
             "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" \
             | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
           echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
             > /etc/apt/sources.list.d/deadsnakes.list
-          apt-get update
-          apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
-          python3.13 -m ensurepip --upgrade
-          python3.13 -m pip install --upgrade pip
+          timeout 120 apt-get update
+          timeout 180 apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
+          timeout 60 python3.13 -m ensurepip --upgrade
+          timeout 60 python3.13 -m pip install --upgrade pip
 
       - uses: actions/setup-node@v4
         with:
