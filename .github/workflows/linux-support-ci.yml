@@ -80,10 +80,21 @@ jobs:
         # deadsnakes packages are compiled natively against each Ubuntu
         # release's own glibc, so this is genuinely compatible rather than a
         # newer prebuilt binary that merely happens to run on a dev machine.
+        #
+        # NOT using `add-apt-repository ppa:deadsnakes/ppa`: it hung for 38+
+        # minutes on a real CI run here (its internal GPG keyserver fetch
+        # stalling on the network with no timeout of its own) rather than
+        # failing fast. Fetching the signing key directly via `curl` with an
+        # explicit `--max-time`, and writing the sources.list entry manually,
+        # means a network problem fails loudly in <=30s instead of hanging
+        # the job for hours.
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends software-properties-common
-          add-apt-repository -y ppa:deadsnakes/ppa
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL --max-time 30 \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" \
+            | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
+            > /etc/apt/sources.list.d/deadsnakes.list
           apt-get update
           apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
           python3.13 -m ensurepip --upgrade
