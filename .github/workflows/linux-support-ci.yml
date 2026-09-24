@@ -69,9 +69,22 @@ jobs:
         with:
           workspaces: desktop/src-tauri
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      - name: Install Python 3.13 (deadsnakes, NOT actions/setup-python)
+        # actions/setup-python's prebuilt CPython 3.13 distribution requires
+        # GLIBC_2.38, which Ubuntu 22.04 (glibc 2.35 — this project's own
+        # chosen build-host floor, see the Linux support plan) does not have:
+        # `python: .../libpython3.13.so.1.0: version 'GLIBC_2.38' not found`.
+        # deadsnakes packages are compiled natively against each Ubuntu
+        # release's own glibc, so this is genuinely compatible rather than a
+        # newer prebuilt binary that merely happens to run on a dev machine.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends software-properties-common
+          add-apt-repository -y ppa:deadsnakes/ppa
+          apt-get update
+          apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
+          python3.13 -m ensurepip --upgrade
+          python3.13 -m pip install --upgrade pip
 
       - uses: actions/setup-node@v4
         with:
@@ -82,9 +95,8 @@ jobs:
       - name: Install backend (for the sidecar freeze)
         working-directory: backend
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install -r requirements-build.txt
+          python3.13 -m pip install -e .
+          python3.13 -m pip install -r requirements-build.txt
 
       - name: Freeze the Linux sidecar (onedir)
         run: bash desktop/scripts/build-sidecar.sh
