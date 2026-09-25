@@ -20,10 +20,13 @@ name: Linux CI
 # Windows) — GitHub-hosted Ubuntu runners already run as root.
 #
 # Evidence tiers this workflow can establish: BUILD VERIFIED / PACKAGE
-# VERIFIED / HEADLESS RUNTIME VERIFIED. It does NOT establish DESKTOP
-# WORKFLOW VERIFIED (no real display, no human interaction), REAL U1
-# VERIFIED (no hardware), or EXTERNAL USER VERIFIED — those stay separate,
-# later claims, never promoted from a green run of this file alone.
+# VERIFIED / HEADLESS RUNTIME VERIFIED, from its own inline steps, PLUS
+# DESKTOP WORKFLOW VERIFIED from the "Installed-build acceptance harness"
+# step below (tools/acceptance/linux/run.sh — a real installed binary, a
+# real Xvfb+openbox display, a real window manager close, not a
+# simulation). Still NOT REAL U1 VERIFIED (no hardware) or EXTERNAL USER
+# VERIFIED (no external human) — those stay separate, later claims, never
+# promoted from a green run of this file alone.
 #
 # `push: branches: ["linux-support/**"]` is kept alongside the permanent
 # `main`/`pull_request` triggers below so the task branch keeps
@@ -459,140 +462,11 @@ jobs:
           echo "Package metadata verified: Maintainer, Homepage, Section, and both description lines present."
 
       - name: Install the .deb and verify the .desktop file, then a full lifecycle (reinstall, upgrade, purge)
-        run: |
-          set -euo pipefail
-          # dpkg-query's ${db:Status-Abbrev} is the correct way to ask "is
-          # this package actually installed" — `dpkg -l "$pkg" | grep '^ii'`
-          # looks equivalent but a literal `grep -F '^ii'` never matches
-          # anything (grep -F treats `^` as a literal character, not an
-          # anchor) and silently kills every step that used it under
-          # `set -e`. Match on the "ii" prefix, not an exact multi-char
-          # string, since the abbreviation's trailing padding isn't a
-          # contract worth depending on.
-          installed() {
-            # ${db:Status-Abbrev} is contractually 3 characters
-            # (desired-action, current-status, error-flag); a clean install
-            # is exactly "ii " (trailing space, preserved by $(...) — only
-            # trailing NEWLINES get stripped). Matching "ii*" would also
-            # accept "iiR" (installed but flagged reinstall-required), which
-            # is a real, different state this check should not call healthy.
-            case "$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null)" in
-              "ii ") return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-
-          timeout -k 5 60 apt-get install -y --no-install-recommends desktop-file-utils
-          apt-get install -y "$deb_path"
-          echo "--- Installed files ---"
-          dpkg -L "$pkg_name"
-          # Snapshot every real file (not directory) this package installed,
-          # BEFORE anything is removed — the purge check at the end asserts
-          # against this real, complete list rather than a hand-picked path
-          # list that can silently go stale as the bundle's contents change.
-          # `if [ -f "$f" ]; then echo "$f"; fi`, not `[ -f "$f" ] && echo "$f"`:
-          # the loop's own exit status is whatever its LAST iteration
-          # returned, and `&&` makes that 1 whenever the last dpkg -L entry
-          # happens to be a directory — under `set -euo pipefail` that would
-          # kill this step right after a correct listing, for no real reason.
-          installed_files_snapshot="$(dpkg -L "$pkg_name" | while IFS= read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)"
-
-          echo "--- Verifying the installed .desktop file (Categories, and that it validates) ---"
-          # Pure bash loop over dpkg -L's output, not a pipe into `grep | head`
-          # — same SIGPIPE-under-pipefail avoidance reasoning as elsewhere in
-          # this workflow (an early-exiting consumer piped from a live
-          # producer can report the whole pipeline failed even on a genuine
-          # match).
-          desktop_file=""
-          while IFS= read -r f; do
-            case "$f" in
-              /usr/share/applications/*.desktop)
-                desktop_file="$f"
-                break
-                ;;
-            esac
-          done <<< "$(dpkg -L "$pkg_name")"
-          if [ -z "$desktop_file" ]; then
-            echo "No .desktop file found under /usr/share/applications/ in the installed package." >&2
-            exit 1
-          fi
-          echo "Desktop file: $desktop_file"
-          categories_line="$(grep -m1 '^Categories=' "$desktop_file" || true)"
-          echo "Categories line: ${categories_line:-<missing>}"
-          # `Categories=` with nothing after the `=` (empty) is what tauri.linux.conf.json's
-          # bundle.category is meant to fix — a bare "Categories=" is a real
-          # failure here, not just cosmetic: some desktop environments won't
-          # list an app in any menu category without it. desktop-file-validate
-          # itself exits 0 on an empty Categories= too, so this explicit check
-          # is the one that actually catches the regression it's named for.
-          if [ "$categories_line" = "Categories=" ] || [ -z "$categories_line" ]; then
-            echo "Categories is empty or missing — bundle.category in tauri.linux.conf.json did not take effect." >&2
-            exit 1
-          fi
-          desktop-file-validate "$desktop_file"
-          echo "Desktop file validated with 0 errors, Categories non-empty."
-
-          echo "--- Reinstalling the SAME version (idempotent reinstall) ---"
-          apt-get install -y --reinstall "$deb_path"
-          if ! installed "$pkg_name"; then
-            echo "Package $pkg_name does not report installed after --reinstall." >&2
-            exit 1
-          fi
-
-          echo "--- Upgrading in place (rewritten .deb with a bumped patch version, no second Tauri build) ---"
-          # Proves version ordering and in-place package replacement — the
-          # part of "upgrade" that's cheap to test without a second, much
-          # slower `tauri build`. It does NOT prove that files removed
-          # between two real versions get cleaned up on upgrade (e.g. a
-          # stale file left behind in onedir's _internal/): the payload here
-          # is byte-identical to the version being replaced, only the
-          # control Version: field differs.
-          upgrade_workdir="$(mktemp -d)"
-          dpkg-deb -R "$deb_path" "$upgrade_workdir"
-          # dpkg-deb -R doesn't preserve the extraction root's own mode, and
-          # `mktemp -d` creates it 0700 — since that root becomes the
-          # package's own "./" entry when rebuilt, an installed package could
-          # otherwise claim to own a locked-down root directory entry.
-          chmod 755 "$upgrade_workdir"
-          current_version="$(dpkg-deb -f "$deb_path" Version)"
-          upgraded_version="${current_version}+ci-upgrade-test"
-          sed -i "s/^Version: .*/Version: $upgraded_version/" "$upgrade_workdir/DEBIAN/control"
-          upgraded_deb="$(mktemp -u --suffix=.deb)"
-          dpkg-deb -b "$upgrade_workdir" "$upgraded_deb"
-          apt-get install -y "$upgraded_deb"
-          installed_version_after="$(dpkg-query -W -f='${Version}' "$pkg_name")"
-          echo "Version after upgrade: $installed_version_after (was $current_version)"
-          if [ "$installed_version_after" != "$upgraded_version" ]; then
-            echo "Upgrade did not take effect (still $installed_version_after, expected $upgraded_version)." >&2
-            exit 1
-          fi
-          echo "Upgrade-in-place verified."
-
-          echo "--- Purging ---"
-          # Purge directly from this installed (upgraded) state, not after a
-          # separate `apt-get remove` first: Tauri's .deb ships no conffiles
-          # and no maintainer scripts, so `remove` alone already fully
-          # uninstalls it — a subsequent `purge` would be a meaningless
-          # no-op, which is also why the old version of this step masked its
-          # result with `|| true` instead of asserting it actually ran.
-          apt-get purge -y "$pkg_name"
-          echo "--- Verifying purge left nothing behind ---"
-          leftover_found=0
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            if [ -e "$f" ]; then
-              echo "Leftover after purge: $f" >&2
-              leftover_found=1
-            fi
-          done <<< "$installed_files_snapshot"
-          if [ "$leftover_found" -ne 0 ]; then
-            exit 1
-          fi
-          if installed "$pkg_name"; then
-            echo "Package $pkg_name still reports installed after purge." >&2
-            exit 1
-          fi
-          echo "PACKAGE VERIFIED: install, reinstall, upgrade-in-place, and purge all behave correctly — every file this package installed is gone."
+        # Extracted to its own script during L8 (tools/acceptance/linux/
+        # package-lifecycle.sh) so the exact same behaviour can also run
+        # inside the clean-image matrix job without duplicating ~140 lines
+        # of YAML — behaviour-identical to what this step used to inline.
+        run: bash tools/acceptance/linux/package-lifecycle.sh "$deb_path"
 
       - name: Smoke-test the packaged sidecar starts and answers over loopback
         run: |
@@ -953,10 +827,14 @@ jobs:
         # (RunEvent::Exit never fires for an external signal). That path's
         # forced-fallback branch (killpg after /shutdown fails or times out)
         # has its own dedicated Linux `#[cfg(test)]` unit test in sidecar.rs
-        # instead, run earlier in this job via `cargo test`. Neither this
-        # step nor that test exercises the graceful POST-succeeds branch at
-        # runtime — that still has no CI coverage (see the module doc comment
-        # in sidecar.rs for the reasoning behind accepting that gap).
+        # instead, run earlier in this job via `cargo test`. The graceful
+        # POST-succeeds branch at runtime IS covered — by the "Installed-build
+        # acceptance harness" step later in this job (tools/acceptance/linux/
+        # run.sh), which closes a real window for real and asserts the
+        # sidecar's "shutdown: server stopped cleanly" line. This step and
+        # that one are deliberately different processes (signal-kill here,
+        # real window close there) covering different code paths, not
+        # duplicates.
         run: |
           set -euo pipefail
           alive() {
@@ -1179,5 +1057,243 @@ jobs:
           name: linux-build-logs
           path: |
             backend/build/**/warn-*.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Package the acceptance kit (scripts + fixtures) for the clean-environment job
+        # The clean-env-validate job below (L8) needs the acceptance scripts
+        # and a handful of fixture files WITHOUT doing a full repo checkout
+        # — a checkout there would undercut the "no project checkout
+        # required at runtime" claim L8 exists to prove. This build job
+        # already has the checkout, so it packages exactly what's needed as
+        # its own small artifact instead. Paths mirror the real repo layout
+        # exactly (examples/, backend/tests/fixtures/painted/) so run.sh's
+        # own repo_root-relative fixture lookups resolve unchanged.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/acceptance-kit/tools/acceptance/linux
+          mkdir -p /tmp/acceptance-kit/examples
+          mkdir -p /tmp/acceptance-kit/backend/tests/fixtures/painted
+          cp tools/acceptance/linux/run.sh tools/acceptance/linux/package-lifecycle.sh \
+            /tmp/acceptance-kit/tools/acceptance/linux/
+          cp examples/demo_u1_showcase.3mf examples/sample_cube.stl \
+            /tmp/acceptance-kit/examples/
+          cp backend/tests/fixtures/painted/orcaslicer-2.4.2-painted-cube.3mf \
+            /tmp/acceptance-kit/backend/tests/fixtures/painted/
+
+      - name: Upload acceptance kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-acceptance-kit
+          path: /tmp/acceptance-kit/
+          if-no-files-found: error
+          retention-days: 14
+
+  clean-env-validate:
+    name: Clean-environment validation (${{ matrix.label }})
+    needs: linux-build-and-package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "ubuntu:22.04"
+            label: "22.04"
+          - image: "ubuntu:24.04"
+            label: "24.04"
+    container:
+      image: ${{ matrix.image }}
+      options: --init
+    timeout-minutes: 25
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        # The bare ubuntu:22.04/24.04 container images default `run:` steps
+        # to /bin/sh (dash), not bash — `set -o pipefail` is bash-only and
+        # dash rejects it outright ("Illegal option -o pipefail"), confirmed
+        # by the first real run of this job. Same fix already applied to the
+        # build job above (see its own defaults: block) for the identical
+        # reason; this job needs it independently since GitHub Actions
+        # `defaults:` doesn't inherit across jobs.
+        shell: bash
+    steps:
+      - name: Pre-install clean-environment assertions (items 3-6, 30)
+        # Proves this image genuinely has no Python/Node/Rust before
+        # anything touches it — checked against the running container
+        # itself, not assumed from the base image's documentation.
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in python python3 node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "UNEXPECTED: $t is present on a supposedly clean ${{ matrix.image }}: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "This image is not clean as assumed — every check below would be unreliable." >&2
+            exit 1
+          fi
+          echo "CONFIRMED CLEAN: no python/python3/node/npm/cargo/rustc on ${{ matrix.image }} before anything was installed."
+          echo "--- pre-existing accounts (uid >= 1000), relevant to the uid-recycling investigation ---"
+          awk -F: '$3>=1000{print}' /etc/passwd || true
+
+      - name: ca-certificates (needed for HTTPS artifact download only)
+        run: apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates >/dev/null
+
+      - name: Download the .deb built earlier in this run
+        uses: actions/download-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb
+          path: /tmp/deb
+
+      - name: Download the acceptance kit (scripts + fixtures — not a project checkout)
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-acceptance-kit
+          path: /tmp/kit
+
+      - name: Snapshot installed packages before touching anything
+        run: dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-before.txt || true
+
+      - name: Install ONLY the .deb and its declared dependencies (item 8)
+        run: |
+          set -euo pipefail
+          deb="$(find /tmp/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found in the downloaded artifact." >&2
+            exit 1
+          fi
+          echo "deb_path=$deb" >> "$GITHUB_ENV"
+          apt-get install -y "$deb"
+
+      - name: Post-install clean-environment assertions (item 30 — real evidence, not static inspection)
+        # First real run of this job found python3 present after installing
+        # ONLY the .deb, on BOTH 22.04 and 24.04. The FIRST explanation
+        # tried here (libwebkit2gtk-4.1-0 -> xdg-desktop-portal-gtk ->
+        # python3-gi) was wrong and has been corrected — a review
+        # independently checked it against a real Ubuntu 24.04 apt database
+        # (`apt-cache depends`) and found xdg-desktop-portal-gtk declares NO
+        # python dependency at all. The REAL chain, verified the same way
+        # (`apt-cache depends`/`rdepends` on a real Ubuntu 24.04 install,
+        # not inferred from install-log ordering): libwebkit2gtk-4.1-0
+        # RECOMMENDS xdg-desktop-portal-gtk (confirmed — a Recommends, not a
+        # Depends, which is why this only matters when apt's default
+        # install-recommends behavior isn't disabled), and separately,
+        # systemd — pulled in by the desktop dependency closure — RECOMMENDS
+        # networkd-dispatcher, which directly DEPENDS on python3-gi,
+        # python3-dbus, and python3 itself. xdg-desktop-portal-gtk was a red
+        # herring: co-installed in the same apt transaction, not the actual
+        # cause. This project's own .deb declares only libwebkit2gtk-4.1-0
+        # and libgtk-3-0 as Depends — there is no packaging fix available
+        # short of dropping the GTK webview entirely, and this remains an OS
+        # dependency-resolution fact, not a defect in this package's own
+        # metadata. node/npm/cargo/rustc have no such known legitimate path
+        # and stay a hard failure; python/python3 is checked against the
+        # verified SPECIFIC cause (networkd-dispatcher actually installed)
+        # rather than either being silently ignored or blocking the rest of
+        # this job's real evidence for a fact outside the app's control.
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "REGRESSION: $t became available after installing ONLY the .deb: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "The .deb's declared Depends pulled in a developer tool with no known legitimate cause — a real packaging defect." >&2
+            exit 1
+          fi
+          if command -v python3 >/dev/null 2>&1; then
+            # Don't just trust that networkd-dispatcher being installed
+            # EXPLAINS python3's presence — verify the actual causal edge
+            # LIVE, against this exact image's real apt database, every
+            # run. A delta review correctly flagged that checking presence
+            # alone doesn't rule out some OTHER package independently
+            # pulling python3 while networkd-dispatcher happens to also be
+            # installed; this closes that by asserting the real dependency
+            # relationship apt itself reports, not a claim frozen in a
+            # comment.
+            if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i' \
+              && apt-cache depends networkd-dispatcher 2>/dev/null | grep -Eq '^[[:space:]]*Depends:[[:space:]]+python3-gi([[:space:]]|$)'; then
+              echo "EXPECTED (not a defect): python3 is present at $(command -v python3). Verified LIVE against this image's real apt database (not just presence, the actual dependency edge): networkd-dispatcher is installed AND its own 'apt-cache depends' output confirms it directly Depends on python3-gi — networkd-dispatcher itself arrives via systemd's Recommends, part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain." >&2
+            else
+              echo "REGRESSION: python3 became available after installing ONLY the .deb, and the verified networkd-dispatcher->python3-gi dependency edge is NOT confirmed on this image (either networkd-dispatcher isn't installed, or apt's own dependency data no longer shows the expected edge) — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
+              exit 1
+            fi
+          fi
+          echo "CONFIRMED: installing only the .deb pulled in no node/npm/cargo/rustc, and any python3 present is accounted for."
+          dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-after-app.txt || true
+          echo "--- packages the .deb's own Depends closure pulled in ---"
+          comm -13 /tmp/pkgs-before.txt /tmp/pkgs-after-app.txt || true
+
+      - name: ldd sweep — no missing shared library across the installed app + sidecar
+        run: |
+          set -euo pipefail
+          pkg_name="$(dpkg-deb -f "$deb_path" Package)"
+          bin_path="$(dpkg -L "$pkg_name" | grep -E '^/usr/bin/[^/]+$' | head -n1)"
+          resource_dir="$(dirname "$(dpkg -L "$pkg_name" | grep -m1 'snapstudio-api-x86_64-unknown-linux-gnu$')")"
+          apt-get install -y --no-install-recommends file >/dev/null
+          bad=0
+          while IFS= read -r -d '' f; do
+            file "$f" 2>/dev/null | grep -q 'ELF' || continue
+            out="$(ldd "$f" 2>&1 || true)"
+            if echo "$out" | grep -q "not found"; then
+              echo "MISSING SHARED LIBRARY in $f:" >&2
+              echo "$out" | grep "not found" >&2
+              bad=1
+            fi
+          done < <(find "$resource_dir" "$bin_path" -type f -print0)
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "CONFIRMED: no missing shared libraries across the installed app + bundled sidecar on ${{ matrix.image }}."
+
+      - name: Static check — the .deb's own dependency fields declare no dev toolchain
+        # Complements the runtime pre/post command -v checks above with a
+        # check of the .deb's OWN metadata (Depends, Pre-Depends,
+        # Recommends): those runtime checks prove the CURRENT install
+        # didn't end up with a toolchain present (currently true only
+        # because of the documented networkd-dispatcher exception for
+        # python3), but never actually asserted what this package's own
+        # control file declares. This is the check that would catch a
+        # regression if the app's own Depends/Recommends ever DID start
+        # naming a toolchain directly.
+        run: |
+          set -euo pipefail
+          fields="$(dpkg-deb -f "$deb_path" Depends Pre-Depends Recommends 2>/dev/null || true)"
+          echo "--- .deb dependency fields ---"
+          echo "$fields"
+          if echo "$fields" | grep -qiE '(^|[^-a-z])(python[0-9.]*|nodejs|npm|cargo|rustc)([^a-z0-9]|$)'; then
+            echo "REGRESSION: the .deb's own Depends/Pre-Depends/Recommends directly name a dev toolchain package." >&2
+            exit 1
+          fi
+          echo "CONFIRMED: the .deb's own dependency fields name no python/node/rust package directly."
+
+      - name: Package lifecycle (install/reinstall/upgrade/purge) on this clean image (items 25-28)
+        run: |
+          chmod +x /tmp/kit/tools/acceptance/linux/*.sh
+          bash /tmp/kit/tools/acceptance/linux/package-lifecycle.sh "$deb_path"
+
+      - name: Install test tooling (kept separate from app deps, for driving the GUI)
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 jq curl desktop-file-utils >/dev/null
+
+      - name: Installed-build acceptance harness on a genuinely clean ${{ matrix.image }} (DESKTOP WORKFLOW VERIFIED)
+        env:
+          SNAPSTUDIO_ACCEPT_WORKDIR: /tmp/linux-acceptance
+        run: bash /tmp/kit/tools/acceptance/linux/run.sh "$deb_path"
+
+      - name: Upload clean-environment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-clean-env-evidence-${{ matrix.label }}
+          path: /tmp/linux-acceptance/evidence/
           if-no-files-found: warn
           retention-days: 14

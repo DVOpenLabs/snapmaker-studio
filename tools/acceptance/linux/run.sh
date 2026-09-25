@@ -12,8 +12,11 @@
 # Usage: run.sh <path-to-.deb>
 # Needs root (apt-get, useradd) — run inside the CI container or any root
 # shell. Requires: xvfb, openbox, wmctrl, xdotool, imagemagick, sqlite3,
-# dbus-x11 (same packages linux-ci.yml already installs, plus openbox/
-# wmctrl/xdotool/imagemagick/sqlite3 for this harness specifically).
+# dbus-x11, jq, curl (same packages linux-ci.yml already installs, plus
+# openbox/wmctrl/xdotool/imagemagick/sqlite3/jq/curl for this harness
+# specifically). Deliberately NOT Python or Node — this harness itself must
+# run on the same genuinely clean images (no dev tools) it's proving the
+# shipped app runs on (L8).
 #
 # Output: $ACCEPT_WORKDIR/evidence/acceptance.json (schema_version
 # "acceptance/1", same shape as the Windows harness's report — see
@@ -34,12 +37,13 @@
 # an exact byte-for-byte argv[0] match (from /proc/<pid>/cmdline) — never by
 # process name or cmdline substring, which could otherwise match an
 # unrelated concurrent run's processes or something on the machine that
-# merely happens to share a name. The one exception is final cleanup, which
-# also does a uid-wide kill as a safety net (see the KNOWN LIMITATION note
-# at that line) — not yet fully hardened for a shared machine, tracked as
-# L8/L10 follow-up debt. All cleanup lives in one EXIT trap, so every exit
-# path — including an early failure — runs it,
-# not just the happy path at the bottom of the script.
+# merely happens to share a name. Final cleanup's uid-wide safety-net kill
+# (see that comment for the full reasoning) is additionally scoped to only
+# processes that started after this run began (real /proc start-time
+# comparison), so a pre-existing process holding a recycled uid is left
+# alone rather than killed. All cleanup lives in one EXIT trap, so every
+# exit path — including an early failure — runs it, not just the happy
+# path at the bottom of the script.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -55,6 +59,15 @@ if [ ! -f "$deb_path" ]; then
   echo "No such file: $deb_path" >&2
   exit 1
 fi
+
+# Captured before this run creates any account or process, so cleanup can
+# tell "a process this run started" from "a process that predates this run
+# and merely inherited a uid this run's new account happened to be assigned"
+# — see the uid-scoped-kill note in cleanup() below. /proc/<pid>/stat field
+# 22 (starttime, in clock ticks since boot) is monotonic and comm-safe to
+# parse this way (strip everything through the last ")" first, since comm
+# itself can contain spaces/parens).
+harness_start_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' /proc/self/stat)"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 workdir="${SNAPSTUDIO_ACCEPT_WORKDIR:-$(mktemp -d)}"
@@ -79,6 +92,9 @@ add_check() {
 }
 
 write_report() {
+  # jq, not python3.13 — this harness now runs on genuinely clean images
+  # (L8) that have no Python at all. jq is installed as test tooling
+  # alongside Xvfb/openbox/etc., never assumed part of the runtime.
   {
     echo "{"
     echo "  \"schema_version\": \"acceptance/1\","
@@ -90,9 +106,9 @@ write_report() {
       local comma=","
       [ "$i" -eq $((n - 1)) ] && comma=""
       printf '    {"name": %s, "ok": %s, "detail": %s}%s\n' \
-        "$(printf '%s' "${checks_names[$i]}" | python3.13 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
+        "$(jq -Rn --arg v "${checks_names[$i]}" '$v')" \
         "${checks_ok[$i]}" \
-        "$(printf '%s' "${checks_detail[$i]}" | python3.13 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
+        "$(jq -Rn --arg v "${checks_detail[$i]}" '$v')" \
         "$comma"
     done
     echo "  ]"
@@ -128,15 +144,39 @@ any_failed() {
 # a joined command-line string) — it's the literal, exact, NUL-delimited
 # first argument this script itself chose when it invoked the process,
 # compared for byte-for-byte equality, combined with the exact owning uid.
+#
+# ALSO checked against $harness_start_ticks (this run's own /proc start-
+# time, captured before anything was created — see cleanup()'s safety-net
+# kill, which uses the same reference point): a process can only be one
+# THIS run launched if it started at or after this run began. Without this,
+# a recycled uid (the exact scenario the cleanup-time safety net was built
+# for — see the accountsservice/userdel -f finding) could make discovery
+# itself return a stale process left over from a force-deleted account that
+# happens to share this run's newly-allocated uid and an identical argv[0]
+# (a real installed app has exactly one absolute path, so this is not far-
+# fetched on a real machine that's had more than one Studio launch under a
+# deleted account). Such a process is not a false match on identity — uid
+# and argv[0] both genuinely agree — but it still is not a process this run
+# is responsible for tracking or signalling, exactly like the cleanup-time
+# case.
 find_process_by_uid_and_argv0() {
   local want_uid="$1" want_argv0="$2"
-  local pid_dir pid argv0 uid
+  local pid_dir pid argv0 uid pid_ticks
   for pid_dir in /proc/[0-9]*; do
     pid="${pid_dir#/proc/}"
-    argv0="$(tr '\0' '\n' < "$pid_dir/cmdline" 2>/dev/null | head -n1 || true)"
+    # Grouped so a failed input redirect (pid exited between the glob and
+    # this read — routine under heavy launch/kill cycling) is caught by
+    # THIS 2>/dev/null too. An un-grouped `cmd < file 2>/dev/null` does NOT
+    # suppress a failed `< file` redirect's own error message — bash reports
+    # that straight to the real stderr before the command's own redirection
+    # is even reached, which is noise, not a bug, but noise this harness
+    # doesn't need.
+    argv0="$({ tr '\0' '\n' < "$pid_dir/cmdline"; } 2>/dev/null | head -n1 || true)"
     [ -n "$argv0" ] && [ "$argv0" = "$want_argv0" ] || continue
     uid="$(awk '/^Uid:/{print $2; exit}' "$pid_dir/status" 2>/dev/null || true)"
     [ "$uid" = "$want_uid" ] || continue
+    pid_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' "$pid_dir/stat" 2>/dev/null || true)"
+    [ -n "$pid_ticks" ] && [ "$pid_ticks" -ge "$harness_start_ticks" ] 2>/dev/null || continue
     echo "$pid"
     return 0
   done
@@ -182,26 +222,38 @@ cleanup() {
     # was silently swallowed, leaking the account and its processes. Kill
     # everything under this uid first so userdel always has a clean account
     # to remove, regardless of what owned_pids did or didn't track.
-    # KNOWN LIMITATION (tracked for L8/L10, not closed here): this matches
-    # by uid, not by PID+argv0 like every other kill in this script. useradd
-    # picks a uid from account records, not from what's currently running —
-    # on a real/shared host (not this harness's actual current use, which is
-    # always a fresh single-tenant ephemeral CI container) an unrelated
-    # already-running process could in principle be left holding a uid this
-    # run's new account then gets assigned, and this would kill it. Properly
-    # closing this needs the test process launched into its own process
-    # group or cgroup rather than uid-scoped cleanup — out of scope for this
-    # pass; do not rely on this harness's "safe on a shared machine" claim
-    # for this specific gap until that lands.
-    [ -n "$test_uid" ] && pkill -KILL -u "$test_uid" 2>/dev/null || true
-    userdel -r "$test_user" 2>/dev/null || true
+    #
+    # SCOPED to processes that started AFTER this harness run began
+    # (compared against $harness_start_ticks, captured before this run did
+    # anything). This closes a real gap: useradd allocates a uid from
+    # account records, not from /proc, so a uid this run's new account gets
+    # assigned could already be held by an orphaned process from an
+    # earlier, unrelated account — verified reproducible via
+    # `userdel -f <name>` with the account's process still alive (exactly
+    # what desktop tools call: accountsservice's "Remove User" always runs
+    # `userdel -f`, GNOME Settings included). A process that predates this
+    # run can never be one this run is responsible for, so it's excluded
+    # rather than killed, and userdel's own refusal (it won't remove an
+    # account with live processes) is left to fire and be reported below —
+    # not silently swallowed.
+    if [ -n "$test_uid" ]; then
+      for pid in $(pgrep -u "$test_uid" 2>/dev/null || true); do
+        pid_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' "/proc/$pid/stat" 2>/dev/null || true)"
+        if [ -n "$pid_ticks" ] && [ "$pid_ticks" -ge "$harness_start_ticks" ] 2>/dev/null; then
+          kill -9 "$pid" 2>/dev/null || true
+        else
+          echo "NOTE: pid $pid under recycled uid $test_uid predates this run (started before it) — left alone, not killed." >&2
+        fi
+      done
+    fi
+    userdel -r "$test_user" 2>/dev/null || echo "NOTE: userdel $test_user failed (rc=$?) — a pre-existing process on this recycled uid may still be alive; see NOTE lines above." >&2
   fi
 }
 trap cleanup EXIT
 
 echo "=== Installing the .deb ==="
 apt-get update -qq
-apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 >/dev/null
+apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 jq curl >/dev/null
 # pkg_name stays empty (cleanup's guard) until pkg_preinstalled is fully
 # determined, so an interrupt between the Package query and the preinstalled
 # check can never leave cleanup thinking THIS run owns a package it doesn't.
@@ -359,7 +411,7 @@ if [ -z "$app_pid" ]; then
       pu="$(awk '/^Uid:/{print $2; exit}' "$p/status" 2>/dev/null || echo '?')"
       [ "$pu" = "$test_uid" ] || [ "$pu" = "0" ] || continue
       pe="$(readlink -f "$p/exe" 2>/dev/null || echo '?')"
-      pc="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || echo '?')"
+      pc="$({ tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null || echo '?')"
       echo "pid=$pn uid=$pu exe=$pe cmd=$pc"
     done
   } >&2
@@ -491,6 +543,496 @@ if [ -n "$reopen_app_pid" ]; then
   [ -n "$reopen_sidecar_pid" ] && owned_pids+=("$reopen_sidecar_pid")
   kill -9 "$reopen_app_pid" 2>/dev/null || true
   [ -n "${reopen_sidecar_pid:-}" ] && kill -9 "$reopen_sidecar_pid" 2>/dev/null || true
+fi
+
+echo "=== Opening a real STL (item 12) and exiting it via SIGTERM as the test user (item 21) ==="
+# Every existing SIGTERM proof in linux-ci.yml runs as root; this is the
+# first proof it also works for the actual installed-app (non-root) user.
+stl_fixture_src="$repo_root/examples/sample_cube.stl"
+if [ ! -f "$stl_fixture_src" ]; then
+  add_check "STL fixture exists" "false" "$stl_fixture_src not found"
+else
+  stl_fixture_copy="$user_home/sample_cube.stl"
+  cp "$stl_fixture_src" "$stl_fixture_copy"
+  chown "$test_user:$test_user" "$stl_fixture_copy"
+  runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+    "$bin_path" "$stl_fixture_copy" > "$evidence_dir/app_stl.log" 2>&1 &
+  stl_launcher_pid=$!
+  owned_pids+=("$stl_launcher_pid")
+  stl_app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 40 || true)"
+  add_check "STL launch starts the app" "$([ -n "$stl_app_pid" ] && echo true || echo false)" "PID ${stl_app_pid:-none}"
+  if [ -n "$stl_app_pid" ]; then
+    owned_pids+=("$stl_app_pid")
+    stl_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 20 || true)"
+    [ -n "$stl_sidecar_pid" ] && owned_pids+=("$stl_sidecar_pid")
+    stl_row=""
+    for _ in $(seq 1 20); do
+      [ -f "$db_path" ] || { sleep 0.5; continue; }
+      stl_row="$(sqlite3 "$db_path" "SELECT source_path FROM projects WHERE source_path LIKE '%sample_cube.stl';" 2>/dev/null || true)"
+      [ -n "$stl_row" ] && break
+      sleep 0.5
+    done
+    add_check "STL launch-file path recorded a library.db row" "$([ -n "$stl_row" ] && echo true || echo false)" "$stl_row"
+
+    kill -TERM "$stl_app_pid" 2>/dev/null || true
+    term_deadline=$(($(date +%s) + 10))
+    app_term_gone=1
+    while [ "$(date +%s)" -lt "$term_deadline" ]; do
+      kill -0 "$stl_app_pid" 2>/dev/null || { app_term_gone=0; break; }
+      sleep 0.25
+    done
+    sidecar_term_gone=1
+    if [ -n "${stl_sidecar_pid:-}" ]; then
+      term_deadline=$(($(date +%s) + 10))
+      while [ "$(date +%s)" -lt "$term_deadline" ]; do
+        kill -0 "$stl_sidecar_pid" 2>/dev/null || { sidecar_term_gone=0; break; }
+        sleep 0.25
+      done
+    fi
+    add_check "SIGTERM as the test user leaves zero sidecars" \
+      "$([ "$app_term_gone" -eq 0 ] && [ "$sidecar_term_gone" -eq 0 ] && echo true || echo false)" \
+      "app_gone=$([ "$app_term_gone" -eq 0 ] && echo yes || echo no) sidecar_gone=$([ "$sidecar_term_gone" -eq 0 ] && echo yes || echo no)"
+    [ "$app_term_gone" -ne 0 ] && { kill -9 "$stl_app_pid" 2>/dev/null || true; }
+    [ -n "${stl_sidecar_pid:-}" ] && [ "$sidecar_term_gone" -ne 0 ] && { kill -9 "$stl_sidecar_pid" 2>/dev/null || true; }
+  fi
+fi
+
+echo "=== SIGKILL as the test user leaves zero sidecars (item 22) ==="
+runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+  "$bin_path" "$fixture_copy" > "$evidence_dir/app_sigkill.log" 2>&1 &
+sigkill_launcher_pid=$!
+owned_pids+=("$sigkill_launcher_pid")
+sigkill_app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 40 || true)"
+if [ -n "$sigkill_app_pid" ]; then
+  owned_pids+=("$sigkill_app_pid")
+  sigkill_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 20 || true)"
+  [ -n "$sigkill_sidecar_pid" ] && owned_pids+=("$sigkill_sidecar_pid")
+  kill -KILL "$sigkill_app_pid" 2>/dev/null || true
+  kill_deadline=$(($(date +%s) + 10))
+  sidecar_kill_gone=1
+  if [ -n "${sigkill_sidecar_pid:-}" ]; then
+    while [ "$(date +%s)" -lt "$kill_deadline" ]; do
+      kill -0 "$sigkill_sidecar_pid" 2>/dev/null || { sidecar_kill_gone=0; break; }
+      sleep 0.25
+    done
+  fi
+  add_check "SIGKILL as the test user leaves zero sidecars" \
+    "$([ "$sidecar_kill_gone" -eq 0 ] && echo true || echo false)" \
+    "sidecar_gone=$([ "$sidecar_kill_gone" -eq 0 ] && echo yes || echo no) — proven by the three-layer lifeline (PDEATHSIG/process-group), not this harness"
+  [ -n "${sigkill_sidecar_pid:-}" ] && { kill -9 "$sigkill_sidecar_pid" 2>/dev/null || true; }
+else
+  add_check "SIGKILL as the test user leaves zero sidecars" "false" "app never appeared to be killed"
+fi
+
+echo "=== Repeated launch/close cycles as the test user, zero accumulated orphans (item 23), sidecar-crash-first survival (item 24) ==="
+repeat_cycles_ok="true"
+for cycle in 1 2 3; do
+  runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+    "$bin_path" > "$evidence_dir/app_cycle_${cycle}.log" 2>&1 &
+  cyc_launcher_pid=$!
+  owned_pids+=("$cyc_launcher_pid")
+  cyc_app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 30 || true)"
+  if [ -z "$cyc_app_pid" ]; then
+    repeat_cycles_ok="false"
+    break
+  fi
+  owned_pids+=("$cyc_app_pid")
+  cyc_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 15 || true)"
+  [ -n "$cyc_sidecar_pid" ] && owned_pids+=("$cyc_sidecar_pid")
+  cyc_window=""
+  for _ in $(seq 1 30); do
+    cyc_window="$(xdotool search --name '^Snapmaker Studio$' 2>/dev/null | head -n1 || true)"
+    [ -n "$cyc_window" ] && break
+    sleep 0.5
+  done
+  if [ "$cycle" -eq 1 ]; then
+    if [ -n "${cyc_sidecar_pid:-}" ]; then
+      # Kill only the sidecar and prove the app itself survives — there is
+      # no auto-restart mechanism anywhere in desktop/src by design; the
+      # frontend polls /health every 10s and shows "Reconnecting…"
+      # (StatusBar.tsx).
+      kill -9 "$cyc_sidecar_pid" 2>/dev/null || true
+      sleep 12
+      add_check "App survives sidecar-crash-first (no auto-restart, stays open)" \
+        "$(kill -0 "$cyc_app_pid" 2>/dev/null && echo true || echo false)" ""
+    else
+      # Always add this check, even when its precondition wasn't met — a
+      # missing sidecar here silently dropped this check from the total
+      # count instead of failing anything.
+      add_check "App survives sidecar-crash-first (no auto-restart, stays open)" "false" "sidecar never appeared in cycle 1, could not test crash-first"
+    fi
+  fi
+  if [ -n "$cyc_window" ]; then
+    wmctrl -ic "$cyc_window" 2>/dev/null || true
+  else
+    kill -TERM "$cyc_app_pid" 2>/dev/null || true
+  fi
+  for _ in $(seq 1 30); do kill -0 "$cyc_app_pid" 2>/dev/null || break; sleep 0.5; done
+  if kill -0 "$cyc_app_pid" 2>/dev/null; then
+    kill -9 "$cyc_app_pid" 2>/dev/null || true
+    repeat_cycles_ok="false"
+  fi
+done
+# A few seconds' grace before the sweep: --init (tini) reaps exited
+# children on SIGCHLD, but that isn't instant, especially after several
+# back-to-back launch/kill cycles in quick succession.
+sleep 3
+leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
+# On the existing (non-clean) job, the only leftover was the main session
+# D-Bus bus (dbus-launch/dbus-daemon --session), auto-launched once per X
+# display and designed to outlive every app instance, like Xvfb/openbox.
+# On a genuinely clean image (this job's whole point) the .deb's fuller
+# dependency closure includes the AT-SPI accessibility stack and the
+# desktop-portal stack, and the FIRST run here found their daemons also
+# leftover, all ppid=1 (reparented after their launching process exited),
+# all D-Bus-activated session infrastructure — confirmed via a diagnostic
+# dump, not assumed: at-spi-bus-launcher, a second dbus-daemon serving
+# only the AT-SPI accessibility.conf bus, at-spi2-registryd,
+# xdg-desktop-portal, xdg-desktop-portal-gtk (the same package whose
+# python3-gi dependency is the earlier documented, expected finding),
+# xdg-permission-store. Every one of these is activated once, session-
+# scoped, and meant to persist — none of them is started or owned by any
+# single app launch this harness makes. Matched by argv[0] (the absolute
+# executable path), not a substring of the full command line, so a flag
+# change upstream can't silently stop this from matching.
+# Real cardinality check, not a blanket argv[0] allowlist: two real CI runs
+# proved that WHEN each of these daemons first D-Bus-activates is
+# genuinely nondeterministic (a "baseline snapshotted before/after cycle 1"
+# approach was tried and failed both ways — one of them didn't activate
+# until partway into the repeated-cycles phase itself). What's actually
+# invariant, confirmed by every real diagnostic dump so far, is the
+# EXPECTED CONCURRENT COUNT of each specific daemon ROLE in a normal
+# single-session run — every daemon here is a singleton EXCEPT
+# /usr/bin/dbus-daemon, which serves two DIFFERENT roles at once (the main
+# session bus, invoked with --session; a separate AT-SPI accessibility
+# bus, invoked with --config-file=.../accessibility.conf). Capping
+# "dbus-daemon" at a blanket 2 could not tell "1 of each legitimate role"
+# apart from "2 of the same role (1 legitimate + 1 leaked)" — a real gap a
+# delta review caught. Each ROLE (not just each argv[0]) is now capped at
+# 1 individually, keyed by matching the process's actual arguments, not
+# just its executable path — so a leaked SECOND session-bus instance (or a
+# third, unrecognized dbus-daemon variant matching neither known role) no
+# longer hides behind the other role's legitimate slot.
+declare -A infra_caps=(
+  ["dbus-launch"]=1
+  ["dbus-daemon (session bus)"]=1
+  ["dbus-daemon (AT-SPI bus)"]=1
+  ["/usr/libexec/at-spi-bus-launcher"]=1
+  ["/usr/libexec/at-spi2-registryd"]=1
+  ["/usr/libexec/xdg-desktop-portal"]=1
+  ["/usr/libexec/xdg-desktop-portal-gtk"]=1
+  ["/usr/libexec/xdg-permission-store"]=1
+)
+declare -A infra_seen=()
+real_leftover=""
+for lp in $leftover_after_cycles; do
+  lcmdline="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '')"
+  largv0="$(echo "$lcmdline" | awk '{print $1; exit}')"
+  role_key="$largv0"
+  if [ "$largv0" = "/usr/bin/dbus-daemon" ]; then
+    case "$lcmdline" in
+      *--session*) role_key="dbus-daemon (session bus)" ;;
+      *accessibility.conf*) role_key="dbus-daemon (AT-SPI bus)" ;;
+      *) role_key="dbus-daemon (unrecognized role)" ;;
+    esac
+  fi
+  # An EMPTY string as an associative-array subscript is a hard bash error
+  # ("bad array subscript") that aborts the script immediately — it fails
+  # during parameter expansion itself, before any command runs, so it
+  # can't be caught with `|| true` the way a normal command failure can.
+  # largv0/role_key legitimately come back empty on a routine race (the
+  # pid exited between pgrep and this read, or it's a zombie with no
+  # cmdline) — this must be checked BEFORE ever indexing $infra_caps or
+  # $infra_seen with it, confirmed as a real crash by reproducing it
+  # directly in bash, not assumed from the review alone.
+  cap=0
+  if [ -n "$role_key" ]; then
+    cap="${infra_caps[$role_key]:-0}"
+  fi
+  if [ "$cap" -gt 0 ]; then
+    seen="${infra_seen[$role_key]:-0}"
+    if [ "$seen" -lt "$cap" ]; then
+      infra_seen[$role_key]=$((seen + 1))
+      continue
+    fi
+    echo "NOTE: pid $lp ($role_key) exceeds the expected concurrent count ($cap) for this daemon role — counted as a real leftover, not excluded." >&2
+  fi
+  real_leftover="$real_leftover $lp"
+done
+real_leftover="$(echo "$real_leftover" | xargs 2>/dev/null || true)"
+if [ -n "$real_leftover" ]; then
+  echo "--- DIAGNOSTIC: unexplained processes still under uid=$test_uid after 3 repeated cycles ---" >&2
+  for lp in $real_leftover; do
+    lstat="$(cat "/proc/$lp/stat" 2>/dev/null || echo '?')"
+    lcmd="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '?')"
+    lppid="$(awk '/^PPid:/{print $2; exit}' "/proc/$lp/status" 2>/dev/null || echo '?')"
+    echo "pid=$lp ppid=$lppid cmd=[$lcmd] stat=[$lstat]" >&2
+  done
+fi
+add_check "3 repeated launch/close cycles leave zero orphans under the uid" \
+  "$([ "$repeat_cycles_ok" = "true" ] && [ -z "$real_leftover" ] && echo true || echo false)" \
+  "leftover_pids=${real_leftover:-none} (raw, before excluding known session infrastructure: ${leftover_after_cycles:-none})"
+
+echo "=== Headless API lane: Doctor / Prepare / fidelity / report / painted paths (items 13, 14, 16, 17) ==="
+# Drives the sidecar binary DIRECTLY (not through the desktop app) — the
+# exact same executable, the exact same stdin lifeline mechanism
+# (SNAPSTUDIO_PARENT_LIFELINE=stdin-v1) the app itself uses, just proven
+# from a script instead of Rust. This is what makes items 13/14/16/17 real
+# executions against real fixtures with known-real expected results
+# (backend/tests/fixtures/painted/PROVENANCE.md: the OrcaSlicer-painted
+# fixture has exactly 5 referenced slots, 8 painted triangles), not GUI
+# coordinate-clicking guesses.
+api_workdir="$user_home/api-lane"
+runuser -u "$test_user" -- mkdir -p "$api_workdir"
+declare -A api_fixtures=(
+  [3mf]="$repo_root/examples/demo_u1_showcase.3mf"
+  [stl]="$repo_root/examples/sample_cube.stl"
+  [painted]="$repo_root/backend/tests/fixtures/painted/orcaslicer-2.4.2-painted-cube.3mf"
+)
+api_ok="true"
+for key in "${!api_fixtures[@]}"; do
+  if [ ! -f "${api_fixtures[$key]}" ]; then
+    add_check "API lane fixture exists ($key)" "false" "${api_fixtures[$key]} not found"
+    api_ok="false"
+  fi
+done
+
+if [ "$api_ok" = "true" ]; then
+  for key in "${!api_fixtures[@]}"; do
+    cp "${api_fixtures[$key]}" "$api_workdir/$(basename "${api_fixtures[$key]}")"
+  done
+  chown -R "$test_user:$test_user" "$api_workdir"
+
+  fifo="$api_workdir/sidecar-stdin.fifo"
+  runuser -u "$test_user" -- mkfifo "$fifo"
+  # The child's stdin must be READ-ONLY, matching production exactly
+  # (Stdio::piped() gives the sidecar a read-only pipe end; the app keeps
+  # the write end). Opening this fd read-WRITE (the usual named-pipe
+  # self-open trick to avoid blocking on open()) would be wrong here
+  # specifically because the CHILD inherits that same read-write fd as its
+  # own stdin — meaning the child would hold a write reference to its own
+  # read end, so os.read() could never see true EOF no matter what root
+  # closes (a real bug caught by the first run of this exact check: it
+  # failed). Instead: launch the child with its stdin opened plain `<
+  # "$fifo"` (O_RDONLY, blocks until a writer appears) in the background,
+  # then have root open the SAME fifo for writing only (O_WRONLY, blocks
+  # until a reader appears) — the two blocking opens rendezvous regardless
+  # of which starts first, and root's fd is then the ONLY writer, so
+  # closing it later genuinely triggers EOF on the child's read.
+  handshake_file="$api_workdir/handshake.json"
+  runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+    SNAPSTUDIO_PARENT_LIFELINE=stdin-v1 SNAPSTUDIO_PARENT_PID=$$ \
+    "$sidecar_exe" < "$fifo" > "$handshake_file" 2>"$api_workdir/sidecar.log" &
+  api_sidecar_launcher_pid=$!
+  owned_pids+=("$api_sidecar_launcher_pid")
+  exec 8> "$fifo"
+
+  api_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 40 || true)"
+  add_check "API lane: sidecar starts standalone (non-root, no app)" "$([ -n "$api_sidecar_pid" ] && echo true || echo false)" "PID ${api_sidecar_pid:-none}"
+
+  if [ -n "$api_sidecar_pid" ]; then
+    owned_pids+=("$api_sidecar_pid")
+    api_port="" api_token=""
+    for _ in $(seq 1 40); do
+      if [ -s "$handshake_file" ]; then
+        api_port="$(jq -r '.port // empty' "$handshake_file" 2>/dev/null || true)"
+        api_token="$(jq -r '.token // empty' "$handshake_file" 2>/dev/null || true)"
+        [ -n "$api_port" ] && [ -n "$api_token" ] && break
+      fi
+      sleep 0.5
+    done
+    add_check "API lane: handshake received (port+token)" "$([ -n "$api_port" ] && [ -n "$api_token" ] && echo true || echo false)" "port=${api_port:-none}"
+
+    if [ -n "$api_port" ] && [ -n "$api_token" ]; then
+      api_base="http://127.0.0.1:$api_port"
+      api_curl() {
+        curl -sS --max-time 15 -H "X-Auth-Token: $api_token" -H "Content-Type: application/json" \
+          -d "$2" "$api_base$1" 2>/dev/null || true
+      }
+
+      doctor_3mf="$(api_curl /doctor "$(jq -n --arg p "$api_workdir/demo_u1_showcase.3mf" '{path:$p}')")"
+      add_check "API /doctor on real 3MF" "$(echo "$doctor_3mf" | jq -e '.verdict' >/dev/null 2>&1 && echo true || echo false)" "$(echo "$doctor_3mf" | jq -c '{verdict}' 2>/dev/null)"
+
+      doctor_stl="$(api_curl /doctor "$(jq -n --arg p "$api_workdir/sample_cube.stl" '{path:$p}')")"
+      add_check "API /doctor on real STL" "$(echo "$doctor_stl" | jq -e '.input_type=="stl"' >/dev/null 2>&1 && echo true || echo false)" "$(echo "$doctor_stl" | jq -c '{verdict,input_type}' 2>/dev/null)"
+
+      painted_path="$api_workdir/orcaslicer-2.4.2-painted-cube.3mf"
+      doctor_painted="$(api_curl /doctor "$(jq -n --arg p "$painted_path" '{path:$p}')")"
+      add_check "API /doctor detects painted colours on the real Orca-painted fixture" "$(echo "$doctor_painted" | jq -e '.painted==true' >/dev/null 2>&1 && echo true || echo false)" "$(echo "$doctor_painted" | jq -c '{painted}' 2>/dev/null)"
+
+      color_plan_out="$(api_curl /color_plan "$(jq -n --arg p "$painted_path" '{path:$p,toolheads:4}')")"
+      add_check "API /color_plan classifies the real painted fixture" \
+        "$(echo "$color_plan_out" | jq -e 'type=="object" and has("verdict")' >/dev/null 2>&1 && echo true || echo false)" \
+        "$(echo "$color_plan_out" | jq -c '{verdict}' 2>/dev/null)"
+
+      mm_doctor_out="$(api_curl /mm_doctor "$(jq -n --arg p "$painted_path" '{path:$p}')")"
+      # `type=="object"` alone would also pass on the server's own {"error":
+      # ...} bodies (400/401/500) — check the absence of that key AND a real
+      # field mm_doctor's assess() actually returns (available==true).
+      add_check "API /mm_doctor runs on the real painted fixture" \
+        "$(echo "$mm_doctor_out" | jq -e '(has("error") | not) and .available==true' >/dev/null 2>&1 && echo true || echo false)" \
+        "$(echo "$mm_doctor_out" | jq -c '{available,overall_level}' 2>/dev/null)"
+
+      convert_src="$api_workdir/demo_u1_showcase.3mf"
+      convert_sha_before="$(runuser -u "$test_user" -- sha256sum "$convert_src" | cut -d' ' -f1)"
+      convert_out="$(api_curl /convert "$(jq -n --arg p "$convert_src" --arg d "$api_workdir" '{path:$p,out_dir:$d,prepare_mode:"preserve"}')")"
+      convert_output_path="$(echo "$convert_out" | jq -r '.output_path // empty' 2>/dev/null || true)"
+      convert_created="false"
+      # Also require output_path != the input path — a resolved comparison,
+      # not a literal string one, since /convert could in principle return
+      # an equivalent path spelled differently. Without this, a (buggy)
+      # /convert that echoed the source path back unchanged would still
+      # satisfy "a file exists at output_path", since the SOURCE obviously
+      # exists too.
+      if [ -n "$convert_output_path" ] && [ -f "$convert_output_path" ] \
+        && [ "$(readlink -f "$convert_output_path" 2>/dev/null)" != "$(readlink -f "$convert_src" 2>/dev/null)" ]; then
+        convert_created="true"
+      fi
+      add_check "API /convert (Prepare) creates a new output file" "$convert_created" "$convert_output_path"
+      convert_sha_after="$(runuser -u "$test_user" -- sha256sum "$convert_src" | cut -d' ' -f1)"
+      add_check "Original untouched by /convert (hash unchanged)" "$([ "$convert_sha_before" = "$convert_sha_after" ] && echo true || echo false)" "before=$convert_sha_before after=$convert_sha_after"
+
+      if [ "$convert_created" = "true" ]; then
+        fidelity_out="$(api_curl /fidelity "$(jq -n --arg o "$convert_src" --arg p "$convert_output_path" '{original:$o,prepared:$p}')")"
+        # Real field, not just "is a JSON object" — fidelity.audit() always
+        # sets available==true on a real audit; its own {"error": ...} shape
+        # (thrown by a genuine backend failure) would otherwise slip past a
+        # bare type check.
+        add_check "API /fidelity audits the real prepared output" \
+          "$(echo "$fidelity_out" | jq -e '(has("error") | not) and .available==true' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$fidelity_out" | jq -c '{available,claims}' 2>/dev/null)"
+
+        report_out="$(api_curl /report "$(jq -n --arg p "$convert_output_path" '{path:$p}')")"
+        # readiness_report() always sets readiness_score — a real field, not
+        # just "is a JSON object" (which the server's own error bodies are too).
+        add_check "API /report runs on the real prepared output" \
+          "$(echo "$report_out" | jq -e '(has("error") | not) and (.readiness_score != null)' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$report_out" | jq -c '{verdict,readiness_score}' 2>/dev/null)"
+      else
+        add_check "API /fidelity audits the real prepared output" "false" "no output to audit (Prepare failed above)"
+        add_check "API /report runs on the real prepared output" "false" "no output to report on (Prepare failed above)"
+      fi
+    fi
+
+    # Close our end of the fifo — the sidecar's stdin lifeline blocks on
+    # os.read() until EOF, i.e. until every writer closes; we're the only one.
+    exec 8<&-
+    lifeline_deadline=$(($(date +%s) + 10))
+    lifeline_exited=1
+    while [ "$(date +%s)" -lt "$lifeline_deadline" ]; do
+      kill -0 "$api_sidecar_pid" 2>/dev/null || { lifeline_exited=0; break; }
+      sleep 0.25
+    done
+    add_check "Standalone sidecar exits via the stdin lifeline (non-root)" "$([ "$lifeline_exited" -eq 0 ] && echo true || echo false)" ""
+    [ "$lifeline_exited" -ne 0 ] && { kill -9 "$api_sidecar_pid" 2>/dev/null || true; }
+  else
+    exec 8<&- 2>/dev/null || true
+  fi
+fi
+
+echo "=== XDG data directory behavior across 3 configurations (item 19) ==="
+xdg_case() {
+  echo "DIAG: entering xdg_case $1" >&2
+  local case_name="$1" xdg_val="$2" expect_custom="$3"
+  local expected_dir
+  if [ "$expect_custom" = "true" ]; then
+    expected_dir="$xdg_val/SnapmakerStudio"
+  else
+    expected_dir="$user_home/.local/share/SnapmakerStudio"
+  fi
+  # Earlier phases (the original 3MF flow) already create the DEFAULT
+  # SnapmakerStudio dir by explicitly setting XDG_DATA_HOME to that same
+  # path — so a case that expects the app to fall back to the default
+  # (unset, relative-ignored) would pass just by finding that pre-existing
+  # directory, even if THIS launch wrote nothing there at all or crashed
+  # immediately. Move it aside first so "the directory exists with mode
+  # 0700 afterward" only ever reflects what THIS specific launch actually
+  # did, not leftover state from a previous phase.
+  local moved_aside=""
+  echo "DIAG: $case_name expected_dir=[$expected_dir] exists=$([ -d "$expected_dir" ] && echo yes || echo no)" >&2
+  if [ -d "$expected_dir" ]; then
+    moved_aside="${expected_dir}.pre-${case_name}-$$"
+    if mv "$expected_dir" "$moved_aside" 2>/dev/null; then
+      echo "DIAG: $case_name moved aside to [$moved_aside]" >&2
+    else
+      # Isolating THIS case's state is what matters, not preserving the old
+      # directory's contents — if mv can't move it for any reason, just
+      # remove it outright instead. Either way this must never abort the
+      # rest of the harness over a directory this run doesn't need to keep.
+      echo "DIAG: $case_name mv failed, falling back to rm -rf on [$expected_dir]" >&2
+      rm -rf "$expected_dir" 2>/dev/null || true
+      moved_aside=""
+    fi
+  fi
+
+  local env_args=(env DISPLAY=":$x_display" HOME="$user_home")
+  [ -n "$xdg_val" ] && env_args+=(XDG_DATA_HOME="$xdg_val")
+  runuser -u "$test_user" -- "${env_args[@]}" "$bin_path" > "$evidence_dir/app_xdg_${case_name}.log" 2>&1 &
+  local launcher_pid=$!
+  owned_pids+=("$launcher_pid")
+  local pid sidecar_pid=""
+  pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 30 || true)"
+  if [ -z "$pid" ]; then
+    add_check "XDG case ($case_name): app starts, correct dir freshly created, mode 0700" "false" "app never started"
+    if [ -n "$moved_aside" ]; then
+      rm -rf "$moved_aside" 2>/dev/null || true
+    fi
+    echo "DIAG: leaving xdg_case $case_name (app never started)" >&2
+    return
+  fi
+  owned_pids+=("$pid")
+  sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 15 || true)"
+  [ -n "$sidecar_pid" ] && owned_pids+=("$sidecar_pid")
+  sleep 2
+
+  local mode used="false"
+  [ -d "$expected_dir" ] && used="true"
+  mode="$([ -d "$expected_dir" ] && stat -c %a "$expected_dir" 2>/dev/null || true)"
+  add_check "XDG case ($case_name): app starts, correct dir freshly created, mode 0700" \
+    "$([ "$used" = "true" ] && [ "$mode" = "700" ] && echo true || echo false)" \
+    "$expected_dir mode=${mode:-none} (freshly created by this launch, not pre-existing)"
+
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  kill -9 "$pid" 2>/dev/null || true
+  [ -n "$sidecar_pid" ] && { kill -9 "$sidecar_pid" 2>/dev/null || true; }
+  if [ -n "$moved_aside" ]; then
+    rm -rf "$moved_aside" 2>/dev/null || true
+  fi
+  echo "DIAG: leaving xdg_case $case_name normally" >&2
+}
+xdg_case "unset"            ""                                           "false"
+xdg_case "absolute-custom"  "$user_home/custom xdg data"                 "true"
+xdg_case "relative-ignored" "relative/should/be/ignored"                 "false"
+
+echo "=== Unicode + spaces in file paths (item 18) ==="
+unicode_dir="$user_home/Mödel Ördner ✓"
+runuser -u "$test_user" -- mkdir -p "$unicode_dir"
+unicode_fixture="$unicode_dir/ünï cube (1).3mf"
+runuser -u "$test_user" -- cp "$fixture_src" "$unicode_fixture"
+runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+  "$bin_path" "$unicode_fixture" > "$evidence_dir/app_unicode.log" 2>&1 &
+unicode_launcher_pid=$!
+owned_pids+=("$unicode_launcher_pid")
+unicode_app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 40 || true)"
+add_check "App launches with unicode+spaces path" "$([ -n "$unicode_app_pid" ] && echo true || echo false)" "PID ${unicode_app_pid:-none}"
+if [ -n "$unicode_app_pid" ]; then
+  owned_pids+=("$unicode_app_pid")
+  unicode_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 20 || true)"
+  [ -n "$unicode_sidecar_pid" ] && owned_pids+=("$unicode_sidecar_pid")
+  unicode_row_found="false"
+  for _ in $(seq 1 20); do
+    if [ -f "$db_path" ]; then
+      urow="$(sqlite3 "$db_path" "SELECT source_path FROM projects WHERE source_path = '$unicode_fixture';" 2>/dev/null || true)"
+      [ -n "$urow" ] && { unicode_row_found="true"; break; }
+    fi
+    sleep 0.5
+  done
+  add_check "Unicode+spaces path recorded byte-exact in library.db" "$unicode_row_found" "$unicode_fixture"
+  kill -TERM "$unicode_app_pid" 2>/dev/null || true
+  for _ in $(seq 1 20); do kill -0 "$unicode_app_pid" 2>/dev/null || break; sleep 0.25; done
+  kill -9 "$unicode_app_pid" 2>/dev/null || true
+  [ -n "$unicode_sidecar_pid" ] && { kill -9 "$unicode_sidecar_pid" 2>/dev/null || true; }
 fi
 
 kill "$wm_pid" 2>/dev/null || true
