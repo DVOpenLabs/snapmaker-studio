@@ -648,8 +648,26 @@ for cycle in 1 2 3; do
     repeat_cycles_ok="false"
   fi
 done
-sleep 1
+# A few seconds' grace before the sweep: --init (tini) reaps exited
+# children on SIGCHLD, but that isn't instant, especially after several
+# back-to-back launch/kill cycles in quick succession.
+sleep 3
 leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
+if [ -n "$leftover_after_cycles" ]; then
+  # Diagnostic dump, not a guess: this is the FIRST check in this harness
+  # that ever sweeps for every process under the uid rather than tracking
+  # specific PIDs, so a hit here needs real data before deciding whether
+  # it's a genuine app-level leak (e.g. a WebKit helper that doesn't die
+  # with its parent on SIGKILL) or just a not-yet-reaped zombie from one of
+  # the many launches earlier in this same run.
+  echo "--- DIAGNOSTIC: processes still under uid=$test_uid after 3 repeated cycles ---" >&2
+  for lp in $leftover_after_cycles; do
+    lstat="$(cat "/proc/$lp/stat" 2>/dev/null || echo '?')"
+    lcmd="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '?')"
+    lppid="$(awk '/^PPid:/{print $2; exit}' "/proc/$lp/status" 2>/dev/null || echo '?')"
+    echo "pid=$lp ppid=$lppid cmd=[$lcmd] stat=[$lstat]" >&2
+  done
+fi
 add_check "3 repeated launch/close cycles leave zero orphans under the uid" \
   "$([ "$repeat_cycles_ok" = "true" ] && [ -z "$leftover_after_cycles" ] && echo true || echo false)" \
   "leftover_pids=${leftover_after_cycles:-none}"
@@ -686,21 +704,27 @@ if [ "$api_ok" = "true" ]; then
 
   fifo="$api_workdir/sidecar-stdin.fifo"
   runuser -u "$test_user" -- mkfifo "$fifo"
-  # Open read-write on the FIFO's own fd — the standard named-pipe
-  # self-open trick to hold it open without blocking on a peer. Root opens
-  # it (root can always open regardless of the fifo's owner); the
-  # already-open fd is then inherited by the runuser-launched process via
-  # `<&8`, exactly like how the production app hands the sidecar its stdin
-  # pipe. Closing this fd later is what drives the real EOF-triggered
-  # lifeline shutdown, from a non-root user.
-  exec 8<> "$fifo"
-
+  # The child's stdin must be READ-ONLY, matching production exactly
+  # (Stdio::piped() gives the sidecar a read-only pipe end; the app keeps
+  # the write end). Opening this fd read-WRITE (the usual named-pipe
+  # self-open trick to avoid blocking on open()) would be wrong here
+  # specifically because the CHILD inherits that same read-write fd as its
+  # own stdin — meaning the child would hold a write reference to its own
+  # read end, so os.read() could never see true EOF no matter what root
+  # closes (a real bug caught by the first run of this exact check: it
+  # failed). Instead: launch the child with its stdin opened plain `<
+  # "$fifo"` (O_RDONLY, blocks until a writer appears) in the background,
+  # then have root open the SAME fifo for writing only (O_WRONLY, blocks
+  # until a reader appears) — the two blocking opens rendezvous regardless
+  # of which starts first, and root's fd is then the ONLY writer, so
+  # closing it later genuinely triggers EOF on the child's read.
   handshake_file="$api_workdir/handshake.json"
   runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
     SNAPSTUDIO_PARENT_LIFELINE=stdin-v1 SNAPSTUDIO_PARENT_PID=$$ \
-    "$sidecar_exe" <&8 > "$handshake_file" 2>"$api_workdir/sidecar.log" &
+    "$sidecar_exe" < "$fifo" > "$handshake_file" 2>"$api_workdir/sidecar.log" &
   api_sidecar_launcher_pid=$!
   owned_pids+=("$api_sidecar_launcher_pid")
+  exec 8> "$fifo"
 
   api_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 40 || true)"
   add_check "API lane: sidecar starts standalone (non-root, no app)" "$([ -n "$api_sidecar_pid" ] && echo true || echo false)" "PID ${api_sidecar_pid:-none}"
