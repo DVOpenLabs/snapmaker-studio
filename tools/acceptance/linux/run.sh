@@ -26,12 +26,13 @@
 # invocation and only ever deleted if THIS run created it; the package is
 # only purged at the end if THIS run is what installed it (a pre-existing
 # real install is left alone); every process this harness ever signals is
-# tracked by real PID, verified against its own /proc/<pid>/exe — never by
-# process name or cmdline substring, which could otherwise match an
-# unrelated concurrent run's processes or something on the machine that
-# merely happens to share a name. All cleanup lives in one EXIT trap, so
-# every exit path — including an early failure — runs it, not just the
-# happy path at the bottom of the script.
+# tracked by real PID, verified by the exact uid of the test account THIS
+# run just created plus an exact byte-for-byte argv[0] match (from
+# /proc/<pid>/cmdline) — never by process name or cmdline substring, which
+# could otherwise match an unrelated concurrent run's processes or something
+# on the machine that merely happens to share a name. All cleanup lives in
+# one EXIT trap, so every exit path — including an early failure — runs it,
+# not just the happy path at the bottom of the script.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -155,7 +156,12 @@ pkg_preinstalled="false"
 
 cleanup() {
   for pid in "${owned_pids[@]:-}"; do
-    kill -9 "$pid" 2>/dev/null || true
+    # kill -0 first so a PID that already exited (most of these are killed
+    # again here defensively, having already been killed earlier in the
+    # happy path) is never re-signalled — narrows, though does not fully
+    # close, the window where a reaped PID could be reused by an unrelated
+    # process before this cleanup runs.
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
   done
   if [ -n "$pkg_name" ] && [ "$pkg_preinstalled" = "false" ]; then
     apt-get purge -y "$pkg_name" >/dev/null 2>&1 || true
@@ -169,11 +175,15 @@ trap cleanup EXIT
 echo "=== Installing the .deb ==="
 apt-get update -qq
 apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 >/dev/null
-pkg_name="$(dpkg-deb -f "$deb_path" Package)"
-if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name" 2>/dev/null | grep -q '^ii'; then
+# pkg_name stays empty (cleanup's guard) until pkg_preinstalled is fully
+# determined, so an interrupt between the Package query and the preinstalled
+# check can never leave cleanup thinking THIS run owns a package it doesn't.
+pkg_name_candidate="$(dpkg-deb -f "$deb_path" Package)"
+if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | grep -q '^ii'; then
   pkg_preinstalled="true"
-  echo "NOTE: $pkg_name was already installed before this run — will reinstall over it, but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
+  echo "NOTE: $pkg_name_candidate was already installed before this run — will reinstall over it, but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
 fi
+pkg_name="$pkg_name_candidate"
 apt-get install -y "$deb_path"
 
 installed_files="$(dpkg -L "$pkg_name")"
@@ -291,16 +301,19 @@ if [ -z "$app_pid" ]; then
   # Diagnostic dump: this has failed to find a process we have direct
   # other evidence (the app's own stderr) is actually running — dump
   # exactly what's really out there and why the match criterion (uid
-  # $test_uid, exe == $bin_path) isn't hitting it, instead of guessing
-  # again blind.
+  # $test_uid, argv[0] == $bin_path) isn't hitting it, instead of guessing
+  # again blind. Restricted to processes owned by the test uid (and root,
+  # which launched them) rather than every process on the machine, so this
+  # never prints another user's cmdline on a shared/real host (L8/L10).
   {
-    echo "--- DIAGNOSTIC: expected uid=$test_uid exe='$bin_path' (resolved: '$(readlink -f "$bin_path" 2>/dev/null || echo '?')') ---"
+    echo "--- DIAGNOSTIC: expected uid=$test_uid argv0='$bin_path' ---"
     echo "--- id $test_user: $(id "$test_user" 2>&1) ---"
-    echo "--- all processes, pid/uid/exe/cmd ---"
+    echo "--- processes owned by uid=$test_uid or uid=0, pid/uid/exe/cmd ---"
     for p in /proc/[0-9]*; do
       pn="${p#/proc/}"
-      pe="$(readlink -f "$p/exe" 2>/dev/null || echo '?')"
       pu="$(awk '/^Uid:/{print $2; exit}' "$p/status" 2>/dev/null || echo '?')"
+      [ "$pu" = "$test_uid" ] || [ "$pu" = "0" ] || continue
+      pe="$(readlink -f "$p/exe" 2>/dev/null || echo '?')"
       pc="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || echo '?')"
       echo "pid=$pn uid=$pu exe=$pe cmd=$pc"
     done
@@ -320,7 +333,7 @@ fi
 add_check "Sidecar spawned from the installed app" "true" "PID $sidecar_pid"
 owned_pids+=("$sidecar_pid")
 
-echo "=== Verifying exactly one app window appears ==="
+echo "=== Verifying an app window appears ==="
 window_id=""
 for _ in $(seq 1 40); do
   window_id="$(xdotool search --name '^Snapmaker Studio$' 2>/dev/null | head -n1 || true)"
