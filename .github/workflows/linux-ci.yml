@@ -1218,7 +1218,7 @@ jobs:
             # relationship apt itself reports, not a claim frozen in a
             # comment.
             if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i' \
-              && apt-cache depends networkd-dispatcher 2>/dev/null | grep -q 'Depends: python3-gi'; then
+              && apt-cache depends networkd-dispatcher 2>/dev/null | grep -Eq '^[[:space:]]*Depends:[[:space:]]+python3-gi([[:space:]]|$)'; then
               echo "EXPECTED (not a defect): python3 is present at $(command -v python3). Verified LIVE against this image's real apt database (not just presence, the actual dependency edge): networkd-dispatcher is installed AND its own 'apt-cache depends' output confirms it directly Depends on python3-gi — networkd-dispatcher itself arrives via systemd's Recommends, part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain." >&2
             else
               echo "REGRESSION: python3 became available after installing ONLY the .deb, and the verified networkd-dispatcher->python3-gi dependency edge is NOT confirmed on this image (either networkd-dispatcher isn't installed, or apt's own dependency data no longer shows the expected edge) — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
