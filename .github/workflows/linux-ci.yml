@@ -1232,6 +1232,27 @@ jobs:
           fi
           echo "CONFIRMED: no missing shared libraries across the installed app + bundled sidecar on ${{ matrix.image }}."
 
+      - name: Static check — the .deb's own dependency fields declare no dev toolchain
+        # Complements the runtime pre/post command -v checks above with a
+        # check of the .deb's OWN metadata (Depends, Pre-Depends,
+        # Recommends): those runtime checks prove the CURRENT install
+        # didn't end up with a toolchain present (currently true only
+        # because of the documented xdg-desktop-portal-gtk exception for
+        # python3), but never actually asserted what this package's own
+        # control file declares. This is the check that would catch a
+        # regression if the app's own Depends/Recommends ever DID start
+        # naming a toolchain directly.
+        run: |
+          set -euo pipefail
+          fields="$(dpkg-deb -f "$deb_path" Depends Pre-Depends Recommends 2>/dev/null || true)"
+          echo "--- .deb dependency fields ---"
+          echo "$fields"
+          if echo "$fields" | grep -qiE '(^|[^-a-z])(python[0-9.]*|nodejs|npm|cargo|rustc)([^a-z0-9]|$)'; then
+            echo "REGRESSION: the .deb's own Depends/Pre-Depends/Recommends directly name a dev toolchain package." >&2
+            exit 1
+          fi
+          echo "CONFIRMED: the .deb's own dependency fields name no python/node/rust package directly."
+
       - name: Package lifecycle (install/reinstall/upgrade/purge) on this clean image (items 25-28)
         run: |
           chmod +x /tmp/kit/tools/acceptance/linux/*.sh

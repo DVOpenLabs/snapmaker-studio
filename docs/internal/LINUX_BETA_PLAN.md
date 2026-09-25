@@ -319,7 +319,7 @@ graceful `RunEvent::Exit` path — only L7's harness does).
 
 ### What shipped
 
-- **`tools/acceptance/linux/run.sh` grew from 12 to 33 checks**, all
+- **`tools/acceptance/linux/run.sh` grew from 12 to 35 checks**, all
   still real-CI-green: the pre-existing 3MF GUI flow, plus (new) an STL
   launch, SIGTERM/SIGKILL as the actual non-root test user (every prior
   signal-lifecycle proof in this project ran as root), 3 repeated
@@ -347,8 +347,8 @@ graceful `RunEvent::Exit` path — only L7's harness does).
   across every installed ELF for missing shared libraries -> full package
   lifecycle -> install test tooling (kept in its own separate step so it
   never contaminates the dependency-leak assertion above) -> the full
-  33-check `run.sh`. **Both legs fully green as of commit `0c3ea25`,
-  including the whole 33/33 harness on each** — the first genuinely clean-
+  35-check `run.sh`. **Both legs fully green as of commit `0c3ea25`,
+  including the whole 35/35 harness on each** — the first genuinely clean-
   image confirmation this project has ever had.
 - **The uid-scoped-pkill limitation from L7 was investigated, not just
   re-documented**, as required: a real experiment (root, WSL Ubuntu
@@ -400,7 +400,7 @@ graceful `RunEvent::Exit` path — only L7's harness does).
   the build container (which already had a full dev toolchain).
 - **DESKTOP WORKFLOW VERIFIED**: extended to both clean images — a real
   Xvfb display, a real window manager, a real window close, exercised
-  through the full 33-check harness, not simulated.
+  through the full 35-check harness, not simulated.
 - **REAL U1 VERIFIED**: not touched (no printer in CI). **EXTERNAL USER
   VERIFIED**: not touched (no external human tester yet) — stays false
   until L10 produces one.

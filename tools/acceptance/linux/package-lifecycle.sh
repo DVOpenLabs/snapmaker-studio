@@ -2,7 +2,7 @@
 # Linux .deb package-lifecycle verification: install, reinstall, in-place
 # upgrade, purge. Extracted from linux-ci.yml (L6) as its own script during
 # L8 so the exact same real behaviour can also run inside the clean-image
-# matrix job (linux-clean-runtime) without duplicating ~140 lines of YAML
+# matrix job (clean-env-validate) without duplicating ~140 lines of YAML
 # `run:` block — a single script, called from two places, is the only way
 # to guarantee they can't silently drift apart.
 #

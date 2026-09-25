@@ -693,7 +693,7 @@ if [ -n "$real_leftover" ]; then
 fi
 add_check "3 repeated launch/close cycles leave zero orphans under the uid" \
   "$([ "$repeat_cycles_ok" = "true" ] && [ -z "$real_leftover" ] && echo true || echo false)" \
-  "leftover_pids=${real_leftover:-none} (dbus session bus excluded: ${leftover_after_cycles:-none})"
+  "leftover_pids=${real_leftover:-none} (raw, before excluding known session infrastructure: ${leftover_after_cycles:-none})"
 
 echo "=== Headless API lane: Doctor / Prepare / fidelity / report / painted paths (items 13, 14, 16, 17) ==="
 # Drives the sidecar binary DIRECTLY (not through the desktop app) — the
@@ -788,7 +788,12 @@ if [ "$api_ok" = "true" ]; then
         "$(echo "$color_plan_out" | jq -c '{verdict}' 2>/dev/null)"
 
       mm_doctor_out="$(api_curl /mm_doctor "$(jq -n --arg p "$painted_path" '{path:$p}')")"
-      add_check "API /mm_doctor runs on the real painted fixture" "$(echo "$mm_doctor_out" | jq -e 'type=="object"' >/dev/null 2>&1 && echo true || echo false)" ""
+      # `type=="object"` alone would also pass on the server's own {"error":
+      # ...} bodies (400/401/500) — check the absence of that key AND a real
+      # field mm_doctor's assess() actually returns (available==true).
+      add_check "API /mm_doctor runs on the real painted fixture" \
+        "$(echo "$mm_doctor_out" | jq -e '(has("error") | not) and .available==true' >/dev/null 2>&1 && echo true || echo false)" \
+        "$(echo "$mm_doctor_out" | jq -c '{available,overall_level}' 2>/dev/null)"
 
       convert_src="$api_workdir/demo_u1_showcase.3mf"
       convert_sha_before="$(runuser -u "$test_user" -- sha256sum "$convert_src" | cut -d' ' -f1)"
@@ -802,10 +807,20 @@ if [ "$api_ok" = "true" ]; then
 
       if [ "$convert_created" = "true" ]; then
         fidelity_out="$(api_curl /fidelity "$(jq -n --arg o "$convert_src" --arg p "$convert_output_path" '{original:$o,prepared:$p}')")"
-        add_check "API /fidelity audits the real prepared output" "$(echo "$fidelity_out" | jq -e 'type=="object"' >/dev/null 2>&1 && echo true || echo false)" ""
+        # Real field, not just "is a JSON object" — fidelity.audit() always
+        # sets available==true on a real audit; its own {"error": ...} shape
+        # (thrown by a genuine backend failure) would otherwise slip past a
+        # bare type check.
+        add_check "API /fidelity audits the real prepared output" \
+          "$(echo "$fidelity_out" | jq -e '(has("error") | not) and .available==true' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$fidelity_out" | jq -c '{available,claims}' 2>/dev/null)"
 
         report_out="$(api_curl /report "$(jq -n --arg p "$convert_output_path" '{path:$p}')")"
-        add_check "API /report runs on the real prepared output" "$(echo "$report_out" | jq -e 'type=="object"' >/dev/null 2>&1 && echo true || echo false)" ""
+        # readiness_report() always sets readiness_score — a real field, not
+        # just "is a JSON object" (which the server's own error bodies are too).
+        add_check "API /report runs on the real prepared output" \
+          "$(echo "$report_out" | jq -e '(has("error") | not) and (.readiness_score != null)' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$report_out" | jq -c '{verdict,readiness_score}' 2>/dev/null)"
       else
         add_check "API /fidelity audits the real prepared output" "false" "no output to audit (Prepare failed above)"
         add_check "API /report runs on the real prepared output" "false" "no output to report on (Prepare failed above)"
