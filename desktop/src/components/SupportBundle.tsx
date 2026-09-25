@@ -93,7 +93,7 @@ export function SupportBundle() {
           <p className="text-xs">
             Saved to <code className="break-all">{saved}</code>. Attach it to a report at{" "}
             <span className="text-muted-foreground">
-              github.com/DeadlyVirusIn/snapmaker-studio/issues
+              github.com/DVOpenLabs/snapmaker-studio/issues
             </span>
             .
           </p>

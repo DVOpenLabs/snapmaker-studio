@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb"],
+    "icon": ["icons/icon.png"],
+    "externalBin": [],
+    "resources": {
+      "bin/linux/snapstudio-api/": "snapstudio-api/"
+    },
+    "publisher": "DVOpenLabs",
+    "homepage": "https://github.com/DVOpenLabs/snapmaker-studio",
+    "category": "GraphicsAndDesign",
+    "shortDescription": "Local-first pre-print intelligence layer for 3D printing",
+    "longDescription": "Snapmaker Studio reads a 3D model's real geometry and runs read-only Doctors that explain likely print risks in plain language, before handing off to Snapmaker Orca to slice. Advisory, not guarantees; local-first with no cloud, account, or telemetry; never modifies your original file.",
+    "linux": {
+      "deb": {
+        "section": "utils"
+      }
+    }
+  }
+}

@@ -10,7 +10,10 @@
     "tauri": "tauri",
     "test": "vitest run",
     "build:sidecar": "pwsh ./scripts/build-sidecar.ps1",
-    "release:windows": "npm run build:sidecar && tauri build"
+    "build:sidecar:linux": "bash ./scripts/build-sidecar.sh",
+    "release:windows": "npm run build:sidecar && tauri build",
+    "release:linux": "npm run build:sidecar:linux && tauri build --bundles deb && npm run debianize:linux",
+    "debianize:linux": "bash -c 'deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name \"*.deb\" -print -quit); if [ -z \"$deb\" ]; then echo \"No .deb found to debianize\" >&2; exit 1; fi; bash ./scripts/debianize-version.sh \"$deb\"'"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1",

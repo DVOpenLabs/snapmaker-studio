@@ -15,7 +15,7 @@ by itself mean the file is unsafe — but you should still take normal precautio
 
 Only download the installer from the official GitHub release page:
 
-- https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.4.0-beta.20
+- https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.4.0-beta.20
 
 Do not run installers for this app obtained from anywhere else.
 

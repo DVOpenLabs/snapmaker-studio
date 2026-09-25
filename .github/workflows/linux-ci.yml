@@ -1,0 +1,1161 @@
+name: Linux CI
+
+# Permanent Linux CI (L6 of the Linux-support program — this file's own
+# earlier comment called it "L7"; L6 is the maintainer's authoritative
+# numbering, kept here so the two never drift again). No longer branch-only:
+# this is the same real Linux build+package pipeline that was proven out
+# on linux-support/l1-platform-abstraction across L0-L5 (real GitHub Actions
+# evidence, not just code review — see docs/internal/LINUX_BETA_PLAN.md for
+# the full history). Does NOT touch ci.yml or release.yml.
+#
+# Runs the REAL Linux build+package pipeline: PyInstaller onedir sidecar freeze
+# (desktop/scripts/build-sidecar.sh), then `tauri build` producing a .deb, then
+# inspects the produced package to confirm the sidecar is actually bundled with
+# the right layout and executable permissions, exercises install/reinstall/
+# upgrade-in-place/purge, the zero-orphan process lifecycle (SIGTERM, SIGKILL,
+# sidecar-crash-first, repeated cycles), and uploads a checksummed, manifested
+# artifact. This is what local WSL testing on this machine could not prove (no
+# non-interactive root/sudo for the Tauri Linux system dependencies, and no
+# cross-compile path for the full gtk/webkit2gtk/dbus dependency chain from
+# Windows) — GitHub-hosted Ubuntu runners already run as root.
+#
+# Evidence tiers this workflow can establish: BUILD VERIFIED / PACKAGE
+# VERIFIED / HEADLESS RUNTIME VERIFIED. It does NOT establish DESKTOP
+# WORKFLOW VERIFIED (no real display, no human interaction), REAL U1
+# VERIFIED (no hardware), or EXTERNAL USER VERIFIED — those stay separate,
+# later claims, never promoted from a green run of this file alone.
+#
+# `push: branches: ["linux-support/**"]` is kept alongside the permanent
+# `main`/`pull_request` triggers below so the task branch keeps
+# self-verifying until it's merged; safe to drop afterward.
+
+on:
+  push:
+    branches:
+      - main
+      - "linux-support/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-build-and-package:
+    name: Linux build + package (Ubuntu 22.04, x86_64)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+      # --init: run a real init (tini) as PID 1 instead of GitHub Actions's
+      # default plain container entrypoint, so exited children actually get
+      # reaped. Without it, PID 1 never calls wait() on anything — L4's own
+      # zero-orphan checks below kill/signal processes whose PARENT (the app)
+      # is itself dying at the same time, so those children get reparented to
+      # PID 1 and, without --init, sit as zombies forever. A zombie still
+      # answers `kill -0` (its PID is still allocated), which would make a
+      # working L4 look broken to a liveness check that only tests `kill -0`
+      # — this also matches how a real user's session (systemd/init) behaves,
+      # which a bare container entrypoint does not.
+      options: --init
+    # Real CI runs on this branch hung twice (38+ min and 31+ min) before the
+    # per-command `timeout` wrapping was added. GitHub's own default job
+    # timeout is 360 minutes, which is not an acceptable backstop after that
+    # history — cap the whole job well below it so a hang anywhere still
+    # fails fast rather than silently burning CI time for hours.
+    timeout-minutes: 45
+    # Container jobs do NOT get the same automatic bash-selection that plain
+    # ubuntu-latest runners get — without this, `run:` steps execute under
+    # `sh` (dash), which doesn't support `set -o pipefail` at all ("Illegal
+    # option -o pipefail") and silently differs on `${var:offset:len}`
+    # substring expansion and `<<<` here-strings, both used throughout this
+    # workflow. This was discovered the hard way: earlier steps happened not
+    # to use anything dash-incompatible, so this went unnoticed until the
+    # first step that actually needed real bash failed outright.
+    #
+    # DEBIAN_FRONTEND=noninteractive at job level (not just on the one step
+    # that first needed it): the real log from a hung run showed tzdata being
+    # configured mid-install, a classic debconf-prompt-waits-on-stdin-forever
+    # cause that `apt-get -y` alone does not prevent — apply it everywhere
+    # apt runs in this job, not just where it was first diagnosed.
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install base tooling (git, curl, ca-certificates, gnupg)
+        run: |
+          apt-get update
+          # gnupg: required by `add-apt-repository` later to import the
+          # deadsnakes PPA's signing key — without it, add-apt-repository
+          # fails with a gpg CalledProcessError in a minimal container image.
+          apt-get install -y --no-install-recommends git curl ca-certificates gnupg
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri Linux build dependencies
+        # Standard Tauri 2 Linux prerequisites (webkit2gtk-4.1, not the older
+        # 4.0 series). Installing the runtime libs (not just -dev) explicitly
+        # too, since the smoke-install step near the end needs them present
+        # to satisfy the produced .deb's Depends: without network access.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            file \
+            procps \
+            libwebkit2gtk-4.1-dev \
+            libwebkit2gtk-4.1-0 \
+            libssl-dev \
+            libgtk-3-dev \
+            libgtk-3-0 \
+            libayatana-appindicator3-dev \
+            libayatana-appindicator3-1 \
+            librsvg2-dev \
+            librsvg2-2 \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install Python 3.13 (deadsnakes, NOT actions/setup-python)
+        # actions/setup-python's prebuilt CPython 3.13 distribution requires
+        # GLIBC_2.38, which Ubuntu 22.04 (glibc 2.35 — this project's own
+        # chosen build-host floor, see the Linux support plan) does not have:
+        # `python: .../libpython3.13.so.1.0: version 'GLIBC_2.38' not found`.
+        # deadsnakes packages are compiled natively against each Ubuntu
+        # release's own glibc, so this is genuinely compatible rather than a
+        # newer prebuilt binary that merely happens to run on a dev machine.
+        #
+        # NOT using `add-apt-repository ppa:deadsnakes/ppa`: it hung for 38+
+        # minutes on a real CI run here (its internal GPG keyserver fetch
+        # stalling on the network with no timeout of its own) rather than
+        # failing fast. Fetching the signing key directly via `curl` with an
+        # explicit `--max-time` fixed THAT specific call, but the step then
+        # hung again at the SAME location on the next run (31+ min, cancelled)
+        # — something after the key fetch (apt-get update against the new
+        # source, the package install, or ensurepip/pip touching the network)
+        # stalled with no timeout of its own. Rather than keep guessing which
+        # one, every network-touching command below is now wrapped in
+        # `timeout`, and DEBIAN_FRONTEND=noninteractive is set explicitly
+        # (a classic silent-hang cause: a package pulling in a debconf prompt
+        # — e.g. tzdata — that waits on stdin forever even with `apt -y`,
+        # which only auto-answers the "continue?" confirmation, not debconf's
+        # own interactive questions). Whichever of these was the real cause,
+        # this now fails loudly within a bounded time instead of hanging the
+        # job for potentially hours.
+        run: |
+          mkdir -p /etc/apt/keyrings
+          expected_fpr="F23C5A6CF475977595C89F51BA6932366A755776"
+          timeout -k 10 30 curl -fsSL --max-time 25 \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${expected_fpr}" \
+            | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
+          # Don't just trust whatever the keyserver returned over TLS — verify
+          # the downloaded keyring contains EXACTLY ONE key, and that its
+          # fingerprint matches the pinned constant (add-apt-repository,
+          # which this replaced, does the equivalent check internally).
+          # Enumerate ALL fpr lines, not just the first: a response smuggling
+          # in the legitimate key plus an attacker-controlled second key
+          # would pass a first-match-only check, and apt's `signed-by` trusts
+          # EVERY key present in the keyring file, not just the one this
+          # script happened to look at — a lone extra key would silently
+          # extend trust to anything it signs. `mapfile` reads the awk
+          # producer to EOF unconditionally (never exits early), so there's
+          # no SIGPIPE-under-pipefail risk here either.
+          mapfile -t all_fprs < <(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '/^fpr/{print $10}')
+          if [ "${#all_fprs[@]}" -ne 1 ] || [ "${all_fprs[0]}" != "$expected_fpr" ]; then
+            echo "Downloaded deadsnakes keyring does not contain EXACTLY one key matching the pinned fingerprint!" >&2
+            echo "Expected exactly 1 key: $expected_fpr" >&2
+            echo "Found ${#all_fprs[@]} key(s): ${all_fprs[*]:-(none)}" >&2
+            exit 1
+          fi
+          echo "Key fingerprint verified (exactly one key, matches pinned constant): ${all_fprs[0]}"
+          echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
+            > /etc/apt/sources.list.d/deadsnakes.list
+          timeout -k 10 120 apt-get update
+          timeout -k 10 180 apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
+          timeout -k 10 60 python3.13 -m ensurepip --upgrade
+          timeout -k 10 60 python3.13 -m pip install --upgrade pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install backend (for the sidecar freeze)
+        working-directory: backend
+        run: |
+          python3.13 -m pip install -e .
+          python3.13 -m pip install -r requirements-build.txt
+
+      - name: Freeze the Linux sidecar (onedir)
+        run: bash desktop/scripts/build-sidecar.sh
+
+      - name: Install frontend deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the desktop app + .deb package
+        # tauri.conf.json's beforeBuildCommand (npm run build) runs the
+        # frontend build automatically as part of this.
+        working-directory: desktop
+        run: npx tauri build --bundles deb
+
+      - name: Run the Linux-only Rust lifecycle unit tests (cargo test)
+        # sidecar.rs's `#[cfg(all(test, target_os = "linux"))] mod tests`
+        # (shutdown_sidecar's forced-fallback path, and process-group
+        # ownership) has nowhere else to run: ci.yml only runs
+        # `cargo check` on Windows, where target_os = "linux" compiles the
+        # module out entirely. All deps are already built by the step above,
+        # so this reuses that build rather than paying for a second one.
+        working-directory: desktop/src-tauri
+        run: cargo test --release
+
+      - name: Test the Debian version-translation script (desktop/scripts/debianize-version.sh)
+        # Self-contained: builds its own throwaway fabricated .deb fixtures,
+        # doesn't touch or depend on the real build's $deb_path. Runs
+        # unconditionally on every job, independent of whether the version
+        # actually being built right now has a prerelease suffix — the
+        # mechanism itself needs continuous proof, not just a one-off check
+        # from whichever session first wrote it. See the script's own header
+        # for why it exists: Tauri's bundler (pinned tauri-utils 2.9.3)
+        # rejects `~` in `version` outright (semver::Version::from_str),
+        # so there is no config-only way to make the bundler itself emit a
+        # Debian-correct prerelease version — this script is the one place
+        # that translation happens, as an explicit, tested, git-tracked
+        # packaging-boundary step, not ad-hoc post-build surgery.
+        run: |
+          set -euo pipefail
+          script="$PWD/desktop/scripts/debianize-version.sh"
+          test -x "$script"
+
+          make_deb() {
+            local ver="$1" out="$2"
+            local w
+            w="$(mktemp -d)"
+            mkdir -p "$w/pkg/DEBIAN"
+            cat > "$w/pkg/DEBIAN/control" <<EOF
+          Package: snapmaker-studio
+          Version: $ver
+          Architecture: amd64
+          Maintainer: DVOpenLabs
+          Description: test fixture for debianize-version.sh
+          EOF
+            dpkg-deb -b "$w/pkg" "$out" >/dev/null
+          }
+
+          echo "--- A prerelease version gets translated ---"
+          make_deb "0.10.0-beta.1" /tmp/dv1.deb
+          "$script" /tmp/dv1.deb
+          v1="$(dpkg-deb -f /tmp/dv1.deb Version)"
+          echo "translated: $v1"
+          if [ "$v1" != "0.10.0~beta.1" ]; then
+            echo "Expected 0.10.0~beta.1, got $v1" >&2
+            exit 1
+          fi
+
+          echo "--- A second beta sorts correctly above the first, both below the final release ---"
+          make_deb "0.10.0-beta.2" /tmp/dv2.deb
+          "$script" /tmp/dv2.deb
+          v2="$(dpkg-deb -f /tmp/dv2.deb Version)"
+          echo "translated: $v2"
+          dpkg --compare-versions "$v2" gt "$v1"
+          dpkg --compare-versions "$v1" lt "0.10.0"
+          echo "Ordering verified: $v1 < $v2 < 0.10.0"
+
+          echo "--- A plain (non-prerelease) version is left byte-for-byte unchanged ---"
+          make_deb "0.9.0" /tmp/dv3.deb
+          sha_before="$(sha256sum /tmp/dv3.deb | cut -d' ' -f1)"
+          "$script" /tmp/dv3.deb
+          sha_after="$(sha256sum /tmp/dv3.deb | cut -d' ' -f1)"
+          if [ "$sha_before" != "$sha_after" ]; then
+            echo "Plain version 0.9.0 was modified — the script must be a strict no-op for non-prerelease versions." >&2
+            exit 1
+          fi
+          v3="$(dpkg-deb -f /tmp/dv3.deb Version)"
+          if [ "$v3" != "0.9.0" ]; then
+            echo "Expected Version to stay 0.9.0, got $v3" >&2
+            exit 1
+          fi
+
+          echo "--- Another prerelease-identifier shape (rc) also translates correctly ---"
+          make_deb "1.2.3-rc.4" /tmp/dv4.deb
+          "$script" /tmp/dv4.deb
+          v4="$(dpkg-deb -f /tmp/dv4.deb Version)"
+          if [ "$v4" != "1.2.3~rc.4" ]; then
+            echo "Expected 1.2.3~rc.4, got $v4" >&2
+            exit 1
+          fi
+
+          echo "DEBIAN VERSION-TRANSLATION MECHANISM VERIFIED: prerelease versions translate correctly and sort below their eventual release; plain versions pass through unchanged."
+
+      - name: Locate and inspect the produced .deb
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          # `-print -quit` (not `| head -n1`) stops find itself after the
+          # first match — no pipe into an early-exiting consumer at all, so
+          # there's no SIGPIPE-vs-pipefail interaction to reason about.
+          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found under src-tauri/target/release/bundle/deb" >&2
+            find src-tauri/target/release/bundle -maxdepth 3 || true
+            exit 1
+          fi
+          deb_abs="$(readlink -f "$deb")"
+          echo "Found: $deb_abs"
+          echo "deb_path=$deb_abs" >> "$GITHUB_ENV"
+          pkg_name="$(dpkg-deb -f "$deb_abs" Package)"
+          echo "pkg_name=$pkg_name" >> "$GITHUB_ENV"
+
+          # Capture the listing ONCE into a variable rather than grepping a
+          # live `dpkg -c` pipe repeatedly: `grep -q` exits as soon as it
+          # finds a match, which can deliver SIGPIPE to `dpkg` mid-write; with
+          # `set -o pipefail` that can report the whole pipeline as failed
+          # even though the match genuinely existed — a real build could be
+          # falsely reported broken by the check meant to verify it.
+          package_contents="$(dpkg -c "$deb_abs")"
+          echo "--- Package contents ---"
+          echo "$package_contents"
+
+          echo "--- Declared Depends ---"
+          dpkg-deb -f "$deb_abs" Depends
+
+          # Exact-path assertion, not a bare substring grep — Tauri's Manager::path().resource_dir()
+          # on Linux resolves (per tauri-utils, verified against the pinned 2.11.3 source) to
+          # <exe_dir>/../lib/<productName>/ once installed, i.e. usr/lib/<productName>/ in a .deb,
+          # where <productName> is "Snapmaker Studio" (config.app.productName, WITH the space) — not
+          # any arbitrary location a looser substring match would also accept. An unanchored `grep`
+          # here would pass even if resources were bundled at the wrong path (e.g. still under
+          # bin/linux/snapstudio-api/ instead of flattened to snapstudio-api/), silently certifying
+          # a layout the Rust resolver in sidecar.rs cannot actually find at runtime.
+          # No leading "./" here on purpose: an earlier version of this
+          # constant included one and the match silently failed on a real
+          # build where Tauri's archive writer didn't emit it — the leading
+          # `*` in the case pattern below already absorbs ANY prefix (mode
+          # string, size, date columns, and an optional "./" alike), so this
+          # constant only needs to be the path's own final segment; adding a
+          # literal "./" back would just reintroduce the original bug.
+          expected_exe="usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          expected_internal_marker="usr/lib/Snapmaker Studio/snapstudio-api/_internal/"
+
+          echo "--- Verifying the sidecar is bundled at the EXACT expected path ---"
+          # Pure bash — a while-read loop over a here-string, not a pipe into
+          # grep — so there is no external producer/consumer pair for an
+          # early exit to SIGPIPE at all (this is the SAME bug class Sol
+          # found the first fix had only moved, not eliminated: `echo "$var"
+          # | grep -q` still pipes into an early-exiting consumer just like
+          # `dpkg -c | grep -q` did). `*"$expected_exe"` with no trailing `*`
+          # requires the line to END with the exact path, not just contain it.
+          perm_line=""
+          while IFS= read -r line; do
+            case "$line" in
+              *"$expected_exe")
+                perm_line="$line"
+                break
+                ;;
+            esac
+          done <<< "$package_contents"
+          if [ -z "$perm_line" ]; then
+            echo "Sidecar executable not found at the exact expected path: $expected_exe" >&2
+            echo "This means resource_dir() in sidecar.rs will NOT find it at runtime." >&2
+            exit 1
+          fi
+          echo "$perm_line"
+
+          echo "--- Verifying _internal/ landed alongside it (not dropped by resource mapping) ---"
+          # Bash glob match on the whole captured variable — no subprocess,
+          # no pipe, nothing that can be SIGPIPE'd.
+          case "$package_contents" in
+            *"$expected_internal_marker"*) ;;
+            *)
+              echo "_internal/ directory not found under the expected sidecar path." >&2
+              exit 1
+              ;;
+          esac
+
+          echo "--- Verifying the sidecar is executable by owner, group, AND other ---"
+          # Both launches in this job run as root (the container's default
+          # user), which would let an owner-only execute bit (-rwx------)
+          # pass here while failing EACCES for an ordinary desktop user after
+          # a real install. Check all three permission classes, not just that
+          # SOME execute bit is set anywhere in the mode string.
+          mode="$(echo "$perm_line" | awk '{print $1}')"
+          echo "Mode: $mode"
+          owner_x="${mode:3:1}"
+          group_x="${mode:6:1}"
+          other_x="${mode:9:1}"
+          if [ "$owner_x" != "x" ] || [ "$group_x" != "x" ] || [ "$other_x" != "x" ]; then
+            echo "Sidecar is not executable by all of owner/group/other (mode: $mode) — would fail for a non-root desktop user." >&2
+            exit 1
+          fi
+          echo "Executable by owner, group, and other."
+
+          echo "--- Verifying no directory symlinks silently dropped their contents ---"
+          # Tauri's resource walker does not follow directory symlinks (WalkDir
+          # default), so a symlinked directory inside onedir's output would be
+          # silently skipped rather than bundled. PyInstaller onedir output
+          # doesn't normally produce these, but check rather than assume.
+          # (-type l -xtype d: the entry IS a symlink, AND what it resolves
+          # to IS a directory — not the reversed/inert `-xtype l -type d`.)
+          symlink_count_source="$(find src-tauri/bin/linux/snapstudio-api -type l -xtype d 2>/dev/null | wc -l || echo 0)"
+          if [ "$symlink_count_source" != "0" ]; then
+            echo "WARNING: $symlink_count_source directory symlink(s) in the source onedir tree — verify they were not silently dropped from the bundle." >&2
+          fi
+
+          echo "--- Verifying L5 package metadata (tauri.linux.conf.json's homepage/category/description/section) ---"
+          # Maintainer comes from tauri.linux.conf.json's OWN bundle.publisher
+          # override, not the shared tauri.conf.json — the shared file
+          # intentionally still reads the legacy "DeadlyVirusIn / Snapmaker
+          # Studio" (Windows NSIS installer/registry-key compatibility with
+          # existing v0.9.0 installs; see docs/internal/LINUX_BETA_PLAN.md).
+          # Linux has no such installed-base constraint, so it gets the
+          # current org name unconditionally.
+          maintainer="$(dpkg-deb -f "$deb_abs" Maintainer)"
+          echo "Maintainer: $maintainer"
+          if [ "$maintainer" != "DVOpenLabs" ]; then
+            echo "Unexpected Maintainer: $maintainer" >&2
+            exit 1
+          fi
+          homepage="$(dpkg-deb -f "$deb_abs" Homepage)"
+          echo "Homepage: $homepage"
+          if [ "$homepage" != "https://github.com/DVOpenLabs/snapmaker-studio" ]; then
+            echo "Unexpected Homepage: $homepage" >&2
+            exit 1
+          fi
+          section="$(dpkg-deb -f "$deb_abs" Section)"
+          echo "Section: $section"
+          if [ "$section" != "utils" ]; then
+            echo "Unexpected Section: $section" >&2
+            exit 1
+          fi
+          description="$(dpkg-deb -f "$deb_abs" Description)"
+          echo "--- Description ---"
+          echo "$description"
+          case "$description" in
+            "Local-first pre-print intelligence layer for 3D printing"*) ;;
+            *)
+              echo "Description missing the expected short-description line." >&2
+              exit 1
+              ;;
+          esac
+          case "$description" in
+            *"never modifies your original file"*) ;;
+            *)
+              echo "Description missing the long-description text — looks like the (none) placeholder is still there." >&2
+              exit 1
+              ;;
+          esac
+          echo "Package metadata verified: Maintainer, Homepage, Section, and both description lines present."
+
+      - name: Install the .deb and verify the .desktop file, then a full lifecycle (reinstall, upgrade, purge)
+        run: |
+          set -euo pipefail
+          # dpkg-query's ${db:Status-Abbrev} is the correct way to ask "is
+          # this package actually installed" — `dpkg -l "$pkg" | grep '^ii'`
+          # looks equivalent but a literal `grep -F '^ii'` never matches
+          # anything (grep -F treats `^` as a literal character, not an
+          # anchor) and silently kills every step that used it under
+          # `set -e`. Match on the "ii" prefix, not an exact multi-char
+          # string, since the abbreviation's trailing padding isn't a
+          # contract worth depending on.
+          installed() {
+            # ${db:Status-Abbrev} is contractually 3 characters
+            # (desired-action, current-status, error-flag); a clean install
+            # is exactly "ii " (trailing space, preserved by $(...) — only
+            # trailing NEWLINES get stripped). Matching "ii*" would also
+            # accept "iiR" (installed but flagged reinstall-required), which
+            # is a real, different state this check should not call healthy.
+            case "$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null)" in
+              "ii ") return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          timeout -k 5 60 apt-get install -y --no-install-recommends desktop-file-utils
+          apt-get install -y "$deb_path"
+          echo "--- Installed files ---"
+          dpkg -L "$pkg_name"
+          # Snapshot every real file (not directory) this package installed,
+          # BEFORE anything is removed — the purge check at the end asserts
+          # against this real, complete list rather than a hand-picked path
+          # list that can silently go stale as the bundle's contents change.
+          # `if [ -f "$f" ]; then echo "$f"; fi`, not `[ -f "$f" ] && echo "$f"`:
+          # the loop's own exit status is whatever its LAST iteration
+          # returned, and `&&` makes that 1 whenever the last dpkg -L entry
+          # happens to be a directory — under `set -euo pipefail` that would
+          # kill this step right after a correct listing, for no real reason.
+          installed_files_snapshot="$(dpkg -L "$pkg_name" | while IFS= read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)"
+
+          echo "--- Verifying the installed .desktop file (Categories, and that it validates) ---"
+          # Pure bash loop over dpkg -L's output, not a pipe into `grep | head`
+          # — same SIGPIPE-under-pipefail avoidance reasoning as elsewhere in
+          # this workflow (an early-exiting consumer piped from a live
+          # producer can report the whole pipeline failed even on a genuine
+          # match).
+          desktop_file=""
+          while IFS= read -r f; do
+            case "$f" in
+              /usr/share/applications/*.desktop)
+                desktop_file="$f"
+                break
+                ;;
+            esac
+          done <<< "$(dpkg -L "$pkg_name")"
+          if [ -z "$desktop_file" ]; then
+            echo "No .desktop file found under /usr/share/applications/ in the installed package." >&2
+            exit 1
+          fi
+          echo "Desktop file: $desktop_file"
+          categories_line="$(grep -m1 '^Categories=' "$desktop_file" || true)"
+          echo "Categories line: ${categories_line:-<missing>}"
+          # `Categories=` with nothing after the `=` (empty) is what tauri.linux.conf.json's
+          # bundle.category is meant to fix — a bare "Categories=" is a real
+          # failure here, not just cosmetic: some desktop environments won't
+          # list an app in any menu category without it. desktop-file-validate
+          # itself exits 0 on an empty Categories= too, so this explicit check
+          # is the one that actually catches the regression it's named for.
+          if [ "$categories_line" = "Categories=" ] || [ -z "$categories_line" ]; then
+            echo "Categories is empty or missing — bundle.category in tauri.linux.conf.json did not take effect." >&2
+            exit 1
+          fi
+          desktop-file-validate "$desktop_file"
+          echo "Desktop file validated with 0 errors, Categories non-empty."
+
+          echo "--- Reinstalling the SAME version (idempotent reinstall) ---"
+          apt-get install -y --reinstall "$deb_path"
+          if ! installed "$pkg_name"; then
+            echo "Package $pkg_name does not report installed after --reinstall." >&2
+            exit 1
+          fi
+
+          echo "--- Upgrading in place (rewritten .deb with a bumped patch version, no second Tauri build) ---"
+          # Proves version ordering and in-place package replacement — the
+          # part of "upgrade" that's cheap to test without a second, much
+          # slower `tauri build`. It does NOT prove that files removed
+          # between two real versions get cleaned up on upgrade (e.g. a
+          # stale file left behind in onedir's _internal/): the payload here
+          # is byte-identical to the version being replaced, only the
+          # control Version: field differs.
+          upgrade_workdir="$(mktemp -d)"
+          dpkg-deb -R "$deb_path" "$upgrade_workdir"
+          # dpkg-deb -R doesn't preserve the extraction root's own mode, and
+          # `mktemp -d` creates it 0700 — since that root becomes the
+          # package's own "./" entry when rebuilt, an installed package could
+          # otherwise claim to own a locked-down root directory entry.
+          chmod 755 "$upgrade_workdir"
+          current_version="$(dpkg-deb -f "$deb_path" Version)"
+          upgraded_version="${current_version}+ci-upgrade-test"
+          sed -i "s/^Version: .*/Version: $upgraded_version/" "$upgrade_workdir/DEBIAN/control"
+          upgraded_deb="$(mktemp -u --suffix=.deb)"
+          dpkg-deb -b "$upgrade_workdir" "$upgraded_deb"
+          apt-get install -y "$upgraded_deb"
+          installed_version_after="$(dpkg-query -W -f='${Version}' "$pkg_name")"
+          echo "Version after upgrade: $installed_version_after (was $current_version)"
+          if [ "$installed_version_after" != "$upgraded_version" ]; then
+            echo "Upgrade did not take effect (still $installed_version_after, expected $upgraded_version)." >&2
+            exit 1
+          fi
+          echo "Upgrade-in-place verified."
+
+          echo "--- Purging ---"
+          # Purge directly from this installed (upgraded) state, not after a
+          # separate `apt-get remove` first: Tauri's .deb ships no conffiles
+          # and no maintainer scripts, so `remove` alone already fully
+          # uninstalls it — a subsequent `purge` would be a meaningless
+          # no-op, which is also why the old version of this step masked its
+          # result with `|| true` instead of asserting it actually ran.
+          apt-get purge -y "$pkg_name"
+          echo "--- Verifying purge left nothing behind ---"
+          leftover_found=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ -e "$f" ]; then
+              echo "Leftover after purge: $f" >&2
+              leftover_found=1
+            fi
+          done <<< "$installed_files_snapshot"
+          if [ "$leftover_found" -ne 0 ]; then
+            exit 1
+          fi
+          if installed "$pkg_name"; then
+            echo "Package $pkg_name still reports installed after purge." >&2
+            exit 1
+          fi
+          echo "PACKAGE VERIFIED: install, reinstall, upgrade-in-place, and purge all behave correctly — every file this package installed is gone."
+
+      - name: Smoke-test the packaged sidecar starts and answers over loopback
+        run: |
+          set -euo pipefail
+          # Re-extract just the sidecar (the package was removed above) to
+          # prove the FROZEN, PACKAGED artifact — not the pre-bundle build
+          # output — starts and answers. This is the sidecar in isolation;
+          # the next step separately proves the Rust resource_dir() resolver
+          # finds it when launched as part of the real installed app.
+          workdir="$(mktemp -d)"
+          dpkg-deb -x "$deb_path" "$workdir"
+          exe="$workdir/usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          test -x "$exe"
+          "$exe" > /tmp/handshake.json 2>/tmp/sidecar.err &
+          pid=$!
+
+          # Poll rather than a fixed sleep — a cold onedir start on a CI
+          # runner is not guaranteed to finish within any fixed short window,
+          # and a fixed `sleep 1` either wastes time or false-fails flakily.
+          port=""
+          for _ in $(seq 1 40); do
+            if [ -s /tmp/handshake.json ]; then
+              port="$(python3.13 -c "import json; print(json.load(open('/tmp/handshake.json'))['port'])" 2>/dev/null || true)"
+              [ -n "$port" ] && break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$port" ]; then
+            echo "Sidecar never printed a handshake line within 20s." >&2
+            cat /tmp/sidecar.err >&2
+            kill "$pid" 2>/dev/null || true
+            exit 1
+          fi
+          # Log only the port, never the token, even though this token is
+          # ephemeral and CI-local — avoid the habit of printing secrets.
+          echo "Sidecar handshake received, port=$port"
+
+          status="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/health")"
+          echo "GET /health -> HTTP $status"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "Expected HTTP 200 from /health, got $status" >&2
+            exit 1
+          fi
+          echo "PACKAGE VERIFIED: extracted, packaged sidecar starts and answers /health with 200."
+
+      - name: "Sidecar alone: parent-death stdin lifeline"
+        # Tests backend/snapstudio_api/_lifeline.py directly, isolated from
+        # PDEATHSIG and from the app entirely: holds the extracted sidecar's
+        # real stdin pipe open exactly as sidecar.rs does (Popen(..., stdin=PIPE)
+        # and never closing it until this script does so explicitly), then
+        # closes it — the same event a real parent's exit produces via the
+        # kernel's exit_files() — and asserts the sidecar exits on its own.
+        # No other step in this workflow isolates the lifeline from PDEATHSIG
+        # this way; the SIGTERM/SIGKILL steps below exercise both mechanisms
+        # at once and can't attribute which one actually acted.
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          dpkg-deb -x "$deb_path" "$workdir"
+          exe="$workdir/usr/lib/Snapmaker Studio/snapstudio-api/snapstudio-api-x86_64-unknown-linux-gnu"
+          test -x "$exe"
+          # Bounded: an unbounded proc.stdout.readline() inside the script
+          # below would otherwise block until this job's 45-minute timeout if
+          # a frozen sidecar ever started but stalled before printing its
+          # handshake, instead of failing fast the way every other
+          # network/process-touching command in this workflow does.
+          timeout -k 5 60 python3.13 - "$exe" <<'PYEOF'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+
+          exe = sys.argv[1]
+          env = dict(os.environ)
+          env["SNAPSTUDIO_PARENT_LIFELINE"] = "stdin-v1"
+          proc = subprocess.Popen(
+              [exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env
+          )
+          try:
+              line = proc.stdout.readline()
+              if not line:
+                  print("Sidecar produced no handshake line.", file=sys.stderr)
+                  proc.kill()
+                  sys.exit(1)
+              # Log only the port, never the token, even though this token is
+              # ephemeral and CI-local — this repo is public, so CI logs are
+              # public too (same principle the smoke-test step above already
+              # follows for the same handshake line).
+              try:
+                  port = json.loads(line)["port"]
+              except (json.JSONDecodeError, KeyError):
+                  port = "?"
+              print(f"Handshake received, port={port}")
+
+              proc.stdin.close()  # simulate parent death: close the pipe write end
+
+              for _ in range(40):
+                  if proc.poll() is not None:
+                      print(f"LIFELINE VERIFIED: sidecar exited after stdin EOF, rc={proc.returncode}")
+                      sys.exit(0)
+                  time.sleep(0.25)
+
+              print("Sidecar did not exit within 10s of stdin EOF (lifeline did not fire).", file=sys.stderr)
+              proc.kill()
+              sys.exit(1)
+          finally:
+              if proc.poll() is None:
+                  proc.kill()
+          PYEOF
+
+      - name: Install xvfb (for the real headless GUI launch below)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends xvfb dbus-x11
+
+      - name: Reinstall the package, launch the REAL app under Xvfb, SIGTERM it (L4 zero-orphan proof)
+        # This is the step that actually exercises sidecar.rs's resource_dir()
+        # resolver at runtime, inside the real installed application — not just
+        # the sidecar in isolation (the previous step) or static path checks
+        # (the earlier .deb inspection). This is HEADLESS RUNTIME VERIFIED, not
+        # REAL DESKTOP VERIFIED (no real display, no user interaction) and not
+        # REAL U1 VERIFIED (no hardware) — those stay separate claims, per L9/L11.
+        #
+        # L4: the SIGTERM-to-the-app orphan check below is now a HARD failure,
+        # not the `::warning::` L3 shipped with. SIGTERM's default disposition
+        # terminates the app instantly with no Rust cleanup code running at
+        # all — RunEvent::Exit never fires for an external signal — so this
+        # exercises ONLY the sidecar's own PDEATHSIG handler and stdin-EOF
+        # lifeline (sidecar::configure_linux_lifecycle,
+        # backend/snapstudio_api/_lifeline.py), never main.rs's graceful
+        # shutdown_sidecar() path. It also checks process-group ownership and
+        # that an unrelated bystander process is never touched.
+        run: |
+          set -euo pipefail
+          command -v pgrep >/dev/null  # fail loudly here, not via a silently-empty poll loop below
+
+          # `kill -0` succeeds on a zombie (its PID is still allocated until
+          # reaped), so a plain `kill -0` liveness check would report a
+          # correctly-terminated-but-not-yet-reaped sidecar as still running.
+          # --init on the container (see the job's `container:` block) makes
+          # PID 1 actually reap reparented children, but check the state
+          # explicitly anyway rather than depend on timing between the signal
+          # and the reap.
+          alive() {
+            local s
+            s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || return 1
+            [ -n "$s" ] && [[ "$s" != Z* ]]
+          }
+
+          apt-get install -y "$deb_path"
+          # Pure bash regex match over a captured variable, not a pipe into
+          # `grep | head` — same SIGPIPE-avoidance reasoning as the .deb
+          # inspection step above.
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          while IFS= read -r f; do
+            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+              break
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            echo "$installed_files" >&2
+            exit 1
+          fi
+          echo "App binary: $bin_path"
+
+          # An unrelated long-lived process, in its OWN process group
+          # (setsid — a bare `sleep 300 &` in a non-interactive script is NOT
+          # automatically in its own group), started BEFORE the app. The
+          # forced killpg fallback must never reach it — proves the teardown
+          # is scoped to the sidecar's own group, not a loose pattern match.
+          setsid sleep 300 &
+          bystander_pid=$!
+          echo "Bystander PID: $bystander_pid (must survive everything below)"
+
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout -k 5 25 "$bin_path" > /tmp/app.log 2>&1 &
+          app_pid=$!
+
+          sidecar_pid=""
+          for _ in $(seq 1 40); do
+            # `-o` (oldest matching PID) gives exactly one result directly
+            # from pgrep itself — no `| head -n1` pipe needed at all.
+            sidecar_pid="$(pgrep -o -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+            if [ -n "$sidecar_pid" ]; then
+              break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$sidecar_pid" ]; then
+            echo "Sidecar process never appeared after launching the real installed app." >&2
+            echo "This means resource_dir() failed to locate/launch it at runtime." >&2
+            cat /tmp/app.log >&2
+            kill "$app_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Sidecar process found: PID $sidecar_pid (spawned by the real installed app)"
+          # Confirm it's actually running from the installed location, not some
+          # other copy that happens to share the process name.
+          exe_path="$(readlink -f "/proc/$sidecar_pid/exe" 2>/dev/null || true)"
+          echo "Sidecar exe path: $exe_path"
+          case "$exe_path" in
+            "/usr/lib/Snapmaker Studio/snapstudio-api/"*) ;;
+            *)
+              echo "Sidecar is running from an unexpected path: $exe_path" >&2
+              exit 1
+              ;;
+          esac
+          echo "HEADLESS RUNTIME VERIFIED: real installed app launched under Xvfb, resource_dir() located and started the sidecar from the correct installed path."
+
+          # Process-group ownership: configure_linux_lifecycle's
+          # process_group(0) must have made the sidecar its own group leader
+          # (pgid == pid) — confirm that took effect at runtime, not just in
+          # the source.
+          sidecar_pgid="$(ps -o pgid= -p "$sidecar_pid" | tr -d ' ')"
+          echo "Sidecar PID=$sidecar_pid PGID=$sidecar_pgid"
+          if [ "$sidecar_pgid" != "$sidecar_pid" ]; then
+            echo "Sidecar is not its own process-group leader (pgid=$sidecar_pgid, pid=$sidecar_pid) — process_group(0) did not take effect." >&2
+            exit 1
+          fi
+          echo "Process-group ownership verified: sidecar is its own group leader."
+
+          # Signal the REAL app process, not `$app_pid` (that's `xvfb-run`'s
+          # own wrapper PID — it and the `timeout` it spawns are supervisor
+          # processes, not the app; killing only the wrapper may never
+          # deliver SIGTERM to the app at all, making the orphan check below
+          # measure the wrong thing). `^$bin_path` anchors the full-command-
+          # line match to processes whose argv literally STARTS with the
+          # binary's own path, which only the real exec'd app process does
+          # (xvfb-run's own cmdline starts with "xvfb-run ...", timeout's
+          # starts with "timeout ...").
+          real_app_pid="$(pgrep -o -f "^$bin_path" || true)"
+          if [ -z "$real_app_pid" ]; then
+            echo "Could not find the real app process (distinct from the xvfb-run/timeout wrappers) to signal." >&2
+            real_app_pid="$app_pid"
+          fi
+          kill "$real_app_pid" 2>/dev/null || true
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+
+          sidecar_gone=1
+          for _ in $(seq 1 20); do
+            if ! alive "$sidecar_pid"; then
+              sidecar_gone=0
+              break
+            fi
+            sleep 0.25
+          done
+          cat /tmp/app.log
+          if [ "$sidecar_gone" -ne 0 ]; then
+            echo "L4 REGRESSION: sidecar process $sidecar_pid still running ~5s after external SIGTERM to the app." >&2
+            kill -9 "$sidecar_pid" 2>/dev/null || true
+            kill "$bystander_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "ZERO-ORPHAN VERIFIED (SIGTERM): sidecar self-terminated with no orphan, purely via its own PDEATHSIG/stdin-lifeline (no app-side cleanup code ran for an external signal)."
+
+          if ! alive "$bystander_pid"; then
+            echo "L4 REGRESSION: an unrelated bystander process was killed." >&2
+            exit 1
+          fi
+          # No killpg runs in THIS step — an external SIGTERM to the app is
+          # handled entirely by the sidecar's own PDEATHSIG/lifeline, which
+          # never touches any other process by construction (it only ever
+          # acts on itself). killpg's own scoping (it targets exactly
+          # $child.id(), the sidecar's own pgid — see shutdown_sidecar in
+          # sidecar.rs) is proven separately: by the runtime pgid==pid check
+          # above, and by the Linux `#[cfg(test)]` unit test in sidecar.rs
+          # (run via `cargo test` earlier in this job), not by this bystander
+          # check. This check only confirms the SIGTERM/lifeline path itself
+          # stays confined to the sidecar.
+          echo "Bystander PID $bystander_pid is still alive (SIGTERM/lifeline path touched nothing else)."
+          kill "$bystander_pid" 2>/dev/null || true
+
+          echo "--- Cleaning up ---"
+          apt-get remove -y "$pkg_name"
+
+      - name: Launch the REAL app under Xvfb, SIGKILL it (zero-orphan proof, no signal handling possible at all)
+        # SIGKILL cannot be caught, blocked, or handled — the app process dies
+        # with ZERO code running, by definition, stricter than SIGTERM. If the
+        # sidecar survives this, no Rust code anywhere could have prevented
+        # it: only the sidecar's own PDEATHSIG and stdin-EOF lifeline can.
+        run: |
+          set -euo pipefail
+          alive() {
+            local s
+            s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || return 1
+            [ -n "$s" ] && [[ "$s" != Z* ]]
+          }
+
+          apt-get install -y "$deb_path"
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          while IFS= read -r f; do
+            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+              break
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            exit 1
+          fi
+
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout -k 5 25 "$bin_path" > /tmp/app_sigkill.log 2>&1 &
+          app_pid=$!
+
+          sidecar_pid=""
+          for _ in $(seq 1 40); do
+            sidecar_pid="$(pgrep -o -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+            [ -n "$sidecar_pid" ] && break
+            sleep 0.5
+          done
+          if [ -z "$sidecar_pid" ]; then
+            echo "Sidecar never appeared." >&2
+            cat /tmp/app_sigkill.log >&2
+            kill -9 "$app_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Sidecar PID $sidecar_pid, SIGKILLing the real app now."
+
+          real_app_pid="$(pgrep -o -f "^$bin_path" || true)"
+          [ -n "$real_app_pid" ] || real_app_pid="$app_pid"
+          kill -9 "$real_app_pid" 2>/dev/null || true
+          kill -9 "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+
+          sidecar_gone=1
+          for _ in $(seq 1 20); do
+            if ! alive "$sidecar_pid"; then
+              sidecar_gone=0
+              break
+            fi
+            sleep 0.25
+          done
+          cat /tmp/app_sigkill.log
+          if [ "$sidecar_gone" -ne 0 ]; then
+            echo "L4 REGRESSION: sidecar process $sidecar_pid survived a SIGKILL of the app." >&2
+            kill -9 "$sidecar_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "ZERO-ORPHAN VERIFIED (SIGKILL): sidecar self-terminated with no orphan."
+
+          apt-get remove -y "$pkg_name"
+
+      - name: Launch the REAL app under Xvfb, kill the sidecar first (crash-first handling)
+        # Proves the app does not itself crash or hang when its sidecar dies
+        # unexpectedly (OOM-killer, a bad backend dependency — any of which
+        # can happen to a real user). This kills the app with a signal at the
+        # end too, same as the other steps here, so — like them — it does NOT
+        # exercise shutdown_sidecar()'s graceful RunEvent::Exit path
+        # (RunEvent::Exit never fires for an external signal). That path's
+        # forced-fallback branch (killpg after /shutdown fails or times out)
+        # has its own dedicated Linux `#[cfg(test)]` unit test in sidecar.rs
+        # instead, run earlier in this job via `cargo test`. Neither this
+        # step nor that test exercises the graceful POST-succeeds branch at
+        # runtime — that still has no CI coverage (see the module doc comment
+        # in sidecar.rs for the reasoning behind accepting that gap).
+        run: |
+          set -euo pipefail
+          alive() {
+            local s
+            s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || return 1
+            [ -n "$s" ] && [[ "$s" != Z* ]]
+          }
+
+          apt-get install -y "$deb_path"
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          while IFS= read -r f; do
+            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+              break
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            exit 1
+          fi
+
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout -k 5 25 "$bin_path" > /tmp/app_crash.log 2>&1 &
+          app_pid=$!
+
+          sidecar_pid=""
+          for _ in $(seq 1 40); do
+            sidecar_pid="$(pgrep -o -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+            [ -n "$sidecar_pid" ] && break
+            sleep 0.5
+          done
+          if [ -z "$sidecar_pid" ]; then
+            echo "Sidecar never appeared." >&2
+            cat /tmp/app_crash.log >&2
+            kill -9 "$app_pid" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Killing sidecar $sidecar_pid directly (simulated crash), leaving the app running."
+          kill -9 "$sidecar_pid"
+          sleep 1
+          if alive "$sidecar_pid"; then
+            echo "Sidecar survived its own SIGKILL — impossible, aborting." >&2
+            exit 1
+          fi
+
+          real_app_pid="$(pgrep -o -f "^$bin_path" || true)"
+          if [ -z "$real_app_pid" ] || ! kill -0 "$real_app_pid" 2>/dev/null; then
+            echo "L4 REGRESSION: the app process itself died/crashed when its sidecar was killed out from under it." >&2
+            cat /tmp/app_crash.log >&2
+            exit 1
+          fi
+          echo "App survived its sidecar dying unexpectedly: PID $real_app_pid still running."
+
+          kill "$real_app_pid" 2>/dev/null || true
+          kill -9 "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          cat /tmp/app_crash.log
+
+          apt-get remove -y "$pkg_name"
+
+      - name: Repeated launch/exit cycles (zero accumulated orphans)
+        run: |
+          set -euo pipefail
+          alive() {
+            local s
+            s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || return 1
+            [ -n "$s" ] && [[ "$s" != Z* ]]
+          }
+
+          apt-get install -y "$deb_path"
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          while IFS= read -r f; do
+            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+              break
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            exit 1
+          fi
+
+          for cycle in 1 2 3 4 5; do
+            echo "--- Cycle $cycle ---"
+            xvfb-run -a --server-args="-screen 0 1280x800x24" \
+              timeout -k 5 15 "$bin_path" > "/tmp/app_cycle_$cycle.log" 2>&1 &
+            app_pid=$!
+
+            sidecar_pid=""
+            for _ in $(seq 1 40); do
+              sidecar_pid="$(pgrep -o -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+              [ -n "$sidecar_pid" ] && break
+              sleep 0.5
+            done
+            if [ -z "$sidecar_pid" ]; then
+              echo "Cycle $cycle: sidecar never appeared." >&2
+              cat "/tmp/app_cycle_$cycle.log" >&2
+              kill -9 "$app_pid" 2>/dev/null || true
+              exit 1
+            fi
+
+            real_app_pid="$(pgrep -o -f "^$bin_path" || true)"
+            [ -n "$real_app_pid" ] || real_app_pid="$app_pid"
+            kill "$real_app_pid" 2>/dev/null || true
+            kill "$app_pid" 2>/dev/null || true
+            wait "$app_pid" 2>/dev/null || true
+
+            for _ in $(seq 1 20); do
+              alive "$sidecar_pid" || break
+              sleep 0.25
+            done
+            if alive "$sidecar_pid"; then
+              echo "Cycle $cycle: sidecar $sidecar_pid still alive after app exit." >&2
+              kill -9 "$sidecar_pid" 2>/dev/null || true
+              exit 1
+            fi
+            echo "Cycle $cycle: clean (sidecar $sidecar_pid gone)."
+          done
+
+          leftover="$(pgrep -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+          if [ -n "$leftover" ]; then
+            echo "Leftover sidecar processes after 5 launch/exit cycles: $leftover" >&2
+            exit 1
+          fi
+          echo "ZERO ACCUMULATED ORPHANS across 5 launch/exit cycles."
+
+          apt-get remove -y "$pkg_name"
+
+      - name: Checksum and label the .deb for retrieval
+        # No `if:` here — defaults to running only on success, same as every
+        # earlier step. An `if: always()` on THIS step (an earlier version
+        # of this workflow had one) is wrong: if any earlier step failed,
+        # $deb_path may reference a .deb that's fine but whose lifecycle/
+        # metadata checks failed, or reference nothing at all — either way
+        # labeling and uploading it as a verified artifact would be
+        # misleading, and upload-artifact's `if-no-files-found: error` below
+        # would just add a second, confusing failure on top of the real one.
+        # Makes the artifact retrievable and attributable to an exact commit
+        # rather than just "today's build": a bare .deb re-downloaded later
+        # has no way to confirm which source it came from or that it wasn't
+        # corrupted/truncated in transit.
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          version="$(dpkg-deb -f "$deb_path" Version)"
+          artifact_dir="dist-linux"
+          mkdir -p "$artifact_dir"
+          labeled_deb="$artifact_dir/snapmaker-studio_${version}_amd64_${short_sha}.deb"
+          cp "$deb_path" "$labeled_deb"
+          (cd "$artifact_dir" && sha256sum "$(basename "$labeled_deb")" > SHA256SUMS)
+          cat "$artifact_dir/SHA256SUMS"
+          {
+            echo "package: $pkg_name"
+            echo "version: $version"
+            echo "commit: $GITHUB_SHA"
+            echo "branch: $GITHUB_REF_NAME"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "evidence: PACKAGE VERIFIED, HEADLESS RUNTIME VERIFIED (see linux-ci.yml job for this run)"
+            # This repo is public: any signed-in GitHub user can download a
+            # workflow artifact from it (retention window aside) — never
+            # claim this is private or unreachable, only that it isn't an
+            # official release.
+            echo "status: UNRELEASED engineering preview of $version — not attached to a GitHub Release, not the stable Windows release, not designated stable"
+          } > "$artifact_dir/MANIFEST.txt"
+          cat "$artifact_dir/MANIFEST.txt"
+
+      - name: Upload .deb + checksum + manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb
+          path: dist-linux/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload raw .deb for reproduction, on failure
+        # A failure anywhere upstream skips the labeling step above (by
+        # design — see its comment), which would otherwise mean a failed
+        # run uploads nothing at all to reproduce the failure with, a
+        # regression from this workflow's original always-upload behavior.
+        # `warn`, not `error`: an early enough failure (e.g. before the
+        # build step) means there's genuinely no .deb yet, and that's
+        # already reported by the failed step itself.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb-failed-run
+          path: desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-logs
+          path: |
+            backend/build/**/warn-*.txt
+          if-no-files-found: warn
+          retention-days: 14

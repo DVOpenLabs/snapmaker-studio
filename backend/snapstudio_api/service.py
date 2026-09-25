@@ -21,6 +21,7 @@ from snapstudio_core import scale_doctor
 from snapstudio_core import print_failure
 from snapstudio_core import print_quality
 from snapstudio_core import first_layer_doctor
+from snapstudio_core.paths import data_dir as _resolve_data_dir
 
 API_VERSION = "api/1"
 
@@ -28,10 +29,7 @@ API_VERSION = "api/1"
 # --- library index (local-first SQLite of what the user has opened) ----------
 
 def _data_dir() -> str:
-    base = os.environ.get("SNAPSTUDIO_DATA_DIR") or os.path.join(
-        os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "SnapmakerStudio")
-    os.makedirs(base, exist_ok=True)
-    return base
+    return _resolve_data_dir()
 
 
 def _db_path() -> str:

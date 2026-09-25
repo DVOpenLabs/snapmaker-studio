@@ -1,0 +1,261 @@
+name: Release (Linux .deb, workflow_dispatch only)
+
+# Linux counterpart to release.yml, deliberately narrower in what it's
+# allowed to do while Linux support is still beta. R3 of the L6 release-
+# integration decision (docs/internal/LINUX_BETA_PLAN.md): a SEPARATE file
+# from release.yml (preserves the already-proven Windows release workflow
+# untouched, isolates Linux packaging/release risk while Linux has no
+# EXTERNAL USER VERIFIED evidence yet), workflow_dispatch ONLY (no tag
+# trigger — deliberately not `push: tags: ["v*"]` the way release.yml has).
+#
+# This workflow MUST NOT, and as written CANNOT:
+#   - create a GitHub Release (no `gh release create`, no release-management
+#     action anywhere in this file)
+#   - create or push a git tag
+#   - mark anything as stable (the manifest step below explicitly states
+#     the opposite)
+#   - alter release.yml or Windows release behaviour (this file does not
+#     touch that file, its triggers, or its job)
+# It MAY: build the real .deb via the same pipeline linux-ci.yml already
+# proves continuously, translate its version through
+# desktop/scripts/debianize-version.sh (a no-op today — the project version
+# is still the plain "0.9.0" release, so there is nothing to translate yet;
+# this workflow exists to have the mechanism ready and exercised, not to
+# publish anything now), checksum it, write a manifest, and upload it as a
+# CI artifact — the same "prerelease-quality package for verification"
+# category the maintainer has standing-authorized throughout the Linux-
+# support program.
+#
+# Enabling a real release trigger later (after external Linux evidence and
+# explicit authorization) is meant to be a small, clean, reviewable diff:
+# add `push: tags: ["v*"]` to the `on:` block below, next to the
+# `workflow_dispatch` that's already there. Nothing else about this file
+# should need to change for that step — the whole point of keeping it
+# separate from release.yml and self-contained is that enabling it is not
+# itself the crossing of the release boundary; publishing IS.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-deb:
+    name: Build + validate a Linux .deb release candidate (Ubuntu 22.04, x86_64)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+      options: --init
+    timeout-minutes: 30
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install base tooling (git, curl, ca-certificates, gnupg)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates gnupg
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri Linux build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            file \
+            procps \
+            libwebkit2gtk-4.1-dev \
+            libwebkit2gtk-4.1-0 \
+            libssl-dev \
+            libgtk-3-dev \
+            libgtk-3-0 \
+            libayatana-appindicator3-dev \
+            libayatana-appindicator3-1 \
+            librsvg2-dev \
+            librsvg2-2 \
+            pkg-config \
+            desktop-file-utils
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install Python 3.13 (deadsnakes, NOT actions/setup-python)
+        # Same reasoning and same pinned fingerprint as linux-ci.yml — see
+        # that file's own comment for the full history (glibc mismatch on
+        # actions/setup-python's prebuilt CPython, two real CI hangs this
+        # exact sequence is defended against, and why the deadsnakes
+        # keyring's fingerprint enumeration must be exact-one-match, not
+        # first-match).
+        run: |
+          mkdir -p /etc/apt/keyrings
+          expected_fpr="F23C5A6CF475977595C89F51BA6932366A755776"
+          timeout -k 10 30 curl -fsSL --max-time 25 \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${expected_fpr}" \
+            | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
+          mapfile -t all_fprs < <(gpg --show-keys --with-colons /etc/apt/keyrings/deadsnakes.gpg | awk -F: '/^fpr/{print $10}')
+          if [ "${#all_fprs[@]}" -ne 1 ] || [ "${all_fprs[0]}" != "$expected_fpr" ]; then
+            echo "Downloaded deadsnakes keyring does not contain EXACTLY one key matching the pinned fingerprint!" >&2
+            echo "Expected exactly 1 key: $expected_fpr" >&2
+            echo "Found ${#all_fprs[@]} key(s): ${all_fprs[*]:-(none)}" >&2
+            exit 1
+          fi
+          echo "Key fingerprint verified (exactly one key, matches pinned constant): ${all_fprs[0]}"
+          echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy main" \
+            > /etc/apt/sources.list.d/deadsnakes.list
+          timeout -k 10 120 apt-get update
+          timeout -k 10 180 apt-get install -y --no-install-recommends python3.13 python3.13-venv python3.13-dev
+          timeout -k 10 60 python3.13 -m ensurepip --upgrade
+          timeout -k 10 60 python3.13 -m pip install --upgrade pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install backend (for the sidecar freeze)
+        working-directory: backend
+        run: |
+          python3.13 -m pip install -e .
+          python3.13 -m pip install -r requirements-build.txt
+
+      - name: Freeze the Linux sidecar (onedir)
+        run: bash desktop/scripts/build-sidecar.sh
+
+      - name: Install frontend deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the desktop app + .deb package
+        working-directory: desktop
+        run: npx tauri build --bundles deb
+
+      - name: Locate the produced .deb
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found under src-tauri/target/release/bundle/deb" >&2
+            find src-tauri/target/release/bundle -maxdepth 3 || true
+            exit 1
+          fi
+          deb_abs="$(readlink -f "$deb")"
+          echo "Found: $deb_abs"
+          echo "deb_path=$deb_abs" >> "$GITHUB_ENV"
+          echo "pkg_name=$(dpkg-deb -f "$deb_abs" Package)" >> "$GITHUB_ENV"
+
+      - name: Translate to a Debian-correct version (no-op for a plain release version)
+        # desktop/scripts/debianize-version.sh — see that script's own header
+        # for the full reasoning. Runs unconditionally: it is a strict no-op
+        # for a plain, non-prerelease version like today's "0.9.0", and
+        # linux-ci.yml continuously proves the translation itself is correct
+        # against fixtures. Running it here too means this workflow never
+        # needs to remember to conditionally invoke it once a real
+        # prerelease version eventually lands in tauri.conf.json.
+        run: bash desktop/scripts/debianize-version.sh "$deb_path"
+
+      - name: Quick install smoke-test
+        # Deliberately lighter than linux-ci.yml's full reinstall/upgrade/
+        # purge/Xvfb-launch lifecycle matrix — that continuous proof already
+        # exists and doesn't need duplicating here. This confirms the
+        # release-candidate artifact installs cleanly, finds its app entry
+        # point, AND that the bundled sidecar actually starts and answers
+        # /health — not just that the .deb unpacks. Launching the sidecar
+        # binary directly (no Xvfb/GUI needed for this) is enough to prove
+        # that; it does not launch the full GUI app the way linux-ci.yml's
+        # Xvfb-based steps do.
+        run: |
+          set -euo pipefail
+          apt-get install -y "$deb_path"
+          installed_files="$(dpkg -L "$pkg_name")"
+          bin_path=""
+          sidecar_path=""
+          while IFS= read -r f; do
+            if [ -z "$bin_path" ] && [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+              bin_path="$f"
+            fi
+            if [ -z "$sidecar_path" ] && [[ "$f" == *snapstudio-api-x86_64-unknown-linux-gnu ]]; then
+              sidecar_path="$f"
+            fi
+          done <<< "$installed_files"
+          if [ -z "$bin_path" ]; then
+            echo "Could not find the installed app's /usr/bin entry point." >&2
+            exit 1
+          fi
+          if [ -z "$sidecar_path" ]; then
+            echo "Could not find the installed sidecar binary." >&2
+            exit 1
+          fi
+          echo "App entry point: $bin_path"
+          echo "Sidecar: $sidecar_path"
+
+          "$sidecar_path" > /tmp/rc_handshake.json 2>/tmp/rc_sidecar.err &
+          sidecar_pid=$!
+          port=""
+          for _ in $(seq 1 40); do
+            if [ -s /tmp/rc_handshake.json ]; then
+              port="$(python3.13 -c "import json; print(json.load(open('/tmp/rc_handshake.json'))['port'])" 2>/dev/null || true)"
+              [ -n "$port" ] && break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$port" ]; then
+            echo "Sidecar never printed a handshake line within 20s." >&2
+            cat /tmp/rc_sidecar.err >&2
+            kill "$sidecar_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Sidecar handshake received, port=$port"
+          status="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/health")"
+          kill "$sidecar_pid" 2>/dev/null || true
+          wait "$sidecar_pid" 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "Expected HTTP 200 from /health, got $status" >&2
+            exit 1
+          fi
+          echo "Installed cleanly and the bundled sidecar answers /health with 200."
+          apt-get remove -y "$pkg_name"
+
+      - name: Checksum and label the release-candidate .deb
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          version="$(dpkg-deb -f "$deb_path" Version)"
+          artifact_dir="dist-linux"
+          mkdir -p "$artifact_dir"
+          labeled_deb="$artifact_dir/snapmaker-studio_${version}_amd64_${short_sha}.deb"
+          cp "$deb_path" "$labeled_deb"
+          (cd "$artifact_dir" && sha256sum "$(basename "$labeled_deb")" > SHA256SUMS)
+          cat "$artifact_dir/SHA256SUMS"
+          {
+            echo "package: $pkg_name"
+            echo "version: $version"
+            echo "commit: $GITHUB_SHA"
+            echo "branch: $GITHUB_REF_NAME"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "workflow: release-linux.yml (workflow_dispatch)"
+            echo "status: RELEASE CANDIDATE ARTIFACT — this workflow does not create a GitHub Release or a tag, and this build is NOT designated stable. It exists for maintainer verification only, downloadable as a CI artifact from a public repository, same as any other Actions artifact."
+          } > "$artifact_dir/MANIFEST.txt"
+          cat "$artifact_dir/MANIFEST.txt"
+
+      - name: Upload .deb + checksum + manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapmaker-studio-linux-release-candidate
+          path: dist-linux/
+          if-no-files-found: error
+          retention-days: 90
