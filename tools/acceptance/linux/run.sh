@@ -701,17 +701,22 @@ leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
 # approach was tried and failed both ways — one of them didn't activate
 # until partway into the repeated-cycles phase itself). What's actually
 # invariant, confirmed by every real diagnostic dump so far, is the
-# EXPECTED CONCURRENT COUNT of each specific daemon in a normal single-
-# session run: dbus-daemon serves both the main session bus and a second,
-# separate AT-SPI accessibility bus, so up to 2 concurrent instances is
-# normal; every other daemon in this family is a singleton. A pid is only
-# excluded if its argv[0] matches AND excluding it would not push that
-# specific daemon's concurrent count over its expected cap — so a
-# regression that leaks an ADDITIONAL instance beyond the expected count
-# (Sol's exact concern) is still caught, regardless of activation timing.
+# EXPECTED CONCURRENT COUNT of each specific daemon ROLE in a normal
+# single-session run — every daemon here is a singleton EXCEPT
+# /usr/bin/dbus-daemon, which serves two DIFFERENT roles at once (the main
+# session bus, invoked with --session; a separate AT-SPI accessibility
+# bus, invoked with --config-file=.../accessibility.conf). Capping
+# "dbus-daemon" at a blanket 2 could not tell "1 of each legitimate role"
+# apart from "2 of the same role (1 legitimate + 1 leaked)" — a real gap a
+# delta review caught. Each ROLE (not just each argv[0]) is now capped at
+# 1 individually, keyed by matching the process's actual arguments, not
+# just its executable path — so a leaked SECOND session-bus instance (or a
+# third, unrecognized dbus-daemon variant matching neither known role) no
+# longer hides behind the other role's legitimate slot.
 declare -A infra_caps=(
   ["dbus-launch"]=1
-  ["/usr/bin/dbus-daemon"]=2
+  ["dbus-daemon (session bus)"]=1
+  ["dbus-daemon (AT-SPI bus)"]=1
   ["/usr/libexec/at-spi-bus-launcher"]=1
   ["/usr/libexec/at-spi2-registryd"]=1
   ["/usr/libexec/xdg-desktop-portal"]=1
@@ -721,15 +726,36 @@ declare -A infra_caps=(
 declare -A infra_seen=()
 real_leftover=""
 for lp in $leftover_after_cycles; do
-  largv0="$({ tr '\0' '\n' < "/proc/$lp/cmdline"; } 2>/dev/null | head -n1 || echo '')"
-  cap="${infra_caps[$largv0]:-0}"
+  lcmdline="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '')"
+  largv0="$(echo "$lcmdline" | awk '{print $1; exit}')"
+  role_key="$largv0"
+  if [ "$largv0" = "/usr/bin/dbus-daemon" ]; then
+    case "$lcmdline" in
+      *--session*) role_key="dbus-daemon (session bus)" ;;
+      *accessibility.conf*) role_key="dbus-daemon (AT-SPI bus)" ;;
+      *) role_key="dbus-daemon (unrecognized role)" ;;
+    esac
+  fi
+  # An EMPTY string as an associative-array subscript is a hard bash error
+  # ("bad array subscript") that aborts the script immediately — it fails
+  # during parameter expansion itself, before any command runs, so it
+  # can't be caught with `|| true` the way a normal command failure can.
+  # largv0/role_key legitimately come back empty on a routine race (the
+  # pid exited between pgrep and this read, or it's a zombie with no
+  # cmdline) — this must be checked BEFORE ever indexing $infra_caps or
+  # $infra_seen with it, confirmed as a real crash by reproducing it
+  # directly in bash, not assumed from the review alone.
+  cap=0
+  if [ -n "$role_key" ]; then
+    cap="${infra_caps[$role_key]:-0}"
+  fi
   if [ "$cap" -gt 0 ]; then
-    seen="${infra_seen[$largv0]:-0}"
+    seen="${infra_seen[$role_key]:-0}"
     if [ "$seen" -lt "$cap" ]; then
-      infra_seen[$largv0]=$((seen + 1))
+      infra_seen[$role_key]=$((seen + 1))
       continue
     fi
-    echo "NOTE: pid $lp ($largv0) exceeds the expected concurrent count ($cap) for this daemon — counted as a real leftover, not excluded." >&2
+    echo "NOTE: pid $lp ($role_key) exceeds the expected concurrent count ($cap) for this daemon role — counted as a real leftover, not excluded." >&2
   fi
   real_leftover="$real_leftover $lp"
 done

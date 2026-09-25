@@ -1208,10 +1208,20 @@ jobs:
             exit 1
           fi
           if command -v python3 >/dev/null 2>&1; then
-            if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i'; then
-              echo "EXPECTED (not a defect): python3 is present at $(command -v python3), but only because networkd-dispatcher (installed, confirmed) directly Depends on python3-gi/python3-dbus/python3 — networkd-dispatcher itself arrives via systemd's Recommends, which is part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain. Verified against the real Ubuntu apt database (apt-cache depends/rdepends), not inferred." >&2
+            # Don't just trust that networkd-dispatcher being installed
+            # EXPLAINS python3's presence — verify the actual causal edge
+            # LIVE, against this exact image's real apt database, every
+            # run. A delta review correctly flagged that checking presence
+            # alone doesn't rule out some OTHER package independently
+            # pulling python3 while networkd-dispatcher happens to also be
+            # installed; this closes that by asserting the real dependency
+            # relationship apt itself reports, not a claim frozen in a
+            # comment.
+            if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i' \
+              && apt-cache depends networkd-dispatcher 2>/dev/null | grep -q 'Depends: python3-gi'; then
+              echo "EXPECTED (not a defect): python3 is present at $(command -v python3). Verified LIVE against this image's real apt database (not just presence, the actual dependency edge): networkd-dispatcher is installed AND its own 'apt-cache depends' output confirms it directly Depends on python3-gi — networkd-dispatcher itself arrives via systemd's Recommends, part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain." >&2
             else
-              echo "REGRESSION: python3 became available after installing ONLY the .deb, and networkd-dispatcher is NOT installed — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
+              echo "REGRESSION: python3 became available after installing ONLY the .deb, and the verified networkd-dispatcher->python3-gi dependency edge is NOT confirmed on this image (either networkd-dispatcher isn't installed, or apt's own dependency data no longer shows the expected edge) — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
               exit 1
             fi
           fi
