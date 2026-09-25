@@ -1,4 +1,4 @@
-# Linux beta plan — L5 through L9 record
+# Linux beta plan — L5 through L10 record
 
 **UNRELEASED. Internal only, not linked from README/docs/landing. Not an
 announcement.** No public GitHub Release, tag, or change to the stable
@@ -634,3 +634,60 @@ MEDIUM, 7 LOW. All were fixed in the same commit round:
 Verified after fixes: `test_public_claims.py` + `test_evidence_consistency.py`
 (57 passed); those two plus `test_release_docs.py` (72 passed); full backend
 suite (1830 passed, 7 skipped).
+
+## What L10 covers
+
+External Linux beta readiness — making sure a real outside tester has a
+working path to report back, without requiring that anyone has actually
+done so yet. **EXTERNAL USER VERIFIED stays false**; nothing in this phase
+changes that, and nothing here is gated on it changing.
+
+### What shipped
+
+- **`.github/ISSUE_TEMPLATE/bug_report.md`**: the "Windows version" field
+  was the only OS-specific assumption in either issue template — it asked
+  every reporter for a Windows version even though nothing else in the
+  template, or in `.github/ISSUE_TEMPLATE/studio-got-this-wrong.yml`
+  (already fully OS-neutral, confirmed by reading it), assumed Windows.
+  Changed to "OS and version", with a Linux-specific prompt to also say how
+  Studio was installed (the official `.deb`, or something else) — useful
+  because a report from a hand-built or third-party package is a different
+  kind of bug than one against the real release artifact.
+- No other reporting-path changes were needed: `studio-got-this-wrong.yml`
+  already works unmodified for a Linux reporter, and
+  `docs/linux-install.md` (L9) already gives Linux-specific Known
+  Limitations and Troubleshooting sections, an understandable download
+  filename (from the L9 review round's H1 fix), and an explicit SHA256
+  verification step — the concrete asks in the L10 authorization were
+  already satisfied by L9's own review-hardened content, not duplicated
+  here.
+
+### What was deliberately NOT done this phase
+
+**No outreach was posted anywhere** (Reddit, the Snapmaker forum, or
+otherwise). Two independent reasons, not a missed step:
+
+1. There is still nothing a reader could download — no Linux `.deb` has
+   been published in any GitHub Release (same fact `docs/linux-install.md`
+   itself leads with). Posting "try the Linux beta" with no working link is
+   the exact kind of premature announcement `docs/internal/LINUX_BETA_PLAN.md`
+   has disclaimed since L5.
+2. Posting to an external, public service is visible to others and not
+   easily reversible — outside what a documentation/readiness phase should
+   do on its own initiative. `docs/innovation-fund/BETA_TEST_PLAN.md`
+   already did this analysis for the Windows beta (channel-by-channel fit
+   assessment, the Snapmaker forum ranked best) and its reasoning — no
+   asking for stars/votes, lead with something useful to the reader, state
+   beta status up front — applies unchanged to a future Linux post; L10
+   does not re-do or duplicate that plan, and does not act on it early
+   for a platform with nothing shippable yet.
+
+The correct trigger for actually posting Linux-specific outreach is the
+v1.0.0 release existing (a real download link to point to) — that
+belongs in the v1.0.0 phase or after, not here.
+
+### Evidence tiers earned this phase
+
+None — L10 is reporting-path readiness only. EXTERNAL USER VERIFIED
+remains honestly false, as it must until a real report arrives from
+outside this project.
