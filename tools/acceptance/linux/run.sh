@@ -12,8 +12,11 @@
 # Usage: run.sh <path-to-.deb>
 # Needs root (apt-get, useradd) — run inside the CI container or any root
 # shell. Requires: xvfb, openbox, wmctrl, xdotool, imagemagick, sqlite3,
-# dbus-x11 (same packages linux-ci.yml already installs, plus openbox/
-# wmctrl/xdotool/imagemagick/sqlite3 for this harness specifically).
+# dbus-x11, jq, curl (same packages linux-ci.yml already installs, plus
+# openbox/wmctrl/xdotool/imagemagick/sqlite3/jq/curl for this harness
+# specifically). Deliberately NOT Python or Node — this harness itself must
+# run on the same genuinely clean images (no dev tools) it's proving the
+# shipped app runs on (L8).
 #
 # Output: $ACCEPT_WORKDIR/evidence/acceptance.json (schema_version
 # "acceptance/1", same shape as the Windows harness's report — see
@@ -34,12 +37,13 @@
 # an exact byte-for-byte argv[0] match (from /proc/<pid>/cmdline) — never by
 # process name or cmdline substring, which could otherwise match an
 # unrelated concurrent run's processes or something on the machine that
-# merely happens to share a name. The one exception is final cleanup, which
-# also does a uid-wide kill as a safety net (see the KNOWN LIMITATION note
-# at that line) — not yet fully hardened for a shared machine, tracked as
-# L8/L10 follow-up debt. All cleanup lives in one EXIT trap, so every exit
-# path — including an early failure — runs it,
-# not just the happy path at the bottom of the script.
+# merely happens to share a name. Final cleanup's uid-wide safety-net kill
+# (see that comment for the full reasoning) is additionally scoped to only
+# processes that started after this run began (real /proc start-time
+# comparison), so a pre-existing process holding a recycled uid is left
+# alone rather than killed. All cleanup lives in one EXIT trap, so every
+# exit path — including an early failure — runs it, not just the happy
+# path at the bottom of the script.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -55,6 +59,15 @@ if [ ! -f "$deb_path" ]; then
   echo "No such file: $deb_path" >&2
   exit 1
 fi
+
+# Captured before this run creates any account or process, so cleanup can
+# tell "a process this run started" from "a process that predates this run
+# and merely inherited a uid this run's new account happened to be assigned"
+# — see the uid-scoped-kill note in cleanup() below. /proc/<pid>/stat field
+# 22 (starttime, in clock ticks since boot) is monotonic and comm-safe to
+# parse this way (strip everything through the last ")" first, since comm
+# itself can contain spaces/parens).
+harness_start_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' /proc/self/stat)"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 workdir="${SNAPSTUDIO_ACCEPT_WORKDIR:-$(mktemp -d)}"
@@ -79,6 +92,9 @@ add_check() {
 }
 
 write_report() {
+  # jq, not python3.13 — this harness now runs on genuinely clean images
+  # (L8) that have no Python at all. jq is installed as test tooling
+  # alongside Xvfb/openbox/etc., never assumed part of the runtime.
   {
     echo "{"
     echo "  \"schema_version\": \"acceptance/1\","
@@ -90,9 +106,9 @@ write_report() {
       local comma=","
       [ "$i" -eq $((n - 1)) ] && comma=""
       printf '    {"name": %s, "ok": %s, "detail": %s}%s\n' \
-        "$(printf '%s' "${checks_names[$i]}" | python3.13 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
+        "$(jq -Rn --arg v "${checks_names[$i]}" '$v')" \
         "${checks_ok[$i]}" \
-        "$(printf '%s' "${checks_detail[$i]}" | python3.13 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
+        "$(jq -Rn --arg v "${checks_detail[$i]}" '$v')" \
         "$comma"
     done
     echo "  ]"
@@ -182,26 +198,38 @@ cleanup() {
     # was silently swallowed, leaking the account and its processes. Kill
     # everything under this uid first so userdel always has a clean account
     # to remove, regardless of what owned_pids did or didn't track.
-    # KNOWN LIMITATION (tracked for L8/L10, not closed here): this matches
-    # by uid, not by PID+argv0 like every other kill in this script. useradd
-    # picks a uid from account records, not from what's currently running —
-    # on a real/shared host (not this harness's actual current use, which is
-    # always a fresh single-tenant ephemeral CI container) an unrelated
-    # already-running process could in principle be left holding a uid this
-    # run's new account then gets assigned, and this would kill it. Properly
-    # closing this needs the test process launched into its own process
-    # group or cgroup rather than uid-scoped cleanup — out of scope for this
-    # pass; do not rely on this harness's "safe on a shared machine" claim
-    # for this specific gap until that lands.
-    [ -n "$test_uid" ] && pkill -KILL -u "$test_uid" 2>/dev/null || true
-    userdel -r "$test_user" 2>/dev/null || true
+    #
+    # SCOPED to processes that started AFTER this harness run began
+    # (compared against $harness_start_ticks, captured before this run did
+    # anything). This closes a real gap: useradd allocates a uid from
+    # account records, not from /proc, so a uid this run's new account gets
+    # assigned could already be held by an orphaned process from an
+    # earlier, unrelated account — verified reproducible via
+    # `userdel -f <name>` with the account's process still alive (exactly
+    # what desktop tools call: accountsservice's "Remove User" always runs
+    # `userdel -f`, GNOME Settings included). A process that predates this
+    # run can never be one this run is responsible for, so it's excluded
+    # rather than killed, and userdel's own refusal (it won't remove an
+    # account with live processes) is left to fire and be reported below —
+    # not silently swallowed.
+    if [ -n "$test_uid" ]; then
+      for pid in $(pgrep -u "$test_uid" 2>/dev/null || true); do
+        pid_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' "/proc/$pid/stat" 2>/dev/null || true)"
+        if [ -n "$pid_ticks" ] && [ "$pid_ticks" -ge "$harness_start_ticks" ] 2>/dev/null; then
+          kill -9 "$pid" 2>/dev/null || true
+        else
+          echo "NOTE: pid $pid under recycled uid $test_uid predates this run (started before it) — left alone, not killed." >&2
+        fi
+      done
+    fi
+    userdel -r "$test_user" 2>/dev/null || echo "NOTE: userdel $test_user failed (rc=$?) — a pre-existing process on this recycled uid may still be alive; see NOTE lines above." >&2
   fi
 }
 trap cleanup EXIT
 
 echo "=== Installing the .deb ==="
 apt-get update -qq
-apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 >/dev/null
+apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 jq curl >/dev/null
 # pkg_name stays empty (cleanup's guard) until pkg_preinstalled is fully
 # determined, so an interrupt between the Package query and the preinstalled
 # check can never leave cleanup thinking THIS run owns a package it doesn't.
