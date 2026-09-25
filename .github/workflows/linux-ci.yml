@@ -222,6 +222,84 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo test --release
 
+      - name: Test the Debian version-translation script (desktop/scripts/debianize-version.sh)
+        # Self-contained: builds its own throwaway fabricated .deb fixtures,
+        # doesn't touch or depend on the real build's $deb_path. Runs
+        # unconditionally on every job, independent of whether the version
+        # actually being built right now has a prerelease suffix — the
+        # mechanism itself needs continuous proof, not just a one-off check
+        # from whichever session first wrote it. See the script's own header
+        # for why it exists: Tauri's bundler (pinned tauri-utils 2.9.3)
+        # rejects `~` in `version` outright (semver::Version::from_str),
+        # so there is no config-only way to make the bundler itself emit a
+        # Debian-correct prerelease version — this script is the one place
+        # that translation happens, as an explicit, tested, git-tracked
+        # packaging-boundary step, not ad-hoc post-build surgery.
+        run: |
+          set -euo pipefail
+          script="$PWD/desktop/scripts/debianize-version.sh"
+          test -x "$script"
+
+          make_deb() {
+            local ver="$1" out="$2"
+            local w
+            w="$(mktemp -d)"
+            mkdir -p "$w/pkg/DEBIAN"
+            cat > "$w/pkg/DEBIAN/control" <<EOF
+          Package: snapmaker-studio
+          Version: $ver
+          Architecture: amd64
+          Maintainer: DVOpenLabs
+          Description: test fixture for debianize-version.sh
+          EOF
+            dpkg-deb -b "$w/pkg" "$out" >/dev/null
+          }
+
+          echo "--- A prerelease version gets translated ---"
+          make_deb "0.10.0-beta.1" /tmp/dv1.deb
+          "$script" /tmp/dv1.deb
+          v1="$(dpkg-deb -f /tmp/dv1.deb Version)"
+          echo "translated: $v1"
+          if [ "$v1" != "0.10.0~beta.1" ]; then
+            echo "Expected 0.10.0~beta.1, got $v1" >&2
+            exit 1
+          fi
+
+          echo "--- A second beta sorts correctly above the first, both below the final release ---"
+          make_deb "0.10.0-beta.2" /tmp/dv2.deb
+          "$script" /tmp/dv2.deb
+          v2="$(dpkg-deb -f /tmp/dv2.deb Version)"
+          echo "translated: $v2"
+          dpkg --compare-versions "$v2" gt "$v1"
+          dpkg --compare-versions "$v1" lt "0.10.0"
+          echo "Ordering verified: $v1 < $v2 < 0.10.0"
+
+          echo "--- A plain (non-prerelease) version is left byte-for-byte unchanged ---"
+          make_deb "0.9.0" /tmp/dv3.deb
+          sha_before="$(sha256sum /tmp/dv3.deb | cut -d' ' -f1)"
+          "$script" /tmp/dv3.deb
+          sha_after="$(sha256sum /tmp/dv3.deb | cut -d' ' -f1)"
+          if [ "$sha_before" != "$sha_after" ]; then
+            echo "Plain version 0.9.0 was modified — the script must be a strict no-op for non-prerelease versions." >&2
+            exit 1
+          fi
+          v3="$(dpkg-deb -f /tmp/dv3.deb Version)"
+          if [ "$v3" != "0.9.0" ]; then
+            echo "Expected Version to stay 0.9.0, got $v3" >&2
+            exit 1
+          fi
+
+          echo "--- Another prerelease-identifier shape (rc) also translates correctly ---"
+          make_deb "1.2.3-rc.4" /tmp/dv4.deb
+          "$script" /tmp/dv4.deb
+          v4="$(dpkg-deb -f /tmp/dv4.deb Version)"
+          if [ "$v4" != "1.2.3~rc.4" ]; then
+            echo "Expected 1.2.3~rc.4, got $v4" >&2
+            exit 1
+          fi
+
+          echo "DEBIAN VERSION-TRANSLATION MECHANISM VERIFIED: prerelease versions translate correctly and sort below their eventual release; plain versions pass through unchanged."
+
       - name: Locate and inspect the produced .deb
         working-directory: desktop
         run: |
@@ -337,12 +415,16 @@ jobs:
           fi
 
           echo "--- Verifying L5 package metadata (tauri.linux.conf.json's homepage/category/description/section) ---"
-          # This does NOT check Maintainer: it still reads the stale
-          # "DeadlyVirusIn / Snapmaker Studio" (bundle.publisher lives in the
-          # shared tauri.conf.json, also used by the Windows NSIS build —
-          # left alone pending the maintainer's explicit sign-off; see
-          # docs/internal/LINUX_BETA_PLAN.md). Everything checked here is
-          # Linux-only metadata added in tauri.linux.conf.json.
+          # Maintainer comes from the SHARED tauri.conf.json's bundle.publisher
+          # (also feeds the Windows NSIS installer string) — checked here too,
+          # now that it's been fixed to the current org name rather than left
+          # as the stale pre-rename value this comment used to describe.
+          maintainer="$(dpkg-deb -f "$deb_abs" Maintainer)"
+          echo "Maintainer: $maintainer"
+          if [ "$maintainer" != "DVOpenLabs" ]; then
+            echo "Unexpected Maintainer: $maintainer" >&2
+            exit 1
+          fi
           homepage="$(dpkg-deb -f "$deb_abs" Homepage)"
           echo "Homepage: $homepage"
           if [ "$homepage" != "https://github.com/DVOpenLabs/snapmaker-studio" ]; then
@@ -372,7 +454,7 @@ jobs:
               exit 1
               ;;
           esac
-          echo "Package metadata verified: Homepage, Section, and both description lines present."
+          echo "Package metadata verified: Maintainer, Homepage, Section, and both description lines present."
 
       - name: Install the .deb and verify the .desktop file, then a full lifecycle (reinstall, upgrade, purge)
         run: |
