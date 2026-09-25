@@ -910,6 +910,7 @@ fi
 
 echo "=== XDG data directory behavior across 3 configurations (item 19) ==="
 xdg_case() {
+  echo "DIAG: entering xdg_case $1" >&2
   local case_name="$1" xdg_val="$2" expect_custom="$3"
   local expected_dir
   if [ "$expect_custom" = "true" ]; then
@@ -926,9 +927,20 @@ xdg_case() {
   # 0700 afterward" only ever reflects what THIS specific launch actually
   # did, not leftover state from a previous phase.
   local moved_aside=""
+  echo "DIAG: $case_name expected_dir=[$expected_dir] exists=$([ -d "$expected_dir" ] && echo yes || echo no)" >&2
   if [ -d "$expected_dir" ]; then
     moved_aside="${expected_dir}.pre-${case_name}-$$"
-    mv "$expected_dir" "$moved_aside"
+    if mv "$expected_dir" "$moved_aside" 2>/dev/null; then
+      echo "DIAG: $case_name moved aside to [$moved_aside]" >&2
+    else
+      # Isolating THIS case's state is what matters, not preserving the old
+      # directory's contents — if mv can't move it for any reason, just
+      # remove it outright instead. Either way this must never abort the
+      # rest of the harness over a directory this run doesn't need to keep.
+      echo "DIAG: $case_name mv failed, falling back to rm -rf on [$expected_dir]" >&2
+      rm -rf "$expected_dir" 2>/dev/null || true
+      moved_aside=""
+    fi
   fi
 
   local env_args=(env DISPLAY=":$x_display" HOME="$user_home")
@@ -940,7 +952,10 @@ xdg_case() {
   pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 30 || true)"
   if [ -z "$pid" ]; then
     add_check "XDG case ($case_name): app starts, correct dir freshly created, mode 0700" "false" "app never started"
-    [ -n "$moved_aside" ] && rm -rf "$moved_aside"
+    if [ -n "$moved_aside" ]; then
+      rm -rf "$moved_aside" 2>/dev/null || true
+    fi
+    echo "DIAG: leaving xdg_case $case_name (app never started)" >&2
     return
   fi
   owned_pids+=("$pid")
@@ -959,7 +974,10 @@ xdg_case() {
   for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
   kill -9 "$pid" 2>/dev/null || true
   [ -n "$sidecar_pid" ] && { kill -9 "$sidecar_pid" 2>/dev/null || true; }
-  [ -n "$moved_aside" ] && rm -rf "$moved_aside"
+  if [ -n "$moved_aside" ]; then
+    rm -rf "$moved_aside" 2>/dev/null || true
+  fi
+  echo "DIAG: leaving xdg_case $case_name normally" >&2
 }
 xdg_case "unset"            ""                                           "false"
 xdg_case "absolute-custom"  "$user_home/custom xdg data"                 "true"
