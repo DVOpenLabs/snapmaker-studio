@@ -35,7 +35,7 @@ For a judge/Innovation-Fund cut, add two short beats after the convert success:
   (Validate highlighted — it's always on).
 - Tagline: **"The workflow platform for modern 3D printing."**
 - Sub: _Understand any design, catch risks before slicing, prepare it for the U1._ ·
-  "Local-first · Open source · github.com/DeadlyVirusIn/snapmaker-studio"
+  "Local-first · Open source · github.com/DVOpenLabs/snapmaker-studio"
 
 ## Capture notes
 - Use real files (example.3mf -> example_SnapmakerU1.3mf) — the before/after is

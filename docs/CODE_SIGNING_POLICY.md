@@ -1,7 +1,7 @@
 # Code signing policy
 
 Snapmaker Studio is an independent, MIT-licensed open-source project maintained in
-public at <https://github.com/DeadlyVirusIn/snapmaker-studio>.
+public at <https://github.com/DVOpenLabs/snapmaker-studio>.
 
 This page exists because signing programs for open-source projects require the
 project to publish who can release code and how. It is also simply useful: anyone
@@ -12,7 +12,7 @@ downloading an installer should be able to see how it was produced.
 | | |
 |---|---|
 | Name | Snapmaker Studio |
-| Repository | <https://github.com/DeadlyVirusIn/snapmaker-studio> |
+| Repository | <https://github.com/DVOpenLabs/snapmaker-studio> |
 | Licence | MIT |
 | Distribution | GitHub Releases, free of charge |
 | Platforms | Windows 10/11 x64 |
@@ -128,7 +128,7 @@ submission that legally represents the maintainer, which is theirs to send.
 ### Prepared form answers
 
 - **Project name:** Snapmaker Studio
-- **Project URL:** <https://github.com/DeadlyVirusIn/snapmaker-studio>
+- **Project URL:** <https://github.com/DVOpenLabs/snapmaker-studio>
 - **Licence:** MIT
 - **Description:** A local-first desktop application that reads a 3D project file,
   explains the print risks it can prove, compares the project against the user's

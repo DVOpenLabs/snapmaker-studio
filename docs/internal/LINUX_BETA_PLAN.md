@@ -27,15 +27,23 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
 
 ## Two decisions that need the maintainer, not made here
 
-1. **`bundle.publisher` in the shared `tauri.conf.json`** currently reads
-   `"DeadlyVirusIn / Snapmaker Studio"` — stale since the repo moved to
-   `DVOpenLabs/snapmaker-studio`. It also feeds the Windows NSIS installer's
-   publisher string, so changing it is a Windows-visible change riding on a
-   Linux-only phase. **Left untouched for L5** — the `.deb`'s `Maintainer:`
-   field carries the same stale string as a documented, known gap. Fix it
-   only with the maintainer's explicit yes (or confirm whether Tauri honors
-   `publisher` as a `tauri.linux.conf.json`-only override, which would
-   avoid touching the shared file at all).
+1. ~~**`bundle.publisher` in the shared `tauri.conf.json`**~~ **RESOLVED —
+   maintainer decided.** Was `"DeadlyVirusIn / Snapmaker Studio"`, changed to
+   `"DVOpenLabs"` in `desktop/src-tauri/tauri.conf.json`, applying to both
+   Windows (NSIS installer publisher string) and Linux (the `.deb`'s
+   `Maintainer:` field, via the shared config — no Linux-only override
+   needed). `linux-ci.yml`'s metadata-verification step now asserts
+   `Maintainer: DVOpenLabs` as a hard check (previously deliberately
+   unchecked, since it was still stale). A repo-wide sweep for
+   `DeadlyVirusIn`/`github.com/DeadlyVirusIn` was done alongside this: live
+   surfaces (README, landing page, the app's own update-check URL in
+   `main.rs`, issue templates, etc.) updated to `DVOpenLabs`; genuinely
+   historical records (per-release evidence JSON, dated handoff docs,
+   Innovation Fund submission records — submitted under the old name, so
+   rewriting them would falsify what was actually submitted) left untouched
+   on purpose, not missed. `@DeadlyVirusIn` as Kunal's personal GitHub
+   handle (distinct from the org/repo rename) was also left alone — that's
+   a different identity than the one this decision was about.
 2. **Version-numbering scheme for a Linux prerelease.** The `.deb` today
    ships `Version: 0.9.0` — identical to the stable, EXTERNAL-USER-VERIFIED
    Windows release, with nothing in the number itself signaling Linux is at
@@ -212,11 +220,10 @@ landed (see below); everything that makes the integration operationally
    this document's own earlier text asked for it to be resolved before L6
    starts, and L6's release-wiring half genuinely depends on it (the
    autonomous CI-plumbing slice above does not).
-4. **`bundle.publisher` value and scope** — now confirmed mechanically
-   possible to fix Linux-only (via `tauri.linux.conf.json`) without
-   touching the Windows NSIS string, so the remaining question is purely
-   the maintainer's: what value, and whether to also fix Windows at the
-   same time or leave that for later.
+4. ~~**`bundle.publisher` value and scope**~~ **RESOLVED — see the L5
+   section above.** Maintainer chose `"DVOpenLabs"`, applied to both
+   platforms via the shared `tauri.conf.json` (not Linux-only — the
+   maintainer explicitly asked to fix Windows too, not leave it for later).
 
 ### Adjacent, explicitly NOT part of L6
 

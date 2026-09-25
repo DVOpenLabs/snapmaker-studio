@@ -40,7 +40,7 @@ SIGNALS = {
 
 def fetch(url: str = URL) -> str:
     request = urllib.request.Request(
-        url, headers={"User-Agent": "snapmaker-studio-fund-watch (+https://github.com/DeadlyVirusIn/snapmaker-studio)"})
+        url, headers={"User-Agent": "snapmaker-studio-fund-watch (+https://github.com/DVOpenLabs/snapmaker-studio)"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.read().decode("utf-8", errors="replace")
 

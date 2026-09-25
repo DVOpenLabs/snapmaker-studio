@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Tried Studio on one of your own models?
-    url: https://github.com/DeadlyVirusIn/snapmaker-studio/discussions
+    url: https://github.com/DVOpenLabs/snapmaker-studio/discussions
     about: Tell us what it got right or wrong — even a one-line note is useful. No account setup beyond GitHub.
   - name: Not sure whether it is a bug?
-    url: https://github.com/DeadlyVirusIn/snapmaker-studio/blob/main/docs/innovation-fund/BETA_TEST_PLAN.md
+    url: https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/innovation-fund/BETA_TEST_PLAN.md
     about: What we are asking testers for, and what counts as a useful report.

@@ -4,8 +4,8 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)
-![Release](https://img.shields.io/github/v/release/DeadlyVirusIn/snapmaker-studio?display_name=tag&include_prereleases)
-[![CI](https://github.com/DeadlyVirusIn/snapmaker-studio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DeadlyVirusIn/snapmaker-studio/actions/workflows/ci.yml)
+![Release](https://img.shields.io/github/v/release/DVOpenLabs/snapmaker-studio?display_name=tag&include_prereleases)
+[![CI](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml)
 ![Status: stable](https://img.shields.io/badge/status-stable-brightgreen.svg)
 
 ### You downloaded a model. Will it actually print on your U1?
@@ -17,9 +17,9 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DeadlyVirusIn/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.9.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
-[![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DeadlyVirusIn/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
+[![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
 *The Intelligence Layer for Open 3D Printing.*
 
@@ -64,17 +64,17 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 ## Download
 
-**[⬇ Download Snapmaker Studio v0.9.0 for Windows](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.9.0)**
+**[⬇ Download Snapmaker Studio v0.9.0 for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0)**
 — one click, no Python, runs offline. Windows 10/11 x64.
 
 **v0.9.0 is the current stable release** — not a prerelease, so this is also what
-GitHub's [latest release](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/latest)
+GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
 points at. Every build ever published is on the
-[Releases page](https://github.com/DeadlyVirusIn/snapmaker-studio/releases).
+[Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
-- Release: [v0.9.0](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.9.0)
+- Release: [v0.9.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0)
 - Installer: `Snapmaker.Studio_0.9.0_x64-setup.exe`
 - Size: 17,100,560 bytes
 - SHA256: `294f7d25d8b1ef0f3fe26df9f83df6fa7482fa86aa998928db2a40335b4d202b`
@@ -99,9 +99,9 @@ Studio's whole claim is that it tells you the truth about your file and your
 printer, and says *"I can't tell"* when it cannot. Every time it gets that wrong,
 the claim is weaker — so a wrong analysis is the most useful thing you can send.
 
-**[→ Tell us what it got wrong](https://github.com/DeadlyVirusIn/snapmaker-studio/issues/new?template=studio-got-this-wrong.yml)**
+**[→ Tell us what it got wrong](https://github.com/DVOpenLabs/snapmaker-studio/issues/new?template=studio-got-this-wrong.yml)**
 — two questions: what Studio said, and what was actually true. Or start a
-[discussion](https://github.com/DeadlyVirusIn/snapmaker-studio/discussions) if
+[discussion](https://github.com/DVOpenLabs/snapmaker-studio/discussions) if
 you would rather just mention it.
 
 ## Screenshots

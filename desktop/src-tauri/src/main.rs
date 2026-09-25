@@ -409,7 +409,7 @@ fn is_newer(latest: &str, current: &str) -> bool {
 fn check_for_update() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let response = ureq::get(
-        "https://api.github.com/repos/DeadlyVirusIn/snapmaker-studio/releases/latest",
+        "https://api.github.com/repos/DVOpenLabs/snapmaker-studio/releases/latest",
     )
     .set("User-Agent", "snapmaker-studio")
     .set("Accept", "application/vnd.github+json")
@@ -437,7 +437,7 @@ fn check_for_update() -> Result<UpdateInfo, String> {
         url: body
             .get("html_url")
             .and_then(|v| v.as_str())
-            .unwrap_or("https://github.com/DeadlyVirusIn/snapmaker-studio/releases/latest")
+            .unwrap_or("https://github.com/DVOpenLabs/snapmaker-studio/releases/latest")
             .to_string(),
         published: body
             .get("published_at")

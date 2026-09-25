@@ -81,7 +81,7 @@ so users can verify. Signing readiness: `docs/windows-code-signing.md`.
   guards in `backend/tests/test_public_claims.py` enforce both — keep them green).
 - **Absolute links.** A GitHub *release page* resolves relative links against the
   repo ROOT, not `docs/`, so `(windows-install.md)` 404s. Link with a full URL:
-  `https://github.com/DeadlyVirusIn/snapmaker-studio/blob/v<version>/docs/<file>`.
+  `https://github.com/DVOpenLabs/snapmaker-studio/blob/v<version>/docs/<file>`.
 - **Verify the LIVE body after publishing:** open the release, click every link
   (no 404s), confirm SHA256 + unsigned notice present, asset attached, and no banned
   terms. Same protocol when adding any "superseded" notice to an older release.
