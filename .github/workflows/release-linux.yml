@@ -26,13 +26,23 @@ name: Release (Linux .deb, workflow_dispatch only)
 # category the maintainer has standing-authorized throughout the Linux-
 # support program.
 #
-# Enabling a real release trigger later (after external Linux evidence and
-# explicit authorization) is meant to be a small, clean, reviewable diff:
-# add `push: tags: ["v*"]` to the `on:` block below, next to the
+# Enabling a real release trigger is meant to be a small, clean, reviewable
+# diff: add `push: tags: ["v*"]` to the `on:` block below, next to the
 # `workflow_dispatch` that's already there. Nothing else about this file
 # should need to change for that step — the whole point of keeping it
 # separate from release.yml and self-contained is that enabling it is not
 # itself the crossing of the release boundary; publishing IS.
+#
+# UPDATED (v1.0.0 release-prep authorization, docs/internal/LINUX_BETA_PLAN.md
+# L10): the maintainer's explicit v1.0.0 authorization directs ONE GitHub
+# Release carrying both the Windows installer and this Linux .deb — Linux
+# ships in v1.0.0 on that explicit authorization, not gated on
+# EXTERNAL USER VERIFIED arriving first (no realistic way exists to get
+# external Linux evidence before a Linux package is ever publicly
+# downloadable). The actual converging release workflow is v1.0.0
+# release-prep's own scope, not this comment; this note only corrects the
+# stale "after external Linux evidence" framing above, which predates that
+# authorization.
 
 on:
   workflow_dispatch: {}
