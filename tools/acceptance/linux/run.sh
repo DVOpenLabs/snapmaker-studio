@@ -101,27 +101,32 @@ any_failed() {
   return 1
 }
 
-# Find a live descendant of $1 (a PID) whose /proc/<pid>/exe resolves to
-# EXACTLY $2 (an absolute path) AND is owned by real uid $1. Never matches
-# by process name or cmdline substring, and does not depend on the process
-# staying a direct descendant of whatever launched it — runuser's PAM
-# session handling was observed (real CI run 36101529627) to produce a
-# process tree shape a simple parent/child walk from the launcher PID does
-# not reliably traverse (the app's own PID was visible in its own stderr
-# output well within the poll window, but a /proc/<pid>/task/<pid>/children
-# walk from the runuser PID never found it). Matching on the pair (exact
-# owning uid, exact resolved binary) is immune to that entirely: it does
-# not care how the process tree is actually shaped, only who owns the
-# process and what binary the kernel says it's running — and since
-# $test_user's uid is freshly allocated and unique to this run, that pair
-# can never match anything this run didn't itself cause to exist.
-find_process_by_uid_and_exe() {
-  local want_uid="$1" want_exe="$2"
-  local pid_dir pid exe uid
+# Find a process owned by real uid $1 whose argv[0] (from /proc/<pid>/
+# cmdline, NUL-separated — the exact first token, never a substring) is
+# EXACTLY $2 (an absolute path). Two earlier approaches both failed for
+# real, diagnosed with actual data from a failing CI run (36104236871),
+# not guessed: a process-tree walk from the launcher PID (runuser's PAM
+# session handling produces a tree shape that doesn't reliably traverse),
+# then uid+/proc/<pid>/exe matching (readlink -f "/proc/<pid>/exe" itself
+# fails — permission denied — across a UID boundary in this container,
+# even for root: every uid=1000 process in that run's diagnostic dump
+# showed "exe=?", including ones root definitely has ptrace-equivalent
+# rights over in a normal environment — evidence of a restricted
+# CAP_SYS_PTRACE in this specific container runtime). The SAME diagnostic
+# dump proved /proc/<pid>/status (for uid) and /proc/<pid>/cmdline both
+# stayed readable across that same boundary, which is what this uses
+# instead. Exact argv[0] equality is not a "process name" or substring
+# match in the sense Sol's review warned about (a `pgrep -f` regex against
+# a joined command-line string) — it's the literal, exact, NUL-delimited
+# first argument this script itself chose when it invoked the process,
+# compared for byte-for-byte equality, combined with the exact owning uid.
+find_process_by_uid_and_argv0() {
+  local want_uid="$1" want_argv0="$2"
+  local pid_dir pid argv0 uid
   for pid_dir in /proc/[0-9]*; do
     pid="${pid_dir#/proc/}"
-    exe="$(readlink -f "$pid_dir/exe" 2>/dev/null || true)"
-    [ -n "$exe" ] && [ "$exe" = "$want_exe" ] || continue
+    argv0="$(tr '\0' '\n' < "$pid_dir/cmdline" 2>/dev/null | head -n1 || true)"
+    [ -n "$argv0" ] && [ "$argv0" = "$want_argv0" ] || continue
     uid="$(awk '/^Uid:/{print $2; exit}' "$pid_dir/status" 2>/dev/null || true)"
     [ "$uid" = "$want_uid" ] || continue
     echo "$pid"
@@ -130,11 +135,11 @@ find_process_by_uid_and_exe() {
   return 1
 }
 
-wait_for_process_by_uid_and_exe() {
-  local want_uid="$1" want_exe="$2" tries="${3:-40}"
+wait_for_process_by_uid_and_argv0() {
+  local want_uid="$1" want_argv0="$2" tries="${3:-40}"
   local found=""
   for _ in $(seq 1 "$tries"); do
-    found="$(find_process_by_uid_and_exe "$want_uid" "$want_exe" || true)"
+    found="$(find_process_by_uid_and_argv0 "$want_uid" "$want_argv0" || true)"
     [ -n "$found" ] && { echo "$found"; return 0; }
     sleep 0.5
   done
@@ -279,7 +284,7 @@ runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_ho
 app_launcher_pid=$!
 owned_pids+=("$app_launcher_pid")
 
-app_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$bin_path" 40 || true)"
+app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 40 || true)"
 if [ -z "$app_pid" ]; then
   add_check "App process started" "false" "never appeared within 20s"
   cat "$app_log" >&2 || true
@@ -306,7 +311,7 @@ fi
 add_check "App process started" "true" "PID $app_pid"
 owned_pids+=("$app_pid")
 
-sidecar_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$sidecar_exe" 40 || true)"
+sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 40 || true)"
 if [ -z "$sidecar_pid" ]; then
   add_check "Sidecar spawned from the installed app" "false" "never appeared within 20s"
   write_report
@@ -420,11 +425,11 @@ runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_ho
   "$bin_path" > "$evidence_dir/app_reopen.log" 2>&1 &
 reopen_launcher_pid=$!
 owned_pids+=("$reopen_launcher_pid")
-reopen_app_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$bin_path" 40 || true)"
+reopen_app_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 40 || true)"
 add_check "App reopens after a real close" "$([ -n "$reopen_app_pid" ] && echo true || echo false)" "PID ${reopen_app_pid:-none}"
 if [ -n "$reopen_app_pid" ]; then
   owned_pids+=("$reopen_app_pid")
-  reopen_sidecar_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$sidecar_exe" 20 || true)"
+  reopen_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 20 || true)"
   [ -n "$reopen_sidecar_pid" ] && owned_pids+=("$reopen_sidecar_pid")
   kill -9 "$reopen_app_pid" 2>/dev/null || true
   [ -n "${reopen_sidecar_pid:-}" ] && kill -9 "$reopen_sidecar_pid" 2>/dev/null || true
