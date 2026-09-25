@@ -149,7 +149,14 @@ find_process_by_uid_and_argv0() {
   local pid_dir pid argv0 uid
   for pid_dir in /proc/[0-9]*; do
     pid="${pid_dir#/proc/}"
-    argv0="$(tr '\0' '\n' < "$pid_dir/cmdline" 2>/dev/null | head -n1 || true)"
+    # Grouped so a failed input redirect (pid exited between the glob and
+    # this read — routine under heavy launch/kill cycling) is caught by
+    # THIS 2>/dev/null too. An un-grouped `cmd < file 2>/dev/null` does NOT
+    # suppress a failed `< file` redirect's own error message — bash reports
+    # that straight to the real stderr before the command's own redirection
+    # is even reached, which is noise, not a bug, but noise this harness
+    # doesn't need.
+    argv0="$({ tr '\0' '\n' < "$pid_dir/cmdline"; } 2>/dev/null | head -n1 || true)"
     [ -n "$argv0" ] && [ "$argv0" = "$want_argv0" ] || continue
     uid="$(awk '/^Uid:/{print $2; exit}' "$pid_dir/status" 2>/dev/null || true)"
     [ "$uid" = "$want_uid" ] || continue
@@ -387,7 +394,7 @@ if [ -z "$app_pid" ]; then
       pu="$(awk '/^Uid:/{print $2; exit}' "$p/status" 2>/dev/null || echo '?')"
       [ "$pu" = "$test_uid" ] || [ "$pu" = "0" ] || continue
       pe="$(readlink -f "$p/exe" 2>/dev/null || echo '?')"
-      pc="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || echo '?')"
+      pc="$({ tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null || echo '?')"
       echo "pid=$pn uid=$pu exe=$pe cmd=$pc"
     done
   } >&2
@@ -568,9 +575,8 @@ else
     add_check "SIGTERM as the test user leaves zero sidecars" \
       "$([ "$app_term_gone" -eq 0 ] && [ "$sidecar_term_gone" -eq 0 ] && echo true || echo false)" \
       "app_gone=$([ "$app_term_gone" -eq 0 ] && echo yes || echo no) sidecar_gone=$([ "$sidecar_term_gone" -eq 0 ] && echo yes || echo no)"
-    [ "$app_term_gone" -ne 0 ] && kill -9 "$stl_app_pid" 2>/dev/null
-    [ -n "${stl_sidecar_pid:-}" ] && [ "$sidecar_term_gone" -ne 0 ] && kill -9 "$stl_sidecar_pid" 2>/dev/null
-    true
+    [ "$app_term_gone" -ne 0 ] && { kill -9 "$stl_app_pid" 2>/dev/null || true; }
+    [ -n "${stl_sidecar_pid:-}" ] && [ "$sidecar_term_gone" -ne 0 ] && { kill -9 "$stl_sidecar_pid" 2>/dev/null || true; }
   fi
 fi
 
@@ -596,8 +602,7 @@ if [ -n "$sigkill_app_pid" ]; then
   add_check "SIGKILL as the test user leaves zero sidecars" \
     "$([ "$sidecar_kill_gone" -eq 0 ] && echo true || echo false)" \
     "sidecar_gone=$([ "$sidecar_kill_gone" -eq 0 ] && echo yes || echo no) — proven by the three-layer lifeline (PDEATHSIG/process-group), not this harness"
-  [ -n "${sigkill_sidecar_pid:-}" ] && kill -9 "$sigkill_sidecar_pid" 2>/dev/null
-  true
+  [ -n "${sigkill_sidecar_pid:-}" ] && { kill -9 "$sigkill_sidecar_pid" 2>/dev/null || true; }
 else
   add_check "SIGKILL as the test user leaves zero sidecars" "false" "app never appeared to be killed"
 fi
@@ -770,8 +775,7 @@ if [ "$api_ok" = "true" ]; then
       sleep 0.25
     done
     add_check "Standalone sidecar exits via the stdin lifeline (non-root)" "$([ "$lifeline_exited" -eq 0 ] && echo true || echo false)" ""
-    [ "$lifeline_exited" -ne 0 ] && kill -9 "$api_sidecar_pid" 2>/dev/null
-    true
+    [ "$lifeline_exited" -ne 0 ] && { kill -9 "$api_sidecar_pid" 2>/dev/null || true; }
   else
     exec 8<&- 2>/dev/null || true
   fi
@@ -811,8 +815,7 @@ xdg_case() {
   kill -TERM "$pid" 2>/dev/null || true
   for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
   kill -9 "$pid" 2>/dev/null || true
-  [ -n "$sidecar_pid" ] && kill -9 "$sidecar_pid" 2>/dev/null
-  true
+  [ -n "$sidecar_pid" ] && { kill -9 "$sidecar_pid" 2>/dev/null || true; }
 }
 xdg_case "unset"            ""                                           "false"
 xdg_case "absolute-custom"  "$user_home/custom xdg data"                 "true"
@@ -845,8 +848,7 @@ if [ -n "$unicode_app_pid" ]; then
   kill -TERM "$unicode_app_pid" 2>/dev/null || true
   for _ in $(seq 1 20); do kill -0 "$unicode_app_pid" 2>/dev/null || break; sleep 0.25; done
   kill -9 "$unicode_app_pid" 2>/dev/null || true
-  [ -n "$unicode_sidecar_pid" ] && kill -9 "$unicode_sidecar_pid" 2>/dev/null
-  true
+  [ -n "$unicode_sidecar_pid" ] && { kill -9 "$unicode_sidecar_pid" 2>/dev/null || true; }
 fi
 
 kill "$wm_pid" 2>/dev/null || true
