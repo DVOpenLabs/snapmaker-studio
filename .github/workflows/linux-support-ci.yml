@@ -317,15 +317,179 @@ jobs:
             echo "WARNING: $symlink_count_source directory symlink(s) in the source onedir tree — verify they were not silently dropped from the bundle." >&2
           fi
 
-      - name: Install the .deb and verify a clean install/removal cycle
+          echo "--- Verifying L5 package metadata (tauri.linux.conf.json's homepage/category/description/section) ---"
+          # This does NOT check Maintainer: it still reads the stale
+          # "DeadlyVirusIn / Snapmaker Studio" (bundle.publisher lives in the
+          # shared tauri.conf.json, also used by the Windows NSIS build —
+          # left alone pending the maintainer's explicit sign-off; see
+          # docs/internal/LINUX_BETA_PLAN.md). Everything checked here is
+          # Linux-only metadata added in tauri.linux.conf.json.
+          homepage="$(dpkg-deb -f "$deb_abs" Homepage)"
+          echo "Homepage: $homepage"
+          if [ "$homepage" != "https://github.com/DVOpenLabs/snapmaker-studio" ]; then
+            echo "Unexpected Homepage: $homepage" >&2
+            exit 1
+          fi
+          section="$(dpkg-deb -f "$deb_abs" Section)"
+          echo "Section: $section"
+          if [ "$section" != "utils" ]; then
+            echo "Unexpected Section: $section" >&2
+            exit 1
+          fi
+          description="$(dpkg-deb -f "$deb_abs" Description)"
+          echo "--- Description ---"
+          echo "$description"
+          case "$description" in
+            "Local-first pre-print intelligence layer for 3D printing"*) ;;
+            *)
+              echo "Description missing the expected short-description line." >&2
+              exit 1
+              ;;
+          esac
+          case "$description" in
+            *"never modifies your original file"*) ;;
+            *)
+              echo "Description missing the long-description text — looks like the (none) placeholder is still there." >&2
+              exit 1
+              ;;
+          esac
+          echo "Package metadata verified: Homepage, Section, and both description lines present."
+
+      - name: Install the .deb and verify the .desktop file, then a full lifecycle (reinstall, upgrade, purge)
         run: |
           set -euo pipefail
+          # dpkg-query's ${db:Status-Abbrev} is the correct way to ask "is
+          # this package actually installed" — `dpkg -l "$pkg" | grep '^ii'`
+          # looks equivalent but a literal `grep -F '^ii'` never matches
+          # anything (grep -F treats `^` as a literal character, not an
+          # anchor) and silently kills every step that used it under
+          # `set -e`. Match on the "ii" prefix, not an exact multi-char
+          # string, since the abbreviation's trailing padding isn't a
+          # contract worth depending on.
+          installed() {
+            # ${db:Status-Abbrev} is contractually 3 characters
+            # (desired-action, current-status, error-flag); a clean install
+            # is exactly "ii " (trailing space, preserved by $(...) — only
+            # trailing NEWLINES get stripped). Matching "ii*" would also
+            # accept "iiR" (installed but flagged reinstall-required), which
+            # is a real, different state this check should not call healthy.
+            case "$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null)" in
+              "ii ") return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          timeout -k 5 60 apt-get install -y --no-install-recommends desktop-file-utils
           apt-get install -y "$deb_path"
           echo "--- Installed files ---"
           dpkg -L "$pkg_name"
-          echo "--- Removing ---"
-          apt-get remove -y "$pkg_name"
-          echo "Clean install/removal cycle passed for package: $pkg_name"
+          # Snapshot every real file (not directory) this package installed,
+          # BEFORE anything is removed — the purge check at the end asserts
+          # against this real, complete list rather than a hand-picked path
+          # list that can silently go stale as the bundle's contents change.
+          # `if [ -f "$f" ]; then echo "$f"; fi`, not `[ -f "$f" ] && echo "$f"`:
+          # the loop's own exit status is whatever its LAST iteration
+          # returned, and `&&` makes that 1 whenever the last dpkg -L entry
+          # happens to be a directory — under `set -euo pipefail` that would
+          # kill this step right after a correct listing, for no real reason.
+          installed_files_snapshot="$(dpkg -L "$pkg_name" | while IFS= read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)"
+
+          echo "--- Verifying the installed .desktop file (Categories, and that it validates) ---"
+          # Pure bash loop over dpkg -L's output, not a pipe into `grep | head`
+          # — same SIGPIPE-under-pipefail avoidance reasoning as elsewhere in
+          # this workflow (an early-exiting consumer piped from a live
+          # producer can report the whole pipeline failed even on a genuine
+          # match).
+          desktop_file=""
+          while IFS= read -r f; do
+            case "$f" in
+              /usr/share/applications/*.desktop)
+                desktop_file="$f"
+                break
+                ;;
+            esac
+          done <<< "$(dpkg -L "$pkg_name")"
+          if [ -z "$desktop_file" ]; then
+            echo "No .desktop file found under /usr/share/applications/ in the installed package." >&2
+            exit 1
+          fi
+          echo "Desktop file: $desktop_file"
+          categories_line="$(grep -m1 '^Categories=' "$desktop_file" || true)"
+          echo "Categories line: ${categories_line:-<missing>}"
+          # `Categories=` with nothing after the `=` (empty) is what tauri.linux.conf.json's
+          # bundle.category is meant to fix — a bare "Categories=" is a real
+          # failure here, not just cosmetic: some desktop environments won't
+          # list an app in any menu category without it. desktop-file-validate
+          # itself exits 0 on an empty Categories= too, so this explicit check
+          # is the one that actually catches the regression it's named for.
+          if [ "$categories_line" = "Categories=" ] || [ -z "$categories_line" ]; then
+            echo "Categories is empty or missing — bundle.category in tauri.linux.conf.json did not take effect." >&2
+            exit 1
+          fi
+          desktop-file-validate "$desktop_file"
+          echo "Desktop file validated with 0 errors, Categories non-empty."
+
+          echo "--- Reinstalling the SAME version (idempotent reinstall) ---"
+          apt-get install -y --reinstall "$deb_path"
+          if ! installed "$pkg_name"; then
+            echo "Package $pkg_name does not report installed after --reinstall." >&2
+            exit 1
+          fi
+
+          echo "--- Upgrading in place (rewritten .deb with a bumped patch version, no second Tauri build) ---"
+          # Proves version ordering and in-place package replacement — the
+          # part of "upgrade" that's cheap to test without a second, much
+          # slower `tauri build`. It does NOT prove that files removed
+          # between two real versions get cleaned up on upgrade (e.g. a
+          # stale file left behind in onedir's _internal/): the payload here
+          # is byte-identical to the version being replaced, only the
+          # control Version: field differs.
+          upgrade_workdir="$(mktemp -d)"
+          dpkg-deb -R "$deb_path" "$upgrade_workdir"
+          # dpkg-deb -R doesn't preserve the extraction root's own mode, and
+          # `mktemp -d` creates it 0700 — since that root becomes the
+          # package's own "./" entry when rebuilt, an installed package could
+          # otherwise claim to own a locked-down root directory entry.
+          chmod 755 "$upgrade_workdir"
+          current_version="$(dpkg-deb -f "$deb_path" Version)"
+          upgraded_version="${current_version}+ci-upgrade-test"
+          sed -i "s/^Version: .*/Version: $upgraded_version/" "$upgrade_workdir/DEBIAN/control"
+          upgraded_deb="$(mktemp -u --suffix=.deb)"
+          dpkg-deb -b "$upgrade_workdir" "$upgraded_deb"
+          apt-get install -y "$upgraded_deb"
+          installed_version_after="$(dpkg-query -W -f='${Version}' "$pkg_name")"
+          echo "Version after upgrade: $installed_version_after (was $current_version)"
+          if [ "$installed_version_after" != "$upgraded_version" ]; then
+            echo "Upgrade did not take effect (still $installed_version_after, expected $upgraded_version)." >&2
+            exit 1
+          fi
+          echo "Upgrade-in-place verified."
+
+          echo "--- Purging ---"
+          # Purge directly from this installed (upgraded) state, not after a
+          # separate `apt-get remove` first: Tauri's .deb ships no conffiles
+          # and no maintainer scripts, so `remove` alone already fully
+          # uninstalls it — a subsequent `purge` would be a meaningless
+          # no-op, which is also why the old version of this step masked its
+          # result with `|| true` instead of asserting it actually ran.
+          apt-get purge -y "$pkg_name"
+          echo "--- Verifying purge left nothing behind ---"
+          leftover_found=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ -e "$f" ]; then
+              echo "Leftover after purge: $f" >&2
+              leftover_found=1
+            fi
+          done <<< "$installed_files_snapshot"
+          if [ "$leftover_found" -ne 0 ]; then
+            exit 1
+          fi
+          if installed "$pkg_name"; then
+            echo "Package $pkg_name still reports installed after purge." >&2
+            exit 1
+          fi
+          echo "PACKAGE VERIFIED: install, reinstall, upgrade-in-place, and purge all behave correctly — every file this package installed is gone."
 
       - name: Smoke-test the packaged sidecar starts and answers over loopback
         run: |
@@ -395,6 +559,7 @@ jobs:
           # handshake, instead of failing fast the way every other
           # network/process-touching command in this workflow does.
           timeout -k 5 60 python3.13 - "$exe" <<'PYEOF'
+          import json
           import os
           import subprocess
           import sys
@@ -412,7 +577,15 @@ jobs:
                   print("Sidecar produced no handshake line.", file=sys.stderr)
                   proc.kill()
                   sys.exit(1)
-              print(f"Handshake received: {line!r}")
+              # Log only the port, never the token, even though this token is
+              # ephemeral and CI-local — this repo is public, so CI logs are
+              # public too (same principle the smoke-test step above already
+              # follows for the same handshake line).
+              try:
+                  port = json.loads(line)["port"]
+              except (json.JSONDecodeError, KeyError):
+                  port = "?"
+              print(f"Handshake received, port={port}")
 
               proc.stdin.close()  # simulate parent death: close the pipe write end
 
@@ -812,13 +985,74 @@ jobs:
 
           apt-get remove -y "$pkg_name"
 
-      - name: Upload build artifacts
+      - name: Checksum and label the .deb for retrieval
+        # No `if:` here — defaults to running only on success, same as every
+        # earlier step. An `if: always()` on THIS step (an earlier version
+        # of this workflow had one) is wrong: if any earlier step failed,
+        # $deb_path may reference a .deb that's fine but whose lifecycle/
+        # metadata checks failed, or reference nothing at all — either way
+        # labeling and uploading it as a verified artifact would be
+        # misleading, and upload-artifact's `if-no-files-found: error` below
+        # would just add a second, confusing failure on top of the real one.
+        # Makes the artifact retrievable and attributable to an exact commit
+        # rather than just "today's build": a bare .deb re-downloaded later
+        # has no way to confirm which source it came from or that it wasn't
+        # corrupted/truncated in transit.
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          version="$(dpkg-deb -f "$deb_path" Version)"
+          artifact_dir="dist-linux"
+          mkdir -p "$artifact_dir"
+          labeled_deb="$artifact_dir/snapmaker-studio_${version}_amd64_${short_sha}.deb"
+          cp "$deb_path" "$labeled_deb"
+          (cd "$artifact_dir" && sha256sum "$(basename "$labeled_deb")" > SHA256SUMS)
+          cat "$artifact_dir/SHA256SUMS"
+          {
+            echo "package: $pkg_name"
+            echo "version: $version"
+            echo "commit: $GITHUB_SHA"
+            echo "branch: $GITHUB_REF_NAME"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "evidence: PACKAGE VERIFIED, HEADLESS RUNTIME VERIFIED (see linux-support-ci.yml job for this run)"
+            # This repo is public: any signed-in GitHub user can download a
+            # workflow artifact from it (retention window aside) — never
+            # claim this is private or unreachable, only that it isn't an
+            # official release.
+            echo "status: UNRELEASED engineering preview of $version — not attached to a GitHub Release, not the stable Windows release, not designated stable"
+          } > "$artifact_dir/MANIFEST.txt"
+          cat "$artifact_dir/MANIFEST.txt"
+
+      - name: Upload .deb + checksum + manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb
+          path: dist-linux/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload raw .deb for reproduction, on failure
+        # A failure anywhere upstream skips the labeling step above (by
+        # design — see its comment), which would otherwise mean a failed
+        # run uploads nothing at all to reproduce the failure with, a
+        # regression from this workflow's original always-upload behavior.
+        # `warn`, not `error`: an early enough failure (e.g. before the
+        # build step) means there's genuinely no .deb yet, and that's
+        # already reported by the failed step itself.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb-failed-run
+          path: desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linux-deb-and-logs
+          name: linux-build-logs
           path: |
-            desktop/src-tauri/target/release/bundle/deb/*.deb
             backend/build/**/warn-*.txt
           if-no-files-found: warn
           retention-days: 14
