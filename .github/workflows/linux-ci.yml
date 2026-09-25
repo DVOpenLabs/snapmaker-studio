@@ -1107,6 +1107,16 @@ jobs:
     timeout-minutes: 25
     env:
       DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        # The bare ubuntu:22.04/24.04 container images default `run:` steps
+        # to /bin/sh (dash), not bash — `set -o pipefail` is bash-only and
+        # dash rejects it outright ("Illegal option -o pipefail"), confirmed
+        # by the first real run of this job. Same fix already applied to the
+        # build job above (see its own defaults: block) for the identical
+        # reason; this job needs it independently since GitHub Actions
+        # `defaults:` doesn't inherit across jobs.
+        shell: bash
     steps:
       - name: Pre-install clean-environment assertions (items 3-6, 30)
         # Proves this image genuinely has no Python/Node/Rust before
