@@ -1,4 +1,4 @@
-# Linux beta plan — L5 and L6 record
+# Linux beta plan — L5 through L8 record
 
 **UNRELEASED. Internal only, not linked from README/docs/landing. Not an
 announcement.** No public GitHub Release, tag, or change to the stable
@@ -271,3 +271,153 @@ required check (a policy choice, and premature before it's run against
 real PRs); deleting the feature branch after merge (separate hard stop);
 running the Windows acceptance harness against a `main` build (a merge
 consequence, listed above for visibility, not L6 work).
+
+## L7 — automated Linux acceptance + a real production bug fix
+
+Merged to `main` via PR #21, merge commit `8a621c0`. Two independent
+things landed together because the second was found while planning the
+first:
+
+- **F1 bug fix** (`desktop/src-tauri/src/main.rs`): closing the main
+  window did not exit Snapmaker Studio, on Windows AND Linux, since
+  beta.13 (`3f01ea6`, when the Model Browser started being pre-built
+  hidden at startup). Root cause, verified against pinned Tauri/tao
+  source: `RunEvent::Exit` only fires when the window map becomes empty;
+  the Model Browser's own `CloseRequested` handler always calls
+  `prevent_close()`+`hide()` instead of destroying it, so that map is
+  never empty. Fixed by handling
+  `RunEvent::WindowEvent { label: "main", event: WindowEvent::Destroyed }`
+  directly and calling `app_handle.exit(0)`. Verified for real on Windows
+  (a fresh `npm run release:windows` build, a real `CloseMainWindow()`
+  probe with proper parent-child PID tracking to avoid conflating with
+  another already-running instance on the same machine) and on Linux (CI,
+  many times over — see below).
+- **`tools/acceptance/linux/run.sh`** (new): the Linux counterpart to
+  `tools/acceptance/run.ps1` — installs the real `.deb`, launches the real
+  installed binary as a fresh unprivileged test account under
+  Xvfb+openbox, drives a real window-manager close (not a kill), and
+  checks the graceful `/shutdown` path was actually taken. Went through a
+  BLOCK-then-fix-then-reapproved review cycle (Opus+Sol, twice) before
+  merge — process/account-ownership hardening (unique per-run test
+  account, exact uid+argv0 process matching after two other matching
+  approaches failed empirically in real CI) is the direct ancestor of the
+  L8 harness this same file grew into.
+
+Evidence: `linux-ci.yml` run `36141769226` and prior, all green; 12/12
+harness checks passing pre-L8.
+
+## L8 — clean-environment validation
+
+Branch `linux-support/l8-clean-environment`, based on `main` at `8a621c0`.
+Plan co-authored by Fable + Astra (parallel dispatch, reconciled by the
+lead — Fable's plan adopted as primary: grounded in a real WSL experiment
+reproducing the uid-recycling hazard, real noble-archive package lookups
+for 24.04 feasibility, and file:line citations against the actual L4-L7
+code; Astra's independent corrections folded in, notably that
+`linux-ci.yml`'s existing signal-lifecycle steps do NOT exercise the
+graceful `RunEvent::Exit` path — only L7's harness does).
+
+### What shipped
+
+- **`tools/acceptance/linux/run.sh` grew from 12 to 33 checks**, all
+  still real-CI-green: the pre-existing 3MF GUI flow, plus (new) an STL
+  launch, SIGTERM/SIGKILL as the actual non-root test user (every prior
+  signal-lifecycle proof in this project ran as root), 3 repeated
+  launch/close cycles with a zero-accumulated-orphans sweep,
+  sidecar-crash-first survival, a headless API lane that drives the
+  sidecar binary directly via its real stdin lifeline
+  (`SNAPSTUDIO_PARENT_LIFELINE=stdin-v1`) and exercises `/doctor` (3MF,
+  STL, and the real Orca-painted fixture), `/color_plan`, `/mm_doctor`,
+  `/convert` (Prepare — proves a new output file, original byte-identical),
+  `/fidelity`, `/report`, 3 XDG_DATA_HOME configurations (unset/
+  absolute-custom/relative-ignored), and a unicode+spaces launch path
+  asserted byte-exact in the library index.
+- **`tools/acceptance/linux/package-lifecycle.sh`** (new): the
+  install/reinstall/upgrade/purge sequence extracted out of
+  `linux-ci.yml`'s inline YAML into its own script, behaviour-identical,
+  so the new clean-image job below can run the exact same real lifecycle
+  test without the YAML duplicating and silently drifting.
+- **`clean-env-validate`** (new job in `linux-ci.yml`): a
+  `ubuntu:22.04`/`ubuntu:24.04` matrix, `needs: linux-build-and-package`,
+  each leg a genuinely bare container (no `actions/checkout` — only the
+  built `.deb` and a small "acceptance kit" artifact of scripts+fixtures
+  the build job packages separately). Sequence per leg: assert no
+  python/node/rust present -> install ONLY the `.deb` -> assert still none
+  (with one documented, evidence-backed exception, below) -> `ldd` sweep
+  across every installed ELF for missing shared libraries -> full package
+  lifecycle -> install test tooling (kept in its own separate step so it
+  never contaminates the dependency-leak assertion above) -> the full
+  33-check `run.sh`. **Both legs fully green as of commit `0c3ea25`,
+  including the whole 33/33 harness on each** — the first genuinely clean-
+  image confirmation this project has ever had.
+- **The uid-scoped-pkill limitation from L7 was investigated, not just
+  re-documented**, as required: a real experiment (root, WSL Ubuntu
+  24.04) confirmed `userdel -f` on an account with a live process succeeds
+  and its uid is immediately available for reuse by the next `useradd` —
+  and that accountsservice (what GNOME Settings → Users → Remove User
+  calls) always passes `-f`, so this is reachable on a real single-user
+  desktop, not purely a multi-tenant-server concern. Fixed (not merely
+  re-bounded) by capturing the harness's own `/proc` start-time before it
+  creates anything and scoping the safety-net kill to only processes that
+  started after — a pre-existing orphan under a recycled uid is now left
+  alone and reported, never killed.
+
+### Real findings this phase surfaced (evidence, not assumptions)
+
+- **python3 is present after installing only the `.deb`, on BOTH 22.04
+  and 24.04** — confirmed via the actual apt install logs, not inferred:
+  `libwebkit2gtk-4.1-0` depends on `xdg-desktop-portal-gtk` (WebKitGTK
+  uses the desktop portal for sandboxed file dialogs), which itself
+  depends on `python3-gi` on both releases. This project's own `.deb`
+  declares only `libwebkit2gtk-4.1-0, libgtk-3-0` as `Depends` — there is
+  no packaging change that removes this short of dropping the GTK webview
+  entirely. Never caught before L8 because the existing build job's
+  container already has Python installed for its own build needs, so
+  "python3 became newly available" was never observable there. Recorded
+  as an explicit, evidence-backed, non-blocking exception in the item-30
+  check (which still hard-fails on node/npm/cargo/rustc, or on python3
+  appearing WITHOUT `xdg-desktop-portal-gtk` also being installed — that
+  would be a genuine, unexplained regression).
+- **A whole family of D-Bus-activated session daemons legitimately
+  outlives every app instance**: the main session bus
+  (`dbus-launch`/`dbus-daemon`), plus on a genuinely clean image's fuller
+  dependency closure, the AT-SPI accessibility bus
+  (`at-spi-bus-launcher`, a second `dbus-daemon` instance,
+  `at-spi2-registryd`) and the desktop-portal stack (`xdg-desktop-portal`,
+  `xdg-desktop-portal-gtk`, `xdg-permission-store`). All confirmed
+  `ppid=1` (reparented after their D-Bus-activating process exited), all
+  standard, session-scoped, activate-once infrastructure — none of it
+  started or owned by any single app launch this harness makes, exactly
+  like Xvfb/openbox aren't expected to disappear either. The harness's
+  "zero orphans after repeated cycles" check now filters this specific,
+  named family (matched by `argv[0]`) rather than expecting the uid to be
+  completely empty.
+
+### Evidence tiers earned
+
+- **BUILD VERIFIED / PACKAGE VERIFIED / HEADLESS RUNTIME VERIFIED**:
+  extended to genuinely clean `ubuntu:22.04` AND `ubuntu:24.04`, not just
+  the build container (which already had a full dev toolchain).
+- **DESKTOP WORKFLOW VERIFIED**: extended to both clean images — a real
+  Xvfb display, a real window manager, a real window close, exercised
+  through the full 33-check harness, not simulated.
+- **REAL U1 VERIFIED**: not touched (no printer in CI). **EXTERNAL USER
+  VERIFIED**: not touched (no external human tester yet) — stays false
+  until L10 produces one.
+
+### Not yet done (tracked, not silently dropped)
+
+- A REAL cross-version upgrade test (installing an actual prior release,
+  then upgrading) is still not possible — no Linux beta has shipped yet,
+  so there is no prior artifact to upgrade FROM. The existing upgrade
+  check remains a synthetic, honestly-labelled proof (same version,
+  bumped control field only).
+- The GUI-driven Prepare/Fidelity/painted stretch (clicking through the
+  actual UI rather than the headless API lane) was deliberately not
+  attempted — Astra's own top risk assessment flagged coordinate-clicking
+  as brittle across OS/font-rendering differences, and the headless API
+  lane already proves the same backend code paths with real fixtures and
+  real expected values.
+- Real Ubuntu Desktop VM replay (as opposed to a CI container) — planned
+  as a bounded claim, not yet executed; the current claim is "clean
+  Ubuntu userspace under Xvfb," which this phase delivers honestly.
