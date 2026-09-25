@@ -230,12 +230,13 @@ add_check "App window appears" "$([ -n "$window_id" ] && echo true || echo false
 if [ -n "$window_id" ]; then
   echo "=== Screenshotting (proves it renders something, not a blank white window) ==="
   sleep 2  # let the React app finish its initial paint
-  import -display :99 -window root "$evidence_dir/01-dashboard.png" 2>/dev/null || true
+  import_err="$evidence_dir/import.err"
+  import -display ":$x_display" -window root "$evidence_dir/01-dashboard.png" 2>"$import_err" || true
   if [ -f "$evidence_dir/01-dashboard.png" ]; then
     unique_colors="$(convert "$evidence_dir/01-dashboard.png" -format %k info: 2>/dev/null || echo 0)"
     add_check "App renders (screenshot is not a uniform blank window)" "$([ "${unique_colors:-0}" -gt 5 ] && echo true || echo false)" "$unique_colors unique colors"
   else
-    add_check "App renders (screenshot is not a uniform blank window)" "false" "screenshot capture failed"
+    add_check "App renders (screenshot is not a uniform blank window)" "false" "screenshot capture failed: $(tr '\n' ' ' < "$import_err" 2>/dev/null || echo unknown)"
   fi
 fi
 
