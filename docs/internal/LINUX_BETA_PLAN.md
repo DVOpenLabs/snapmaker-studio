@@ -402,13 +402,17 @@ graceful `RunEvent::Exit` path — only L7's harness does).
   started or owned by any single app launch this harness makes, exactly
   like Xvfb/openbox aren't expected to disappear either. The harness's
   "zero orphans after repeated cycles" check filters this specific, named
-  family (matched by `argv[0]`) — but only PIDs already present in a
-  baseline snapshot taken before the repeated-cycles phase begins, not any
-  process with a matching name. A regression that leaks an ADDITIONAL
-  instance of the same daemon on each cycle gets a new PID that isn't in
-  the baseline, so it still counts as a real leftover — a blanket
-  name-based allowlist alone would have masked exactly that class of
-  regression, a gap a delta review caught before merge.
+  family (matched by `argv[0]`), capped at each daemon's expected
+  concurrent count (1 for most; 2 for `dbus-daemon`, which legitimately
+  serves both the main session bus and a separate AT-SPI accessibility
+  bus at once) — not an unbounded name-based allowlist. A regression that
+  leaks an ADDITIONAL instance of the same daemon beyond its expected
+  count still counts as a real leftover. This landed after two failed
+  attempts at a timing-based "baseline snapshot" approach (before the
+  cycles, then after cycle 1) — real CI proved activation timing for these
+  daemons is genuinely nondeterministic across runs, so a cap on
+  concurrent count per daemon, which doesn't depend on timing at all, is
+  what actually holds.
 
 ### Evidence tiers earned
 

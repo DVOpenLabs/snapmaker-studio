@@ -625,21 +625,6 @@ else
 fi
 
 echo "=== Repeated launch/close cycles as the test user, zero accumulated orphans (item 23), sidecar-crash-first survival (item 24) ==="
-# The session-infrastructure baseline is captured AFTER cycle 1 completes,
-# not before the loop starts — a real run of the before-the-loop version
-# of this check (36170528823) proved that wrong: the AT-SPI/portal daemons
-# are lazily D-Bus-activated on first actual use, which for at least some
-# of them apparently doesn't happen until THIS phase's own GUI interaction,
-# not the earlier 3MF/STL/SIGTERM/SIGKILL flows — so a baseline taken
-# before cycle 1 missed them, and they were then wrongly flagged as
-# leftover after simply being auto-activated once during cycle 1 itself,
-# exactly like they're designed to be. Capturing the baseline after cycle 1
-# instead means cycles 2-3 are what's actually checked for accumulation —
-# this is a real cardinality check, not a blanket argv0 allowlist: only
-# PIDs in that baseline are ever excluded, so a NEW instance of the same
-# daemon appearing in cycle 2 or 3 (an actual accumulation regression) is a
-# different PID, not in the baseline, and still counts as a leftover.
-infra_baseline_pids=""
 repeat_cycles_ok="true"
 for cycle in 1 2 3; do
   runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
@@ -687,10 +672,6 @@ for cycle in 1 2 3; do
     kill -9 "$cyc_app_pid" 2>/dev/null || true
     repeat_cycles_ok="false"
   fi
-  if [ "$cycle" -eq 1 ]; then
-    sleep 1
-    infra_baseline_pids="$(pgrep -u "$test_uid" 2>/dev/null || true)"
-  fi
 done
 # A few seconds' grace before the sweep: --init (tini) reaps exited
 # children on SIGCHLD, but that isn't instant, especially after several
@@ -714,27 +695,42 @@ leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
 # single app launch this harness makes. Matched by argv[0] (the absolute
 # executable path), not a substring of the full command line, so a flag
 # change upstream can't silently stop this from matching.
-# A pid is only excluded as "known session infrastructure" if BOTH its
-# argv[0] matches the known family AND it was already present in
-# $infra_baseline_pids (captured before this phase's 3 cycles ran) — the
-# cardinality check Sol's review asked for. A NEW instance of, say,
-# dbus-daemon that appears only after the cycles have a different PID, is
-# not in the baseline, and is correctly NOT excluded — an accumulation
-# regression cannot hide behind this filter the way a blanket argv0
-# allowlist would.
+# Real cardinality check, not a blanket argv[0] allowlist: two real CI runs
+# proved that WHEN each of these daemons first D-Bus-activates is
+# genuinely nondeterministic (a "baseline snapshotted before/after cycle 1"
+# approach was tried and failed both ways — one of them didn't activate
+# until partway into the repeated-cycles phase itself). What's actually
+# invariant, confirmed by every real diagnostic dump so far, is the
+# EXPECTED CONCURRENT COUNT of each specific daemon in a normal single-
+# session run: dbus-daemon serves both the main session bus and a second,
+# separate AT-SPI accessibility bus, so up to 2 concurrent instances is
+# normal; every other daemon in this family is a singleton. A pid is only
+# excluded if its argv[0] matches AND excluding it would not push that
+# specific daemon's concurrent count over its expected cap — so a
+# regression that leaks an ADDITIONAL instance beyond the expected count
+# (Sol's exact concern) is still caught, regardless of activation timing.
+declare -A infra_caps=(
+  ["dbus-launch"]=1
+  ["/usr/bin/dbus-daemon"]=2
+  ["/usr/libexec/at-spi-bus-launcher"]=1
+  ["/usr/libexec/at-spi2-registryd"]=1
+  ["/usr/libexec/xdg-desktop-portal"]=1
+  ["/usr/libexec/xdg-desktop-portal-gtk"]=1
+  ["/usr/libexec/xdg-permission-store"]=1
+)
+declare -A infra_seen=()
 real_leftover=""
 for lp in $leftover_after_cycles; do
-  case " $infra_baseline_pids " in
-    *" $lp "*) ;;
-    *) real_leftover="$real_leftover $lp"; continue ;;
-  esac
   largv0="$({ tr '\0' '\n' < "/proc/$lp/cmdline"; } 2>/dev/null | head -n1 || echo '')"
-  case "$largv0" in
-    dbus-launch|/usr/bin/dbus-daemon|/usr/libexec/at-spi-bus-launcher| \
-    /usr/libexec/at-spi2-registryd|/usr/libexec/xdg-desktop-portal| \
-    /usr/libexec/xdg-desktop-portal-gtk|/usr/libexec/xdg-permission-store)
-      continue ;;
-  esac
+  cap="${infra_caps[$largv0]:-0}"
+  if [ "$cap" -gt 0 ]; then
+    seen="${infra_seen[$largv0]:-0}"
+    if [ "$seen" -lt "$cap" ]; then
+      infra_seen[$largv0]=$((seen + 1))
+      continue
+    fi
+    echo "NOTE: pid $lp ($largv0) exceeds the expected concurrent count ($cap) for this daemon — counted as a real leftover, not excluded." >&2
+  fi
   real_leftover="$real_leftover $lp"
 done
 real_leftover="$(echo "$real_leftover" | xargs 2>/dev/null || true)"
