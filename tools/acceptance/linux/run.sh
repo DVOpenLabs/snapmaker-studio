@@ -144,9 +144,24 @@ any_failed() {
 # a joined command-line string) — it's the literal, exact, NUL-delimited
 # first argument this script itself chose when it invoked the process,
 # compared for byte-for-byte equality, combined with the exact owning uid.
+#
+# ALSO checked against $harness_start_ticks (this run's own /proc start-
+# time, captured before anything was created — see cleanup()'s safety-net
+# kill, which uses the same reference point): a process can only be one
+# THIS run launched if it started at or after this run began. Without this,
+# a recycled uid (the exact scenario the cleanup-time safety net was built
+# for — see the accountsservice/userdel -f finding) could make discovery
+# itself return a stale process left over from a force-deleted account that
+# happens to share this run's newly-allocated uid and an identical argv[0]
+# (a real installed app has exactly one absolute path, so this is not far-
+# fetched on a real machine that's had more than one Studio launch under a
+# deleted account). Such a process is not a false match on identity — uid
+# and argv[0] both genuinely agree — but it still is not a process this run
+# is responsible for tracking or signalling, exactly like the cleanup-time
+# case.
 find_process_by_uid_and_argv0() {
   local want_uid="$1" want_argv0="$2"
-  local pid_dir pid argv0 uid
+  local pid_dir pid argv0 uid pid_ticks
   for pid_dir in /proc/[0-9]*; do
     pid="${pid_dir#/proc/}"
     # Grouped so a failed input redirect (pid exited between the glob and
@@ -160,6 +175,8 @@ find_process_by_uid_and_argv0() {
     [ -n "$argv0" ] && [ "$argv0" = "$want_argv0" ] || continue
     uid="$(awk '/^Uid:/{print $2; exit}' "$pid_dir/status" 2>/dev/null || true)"
     [ "$uid" = "$want_uid" ] || continue
+    pid_ticks="$(awk '{ n=split($0,a,")"); split(a[n],f," "); print f[20] }' "$pid_dir/stat" 2>/dev/null || true)"
+    [ -n "$pid_ticks" ] && [ "$pid_ticks" -ge "$harness_start_ticks" ] 2>/dev/null || continue
     echo "$pid"
     return 0
   done
@@ -608,6 +625,15 @@ else
 fi
 
 echo "=== Repeated launch/close cycles as the test user, zero accumulated orphans (item 23), sidecar-crash-first survival (item 24) ==="
+# Snapshot the session-infrastructure PIDs that already exist BEFORE this
+# phase starts (the 3MF/STL/SIGTERM/SIGKILL flows above already trigger the
+# same D-Bus-activated daemons documented at the leftover check below). This
+# is a real cardinality check, not a blanket argv0 allowlist: only PIDs
+# already present in this exact baseline are ever excluded from the "zero
+# orphans" sweep after the cycles — a NEW instance of the same daemon
+# appearing later (a real accumulation regression) is a different PID and
+# is NOT in the baseline, so it still counts as a leftover.
+infra_baseline_pids="$(pgrep -u "$test_uid" 2>/dev/null || true)"
 repeat_cycles_ok="true"
 for cycle in 1 2 3; do
   runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
@@ -628,14 +654,22 @@ for cycle in 1 2 3; do
     [ -n "$cyc_window" ] && break
     sleep 0.5
   done
-  if [ "$cycle" -eq 1 ] && [ -n "${cyc_sidecar_pid:-}" ]; then
-    # Kill only the sidecar and prove the app itself survives — there is no
-    # auto-restart mechanism anywhere in desktop/src by design; the frontend
-    # polls /health every 10s and shows "Reconnecting…" (StatusBar.tsx).
-    kill -9 "$cyc_sidecar_pid" 2>/dev/null || true
-    sleep 12
-    add_check "App survives sidecar-crash-first (no auto-restart, stays open)" \
-      "$(kill -0 "$cyc_app_pid" 2>/dev/null && echo true || echo false)" ""
+  if [ "$cycle" -eq 1 ]; then
+    if [ -n "${cyc_sidecar_pid:-}" ]; then
+      # Kill only the sidecar and prove the app itself survives — there is
+      # no auto-restart mechanism anywhere in desktop/src by design; the
+      # frontend polls /health every 10s and shows "Reconnecting…"
+      # (StatusBar.tsx).
+      kill -9 "$cyc_sidecar_pid" 2>/dev/null || true
+      sleep 12
+      add_check "App survives sidecar-crash-first (no auto-restart, stays open)" \
+        "$(kill -0 "$cyc_app_pid" 2>/dev/null && echo true || echo false)" ""
+    else
+      # Always add this check, even when its precondition wasn't met — a
+      # missing sidecar here silently dropped this check from the total
+      # count instead of failing anything.
+      add_check "App survives sidecar-crash-first (no auto-restart, stays open)" "false" "sidecar never appeared in cycle 1, could not test crash-first"
+    fi
   fi
   if [ -n "$cyc_window" ]; then
     wmctrl -ic "$cyc_window" 2>/dev/null || true
@@ -670,8 +704,20 @@ leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
 # single app launch this harness makes. Matched by argv[0] (the absolute
 # executable path), not a substring of the full command line, so a flag
 # change upstream can't silently stop this from matching.
+# A pid is only excluded as "known session infrastructure" if BOTH its
+# argv[0] matches the known family AND it was already present in
+# $infra_baseline_pids (captured before this phase's 3 cycles ran) — the
+# cardinality check Sol's review asked for. A NEW instance of, say,
+# dbus-daemon that appears only after the cycles have a different PID, is
+# not in the baseline, and is correctly NOT excluded — an accumulation
+# regression cannot hide behind this filter the way a blanket argv0
+# allowlist would.
 real_leftover=""
 for lp in $leftover_after_cycles; do
+  case " $infra_baseline_pids " in
+    *" $lp "*) ;;
+    *) real_leftover="$real_leftover $lp"; continue ;;
+  esac
   largv0="$({ tr '\0' '\n' < "/proc/$lp/cmdline"; } 2>/dev/null | head -n1 || echo '')"
   case "$largv0" in
     dbus-launch|/usr/bin/dbus-daemon|/usr/libexec/at-spi-bus-launcher| \
@@ -800,7 +846,16 @@ if [ "$api_ok" = "true" ]; then
       convert_out="$(api_curl /convert "$(jq -n --arg p "$convert_src" --arg d "$api_workdir" '{path:$p,out_dir:$d,prepare_mode:"preserve"}')")"
       convert_output_path="$(echo "$convert_out" | jq -r '.output_path // empty' 2>/dev/null || true)"
       convert_created="false"
-      [ -n "$convert_output_path" ] && [ -f "$convert_output_path" ] && convert_created="true"
+      # Also require output_path != the input path — a resolved comparison,
+      # not a literal string one, since /convert could in principle return
+      # an equivalent path spelled differently. Without this, a (buggy)
+      # /convert that echoed the source path back unchanged would still
+      # satisfy "a file exists at output_path", since the SOURCE obviously
+      # exists too.
+      if [ -n "$convert_output_path" ] && [ -f "$convert_output_path" ] \
+        && [ "$(readlink -f "$convert_output_path" 2>/dev/null)" != "$(readlink -f "$convert_src" 2>/dev/null)" ]; then
+        convert_created="true"
+      fi
       add_check "API /convert (Prepare) creates a new output file" "$convert_created" "$convert_output_path"
       convert_sha_after="$(runuser -u "$test_user" -- sha256sum "$convert_src" | cut -d' ' -f1)"
       add_check "Original untouched by /convert (hash unchanged)" "$([ "$convert_sha_before" = "$convert_sha_after" ] && echo true || echo false)" "before=$convert_sha_before after=$convert_sha_after"
@@ -846,6 +901,26 @@ fi
 echo "=== XDG data directory behavior across 3 configurations (item 19) ==="
 xdg_case() {
   local case_name="$1" xdg_val="$2" expect_custom="$3"
+  local expected_dir
+  if [ "$expect_custom" = "true" ]; then
+    expected_dir="$xdg_val/SnapmakerStudio"
+  else
+    expected_dir="$user_home/.local/share/SnapmakerStudio"
+  fi
+  # Earlier phases (the original 3MF flow) already create the DEFAULT
+  # SnapmakerStudio dir by explicitly setting XDG_DATA_HOME to that same
+  # path — so a case that expects the app to fall back to the default
+  # (unset, relative-ignored) would pass just by finding that pre-existing
+  # directory, even if THIS launch wrote nothing there at all or crashed
+  # immediately. Move it aside first so "the directory exists with mode
+  # 0700 afterward" only ever reflects what THIS specific launch actually
+  # did, not leftover state from a previous phase.
+  local moved_aside=""
+  if [ -d "$expected_dir" ]; then
+    moved_aside="${expected_dir}.pre-${case_name}-$$"
+    mv "$expected_dir" "$moved_aside"
+  fi
+
   local env_args=(env DISPLAY=":$x_display" HOME="$user_home")
   [ -n "$xdg_val" ] && env_args+=(XDG_DATA_HOME="$xdg_val")
   runuser -u "$test_user" -- "${env_args[@]}" "$bin_path" > "$evidence_dir/app_xdg_${case_name}.log" 2>&1 &
@@ -854,7 +929,8 @@ xdg_case() {
   local pid sidecar_pid=""
   pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$bin_path" 30 || true)"
   if [ -z "$pid" ]; then
-    add_check "XDG case ($case_name): app starts, correct dir, mode 0700" "false" "app never started"
+    add_check "XDG case ($case_name): app starts, correct dir freshly created, mode 0700" "false" "app never started"
+    [ -n "$moved_aside" ] && rm -rf "$moved_aside"
     return
   fi
   owned_pids+=("$pid")
@@ -862,22 +938,18 @@ xdg_case() {
   [ -n "$sidecar_pid" ] && owned_pids+=("$sidecar_pid")
   sleep 2
 
-  local expected_dir mode used="false"
-  if [ "$expect_custom" = "true" ]; then
-    expected_dir="$xdg_val/SnapmakerStudio"
-  else
-    expected_dir="$user_home/.local/share/SnapmakerStudio"
-  fi
+  local mode used="false"
   [ -d "$expected_dir" ] && used="true"
   mode="$([ -d "$expected_dir" ] && stat -c %a "$expected_dir" 2>/dev/null || true)"
-  add_check "XDG case ($case_name): app starts, correct dir, mode 0700" \
+  add_check "XDG case ($case_name): app starts, correct dir freshly created, mode 0700" \
     "$([ "$used" = "true" ] && [ "$mode" = "700" ] && echo true || echo false)" \
-    "$expected_dir mode=${mode:-none}"
+    "$expected_dir mode=${mode:-none} (freshly created by this launch, not pre-existing)"
 
   kill -TERM "$pid" 2>/dev/null || true
   for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
   kill -9 "$pid" 2>/dev/null || true
   [ -n "$sidecar_pid" ] && { kill -9 "$sidecar_pid" 2>/dev/null || true; }
+  [ -n "$moved_aside" ] && rm -rf "$moved_aside"
 }
 xdg_case "unset"            ""                                           "false"
 xdg_case "absolute-custom"  "$user_home/custom xdg data"                 "true"

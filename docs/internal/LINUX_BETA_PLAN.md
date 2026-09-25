@@ -365,19 +365,31 @@ graceful `RunEvent::Exit` path — only L7's harness does).
 ### Real findings this phase surfaced (evidence, not assumptions)
 
 - **python3 is present after installing only the `.deb`, on BOTH 22.04
-  and 24.04** — confirmed via the actual apt install logs, not inferred:
-  `libwebkit2gtk-4.1-0` depends on `xdg-desktop-portal-gtk` (WebKitGTK
-  uses the desktop portal for sandboxed file dialogs), which itself
-  depends on `python3-gi` on both releases. This project's own `.deb`
+  and 24.04.** The first explanation tried (`libwebkit2gtk-4.1-0` depends
+  on `xdg-desktop-portal-gtk`, which itself depends on `python3-gi`) was
+  WRONG and has since been corrected: a delta review independently checked
+  it against a real Ubuntu apt database (`apt-cache depends`) and found
+  `xdg-desktop-portal-gtk` declares no python dependency at all — the
+  earlier claim was inferred from apt install-log ordering, not a verified
+  dependency edge. The REAL chain, verified the same way (`apt-cache
+  depends`/`rdepends` against a real Ubuntu 24.04 install, not inferred):
+  `libwebkit2gtk-4.1-0` **Recommends** `xdg-desktop-portal-gtk` (a
+  Recommends, not a Depends — this only matters because apt installs
+  Recommends by default), and separately, `systemd` — pulled in by the
+  desktop dependency closure — **Recommends** `networkd-dispatcher`, which
+  directly **Depends** on `python3-gi`, `python3-dbus`, and `python3`
+  itself. `xdg-desktop-portal-gtk` was a red herring, co-installed in the
+  same apt transaction but not the actual cause. This project's own `.deb`
   declares only `libwebkit2gtk-4.1-0, libgtk-3-0` as `Depends` — there is
   no packaging change that removes this short of dropping the GTK webview
-  entirely. Never caught before L8 because the existing build job's
-  container already has Python installed for its own build needs, so
-  "python3 became newly available" was never observable there. Recorded
-  as an explicit, evidence-backed, non-blocking exception in the item-30
-  check (which still hard-fails on node/npm/cargo/rustc, or on python3
-  appearing WITHOUT `xdg-desktop-portal-gtk` also being installed — that
-  would be a genuine, unexplained regression).
+  entirely; it is an OS dependency-resolution fact, not a defect in this
+  package's own metadata. Never caught before L8 because the existing
+  build job's container already has Python installed for its own build
+  needs, so "python3 became newly available" was never observable there.
+  The item-30 check now verifies presence of `networkd-dispatcher`
+  specifically (the confirmed direct cause) rather than
+  `xdg-desktop-portal-gtk`, and still hard-fails on node/npm/cargo/rustc,
+  or on python3 appearing without that specific, verified cause.
 - **A whole family of D-Bus-activated session daemons legitimately
   outlives every app instance**: the main session bus
   (`dbus-launch`/`dbus-daemon`), plus on a genuinely clean image's fuller
@@ -389,9 +401,14 @@ graceful `RunEvent::Exit` path — only L7's harness does).
   standard, session-scoped, activate-once infrastructure — none of it
   started or owned by any single app launch this harness makes, exactly
   like Xvfb/openbox aren't expected to disappear either. The harness's
-  "zero orphans after repeated cycles" check now filters this specific,
-  named family (matched by `argv[0]`) rather than expecting the uid to be
-  completely empty.
+  "zero orphans after repeated cycles" check filters this specific, named
+  family (matched by `argv[0]`) — but only PIDs already present in a
+  baseline snapshot taken before the repeated-cycles phase begins, not any
+  process with a matching name. A regression that leaks an ADDITIONAL
+  instance of the same daemon on each cycle gets a new PID that isn't in
+  the baseline, so it still counts as a real leftover — a blanket
+  name-based allowlist alone would have masked exactly that class of
+  regression, a gap a delta review caught before merge.
 
 ### Evidence tiers earned
 

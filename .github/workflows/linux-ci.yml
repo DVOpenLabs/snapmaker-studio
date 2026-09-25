@@ -1169,19 +1169,29 @@ jobs:
           apt-get install -y "$deb"
 
       - name: Post-install clean-environment assertions (item 30 — real evidence, not static inspection)
-        # First real run of this job (both matrix legs) found python3
-        # present after installing ONLY the .deb, on BOTH 22.04 and 24.04 —
-        # confirmed, not assumed, by reading the actual apt install log:
-        # libwebkit2gtk-4.1-0 depends on xdg-desktop-portal-gtk (WebKitGTK
-        # uses the desktop portal for sandboxed file dialogs), and
-        # xdg-desktop-portal-gtk itself depends on python3-gi on both
-        # releases. This is a structural fact of the WebKitGTK/portal
-        # dependency chain, not a defect in this project's own .deb (whose
-        # only declared Depends are libwebkit2gtk-4.1-0, libgtk-3-0) — there
-        # is no packaging fix available short of dropping the GTK webview
-        # entirely. node/npm/cargo/rustc have no such known legitimate path
-        # and stay a hard failure; python/python3 is checked against that
-        # SPECIFIC explanation (xdg-desktop-portal-gtk actually installed)
+        # First real run of this job found python3 present after installing
+        # ONLY the .deb, on BOTH 22.04 and 24.04. The FIRST explanation
+        # tried here (libwebkit2gtk-4.1-0 -> xdg-desktop-portal-gtk ->
+        # python3-gi) was wrong and has been corrected — a review
+        # independently checked it against a real Ubuntu 24.04 apt database
+        # (`apt-cache depends`) and found xdg-desktop-portal-gtk declares NO
+        # python dependency at all. The REAL chain, verified the same way
+        # (`apt-cache depends`/`rdepends` on a real Ubuntu 24.04 install,
+        # not inferred from install-log ordering): libwebkit2gtk-4.1-0
+        # RECOMMENDS xdg-desktop-portal-gtk (confirmed — a Recommends, not a
+        # Depends, which is why this only matters when apt's default
+        # install-recommends behavior isn't disabled), and separately,
+        # systemd — pulled in by the desktop dependency closure — RECOMMENDS
+        # networkd-dispatcher, which directly DEPENDS on python3-gi,
+        # python3-dbus, and python3 itself. xdg-desktop-portal-gtk was a red
+        # herring: co-installed in the same apt transaction, not the actual
+        # cause. This project's own .deb declares only libwebkit2gtk-4.1-0
+        # and libgtk-3-0 as Depends — there is no packaging fix available
+        # short of dropping the GTK webview entirely, and this remains an OS
+        # dependency-resolution fact, not a defect in this package's own
+        # metadata. node/npm/cargo/rustc have no such known legitimate path
+        # and stay a hard failure; python/python3 is checked against the
+        # verified SPECIFIC cause (networkd-dispatcher actually installed)
         # rather than either being silently ignored or blocking the rest of
         # this job's real evidence for a fact outside the app's control.
         run: |
@@ -1198,10 +1208,10 @@ jobs:
             exit 1
           fi
           if command -v python3 >/dev/null 2>&1; then
-            if dpkg-query -W -f='${db:Status-Abbrev}' xdg-desktop-portal-gtk 2>/dev/null | grep -q '^.i'; then
-              echo "EXPECTED (not a defect): python3 is present at $(command -v python3), but only as a transitive dependency of xdg-desktop-portal-gtk (installed, confirmed), which libwebkit2gtk-4.1-0 depends on for sandboxed file dialogs. This project's own .deb declares no dependency on python3, node, or any build toolchain. Tracked as a known, unavoidable characteristic of the WebKitGTK/portal stack on this OS release, not something this package's metadata controls." >&2
+            if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i'; then
+              echo "EXPECTED (not a defect): python3 is present at $(command -v python3), but only because networkd-dispatcher (installed, confirmed) directly Depends on python3-gi/python3-dbus/python3 — networkd-dispatcher itself arrives via systemd's Recommends, which is part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain. Verified against the real Ubuntu apt database (apt-cache depends/rdepends), not inferred." >&2
             else
-              echo "REGRESSION: python3 became available after installing ONLY the .deb, and xdg-desktop-portal-gtk is NOT installed — this is NOT the known/expected cause. Investigate before assuming it's benign." >&2
+              echo "REGRESSION: python3 became available after installing ONLY the .deb, and networkd-dispatcher is NOT installed — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
               exit 1
             fi
           fi
@@ -1237,7 +1247,7 @@ jobs:
         # check of the .deb's OWN metadata (Depends, Pre-Depends,
         # Recommends): those runtime checks prove the CURRENT install
         # didn't end up with a toolchain present (currently true only
-        # because of the documented xdg-desktop-portal-gtk exception for
+        # because of the documented networkd-dispatcher exception for
         # python3), but never actually asserted what this package's own
         # control file declares. This is the check that would catch a
         # regression if the app's own Depends/Recommends ever DID start
