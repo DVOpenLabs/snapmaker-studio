@@ -23,9 +23,13 @@
 #
 # Designed to be safe to run on a shared/real machine, not just an ephemeral
 # CI container (L8/L10 may run it that way): the test account is unique per
-# invocation and only ever deleted if THIS run created it; the package is
-# only purged at the end if THIS run is what installed it (a pre-existing
-# real install is left alone); every process this harness ever signals is
+# invocation, and this run refuses to proceed rather than touch one it
+# didn't create; the package is only purged at the end if THIS run is what
+# installed it — a pre-existing real install is NOT purged, but IS replaced
+# on disk by the test .deb for the duration of the run and never restored,
+# so this is not yet safe to run against a machine whose pre-existing
+# install must survive intact (tracked as L8/L10 follow-up debt); every
+# process this harness ever signals is
 # tracked by real PID, verified by the exact uid of the test account THIS
 # run just created plus an exact byte-for-byte argv[0] match (from
 # /proc/<pid>/cmdline) — never by process name or cmdline substring, which
@@ -188,9 +192,13 @@ apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagi
 # determined, so an interrupt between the Package query and the preinstalled
 # check can never leave cleanup thinking THIS run owns a package it doesn't.
 pkg_name_candidate="$(dpkg-deb -f "$deb_path" Package)"
-if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | grep -q '^ii'; then
+# Match any status whose second letter is "i" (Installed) — ii, hi (hold),
+# ri/pi (reinstall-required, still has files on disk) — not just the exact
+# "ii" (install ok, installed) status. A narrower match would treat a held
+# or reinstall-required package as not-preinstalled and purge it below.
+if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | grep -q '^.i'; then
   pkg_preinstalled="true"
-  echo "NOTE: $pkg_name_candidate was already installed before this run — will reinstall over it, but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
+  echo "NOTE: $pkg_name_candidate was already installed before this run — this replaces its files with the test .deb (not left alone) but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
 fi
 pkg_name="$pkg_name_candidate"
 # --reinstall when a same-version package is already present: plain
