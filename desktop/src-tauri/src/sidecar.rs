@@ -298,7 +298,7 @@ fn wait_briefly(child: &mut Child, deadline: Duration) -> bool {
 
 // No CI runtime step drives the graceful RunEvent::Exit path (every zero-
 // orphan CI check kills the app by signal, which never fires it — see
-// linux-support-ci.yml), so shutdown_sidecar()'s own forced-fallback branch
+// linux-ci.yml), so shutdown_sidecar()'s own forced-fallback branch
 // gets no coverage anywhere else. This exercises it directly: nothing
 // listens on the bogus port, so the /shutdown POST fails and the killpg
 // fallback is what actually has to end the process, bounded by its own

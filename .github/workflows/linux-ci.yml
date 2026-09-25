@@ -1,29 +1,48 @@
-name: Linux support (branch CI)
+name: Linux CI
 
-# Branch-scoped CI for the Linux-support work (see linux-support-plan-v5-final.md
-# and the L0-L11 implementation sequence). Does NOT touch ci.yml or release.yml —
-# this is temporary, branch-only verification infrastructure. It becomes part of
-# the permanent Linux CI (L7 of the plan) once the Linux build is proven, or is
-# removed if the approach changes before then.
+# Permanent Linux CI (L6 of the Linux-support program — this file's own
+# earlier comment called it "L7"; L6 is the maintainer's authoritative
+# numbering, kept here so the two never drift again). No longer branch-only:
+# this is the same real Linux build+package pipeline that was proven out
+# on linux-support/l1-platform-abstraction across L0-L5 (real GitHub Actions
+# evidence, not just code review — see docs/internal/LINUX_BETA_PLAN.md and
+# ~/.claude/orchestration/checkpoints/linux-support-plan.md for the full
+# history). Does NOT touch ci.yml or release.yml.
 #
 # Runs the REAL Linux build+package pipeline: PyInstaller onedir sidecar freeze
 # (desktop/scripts/build-sidecar.sh), then `tauri build` producing a .deb, then
 # inspects the produced package to confirm the sidecar is actually bundled with
-# the right layout and executable permissions. This is what local WSL testing on
-# this machine could not prove (no non-interactive root/sudo for the Tauri Linux
-# system dependencies) — GitHub-hosted Ubuntu runners already run as root.
+# the right layout and executable permissions, exercises install/reinstall/
+# upgrade-in-place/purge, the zero-orphan process lifecycle (SIGTERM, SIGKILL,
+# sidecar-crash-first, repeated cycles), and uploads a checksummed, manifested
+# artifact. This is what local WSL testing on this machine could not prove (no
+# non-interactive root/sudo for the Tauri Linux system dependencies, and no
+# cross-compile path for the full gtk/webkit2gtk/dbus dependency chain from
+# Windows) — GitHub-hosted Ubuntu runners already run as root.
+#
+# Evidence tiers this workflow can establish: BUILD VERIFIED / PACKAGE
+# VERIFIED / HEADLESS RUNTIME VERIFIED. It does NOT establish DESKTOP
+# WORKFLOW VERIFIED (no real display, no human interaction), REAL U1
+# VERIFIED (no hardware), or EXTERNAL USER VERIFIED — those stay separate,
+# later claims, never promoted from a green run of this file alone.
+#
+# `push: branches: ["linux-support/**"]` is kept alongside the permanent
+# `main`/`pull_request` triggers below so the task branch keeps
+# self-verifying until it's merged; safe to drop afterward.
 
 on:
   push:
     branches:
+      - main
       - "linux-support/**"
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-support-ci-${{ github.ref }}
+  group: linux-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -1014,7 +1033,7 @@ jobs:
             echo "commit: $GITHUB_SHA"
             echo "branch: $GITHUB_REF_NAME"
             echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "evidence: PACKAGE VERIFIED, HEADLESS RUNTIME VERIFIED (see linux-support-ci.yml job for this run)"
+            echo "evidence: PACKAGE VERIFIED, HEADLESS RUNTIME VERIFIED (see linux-ci.yml job for this run)"
             # This repo is public: any signed-in GitHub user can download a
             # workflow artifact from it (retention window aside) — never
             # claim this is private or unreachable, only that it isn't an
