@@ -653,20 +653,31 @@ done
 # back-to-back launch/kill cycles in quick succession.
 sleep 3
 leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
-# The first real run of this exact check found leftover_pids populated by
-# dbus-launch + dbus-daemon (confirmed via a diagnostic dump: ppid=1, cmd
-# "dbus-launch --autolaunch ..." / "/usr/bin/dbus-daemon --syslog-only
-# --fork ... --session"), not an app leak. GTK/WebKit auto-launches this
-# session bus ONCE per X display (X11 root-window property discovery) and
-# it's designed to outlive every single app instance for the rest of the
-# session — exactly like Xvfb/openbox, which this harness never expects to
-# be gone either. Filter those out before judging "orphan"; anything else
-# still gets a diagnostic dump, since that would be genuinely unexplained.
+# On the existing (non-clean) job, the only leftover was the main session
+# D-Bus bus (dbus-launch/dbus-daemon --session), auto-launched once per X
+# display and designed to outlive every app instance, like Xvfb/openbox.
+# On a genuinely clean image (this job's whole point) the .deb's fuller
+# dependency closure includes the AT-SPI accessibility stack and the
+# desktop-portal stack, and the FIRST run here found their daemons also
+# leftover, all ppid=1 (reparented after their launching process exited),
+# all D-Bus-activated session infrastructure — confirmed via a diagnostic
+# dump, not assumed: at-spi-bus-launcher, a second dbus-daemon serving
+# only the AT-SPI accessibility.conf bus, at-spi2-registryd,
+# xdg-desktop-portal, xdg-desktop-portal-gtk (the same package whose
+# python3-gi dependency is the earlier documented, expected finding),
+# xdg-permission-store. Every one of these is activated once, session-
+# scoped, and meant to persist — none of them is started or owned by any
+# single app launch this harness makes. Matched by argv[0] (the absolute
+# executable path), not a substring of the full command line, so a flag
+# change upstream can't silently stop this from matching.
 real_leftover=""
 for lp in $leftover_after_cycles; do
-  lcmd="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '')"
-  case "$lcmd" in
-    "dbus-launch --autolaunch"*|"/usr/bin/dbus-daemon "*"--session"*) continue ;;
+  largv0="$({ tr '\0' '\n' < "/proc/$lp/cmdline"; } 2>/dev/null | head -n1 || echo '')"
+  case "$largv0" in
+    dbus-launch|/usr/bin/dbus-daemon|/usr/libexec/at-spi-bus-launcher| \
+    /usr/libexec/at-spi2-registryd|/usr/libexec/xdg-desktop-portal| \
+    /usr/libexec/xdg-desktop-portal-gtk|/usr/libexec/xdg-permission-store)
+      continue ;;
   esac
   real_leftover="$real_leftover $lp"
 done
