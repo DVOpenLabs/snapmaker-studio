@@ -102,36 +102,39 @@ any_failed() {
 }
 
 # Find a live descendant of $1 (a PID) whose /proc/<pid>/exe resolves to
-# EXACTLY $2 (an absolute path). Never matches by process name or cmdline
-# substring — only the kernel's own resolved executable path — so it can
-# never mistake an unrelated process (another concurrent run's, or anyone
-# else's on the machine) for the one this script actually started.
-find_descendant_by_exe() {
-  local root="$1" expected_exe="$2"
-  local queue=("$root") idx=0
-  while [ "$idx" -lt "${#queue[@]}" ]; do
-    local pid="${queue[$idx]}"
-    idx=$((idx + 1))
-    local exe
-    exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
-    if [ -n "$exe" ] && [ "$exe" = "$expected_exe" ]; then
-      echo "$pid"
-      return 0
-    fi
-    local children
-    children="$(cat "/proc/$pid/task/$pid/children" 2>/dev/null || true)"
-    for c in $children; do
-      queue+=("$c")
-    done
+# EXACTLY $2 (an absolute path) AND is owned by real uid $1. Never matches
+# by process name or cmdline substring, and does not depend on the process
+# staying a direct descendant of whatever launched it — runuser's PAM
+# session handling was observed (real CI run 36101529627) to produce a
+# process tree shape a simple parent/child walk from the launcher PID does
+# not reliably traverse (the app's own PID was visible in its own stderr
+# output well within the poll window, but a /proc/<pid>/task/<pid>/children
+# walk from the runuser PID never found it). Matching on the pair (exact
+# owning uid, exact resolved binary) is immune to that entirely: it does
+# not care how the process tree is actually shaped, only who owns the
+# process and what binary the kernel says it's running — and since
+# $test_user's uid is freshly allocated and unique to this run, that pair
+# can never match anything this run didn't itself cause to exist.
+find_process_by_uid_and_exe() {
+  local want_uid="$1" want_exe="$2"
+  local pid_dir pid exe uid
+  for pid_dir in /proc/[0-9]*; do
+    pid="${pid_dir#/proc/}"
+    exe="$(readlink -f "$pid_dir/exe" 2>/dev/null || true)"
+    [ -n "$exe" ] && [ "$exe" = "$want_exe" ] || continue
+    uid="$(awk '/^Uid:/{print $2; exit}' "$pid_dir/status" 2>/dev/null || true)"
+    [ "$uid" = "$want_uid" ] || continue
+    echo "$pid"
+    return 0
   done
   return 1
 }
 
-wait_for_descendant_by_exe() {
-  local root="$1" expected_exe="$2" tries="${3:-40}"
+wait_for_process_by_uid_and_exe() {
+  local want_uid="$1" want_exe="$2" tries="${3:-40}"
   local found=""
   for _ in $(seq 1 "$tries"); do
-    found="$(find_descendant_by_exe "$root" "$expected_exe" || true)"
+    found="$(find_process_by_uid_and_exe "$want_uid" "$want_exe" || true)"
     [ -n "$found" ] && { echo "$found"; return 0; }
     sleep 0.5
   done
@@ -207,6 +210,7 @@ else
 fi
 user_home="$(eval echo "~$test_user")"
 xdg_data_home="$user_home/.local/share"
+test_uid="$(id -u "$test_user")"
 
 echo "=== Starting Xvfb + a real window manager ==="
 # Earlier steps in this same CI job use xvfb-run, whose --auto-servernum
@@ -275,7 +279,7 @@ runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_ho
 app_launcher_pid=$!
 owned_pids+=("$app_launcher_pid")
 
-app_pid="$(wait_for_descendant_by_exe "$app_launcher_pid" "$bin_path" 40 || true)"
+app_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$bin_path" 40 || true)"
 if [ -z "$app_pid" ]; then
   add_check "App process started" "false" "never appeared within 20s"
   cat "$app_log" >&2 || true
@@ -285,7 +289,7 @@ fi
 add_check "App process started" "true" "PID $app_pid"
 owned_pids+=("$app_pid")
 
-sidecar_pid="$(wait_for_descendant_by_exe "$app_pid" "$sidecar_exe" 40 || true)"
+sidecar_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$sidecar_exe" 40 || true)"
 if [ -z "$sidecar_pid" ]; then
   add_check "Sidecar spawned from the installed app" "false" "never appeared within 20s"
   write_report
@@ -399,11 +403,11 @@ runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_ho
   "$bin_path" > "$evidence_dir/app_reopen.log" 2>&1 &
 reopen_launcher_pid=$!
 owned_pids+=("$reopen_launcher_pid")
-reopen_app_pid="$(wait_for_descendant_by_exe "$reopen_launcher_pid" "$bin_path" 40 || true)"
+reopen_app_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$bin_path" 40 || true)"
 add_check "App reopens after a real close" "$([ -n "$reopen_app_pid" ] && echo true || echo false)" "PID ${reopen_app_pid:-none}"
 if [ -n "$reopen_app_pid" ]; then
   owned_pids+=("$reopen_app_pid")
-  reopen_sidecar_pid="$(wait_for_descendant_by_exe "$reopen_app_pid" "$sidecar_exe" 20 || true)"
+  reopen_sidecar_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$sidecar_exe" 20 || true)"
   [ -n "$reopen_sidecar_pid" ] && owned_pids+=("$reopen_sidecar_pid")
   kill -9 "$reopen_app_pid" 2>/dev/null || true
   [ -n "${reopen_sidecar_pid:-}" ] && kill -9 "$reopen_sidecar_pid" 2>/dev/null || true
