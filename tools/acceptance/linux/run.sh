@@ -20,6 +20,18 @@
 # tools/acceptance/run.ps1), screenshots, and app/sidecar logs, all under
 # $ACCEPT_WORKDIR/evidence/. Anonymized: no real IP/hostname/username in
 # the JSON (the synthetic user this script creates is not a real identity).
+#
+# Designed to be safe to run on a shared/real machine, not just an ephemeral
+# CI container (L8/L10 may run it that way): the test account is unique per
+# invocation and only ever deleted if THIS run created it; the package is
+# only purged at the end if THIS run is what installed it (a pre-existing
+# real install is left alone); every process this harness ever signals is
+# tracked by real PID, verified against its own /proc/<pid>/exe — never by
+# process name or cmdline substring, which could otherwise match an
+# unrelated concurrent run's processes or something on the machine that
+# merely happens to share a name. All cleanup lives in one EXIT trap, so
+# every exit path — including an early failure — runs it, not just the
+# happy path at the bottom of the script.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -89,29 +101,82 @@ any_failed() {
   return 1
 }
 
-# Every process this harness signals, it started itself — tracked here,
-# never a bare pkill/killall by name (this project has been bitten before
-# by loose process matching touching something it shouldn't).
+# Find a live descendant of $1 (a PID) whose /proc/<pid>/exe resolves to
+# EXACTLY $2 (an absolute path). Never matches by process name or cmdline
+# substring — only the kernel's own resolved executable path — so it can
+# never mistake an unrelated process (another concurrent run's, or anyone
+# else's on the machine) for the one this script actually started.
+find_descendant_by_exe() {
+  local root="$1" expected_exe="$2"
+  local queue=("$root") idx=0
+  while [ "$idx" -lt "${#queue[@]}" ]; do
+    local pid="${queue[$idx]}"
+    idx=$((idx + 1))
+    local exe
+    exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+    if [ -n "$exe" ] && [ "$exe" = "$expected_exe" ]; then
+      echo "$pid"
+      return 0
+    fi
+    local children
+    children="$(cat "/proc/$pid/task/$pid/children" 2>/dev/null || true)"
+    for c in $children; do
+      queue+=("$c")
+    done
+  done
+  return 1
+}
+
+wait_for_descendant_by_exe() {
+  local root="$1" expected_exe="$2" tries="${3:-40}"
+  local found=""
+  for _ in $(seq 1 "$tries"); do
+    found="$(find_descendant_by_exe "$root" "$expected_exe" || true)"
+    [ -n "$found" ] && { echo "$found"; return 0; }
+    sleep 0.5
+  done
+  return 1
+}
+
+# --- state used by cleanup, declared before anything that could fail ------
 declare -a owned_pids=()
+test_user=""
+user_created="false"
+pkg_name=""
+pkg_preinstalled="false"
+
 cleanup() {
   for pid in "${owned_pids[@]:-}"; do
     kill -9 "$pid" 2>/dev/null || true
   done
+  if [ -n "$pkg_name" ] && [ "$pkg_preinstalled" = "false" ]; then
+    apt-get purge -y "$pkg_name" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$test_user" ] && [ "$user_created" = "true" ]; then
+    userdel -r "$test_user" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
 echo "=== Installing the .deb ==="
 apt-get update -qq
 apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 >/dev/null
-apt-get install -y "$deb_path"
 pkg_name="$(dpkg-deb -f "$deb_path" Package)"
+if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name" 2>/dev/null | grep -q '^ii'; then
+  pkg_preinstalled="true"
+  echo "NOTE: $pkg_name was already installed before this run — will reinstall over it, but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
+fi
+apt-get install -y "$deb_path"
 
 installed_files="$(dpkg -L "$pkg_name")"
 bin_path=""
+sidecar_exe=""
 while IFS= read -r f; do
-  if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+  if [ -z "$bin_path" ] && [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
     bin_path="$f"
-    break
+  fi
+  if [ -z "$sidecar_exe" ] && [[ "$f" == *"/snapstudio-api-x86_64-unknown-linux-gnu" ]]; then
+    sidecar_exe="$f"
   fi
 done <<< "$installed_files"
 if [ -z "$bin_path" ]; then
@@ -120,31 +185,55 @@ if [ -z "$bin_path" ]; then
   exit 1
 fi
 add_check "Installed app entry point found" "true" "$bin_path"
+if [ -z "$sidecar_exe" ]; then
+  add_check "Installed sidecar binary found" "false" "no *snapstudio-api-x86_64-unknown-linux-gnu entry"
+  write_report
+  exit 1
+fi
 
 echo "=== Creating an unprivileged test user (real installs never run as root) ==="
-test_user="snapstudio-acceptance"
-if ! id "$test_user" >/dev/null 2>&1; then
+# PID-suffixed so this is a fresh, never-before-seen account name on every
+# invocation — a genuinely pre-existing/shared/concurrent-run collision on
+# this exact name is not realistically possible, but the create/delete
+# tracking below still guards the case where it somehow already exists
+# (never touch or delete an account this run didn't create).
+test_user="snapstudio-acceptance-$$"
+if id "$test_user" >/dev/null 2>&1; then
+  echo "NOTE: $test_user unexpectedly already exists — reusing without modifying its ownership or deleting it afterward." >&2
+  user_created="false"
+else
   useradd -m -s /bin/bash "$test_user"
+  user_created="true"
 fi
 user_home="$(eval echo "~$test_user")"
 xdg_data_home="$user_home/.local/share"
-chown -R "$test_user:$test_user" "$user_home"
 
 echo "=== Starting Xvfb + a real window manager ==="
 # Earlier steps in this same CI job use xvfb-run, whose --auto-servernum
 # default starts searching FROM :99 — one of those earlier steps can still
-# genuinely be holding it (not just a stale lock file: an xvfb-run-wrapped
-# process that a `kill -9` in an earlier step didn't fully reap can still
-# be alive and correctly refusing a second server on the same display).
-# Rather than trying to distinguish "stale" from "still legitimately in
-# use" by another step, use a distinct range (150+) nothing else in this
-# job goes near, and actually try starting Xvfb rather than trusting a
-# lock file's presence/absence either way.
+# genuinely be holding it at this point (a `kill -9` in an earlier step not
+# fully reaping its process doesn't mean the process is actually gone yet).
+# Use a distinct range (150+) nothing else in this job goes near. For each
+# candidate: only remove a lock file if the PID it names is verifiably NOT
+# running (never touch a lock a live process might still legitimately
+# hold), then actually try starting Xvfb and confirm it's still alive a
+# moment later rather than trusting the lock file either way. Register
+# each attempt's PID in owned_pids BEFORE the survival check, so an
+# interruption during that brief window still gets cleaned up by the trap.
 x_display=""
 for candidate in 150 151 152 153 154 155; do
-  rm -f "/tmp/.X${candidate}-lock"
+  lock_file="/tmp/.X${candidate}-lock"
+  if [ -f "$lock_file" ]; then
+    lock_pid="$(tr -d ' \t' < "$lock_file" 2>/dev/null || true)"
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "Display :$candidate genuinely still in use (PID $lock_pid) — trying the next candidate." >&2
+      continue
+    fi
+    rm -f "$lock_file"
+  fi
   Xvfb ":$candidate" -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
   candidate_pid=$!
+  owned_pids+=("$candidate_pid")
   sleep 0.5
   if kill -0 "$candidate_pid" 2>/dev/null; then
     x_display="$candidate"
@@ -158,7 +247,6 @@ if [ -z "$x_display" ]; then
   exit 1
 fi
 echo "Xvfb started on display :$x_display (PID $xvfb_pid)"
-owned_pids+=("$xvfb_pid")
 export DISPLAY=":$x_display"
 for _ in $(seq 1 20); do
   xdpyinfo >/dev/null 2>&1 && break
@@ -184,17 +272,10 @@ echo "=== Launching the installed app as $test_user, with the fixture ==="
 app_log="$evidence_dir/app.log"
 runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" "$fixture_copy" > "$app_log" 2>&1 &
-app_shell_pid=$!
-owned_pids+=("$app_shell_pid")
+app_launcher_pid=$!
+owned_pids+=("$app_launcher_pid")
 
-# Poll for the real app PID (sudo/env wrap it — find the actual binary
-# process, not the wrapper), then its sidecar, by exact executable path.
-app_pid=""
-for _ in $(seq 1 40); do
-  app_pid="$(pgrep -o -u "$test_user" -f "^$bin_path" || true)"
-  [ -n "$app_pid" ] && break
-  sleep 0.5
-done
+app_pid="$(wait_for_descendant_by_exe "$app_launcher_pid" "$bin_path" 40 || true)"
 if [ -z "$app_pid" ]; then
   add_check "App process started" "false" "never appeared within 20s"
   cat "$app_log" >&2 || true
@@ -204,12 +285,7 @@ fi
 add_check "App process started" "true" "PID $app_pid"
 owned_pids+=("$app_pid")
 
-sidecar_pid=""
-for _ in $(seq 1 40); do
-  sidecar_pid="$(pgrep -o -u "$test_user" -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
-  [ -n "$sidecar_pid" ] && break
-  sleep 0.5
-done
+sidecar_pid="$(wait_for_descendant_by_exe "$app_pid" "$sidecar_exe" 40 || true)"
 if [ -z "$sidecar_pid" ]; then
   add_check "Sidecar spawned from the installed app" "false" "never appeared within 20s"
   write_report
@@ -300,7 +376,10 @@ if [ -n "$window_id" ]; then
   # Distinguishes the graceful /shutdown path from the killpg fallback: the
   # sidecar only prints this line if serve_forever() returned on its own
   # (the /shutdown route succeeded), never on a signal death or the stdin
-  # lifeline's os._exit(0).
+  # lifeline's os._exit(0). Not strict proof by itself (a real SIGINT would
+  # also print it, since server.py's except KeyboardInterrupt falls through
+  # to the same line) — but nothing in this harness's close path ever sends
+  # SIGINT, only the wmctrl close, so the distinction holds here.
   clean_shutdown_line="false"
   if grep -q "shutdown: server stopped cleanly" "$app_log" 2>/dev/null; then
     clean_shutdown_line="true"
@@ -318,40 +397,38 @@ fi
 echo "=== Reopening (proves the app isn't left in a broken state after a real close) ==="
 runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" > "$evidence_dir/app_reopen.log" 2>&1 &
-reopen_shell_pid=$!
-owned_pids+=("$reopen_shell_pid")
-reopen_app_pid=""
-for _ in $(seq 1 40); do
-  reopen_app_pid="$(pgrep -o -u "$test_user" -f "^$bin_path" || true)"
-  [ -n "$reopen_app_pid" ] && break
-  sleep 0.5
-done
+reopen_launcher_pid=$!
+owned_pids+=("$reopen_launcher_pid")
+reopen_app_pid="$(wait_for_descendant_by_exe "$reopen_launcher_pid" "$bin_path" 40 || true)"
 add_check "App reopens after a real close" "$([ -n "$reopen_app_pid" ] && echo true || echo false)" "PID ${reopen_app_pid:-none}"
 if [ -n "$reopen_app_pid" ]; then
   owned_pids+=("$reopen_app_pid")
-  reopen_sidecar_pid="$(pgrep -o -u "$test_user" -f 'snapstudio-api-x86_64-unknown-linux-gnu' || true)"
+  reopen_sidecar_pid="$(wait_for_descendant_by_exe "$reopen_app_pid" "$sidecar_exe" 20 || true)"
   [ -n "$reopen_sidecar_pid" ] && owned_pids+=("$reopen_sidecar_pid")
   kill -9 "$reopen_app_pid" 2>/dev/null || true
-  [ -n "$reopen_sidecar_pid" ] && kill -9 "$reopen_sidecar_pid" 2>/dev/null || true
+  [ -n "${reopen_sidecar_pid:-}" ] && kill -9 "$reopen_sidecar_pid" 2>/dev/null || true
 fi
 
 kill "$wm_pid" 2>/dev/null || true
 kill "$xvfb_pid" 2>/dev/null || true
 
 echo "=== Purging and verifying nothing is left behind ==="
-installed_files_snapshot="$(dpkg -L "$pkg_name" | while IFS= read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)"
-apt-get purge -y "$pkg_name"
-leftover_found=0
-while IFS= read -r f; do
-  [ -z "$f" ] && continue
-  if [ -e "$f" ]; then
-    echo "Leftover after purge: $f" >&2
-    leftover_found=1
-  fi
-done <<< "$installed_files_snapshot"
-add_check "Purge leaves nothing behind" "$([ "$leftover_found" -eq 0 ] && echo true || echo false)" ""
-
-userdel -r "$test_user" 2>/dev/null || true
+if [ "$pkg_preinstalled" = "true" ]; then
+  echo "Skipping purge: $pkg_name was already installed before this run — not removing a real pre-existing install." >&2
+  add_check "Purge leaves nothing behind" "true" "skipped: package pre-existed this run, not purged"
+else
+  installed_files_snapshot="$(dpkg -L "$pkg_name" | while IFS= read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done)"
+  apt-get purge -y "$pkg_name"
+  leftover_found=0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if [ -e "$f" ]; then
+      echo "Leftover after purge: $f" >&2
+      leftover_found=1
+    fi
+  done <<< "$installed_files_snapshot"
+  add_check "Purge leaves nothing behind" "$([ "$leftover_found" -eq 0 ] && echo true || echo false)" ""
+fi
 
 write_report
 
