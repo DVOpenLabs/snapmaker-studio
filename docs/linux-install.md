@@ -1,9 +1,10 @@
 # Installing Snapmaker Studio on Linux
 
 > **No Linux package has been published in any GitHub Release yet.** This page
-> describes the `.deb` package the next release will ship, written and verified
-> ahead of that release. If you found this page before a Linux download appears
-> on the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases),
+> documents a `.deb` build that has been verified in continuous integration —
+> it is not an announcement of a release date. If you found this page before a
+> Linux download appears on the
+> [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases),
 > there is nothing to install yet — check back there.
 
 ## What you get, and what you don't need to install
@@ -24,17 +25,18 @@ Linux desktops, or installed automatically by `apt` if missing.
 
 | Distro | How it was verified |
 |---|---|
-| Ubuntu 22.04 (x86_64) | Automated: real `.deb` installed with `apt` on a genuinely clean `ubuntu:22.04` container (no prior checkout, no dev tools), then launched under a virtual display (Xvfb) with a real window manager (Openbox) and driven through the real UI — 35/35 checks passing |
-| Ubuntu 24.04 (x86_64) | Same, on a clean `ubuntu:24.04` container — 35/35 checks passing |
+| Ubuntu 22.04 (x86_64) | Automated: real `.deb` installed with `apt` on a genuinely clean `ubuntu:22.04` container (no prior checkout, no dev tools), then exercised by 35 automated checks — some launch the real app under a virtual display (Xvfb) with a real window manager (Openbox) and close its real window, others call the local backend directly — all 35 passing |
+| Ubuntu 24.04 (x86_64) | Same, on a clean `ubuntu:24.04` container — all 35 passing |
 
-**Not yet tested:** a real GNOME, KDE, or other desktop session; a real
-physical machine or VM (as opposed to a container); any distro other than
-Ubuntu 22.04/24.04; upgrading from a previously published Linux package (none
-exists yet to upgrade from); Printer Hub against a real Snapmaker U1 from
-Linux; and any report from an external user. This page will be updated as
-each of those is genuinely verified — see
-[docs/internal/LINUX_BETA_PLAN.md](internal/LINUX_BETA_PLAN.md) for the full
-evidence trail behind the claims on this page.
+**Not yet tested:** a person clicking through Doctor, Prepare, and the Orca
+handoff in the live UI (the automated checks above cover the backend logic
+behind those screens, not mouse-driven interaction with them); a real GNOME,
+KDE, or other desktop session; a real physical machine or VM (as opposed to a
+container); any distro other than Ubuntu 22.04/24.04; upgrading from a
+previously published Linux package (none exists yet to upgrade from);
+Printer Hub against a real Snapmaker U1 from Linux; and any report from an
+external user. This page will be updated as each of those is genuinely
+verified.
 
 ## Download
 
@@ -42,7 +44,9 @@ Get the `.deb` from the
 [official GitHub Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases)
 — never from anywhere else. The exact current filename, size, and SHA256 are
 in [docs/RELEASE_METADATA.md](RELEASE_METADATA.md), which is kept in sync
-with the release itself.
+with the release itself. **Use the filename exactly as shown on the Releases
+page** in every command below — do not retype or guess it; it will look
+something like `snapmaker-studio_<version>_amd64_<short-hash>.deb`.
 
 ## Verify the download (SHA256)
 
@@ -50,7 +54,7 @@ Before installing, confirm the file's SHA256 checksum matches the value publishe
 in [docs/RELEASE_METADATA.md](RELEASE_METADATA.md) for the release you downloaded:
 
 ```bash
-sha256sum "Snapmaker Studio_<version>_amd64.deb"
+sha256sum snapmaker-studio_<version>_amd64_<short-hash>.deb
 ```
 
 If the printed hash does not match, **do not install the package** — delete it
@@ -59,7 +63,7 @@ and download again from the official Releases page.
 ## Install
 
 ```bash
-sudo apt install "./Snapmaker Studio_<version>_amd64.deb"
+sudo apt install ./snapmaker-studio_<version>_amd64_<short-hash>.deb
 ```
 
 Using `apt install ./<file>.deb` (rather than `dpkg -i`) lets `apt` resolve
@@ -84,7 +88,7 @@ There is no in-app auto-update on Linux. To upgrade, download the newer
 way:
 
 ```bash
-sudo apt install "./Snapmaker Studio_<new-version>_amd64.deb"
+sudo apt install ./snapmaker-studio_<new-version>_amd64_<short-hash>.deb
 ```
 
 `apt` replaces the previous version in place.
@@ -94,12 +98,16 @@ sudo apt install "./Snapmaker Studio_<new-version>_amd64.deb"
 ```bash
 sudo apt remove snapmaker-studio    # keeps nothing behind but your project data
 sudo apt purge snapmaker-studio     # same effect for this package — it ships no conffiles
+sudo apt autoremove                 # optional: drops any dependency apt pulled in only for Studio
 ```
 
 Studio's package does not own your data directory (below), so removing the
-app does not delete your projects or settings. Delete
+app does not delete your projects. Delete
 `~/.local/share/SnapmakerStudio` (or your `$XDG_DATA_HOME` equivalent)
-yourself if you want those gone too.
+yourself if you want that gone too. UI preferences (theme, printer address,
+filament price, materials-provider settings) are kept separately, by the
+embedded browser view, not in that directory — removing the package does not
+clear them, and this page does not yet document where they live on disk.
 
 ## Where Studio keeps your data
 
@@ -114,6 +122,9 @@ Studio follows the XDG Base Directory spec on Linux:
 Studio creates its own default directory (the first two cases above) with
 permissions `0700` — readable and writable only by your user. An explicit
 `SNAPSTUDIO_DATA_DIR` you point at yourself is left exactly as you made it.
+
+This directory holds your project data (library entries, prepared copies,
+reports). It does **not** hold UI preferences — see Uninstall above.
 
 Nothing is ever uploaded off your local network. Local-first means local:
 no cloud, no account, no telemetry.
@@ -151,10 +162,9 @@ library is the most common cause on a very minimal install; `sudo apt install
 
 **You see extra background processes like `dbus-daemon`, `at-spi2-registryd`,
 or `xdg-desktop-portal` after closing Studio.** These are normal desktop
-accessibility/portal services your desktop session activates on demand — they
-are not started by Studio and are not orphaned Studio processes. They are
-shared, session-scoped infrastructure that legitimately outlives any single
-app.
+accessibility/portal services your session activates on demand — they are
+shared, session-scoped infrastructure that outlives any single app, not
+something Studio starts and leaves behind.
 
 **Something else looks wrong.**
 [Tell us what it got wrong](https://github.com/DVOpenLabs/snapmaker-studio/issues/new?template=studio-got-this-wrong.yml)

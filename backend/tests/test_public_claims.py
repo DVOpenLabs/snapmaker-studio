@@ -18,6 +18,7 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _PUBLIC_DOCS = [
     "README.md",
     os.path.join("docs", "RELEASE_NOTES.md"),
+    os.path.join("docs", "linux-install.md"),
 ]
 
 _BANNED = [

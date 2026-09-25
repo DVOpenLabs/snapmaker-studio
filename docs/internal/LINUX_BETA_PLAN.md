@@ -463,17 +463,29 @@ against the live repo and a real green CI log before anything was written.
   against the real `.deb`'s own control file in CI, not guessed); a
   Tested-on table naming exactly what was verified (Ubuntu 22.04/24.04,
   clean containers, real apt install, Xvfb+Openbox, 35/35) and, just as
-  important, what was **not** yet verified (real desktop session, real
+  important, what was **not** yet verified (a person clicking through the
+  live UI rather than the harness's automated checks — 12 of the 35 call
+  the local API directly, not the UI — real desktop session, real
   hardware/VM, other distros, a real upgrade, Printer Hub against a real
   U1, any external user); download/verify/install/upgrade/uninstall steps
-  written against the real package name (`snapmaker-studio`), real `.deb`
-  filename shape (`Snapmaker Studio_<version>_amd64.deb` — note the literal
-  space), real binary path (`/usr/bin/snapmaker-studio-desktop`), and the
-  real data-directory behaviour in `backend/snapstudio_core/paths.py`
+  written against the real package name (`snapmaker-studio`) and real
+  binary path (`/usr/bin/snapmaker-studio-desktop`); the real
+  data-directory behaviour in `backend/snapstudio_core/paths.py`
   (`$XDG_DATA_HOME/SnapmakerStudio` or `~/.local/share/SnapmakerStudio`,
-  mode `0700`, `SNAPSTUDIO_DATA_DIR` override); a Troubleshooting section
-  that explains the D-Bus/AT-SPI/portal daemon family from L8 in user terms
-  (normal, not a leak) instead of re-litigating it.
+  mode `0700`, `SNAPSTUDIO_DATA_DIR` override) — with an explicit note that
+  this covers project data only, not UI preferences (theme, printer
+  address, filament price, provider settings), which `desktop/src/store/*.ts`
+  keeps in the embedded browser view's own storage, unaffected by that
+  directory or its override; a Troubleshooting section that explains the
+  D-Bus/AT-SPI/portal daemon family from L8 in user terms (normal, not a
+  leak) instead of re-litigating it. Commands reference the downloaded
+  filename generically (`snapmaker-studio_<version>_amd64_<short-hash>.deb`,
+  matching `release-linux.yml`'s checksum/label step — the raw Tauri build
+  output has a different name entirely, `Snapmaker Studio_<version>_amd64.deb`
+  with a literal space, which is never what a user downloads) rather than
+  hard-coding one guessed pattern, since the real tag-triggered Linux
+  release workflow does not exist yet and the exact final name is not yet
+  certain.
 - **`backend/tests/test_public_claims.py`**: added `docs/linux-install.md`
   to the tooling-name guard's doc list (it previously only covered
   `RELEASE_NOTES.md` and `windows-install.md`) — otherwise nothing enforced
@@ -534,11 +546,17 @@ v1.0.0 release PR is a paste rather than fresh drafting:
 >
 > Download links: Windows installer and Linux `.deb`, both from the same
 > v1.0.0 release. Sizes/hashes for both come from
-> `docs/RELEASE_METADATA.md`, which must carry **distinct field names** for
-> the Windows and Linux rows (`Windows SHA256` / `Linux SHA256`, not two
-> rows both named `SHA256`) — `test_release_docs.py`'s `_metadata_current()`
-> keys rows by field name, so a second identically-named row silently
-> overwrites the first one it reads.
+> `docs/RELEASE_METADATA.md`. **Do not rename the existing `Version` /
+> `Installer` / `Size (bytes)` / `SHA256` rows** — `test_release_docs.py`'s
+> `metadata` fixture (`_metadata_current()`, lines 42-62) requires those
+> exact bare keys (lowercased) to exist and reads them as the *Windows*
+> installer's values throughout the rest of that test file. Add the Linux
+> values as NEW, separately-named rows instead — e.g. `Linux installer` /
+> `Linux size (bytes)` / `Linux SHA256` — since `_metadata_current()` keys
+> its dict by lowercased field name and a second row reusing an existing
+> name (e.g. a second bare `SHA256` row) would silently overwrite the first
+> one it parses, which is the real hazard here — not the field names
+> themselves, which must NOT change.
 >
 > Linux install instructions link to `docs/linux-install.md` (this phase's
 > new file, which stops being "unlinked from README" the moment this text
@@ -549,3 +567,70 @@ v1.0.0 release PR is a paste rather than fresh drafting:
 No new runtime evidence — L9 is documentation only. It correctly *describes*
 the DESKTOP WORKFLOW VERIFIED tier L8 already earned, and is explicit
 everywhere that REAL U1 VERIFIED and EXTERNAL USER VERIFIED remain false.
+
+### Review round (Codex lane unavailable — Opus alone, disclosed)
+
+Three independent Codex dispatches this phase (Astra for planning, Sol then
+Terra for review) all failed identically: a WebSocket disconnect, fallback
+to HTTPS, then `401 Unauthorized: Incorrect API key provided` against the
+same service-account key, across three different model routes
+(`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`). This is a session-wide
+Codex credential outage, not a per-dispatch flake or a finding about this
+diff — logged to the orchestration ledger for each of the three failed
+sessions. Per the standing failover rule, this makes the review-lane pairing
+requirement (Opus + one of Sol/Terra) genuinely unsatisfiable this session;
+proceeding with Opus alone is recorded here explicitly as an **incomplete
+pair**, not a completed paired review, per the routing policy's own
+labelling requirement. Nothing in this phase required destructive or
+irreversible action, which weighed into proceeding rather than blocking on
+a credential fix outside this session's authority (rotating the Codex
+service-account API key).
+
+Opus's review (verified against real CI run `36199287491` on `main`, plus
+direct source reads) returned **NOT SAFE TO SHIP as written**: 1 HIGH, 5
+MEDIUM, 7 LOW. All were fixed in the same commit round:
+
+- **H1 (fixed)**: the doc's install/verify/upgrade commands hard-coded the
+  raw Tauri build artifact's name (`Snapmaker Studio_<version>_amd64.deb`,
+  literal space) — not what a user would ever actually download. Fixed to
+  reference the filename generically, instruct copying it exactly from the
+  Releases page, and note the real labelling convention
+  (`release-linux.yml`'s `snapmaker-studio_<version>_amd64_<short-hash>.deb`)
+  instead of asserting one fixed name before the real release workflow
+  exists.
+- **M1 (fixed)**: "driven through the real UI — 35/35" overclaimed; 12 of
+  the 35 harness checks call the local API directly, not the UI. Reworded
+  to describe both kinds of checks accurately, and added "a person clicking
+  through Doctor/Prepare/Orca-handoff in the live UI" to the not-yet-tested
+  list.
+- **M2 (fixed)**: "delete the XDG data directory to remove your settings"
+  was false — UI preferences live in the embedded browser view's own
+  storage (`desktop/src/store/*.ts`'s `localStorage` usage), unaffected by
+  `SNAPSTUDIO_DATA_DIR` or the XDG directory. Fixed to state this honestly
+  without guessing the unverified on-disk path.
+- **M3 (fixed)**: "the next release will ship" was forward-looking
+  pre-announcement language, the exact thing this file's own header has
+  disclaimed since L5. Reworded to backward-looking, verified-in-CI framing.
+- **M4 (fixed)**: the public doc linked to this internal file, which names
+  Fable/Astra/Opus/Sol/Codex and a Codex auth failure — routing a public
+  reader straight around the tooling-name guard this same PR extends. Link
+  removed from `docs/linux-install.md`.
+- **M5 (fixed)**: the staged README text above originally said to rename
+  the existing `SHA256` (etc.) rows for Windows vs. Linux, which would have
+  broken `test_release_docs.py`'s `metadata` fixture (it requires those
+  exact bare keys). Corrected to: keep the existing rows untouched, add new
+  distinctly-named Linux rows.
+- **LOW fixes applied**: `apt autoremove` mentioned after purge; D-Bus/portal
+  troubleshooting wording tightened; `docs/linux-install.md` added to
+  `test_public_claims.py`'s print-guarantee guard list (`_PUBLIC_DOCS`) in
+  addition to the tooling-name guard.
+- **LOW deliberately not applied**: adding `docs/linux-install.md` to
+  `test_evidence_consistency.py`'s `CURRENT_DOCS` n/n-drift guard was
+  considered and deferred — that guard's `SUBJECTS` matching is tuned for
+  README/judge-doc prose patterns, and forcing an install guide through it
+  risks unrelated false failures for no real protection the M1 rewrite and
+  the print-guarantee guard don't already provide.
+
+Verified after fixes: `backend/tests/test_public_claims.py` and
+`test_evidence_consistency.py` (90 passed), full backend suite (1829
+passed, 7 skipped).
