@@ -235,6 +235,25 @@ def test_server_bad_content_length_is_400():
         httpd.shutdown()
 
 
+def test_server_shutdown_requires_token_and_stops_the_server():
+    httpd, token = build_server(port=0)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = httpd.server_address[1]
+        status, _ = _request(port, "/shutdown", {}, None)
+        assert status == 401, "expected 401 without token"
+        assert thread.is_alive(), "an unauthenticated /shutdown must not stop the server"
+
+        status, body = _request(port, "/shutdown", {}, token)
+        assert status == 200 and body["ok"] is True
+        thread.join(timeout=5)
+        assert not thread.is_alive(), "serve_forever did not return after /shutdown"
+    finally:
+        if thread.is_alive():
+            httpd.shutdown()
+
+
 def test_server_new_endpoints_are_routed():
     # Regression guard for the beta.4 stale-sidecar bug: these routes must exist
     # (a missing route returns 404; an executed route returns 200/400/500).

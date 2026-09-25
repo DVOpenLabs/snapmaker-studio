@@ -27,7 +27,7 @@ use tauri::{
     Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
-use sidecar::{spawn_sidecar, ApiInfo, SidecarProc};
+use sidecar::{shutdown_sidecar, spawn_sidecar, ApiInfo, SidecarProc};
 
 // Model Browser allowlist — the ONLY domains the in-app browser may navigate to.
 // Enforced in Rust at open time and on every navigation; off-allowlist top-level
@@ -496,11 +496,14 @@ fn main() {
         .expect("error while building Snapmaker Studio");
 
     app.run(|app_handle, event| {
-        // Kill the sidecar when the app exits so no orphan process survives.
+        // Bring the sidecar down when the app exits so no orphan process
+        // survives. See sidecar::shutdown_sidecar for what "bring down" means
+        // per platform (Linux: graceful /shutdown then bounded killpg;
+        // Windows: unchanged kill()+wait(), backed by the Job Object).
         if let RunEvent::Exit = event {
-            if let Some(mut child) = app_handle.state::<SidecarProc>().0.lock().unwrap().take() {
-                let _ = child.kill();
-                let _ = child.wait();
+            if let Some(child) = app_handle.state::<SidecarProc>().0.lock().unwrap().take() {
+                let info = app_handle.state::<ApiState>().0.lock().unwrap().clone();
+                shutdown_sidecar(child, &info);
             }
         }
     });

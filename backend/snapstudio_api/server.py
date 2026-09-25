@@ -13,6 +13,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
+from . import _lifeline
 from . import service
 from . import request_validation as rv
 from .request_validation import ValidationError
@@ -996,6 +997,17 @@ def _make_handler(token: str):
                     self._send(404, {"error": "unknown job"})
                 else:
                     self._send(200, status)
+            elif self.path == "/shutdown":
+                # Graceful half of the L4 zero-orphan sequence (see
+                # sidecar::shutdown_sidecar): reply first, THEN stop the
+                # server from a separate thread — ThreadingHTTPServer runs
+                # each request in its own thread, so calling shutdown() here
+                # (a different thread from the one blocked in
+                # serve_forever()) is the documented safe way to do this, not
+                # a deadlock risk. Once serve_forever() returns, serve()
+                # falls through and the process exits on its own.
+                self._send(200, {"ok": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
             else:
                 self._send(404, {"error": "not found"})
 
@@ -1047,6 +1059,7 @@ def build_server(host: str = "127.0.0.1", port: int = 0, attempts: int = 4):
 
 def serve(host: str = "127.0.0.1", port: int = 0) -> None:
     _watch_parent_then_exit()
+    _lifeline.start_parent_lifeline()
     httpd, token = build_server(host, port)
     actual_port = httpd.server_address[1]
     print(json.dumps({"port": actual_port, "token": token}), flush=True)  # handshake line
