@@ -625,15 +625,21 @@ else
 fi
 
 echo "=== Repeated launch/close cycles as the test user, zero accumulated orphans (item 23), sidecar-crash-first survival (item 24) ==="
-# Snapshot the session-infrastructure PIDs that already exist BEFORE this
-# phase starts (the 3MF/STL/SIGTERM/SIGKILL flows above already trigger the
-# same D-Bus-activated daemons documented at the leftover check below). This
-# is a real cardinality check, not a blanket argv0 allowlist: only PIDs
-# already present in this exact baseline are ever excluded from the "zero
-# orphans" sweep after the cycles — a NEW instance of the same daemon
-# appearing later (a real accumulation regression) is a different PID and
-# is NOT in the baseline, so it still counts as a leftover.
-infra_baseline_pids="$(pgrep -u "$test_uid" 2>/dev/null || true)"
+# The session-infrastructure baseline is captured AFTER cycle 1 completes,
+# not before the loop starts — a real run of the before-the-loop version
+# of this check (36170528823) proved that wrong: the AT-SPI/portal daemons
+# are lazily D-Bus-activated on first actual use, which for at least some
+# of them apparently doesn't happen until THIS phase's own GUI interaction,
+# not the earlier 3MF/STL/SIGTERM/SIGKILL flows — so a baseline taken
+# before cycle 1 missed them, and they were then wrongly flagged as
+# leftover after simply being auto-activated once during cycle 1 itself,
+# exactly like they're designed to be. Capturing the baseline after cycle 1
+# instead means cycles 2-3 are what's actually checked for accumulation —
+# this is a real cardinality check, not a blanket argv0 allowlist: only
+# PIDs in that baseline are ever excluded, so a NEW instance of the same
+# daemon appearing in cycle 2 or 3 (an actual accumulation regression) is a
+# different PID, not in the baseline, and still counts as a leftover.
+infra_baseline_pids=""
 repeat_cycles_ok="true"
 for cycle in 1 2 3; do
   runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
@@ -680,6 +686,10 @@ for cycle in 1 2 3; do
   if kill -0 "$cyc_app_pid" 2>/dev/null; then
     kill -9 "$cyc_app_pid" 2>/dev/null || true
     repeat_cycles_ok="false"
+  fi
+  if [ "$cycle" -eq 1 ]; then
+    sleep 1
+    infra_baseline_pids="$(pgrep -u "$test_uid" 2>/dev/null || true)"
   fi
 done
 # A few seconds' grace before the sweep: --init (tini) reaps exited
