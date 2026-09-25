@@ -283,6 +283,23 @@ app_pid="$(wait_for_process_by_uid_and_exe "$test_uid" "$bin_path" 40 || true)"
 if [ -z "$app_pid" ]; then
   add_check "App process started" "false" "never appeared within 20s"
   cat "$app_log" >&2 || true
+  # Diagnostic dump: this has failed to find a process we have direct
+  # other evidence (the app's own stderr) is actually running — dump
+  # exactly what's really out there and why the match criterion (uid
+  # $test_uid, exe == $bin_path) isn't hitting it, instead of guessing
+  # again blind.
+  {
+    echo "--- DIAGNOSTIC: expected uid=$test_uid exe='$bin_path' (resolved: '$(readlink -f "$bin_path" 2>/dev/null || echo '?')') ---"
+    echo "--- id $test_user: $(id "$test_user" 2>&1) ---"
+    echo "--- all processes, pid/uid/exe/cmd ---"
+    for p in /proc/[0-9]*; do
+      pn="${p#/proc/}"
+      pe="$(readlink -f "$p/exe" 2>/dev/null || echo '?')"
+      pu="$(awk '/^Uid:/{print $2; exit}' "$p/status" 2>/dev/null || echo '?')"
+      pc="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || echo '?')"
+      echo "pid=$pn uid=$pu exe=$pe cmd=$pc"
+    done
+  } >&2
   write_report
   exit 1
 fi
