@@ -29,13 +29,16 @@
 # on disk by the test .deb for the duration of the run and never restored,
 # so this is not yet safe to run against a machine whose pre-existing
 # install must survive intact (tracked as L8/L10 follow-up debt); every
-# process this harness ever signals is
-# tracked by real PID, verified by the exact uid of the test account THIS
-# run just created plus an exact byte-for-byte argv[0] match (from
-# /proc/<pid>/cmdline) — never by process name or cmdline substring, which
-# could otherwise match an unrelated concurrent run's processes or something
-# on the machine that merely happens to share a name. All cleanup lives in
-# one EXIT trap, so every exit path — including an early failure — runs it,
+# process this harness ever discovers/waits-for is tracked by real PID,
+# verified by the exact uid of the test account THIS run just created plus
+# an exact byte-for-byte argv[0] match (from /proc/<pid>/cmdline) — never by
+# process name or cmdline substring, which could otherwise match an
+# unrelated concurrent run's processes or something on the machine that
+# merely happens to share a name. The one exception is final cleanup, which
+# also does a uid-wide kill as a safety net (see the KNOWN LIMITATION note
+# at that line) — not yet fully hardened for a shared machine, tracked as
+# L8/L10 follow-up debt. All cleanup lives in one EXIT trap, so every exit
+# path — including an early failure — runs it,
 # not just the happy path at the bottom of the script.
 set -euo pipefail
 
@@ -179,6 +182,17 @@ cleanup() {
     # was silently swallowed, leaking the account and its processes. Kill
     # everything under this uid first so userdel always has a clean account
     # to remove, regardless of what owned_pids did or didn't track.
+    # KNOWN LIMITATION (tracked for L8/L10, not closed here): this matches
+    # by uid, not by PID+argv0 like every other kill in this script. useradd
+    # picks a uid from account records, not from what's currently running —
+    # on a real/shared host (not this harness's actual current use, which is
+    # always a fresh single-tenant ephemeral CI container) an unrelated
+    # already-running process could in principle be left holding a uid this
+    # run's new account then gets assigned, and this would kill it. Properly
+    # closing this needs the test process launched into its own process
+    # group or cgroup rather than uid-scoped cleanup — out of scope for this
+    # pass; do not rely on this harness's "safe on a shared machine" claim
+    # for this specific gap until that lands.
     [ -n "$test_uid" ] && pkill -KILL -u "$test_uid" 2>/dev/null || true
     userdel -r "$test_user" 2>/dev/null || true
   fi
@@ -192,11 +206,16 @@ apt-get install -y --no-install-recommends xvfb openbox wmctrl xdotool imagemagi
 # determined, so an interrupt between the Package query and the preinstalled
 # check can never leave cleanup thinking THIS run owns a package it doesn't.
 pkg_name_candidate="$(dpkg-deb -f "$deb_path" Package)"
-# Match any status whose second letter is "i" (Installed) — ii, hi (hold),
-# ri/pi (reinstall-required, still has files on disk) — not just the exact
-# "ii" (install ok, installed) status. A narrower match would treat a held
-# or reinstall-required package as not-preinstalled and purge it below.
-if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | grep -q '^.i'; then
+# dpkg's Status-Abbrev is (desired-action)(current-status)(error-flag), e.g.
+# "ii" (installed), "hi" (held), "ri"/"pi" (remove/purge-requested but still
+# installed), "iHR" (half-installed, reinstall-required). Match any status
+# whose SECOND character is neither "n" (not-installed) nor "c"
+# (config-files-only, no payload on disk) — this covers every state that
+# still has package payload on disk (i, H, U, F, W, t), not just the exact
+# second-character "i" this used to require, which missed half-installed/
+# unpacked/half-configured/triggers states and would have let cleanup purge
+# a genuinely pre-existing (if partially broken) install.
+if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | grep -q '^.[^nc]'; then
   pkg_preinstalled="true"
   echo "NOTE: $pkg_name_candidate was already installed before this run — this replaces its files with the test .deb (not left alone) but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
 fi
