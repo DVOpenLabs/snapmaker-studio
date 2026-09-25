@@ -11,9 +11,12 @@
 //                 bundle.resources (externalBin can't hold onedir's directory
 //                 output), located at runtime via resource_dir() — see sidecar.rs.
 //
-// The sidecar child is tracked in app state and killed on exit — no orphan process
-// (Windows: the Job Object binding in sidecar.rs; Linux: the exit-handler kill()
-// below only, today — process-group kill and the parent-death lifeline are L4).
+// The sidecar child is tracked in app state and brought down on exit — no orphan
+// process (Windows: the Job Object binding in sidecar.rs, backed by the plain
+// kill()+wait() below; Linux: three independent layers in sidecar.rs — PDEATHSIG
+// + its own process group, armed before exec; graceful /shutdown-then-killpg via
+// shutdown_sidecar(), called from the RunEvent::Exit handler below; and a stdin-EOF
+// lifeline the sidecar itself arms, see backend/snapstudio_api/_lifeline.py).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

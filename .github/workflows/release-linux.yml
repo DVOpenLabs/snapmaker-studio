@@ -171,26 +171,63 @@ jobs:
       - name: Quick install smoke-test
         # Deliberately lighter than linux-ci.yml's full reinstall/upgrade/
         # purge/Xvfb-launch lifecycle matrix — that continuous proof already
-        # exists and doesn't need duplicating here. This just confirms the
-        # release-candidate artifact installs cleanly and its sidecar
-        # answers, which is the minimum a "release candidate" label should
-        # mean.
+        # exists and doesn't need duplicating here. This confirms the
+        # release-candidate artifact installs cleanly, finds its app entry
+        # point, AND that the bundled sidecar actually starts and answers
+        # /health — not just that the .deb unpacks. Launching the sidecar
+        # binary directly (no Xvfb/GUI needed for this) is enough to prove
+        # that; it does not launch the full GUI app the way linux-ci.yml's
+        # Xvfb-based steps do.
         run: |
           set -euo pipefail
           apt-get install -y "$deb_path"
           installed_files="$(dpkg -L "$pkg_name")"
           bin_path=""
+          sidecar_path=""
           while IFS= read -r f; do
-            if [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
+            if [ -z "$bin_path" ] && [[ "$f" =~ ^/usr/bin/[^/]+$ ]]; then
               bin_path="$f"
-              break
+            fi
+            if [ -z "$sidecar_path" ] && [[ "$f" == *snapstudio-api-x86_64-unknown-linux-gnu ]]; then
+              sidecar_path="$f"
             fi
           done <<< "$installed_files"
           if [ -z "$bin_path" ]; then
             echo "Could not find the installed app's /usr/bin entry point." >&2
             exit 1
           fi
-          echo "Installed cleanly. Entry point: $bin_path"
+          if [ -z "$sidecar_path" ]; then
+            echo "Could not find the installed sidecar binary." >&2
+            exit 1
+          fi
+          echo "App entry point: $bin_path"
+          echo "Sidecar: $sidecar_path"
+
+          "$sidecar_path" > /tmp/rc_handshake.json 2>/tmp/rc_sidecar.err &
+          sidecar_pid=$!
+          port=""
+          for _ in $(seq 1 40); do
+            if [ -s /tmp/rc_handshake.json ]; then
+              port="$(python3.13 -c "import json; print(json.load(open('/tmp/rc_handshake.json'))['port'])" 2>/dev/null || true)"
+              [ -n "$port" ] && break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$port" ]; then
+            echo "Sidecar never printed a handshake line within 20s." >&2
+            cat /tmp/rc_sidecar.err >&2
+            kill "$sidecar_pid" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Sidecar handshake received, port=$port"
+          status="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/health")"
+          kill "$sidecar_pid" 2>/dev/null || true
+          wait "$sidecar_pid" 2>/dev/null || true
+          if [ "$status" != "200" ]; then
+            echo "Expected HTTP 200 from /health, got $status" >&2
+            exit 1
+          fi
+          echo "Installed cleanly and the bundled sidecar answers /health with 200."
           apt-get remove -y "$pkg_name"
 
       - name: Checksum and label the release-candidate .deb
