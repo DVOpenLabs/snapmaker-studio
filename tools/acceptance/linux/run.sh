@@ -653,15 +653,27 @@ done
 # back-to-back launch/kill cycles in quick succession.
 sleep 3
 leftover_after_cycles="$(pgrep -u "$test_uid" 2>/dev/null || true)"
-if [ -n "$leftover_after_cycles" ]; then
-  # Diagnostic dump, not a guess: this is the FIRST check in this harness
-  # that ever sweeps for every process under the uid rather than tracking
-  # specific PIDs, so a hit here needs real data before deciding whether
-  # it's a genuine app-level leak (e.g. a WebKit helper that doesn't die
-  # with its parent on SIGKILL) or just a not-yet-reaped zombie from one of
-  # the many launches earlier in this same run.
-  echo "--- DIAGNOSTIC: processes still under uid=$test_uid after 3 repeated cycles ---" >&2
-  for lp in $leftover_after_cycles; do
+# The first real run of this exact check found leftover_pids populated by
+# dbus-launch + dbus-daemon (confirmed via a diagnostic dump: ppid=1, cmd
+# "dbus-launch --autolaunch ..." / "/usr/bin/dbus-daemon --syslog-only
+# --fork ... --session"), not an app leak. GTK/WebKit auto-launches this
+# session bus ONCE per X display (X11 root-window property discovery) and
+# it's designed to outlive every single app instance for the rest of the
+# session — exactly like Xvfb/openbox, which this harness never expects to
+# be gone either. Filter those out before judging "orphan"; anything else
+# still gets a diagnostic dump, since that would be genuinely unexplained.
+real_leftover=""
+for lp in $leftover_after_cycles; do
+  lcmd="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '')"
+  case "$lcmd" in
+    "dbus-launch --autolaunch"*|"/usr/bin/dbus-daemon "*"--session"*) continue ;;
+  esac
+  real_leftover="$real_leftover $lp"
+done
+real_leftover="$(echo "$real_leftover" | xargs 2>/dev/null || true)"
+if [ -n "$real_leftover" ]; then
+  echo "--- DIAGNOSTIC: unexplained processes still under uid=$test_uid after 3 repeated cycles ---" >&2
+  for lp in $real_leftover; do
     lstat="$(cat "/proc/$lp/stat" 2>/dev/null || echo '?')"
     lcmd="$({ tr '\0' ' ' < "/proc/$lp/cmdline"; } 2>/dev/null || echo '?')"
     lppid="$(awk '/^PPid:/{print $2; exit}' "/proc/$lp/status" 2>/dev/null || echo '?')"
@@ -669,8 +681,8 @@ if [ -n "$leftover_after_cycles" ]; then
   done
 fi
 add_check "3 repeated launch/close cycles leave zero orphans under the uid" \
-  "$([ "$repeat_cycles_ok" = "true" ] && [ -z "$leftover_after_cycles" ] && echo true || echo false)" \
-  "leftover_pids=${leftover_after_cycles:-none}"
+  "$([ "$repeat_cycles_ok" = "true" ] && [ -z "$real_leftover" ] && echo true || echo false)" \
+  "leftover_pids=${real_leftover:-none} (dbus session bus excluded: ${leftover_after_cycles:-none})"
 
 echo "=== Headless API lane: Doctor / Prepare / fidelity / report / painted paths (items 13, 14, 16, 17) ==="
 # Drives the sidecar binary DIRECTLY (not through the desktop app) — the
