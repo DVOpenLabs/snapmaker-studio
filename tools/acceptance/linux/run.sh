@@ -150,6 +150,7 @@ wait_for_process_by_uid_and_argv0() {
 # --- state used by cleanup, declared before anything that could fail ------
 declare -a owned_pids=()
 test_user=""
+test_uid=""
 user_created="false"
 pkg_name=""
 pkg_preinstalled="false"
@@ -167,6 +168,14 @@ cleanup() {
     apt-get purge -y "$pkg_name" >/dev/null 2>&1 || true
   fi
   if [ -n "$test_user" ] && [ "$user_created" = "true" ]; then
+    # If an earlier check bailed out before finding/tracking every process
+    # this run launched under $test_uid (e.g. app-detection timed out but
+    # the app was actually running), a bare userdel -r would fail — it
+    # refuses to remove an account with live processes — and that failure
+    # was silently swallowed, leaking the account and its processes. Kill
+    # everything under this uid first so userdel always has a clean account
+    # to remove, regardless of what owned_pids did or didn't track.
+    [ -n "$test_uid" ] && pkill -KILL -u "$test_uid" 2>/dev/null || true
     userdel -r "$test_user" 2>/dev/null || true
   fi
 }
@@ -220,17 +229,18 @@ fi
 echo "=== Creating an unprivileged test user (real installs never run as root) ==="
 # PID-suffixed so this is a fresh, never-before-seen account name on every
 # invocation — a genuinely pre-existing/shared/concurrent-run collision on
-# this exact name is not realistically possible, but the create/delete
-# tracking below still guards the case where it somehow already exists
-# (never touch or delete an account this run didn't create).
+# this exact name is not realistically possible. Refuse to run rather than
+# reuse it: reusing would mean cp/chown-ing the fixture into a home
+# directory this run didn't create, which could be a real account's data
+# on a shared machine (L8/L10) — the exact thing "never touch an account
+# this run didn't create" promises not to do.
 test_user="snapstudio-acceptance-$$"
 if id "$test_user" >/dev/null 2>&1; then
-  echo "NOTE: $test_user unexpectedly already exists — reusing without modifying its ownership or deleting it afterward." >&2
-  user_created="false"
-else
-  useradd -m -s /bin/bash "$test_user"
-  user_created="true"
+  echo "FATAL: $test_user already exists. This name includes this run's own PID, so a collision should not happen — refusing to reuse or modify an account this run didn't create." >&2
+  exit 1
 fi
+useradd -m -s /bin/bash "$test_user"
+user_created="true"
 user_home="$(eval echo "~$test_user")"
 xdg_data_home="$user_home/.local/share"
 test_uid="$(id -u "$test_user")"
