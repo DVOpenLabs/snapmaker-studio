@@ -1088,6 +1088,28 @@ jobs:
 
           apt-get remove -y "$pkg_name"
 
+      - name: Installed-build acceptance harness (real GUI workflow, real window close)
+        # tools/acceptance/linux/run.sh — the Linux counterpart to
+        # tools/acceptance/run.ps1 (Windows). Everything above this step
+        # proves the package/CI-lifecycle level; this is the first (and
+        # only) place a real user workflow — launch with a file, see it
+        # render, close it for real — gets exercised at all, and the first
+        # place the graceful RunEvent::Exit -> /shutdown path (as opposed to
+        # the PDEATHSIG/killpg/stdin-lifeline paths already proven above)
+        # gets any runtime coverage anywhere in this project.
+        env:
+          SNAPSTUDIO_ACCEPT_WORKDIR: /tmp/linux-acceptance
+        run: bash tools/acceptance/linux/run.sh "$deb_path"
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-acceptance-evidence
+          path: /tmp/linux-acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Checksum and label the .deb for retrieval
         # No `if:` here — defaults to running only on success, same as every
         # earlier step. An `if: always()` on THIS step (an earlier version

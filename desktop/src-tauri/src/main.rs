@@ -499,6 +499,25 @@ fn main() {
         .expect("error while building Snapmaker Studio");
 
     app.run(|app_handle, event| {
+        // Closing the MAIN window must end the whole app — it did not,
+        // silently, since beta.13. Tauri only raises RunEvent::Exit when its
+        // window map becomes empty, and the Model Browser (built hidden at
+        // startup, its own CloseRequested handler always calls
+        // prevent_close()+hide() so it can be reused) means that map is
+        // NEVER empty: the user closes the visible window, the process and
+        // its sidecar are left running in the background until something
+        // else kills them. Confirmed against a real built release binary,
+        // not inferred: closing the main window left the process and both
+        // sidecar processes alive 30+ seconds later. Explicitly requesting
+        // exit here is what makes RunEvent::Exit (and therefore
+        // shutdown_sidecar below) reachable at all via the path a real user
+        // takes; every existing "zero-orphan" proof up to this point only
+        // covered process being killed outright, not a normal window close.
+        if let RunEvent::WindowEvent { label, event: WindowEvent::Destroyed, .. } = &event {
+            if label == "main" {
+                app_handle.exit(0);
+            }
+        }
         // Bring the sidecar down when the app exits so no orphan process
         // survives. See sidecar::shutdown_sidecar for what "bring down" means
         // per platform (Linux: graceful /shutdown then bounded killpg;

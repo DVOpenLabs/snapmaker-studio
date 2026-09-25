@@ -411,7 +411,51 @@ try {
 
     }
 
-    # --- close and prove no orphan -------------------------------------------
+    # --- close the real window, prove that alone exits the app cleanly -------
+    # Every orphan check below this point (and previously, every "close"
+    # check in this script's history) used Stop-Process -Force — a kill, not
+    # a close. That measures a different, easier path: Windows' Job Object
+    # binding and the app's plain kill()+wait() both fire on any process
+    # death, killed or not. It never proved that clicking the X button (or
+    # Alt+F4, or any other real close) exits the app at all. It did not,
+    # from beta.13 through v0.9.0: closing the main window left the process
+    # and its sidecar running in the background — confirmed empirically
+    # against the real v0.9.0 release binary before this check existed, then
+    # fixed by requesting app exit when the main window is destroyed (the
+    # app also owns a second, permanently-hidden window that prevents its
+    # own close, which meant Tauri's window-map-empties-so-exit default
+    # never fired for the main window either). This check is what actually
+    # exercises that fix, and what the "No orphan sidecar after close" check
+    # below should have been testing all along.
+    $sidecarBeforeClose = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe' AND ParentProcessId=$($paintedApp.Id)" |
+        Select-Object -ExpandProperty ProcessId)
+    $paintedApp.Refresh()
+    $realCloseWorked = $false
+    if ($paintedApp.MainWindowHandle -ne [IntPtr]::Zero -and $sidecarBeforeClose.Count -gt 0) {
+        $paintedApp.CloseMainWindow() | Out-Null
+        $appExited = $paintedApp.WaitForExit(15000)
+        $sidecarDeadline = (Get-Date).AddSeconds(10)
+        $stillAlive = $sidecarBeforeClose
+        while ((Get-Date) -lt $sidecarDeadline -and $stillAlive) {
+            $stillAlive = $stillAlive | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }
+            if ($stillAlive) { Start-Sleep -Milliseconds 250 }
+        }
+        $realCloseWorked = $appExited -and (-not $stillAlive)
+        Add-Check "Closing the real window exits the app and its sidecar (not just a kill)" $realCloseWorked `
+            "app exited=$appExited, sidecar PID(s) still alive=$($stillAlive -join ',')"
+    } else {
+        Add-Check "Closing the real window exits the app and its sidecar (not just a kill)" $false `
+            "could not locate the main window or its sidecar PID before attempting the close"
+    }
+    if (-not $realCloseWorked) {
+        # Don't let a failed close leave the rest of the script blocked on a
+        # process that should already be gone — force-stop whatever remains
+        # so later phases still run, but the FAIL above already recorded it.
+        Stop-Process -Id $paintedApp.Id -Force -ErrorAction SilentlyContinue
+        foreach ($sc in $sidecarBeforeClose) { Stop-Process -Id $sc -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- close (by kill, the pre-existing check) and prove no orphan --------
     Stop-Tracked
     $script:started = @()
     $orphans = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe'" |
