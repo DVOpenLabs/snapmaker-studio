@@ -26,7 +26,7 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
   public docs (`docs/linux-install.md` is L9, gated on a maintainer-approved
   prerelease), format widening, any version-number change.
 
-## Two decisions that need the maintainer, not made here
+## Two decisions the maintainer made (recorded here, not made by any agent)
 
 1. **`bundle.publisher` — RESOLVED (Option 2), split by platform, decided by
    the maintainer after a real Windows-breaking consequence surfaced in the
@@ -39,7 +39,7 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
    upgrade, and where the default "uninstall before installing" flow finds
    the previous version's uninstaller. Verified directly (real read-only
    registry query, this session, not just reading the NSIS template
-   source): `HKCU\Software\DeadlyVirusIn \ Snapmaker Studio\Snapmaker
+   source): `HKCU\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker
    Studio` genuinely exists and holds a real install path;
    `HKCU\Software\DVOpenLabs` does not. A Windows installer built with
    `publisher: "DVOpenLabs"` would not find any existing v0.9.0 install's
@@ -193,12 +193,12 @@ landed (see below); everything that makes the integration operationally
   needing sign-off regardless.
 - Tauri's config merge (`json_patch::merge`, RFC 7396) means a
   `bundle.publisher` set in `tauri.linux.conf.json` overrides the `.deb`'s
-  `Maintainer:` WITHOUT touching the Windows NSIS publisher string — the
-  Linux-only-fix option from the L5 open decision above is mechanically
-  real, not just theoretical. The exact npm `@tauri-apps/cli` bundler
-  version isn't pinned in `Cargo.lock` (it's a Rust-side lockfile), so this
-  should be spot-checked with a `dpkg-deb -f ... Maintainer` print in CI
-  before being fully relied on, if/when the value is decided.
+  `Maintainer:` WITHOUT touching the Windows NSIS publisher string — this
+  is exactly the mechanism decision 4 above now uses, confirmed not just
+  theoretical: `linux-ci.yml`'s `dpkg-deb -f ... Maintainer` assertion
+  passes for real on every CI run, proving the Linux override actually
+  takes effect while the shared file's value (verified byte-identical to
+  the real v0.9.0 release) is what Windows gets.
 
 ### What landed (L6 autonomous slice — no maintainer decision needed)
 

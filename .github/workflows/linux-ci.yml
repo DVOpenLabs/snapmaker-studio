@@ -414,10 +414,13 @@ jobs:
           fi
 
           echo "--- Verifying L5 package metadata (tauri.linux.conf.json's homepage/category/description/section) ---"
-          # Maintainer comes from the SHARED tauri.conf.json's bundle.publisher
-          # (also feeds the Windows NSIS installer string) — checked here too,
-          # now that it's been fixed to the current org name rather than left
-          # as the stale pre-rename value this comment used to describe.
+          # Maintainer comes from tauri.linux.conf.json's OWN bundle.publisher
+          # override, not the shared tauri.conf.json — the shared file
+          # intentionally still reads the legacy "DeadlyVirusIn / Snapmaker
+          # Studio" (Windows NSIS installer/registry-key compatibility with
+          # existing v0.9.0 installs; see docs/internal/LINUX_BETA_PLAN.md).
+          # Linux has no such installed-base constraint, so it gets the
+          # current org name unconditionally.
           maintainer="$(dpkg-deb -f "$deb_abs" Maintainer)"
           echo "Maintainer: $maintainer"
           if [ "$maintainer" != "DVOpenLabs" ]; then
