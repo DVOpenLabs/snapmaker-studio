@@ -61,6 +61,7 @@ _BANNED_TOOLS = [
 @pytest.mark.parametrize("rel", [
     os.path.join("docs", "RELEASE_NOTES.md"),
     os.path.join("docs", "windows-install.md"),
+    os.path.join("docs", "linux-install.md"),
 ])
 def test_public_docs_have_no_tooling_names(rel):
     path = os.path.join(_ROOT, rel)
