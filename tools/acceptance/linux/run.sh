@@ -184,7 +184,15 @@ if dpkg-query -W -f='${db:Status-Abbrev}' "$pkg_name_candidate" 2>/dev/null | gr
   echo "NOTE: $pkg_name_candidate was already installed before this run — will reinstall over it, but will NOT purge it at the end (that would remove a real pre-existing install, not something this run created)." >&2
 fi
 pkg_name="$pkg_name_candidate"
-apt-get install -y "$deb_path"
+# --reinstall when a same-version package is already present: plain
+# `apt-get install` treats a matching version as already current and skips
+# it, which would leave the OLD files in place and let the harness pass
+# against a pre-existing install instead of the .deb it was given to test.
+if [ "$pkg_preinstalled" = "true" ]; then
+  apt-get install -y --reinstall "$deb_path"
+else
+  apt-get install -y "$deb_path"
+fi
 
 installed_files="$(dpkg -L "$pkg_name")"
 bin_path=""
