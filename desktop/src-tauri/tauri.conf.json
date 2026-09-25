@@ -22,7 +22,7 @@
     "targets": ["nsis"],
     "icon": ["icons/icon.ico"],
     "externalBin": ["bin/snapstudio-api"],
-    "publisher": "DVOpenLabs",
+    "publisher": "DeadlyVirusIn / Snapmaker Studio",
     "copyright": "Copyright (c) 2026 Snapmaker Studio contributors",
     "windows": {
       "nsis": { "installMode": "currentUser" },

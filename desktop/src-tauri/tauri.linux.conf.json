@@ -7,6 +7,7 @@
     "resources": {
       "bin/linux/snapstudio-api/": "snapstudio-api/"
     },
+    "publisher": "DVOpenLabs",
     "homepage": "https://github.com/DVOpenLabs/snapmaker-studio",
     "category": "GraphicsAndDesign",
     "shortDescription": "Local-first pre-print intelligence layer for 3D printing",

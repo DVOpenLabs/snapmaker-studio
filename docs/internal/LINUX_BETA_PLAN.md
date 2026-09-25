@@ -28,52 +28,77 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
 
 ## Two decisions that need the maintainer, not made here
 
-1. **`bundle.publisher` in the shared `tauri.conf.json`** — decided by the
-   maintainer (`"DeadlyVirusIn / Snapmaker Studio"` → `"DVOpenLabs"`,
-   applied to both platforms) and implemented in
-   `desktop/src-tauri/tauri.conf.json`. The Linux side is unconditionally
-   fine and landed: the `.deb`'s `Maintainer:` field is now `DVOpenLabs`,
-   asserted as a hard check in `linux-ci.yml`. A repo-wide sweep for
-   `DeadlyVirusIn`/`github.com/DeadlyVirusIn` was done alongside this: live
-   surfaces (README, landing page, the app's own update-check URL in
-   `main.rs`, issue templates, etc.) updated to `DVOpenLabs`; genuinely
-   historical records (per-release evidence JSON, dated handoff docs,
-   Innovation Fund submission records — submitted under the old name, so
-   rewriting them would falsify what was actually submitted) left untouched
-   on purpose, not missed. `@DeadlyVirusIn` as Kunal's personal GitHub
-   handle (distinct from the org/repo rename) was also left alone.
+1. **`bundle.publisher` — RESOLVED (Option 2), split by platform, decided by
+   the maintainer after a real Windows-breaking consequence surfaced in the
+   L6 final review gate.**
 
-   **⚠ NOT RESOLVED — a real Windows consequence surfaced during the L6
-   final-review gate, genuinely not in front of the maintainer when the
-   Windows side of this decision was made.** Tauri's NSIS template derives
-   the installer's Windows Registry key path directly from `publisher`:
+   **Root cause this decision responds to:** Tauri's NSIS template derives
+   the installer's Windows Registry key path directly from `publisher` —
    `Software\<publisher>\<productName>` under `HKCU`. That key is where the
    installer reads an existing install's custom location back on an
    upgrade, and where the default "uninstall before installing" flow finds
-   the previous version's uninstaller. Verified directly (read-only
-   registry query, this session): `HKCU\Software\DeadlyVirusIn \ Snapmaker
-   Studio\Snapmaker Studio` genuinely exists and holds a real install path;
-   `HKCU\Software\DVOpenLabs` does not. **The next Windows installer built
-   with `publisher: "DVOpenLabs"` will not find any existing v0.9.0
-   install's registry entry** — a custom install location will not be
-   restored, and the default upgrade-over-existing-install flow is very
-   likely to break (the uninstall-first path looks up the OLD key, finds
-   nothing, and either silently skips uninstalling the old copy or fails
-   in a way a user has to click through). This does not affect this PR,
-   this merge, or Linux at all — it only matters the next time a Windows
-   installer is actually built and shipped. **Options, none chosen here:**
-   (1) merge as-is and make fixing the Windows upgrade path (custom NSIS
-   template, or an explicit "uninstall the old version first" release
-   note) a hard gate before the next Windows release; (2) keep
-   `DeadlyVirusIn` as the Windows publisher and apply `DVOpenLabs` to Linux
-   only, via `tauri.linux.conf.json`'s own `publisher` override (mechanism
-   confirmed real — Tauri's config merge, RFC 7396 JSON Merge Patch, lets a
-   platform file override a shared `bundle.*` key) — this directly
-   contradicts the maintainer's explicit "Apply this to Windows too"; (3)
-   something else. This is the maintainer's call, not Boss Orchestrator's —
-   it trades an org-identity correction against breaking the upgrade path
-   for every existing Windows user, and the maintainer chose the rename
-   without this specific consequence in front of them.
+   the previous version's uninstaller. Verified directly (real read-only
+   registry query, this session, not just reading the NSIS template
+   source): `HKCU\Software\DeadlyVirusIn \ Snapmaker Studio\Snapmaker
+   Studio` genuinely exists and holds a real install path;
+   `HKCU\Software\DVOpenLabs` does not. A Windows installer built with
+   `publisher: "DVOpenLabs"` would not find any existing v0.9.0 install's
+   registry entry — a custom install location would not be restored, and
+   the default upgrade-over-existing-install flow was very likely to break
+   for every existing Windows user.
+
+   **Decision:** preserving the existing upgrade contract for current
+   Windows users takes priority over immediately changing the installer's
+   internal identity string. Split by platform via Tauri's config merge
+   (RFC 7396 JSON Merge Patch — `tauri.linux.conf.json` overrides the
+   shared `bundle.*` keys it sets):
+   - `desktop/src-tauri/tauri.conf.json` (shared): `bundle.publisher`
+     restored to the EXACT legacy value, `"DeadlyVirusIn / Snapmaker
+     Studio"` — byte-for-byte what v0.9.0 shipped with, not normalized or
+     trimmed. This is the value the Windows NSIS installer actually uses
+     (Linux's `tauri.linux.conf.json` override, below, applies on top of
+     it, so this is the value ANY platform gets unless it overrides).
+   - `desktop/src-tauri/tauri.linux.conf.json` (Linux-only): new
+     `bundle.publisher: "DVOpenLabs"` override. The `.deb`'s `Maintainer:`
+     field is `DVOpenLabs`, asserted as a hard check in `linux-ci.yml`
+     (unchanged by this decision — Linux was always meant to get the
+     current name, and still does).
+
+   **🔒 DO NOT casually rename `tauri.conf.json`'s `bundle.publisher` again.**
+   Current project branding is `DVOpenLabs` — this value is an
+   intentional, temporary EXCEPTION for Windows installer/registry
+   compatibility, not a claim about current branding. It must not be
+   presented as current branding anywhere user-facing (it isn't — Linux,
+   README, the app's own update-check URL, and everywhere else already say
+   `DVOpenLabs`; this one field in this one file is the sole holdout, and
+   it exists only because real existing Windows installs depend on it).
+   Migrating it requires a proven, tested Windows upgrade migration (see
+   the follow-up item below) — not a one-line config edit.
+
+   A repo-wide sweep for `DeadlyVirusIn`/`github.com/DeadlyVirusIn` was
+   done: live surfaces (README, landing page, the app's own update-check
+   URL in `main.rs`, issue templates, etc.) updated to `DVOpenLabs`;
+   genuinely historical records (per-release evidence JSON, dated handoff
+   docs, Innovation Fund submission records — submitted under the old
+   name, so rewriting them would falsify what was actually submitted) and
+   `@DeadlyVirusIn` (Kunal's personal GitHub handle, a different identity
+   than the org rename) left untouched on purpose. This Windows
+   compatibility exception in `tauri.conf.json` is now a third allowed
+   category alongside those two.
+
+   **Follow-up debt, explicitly NOT solved by this decision or PR #20:**
+   "Windows installer publisher migration: DeadlyVirusIn → DVOpenLabs" —
+   a future, separately-scoped and separately-tested Windows release. Must
+   prove, at minimum: upgrade from a real v0.9.0 default install path;
+   upgrade from a real v0.9.0 CUSTOM install path; existing installation
+   correctly discovered; previous version correctly removed/upgraded;
+   install location preserved where expected; Add/Remove Programs state
+   stays sane; uninstall after migration works; no duplicate installations;
+   no orphaned legacy registry/install records; a fresh install (no prior
+   version present) uses the `DVOpenLabs` identity correctly. Investigate a
+   custom NSIS migration script (or another supported mechanism) — do not
+   rely on a release-note "uninstall the old version manually" instruction
+   unless an engineered migration is proven impossible.
 2. **Version-numbering scheme for a Linux prerelease — RESOLVED, decided by
    the maintainer.** Public SemVer/Git/GitHub tag: `v0.10.0-beta.N` (the
    next MINOR version, not a `0.9.x` patch — the maintainer's own reasoning:
@@ -192,8 +217,7 @@ landed (see below); everything that makes the integration operationally
   own MANIFEST-generation echo line; a comment in `sidecar.rs`).
 - This record.
 
-### Status of the four decisions (maintainer decided all four; one has an
-### unresolved consequence — see below)
+### Status of the four decisions (maintainer decided all four)
 
 1. **Merge `linux-support/l1-platform-abstraction` into `main`.** DECIDED —
    the maintainer explicitly authorized both opening the PR and merging it,
@@ -202,10 +226,10 @@ landed (see below); everything that makes the integration operationally
    conflicts). PR #20 opened. Both `ci.yml` and `linux-ci.yml` green on it.
    Opus + Sol reviewed the complete accumulated diff (paired, per the
    pre-merge gate) — Sol: APPROVE-WITH-NOTES, zero CRITICAL/HIGH; Opus
-   found one genuine HIGH (below) that blocks the merge specifically, not
-   the rest of the work. Separate hard stops, unaffected by this decision:
-   deleting the feature branch after merge; enabling branch protection on
-   `main`.
+   found one genuine HIGH (the Windows publisher/registry consequence,
+   resolved below via Option 2) that blocked the merge until resolved.
+   Separate hard stops, unaffected by this decision: deleting the feature
+   branch after merge; enabling branch protection on `main`.
 2. **Release wiring — DECIDED: R3.** New, separate `release-linux.yml`,
    `workflow_dispatch` ONLY (deliberately no `push: tags: [...]` — that
    stays a future, separately-authorized step). Cannot create a Release,
@@ -219,29 +243,26 @@ landed (see below); everything that makes the integration operationally
 3. **Version-numbering scheme — DECIDED**, see the resolved item 2 above
    (public `v0.10.0-beta.N`, Debian `0.10.0~beta.N`, mechanism only,
    version not yet bumped anywhere).
-4. **`bundle.publisher` value and scope — DECIDED, value applied, but see
-   the ⚠ note above: a real Windows consequence (registry key path used
-   for upgrade-over-existing-install) was not in front of the maintainer
-   when this was decided, and is not yet resolved.** This is the one open
-   item blocking the merge itself.
+4. **`bundle.publisher` — DECIDED (Option 2), split by platform** — see the
+   full detail above. Windows keeps the exact legacy value for real
+   installer/registry compatibility with existing v0.9.0 users; Linux gets
+   `DVOpenLabs` via a `tauri.linux.conf.json` override. A separate,
+   tested Windows publisher migration is tracked as explicit follow-up
+   debt, not solved here.
 
-### HIGH finding from the final review gate (blocks merge, decision needed)
+### Resolved: the HIGH finding from the final review gate
 
-Opus's review of the complete PR diff (the final "Boss Orchestrator review"
-gate the merge decision requires) found one real HIGH, reproduced directly
-on this machine (a read-only registry query, not just reading Tauri's NSIS
-template source): renaming `bundle.publisher` changes the Windows
-installer's `HKCU\Software\<publisher>\<productName>` registry key path,
-which the NSIS installer uses to find an existing install's custom
-location and to run its previous uninstaller during an upgrade. See the ⚠
-note under decision 4 above for the full detail and the three options
-Opus laid out. **Nothing in this repo is broken by merging** — the
-consequence only lands the next time a Windows installer is actually
-built and shipped from `main`. But the merge itself is on hold pending the
-maintainer's choice among the three options, since silently picking one
-(especially option 2, which would contradict the maintainer's explicit
-"apply to Windows too") is exactly the kind of call this program's own
-rules reserve for the maintainer.
+Opus's review of the complete PR diff (the final "Boss Orchestrator
+review" gate the merge decision requires) found one real HIGH, reproduced
+directly on this machine (a read-only registry query, not just reading
+Tauri's NSIS template source): renaming `bundle.publisher` would have
+changed the Windows installer's `HKCU\Software\<publisher>\<productName>`
+registry key path, which the NSIS installer uses to find an existing
+install's custom location and to run its previous uninstaller during an
+upgrade. Resolved via the maintainer's Option 2 decision above — the
+Windows value is unchanged from v0.9.0, so this consequence no longer
+applies. The follow-up Windows migration debt item exists specifically so
+this doesn't quietly become permanent.
 
 ### Adjacent, explicitly NOT part of L6
 
