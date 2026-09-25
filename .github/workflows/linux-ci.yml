@@ -1059,3 +1059,167 @@ jobs:
             backend/build/**/warn-*.txt
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Package the acceptance kit (scripts + fixtures) for the clean-environment job
+        # The clean-env-validate job below (L8) needs the acceptance scripts
+        # and a handful of fixture files WITHOUT doing a full repo checkout
+        # — a checkout there would undercut the "no project checkout
+        # required at runtime" claim L8 exists to prove. This build job
+        # already has the checkout, so it packages exactly what's needed as
+        # its own small artifact instead. Paths mirror the real repo layout
+        # exactly (examples/, backend/tests/fixtures/painted/) so run.sh's
+        # own repo_root-relative fixture lookups resolve unchanged.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/acceptance-kit/tools/acceptance/linux
+          mkdir -p /tmp/acceptance-kit/examples
+          mkdir -p /tmp/acceptance-kit/backend/tests/fixtures/painted
+          cp tools/acceptance/linux/run.sh tools/acceptance/linux/package-lifecycle.sh \
+            /tmp/acceptance-kit/tools/acceptance/linux/
+          cp examples/demo_u1_showcase.3mf examples/sample_cube.stl \
+            /tmp/acceptance-kit/examples/
+          cp backend/tests/fixtures/painted/orcaslicer-2.4.2-painted-cube.3mf \
+            /tmp/acceptance-kit/backend/tests/fixtures/painted/
+
+      - name: Upload acceptance kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-acceptance-kit
+          path: /tmp/acceptance-kit/
+          if-no-files-found: error
+          retention-days: 14
+
+  clean-env-validate:
+    name: Clean-environment validation (${{ matrix.label }})
+    needs: linux-build-and-package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "ubuntu:22.04"
+            label: "22.04"
+          - image: "ubuntu:24.04"
+            label: "24.04"
+    container:
+      image: ${{ matrix.image }}
+      options: --init
+    timeout-minutes: 25
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Pre-install clean-environment assertions (items 3-6, 30)
+        # Proves this image genuinely has no Python/Node/Rust before
+        # anything touches it — checked against the running container
+        # itself, not assumed from the base image's documentation.
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in python python3 node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "UNEXPECTED: $t is present on a supposedly clean ${{ matrix.image }}: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "This image is not clean as assumed — every check below would be unreliable." >&2
+            exit 1
+          fi
+          echo "CONFIRMED CLEAN: no python/python3/node/npm/cargo/rustc on ${{ matrix.image }} before anything was installed."
+          echo "--- pre-existing accounts (uid >= 1000), relevant to the uid-recycling investigation ---"
+          awk -F: '$3>=1000{print}' /etc/passwd || true
+
+      - name: ca-certificates (needed for HTTPS artifact download only)
+        run: apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates >/dev/null
+
+      - name: Download the .deb built earlier in this run
+        uses: actions/download-artifact@v4
+        with:
+          name: snapmaker-studio-linux-deb
+          path: /tmp/deb
+
+      - name: Download the acceptance kit (scripts + fixtures — not a project checkout)
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-acceptance-kit
+          path: /tmp/kit
+
+      - name: Snapshot installed packages before touching anything
+        run: dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-before.txt || true
+
+      - name: Install ONLY the .deb and its declared dependencies (item 8)
+        run: |
+          set -euo pipefail
+          deb="$(find /tmp/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found in the downloaded artifact." >&2
+            exit 1
+          fi
+          echo "deb_path=$deb" >> "$GITHUB_ENV"
+          apt-get install -y "$deb"
+
+      - name: Post-install clean-environment assertions (item 30 — real evidence, not static inspection)
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in python python3 node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "REGRESSION: $t became available after installing ONLY the .deb: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "The .deb's declared Depends pulled in a developer tool — a real packaging defect, not a harness limitation." >&2
+            exit 1
+          fi
+          echo "CONFIRMED: installing only the .deb pulled in no python/node/rust toolchain."
+          dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-after-app.txt || true
+          echo "--- packages the .deb's own Depends closure pulled in ---"
+          comm -13 /tmp/pkgs-before.txt /tmp/pkgs-after-app.txt || true
+
+      - name: ldd sweep — no missing shared library across the installed app + sidecar
+        run: |
+          set -euo pipefail
+          pkg_name="$(dpkg-deb -f "$deb_path" Package)"
+          bin_path="$(dpkg -L "$pkg_name" | grep -E '^/usr/bin/[^/]+$' | head -n1)"
+          resource_dir="$(dirname "$(dpkg -L "$pkg_name" | grep -m1 'snapstudio-api-x86_64-unknown-linux-gnu$')")"
+          apt-get install -y --no-install-recommends file >/dev/null
+          bad=0
+          while IFS= read -r -d '' f; do
+            file "$f" 2>/dev/null | grep -q 'ELF' || continue
+            out="$(ldd "$f" 2>&1 || true)"
+            if echo "$out" | grep -q "not found"; then
+              echo "MISSING SHARED LIBRARY in $f:" >&2
+              echo "$out" | grep "not found" >&2
+              bad=1
+            fi
+          done < <(find "$resource_dir" "$bin_path" -type f -print0)
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "CONFIRMED: no missing shared libraries across the installed app + bundled sidecar on ${{ matrix.image }}."
+
+      - name: Package lifecycle (install/reinstall/upgrade/purge) on this clean image (items 25-28)
+        run: |
+          chmod +x /tmp/kit/tools/acceptance/linux/*.sh
+          bash /tmp/kit/tools/acceptance/linux/package-lifecycle.sh "$deb_path"
+
+      - name: Install test tooling (kept separate from app deps, for driving the GUI)
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 jq curl desktop-file-utils >/dev/null
+
+      - name: Installed-build acceptance harness on a genuinely clean ${{ matrix.image }} (DESKTOP WORKFLOW VERIFIED)
+        env:
+          SNAPSTUDIO_ACCEPT_WORKDIR: /tmp/linux-acceptance
+        run: bash /tmp/kit/tools/acceptance/linux/run.sh "$deb_path"
+
+      - name: Upload clean-environment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-clean-env-evidence-${{ matrix.label }}
+          path: /tmp/linux-acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 14
