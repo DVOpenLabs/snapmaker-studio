@@ -5,9 +5,8 @@ name: Linux CI
 # numbering, kept here so the two never drift again). No longer branch-only:
 # this is the same real Linux build+package pipeline that was proven out
 # on linux-support/l1-platform-abstraction across L0-L5 (real GitHub Actions
-# evidence, not just code review — see docs/internal/LINUX_BETA_PLAN.md and
-# ~/.claude/orchestration/checkpoints/linux-support-plan.md for the full
-# history). Does NOT touch ci.yml or release.yml.
+# evidence, not just code review — see docs/internal/LINUX_BETA_PLAN.md for
+# the full history). Does NOT touch ci.yml or release.yml.
 #
 # Runs the REAL Linux build+package pipeline: PyInstaller onedir sidecar freeze
 # (desktop/scripts/build-sidecar.sh), then `tauri build` producing a .deb, then

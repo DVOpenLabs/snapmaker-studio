@@ -68,7 +68,12 @@ dpkg-deb -R "$deb_path" "$workdir"
 chmod 755 "$workdir"
 sed -i "s/^Version: .*/Version: $debian_version/" "$workdir/DEBIAN/control"
 rebuilt="$(mktemp -u --suffix=.deb)"
-dpkg-deb -b "$workdir" "$rebuilt"
+# --root-owner-group: without it, dpkg-deb -b as a non-root user (this
+# script's actual caller in release-linux.yml runs as root, but that's not
+# a contract this script itself should depend on) packages every file
+# owned by that user's uid instead of root — after install, anyone with
+# that uid could modify binaries other users run.
+dpkg-deb --root-owner-group -b "$workdir" "$rebuilt"
 mv "$rebuilt" "$deb_path"
 
 # Self-check: the whole point of this translation is correct upgrade

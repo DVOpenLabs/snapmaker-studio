@@ -20,21 +20,20 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
   section) — landed in `desktop/src-tauri/tauri.linux.conf.json`.
 - Artifact naming + provenance (checksum, version+commit in the name) and
   an install → reinstall → upgrade → purge lifecycle check — landed in
-  `.github/workflows/linux-support-ci.yml` (see "What landed" below).
+  `.github/workflows/linux-ci.yml` (renamed from `linux-support-ci.yml` in
+  L6 — see "What landed" below).
 - Explicitly NOT L5: release.yml/ci.yml changes, tag/Release publication,
   public docs (`docs/linux-install.md` is L9, gated on a maintainer-approved
   prerelease), format widening, any version-number change.
 
 ## Two decisions that need the maintainer, not made here
 
-1. ~~**`bundle.publisher` in the shared `tauri.conf.json`**~~ **RESOLVED —
-   maintainer decided.** Was `"DeadlyVirusIn / Snapmaker Studio"`, changed to
-   `"DVOpenLabs"` in `desktop/src-tauri/tauri.conf.json`, applying to both
-   Windows (NSIS installer publisher string) and Linux (the `.deb`'s
-   `Maintainer:` field, via the shared config — no Linux-only override
-   needed). `linux-ci.yml`'s metadata-verification step now asserts
-   `Maintainer: DVOpenLabs` as a hard check (previously deliberately
-   unchecked, since it was still stale). A repo-wide sweep for
+1. **`bundle.publisher` in the shared `tauri.conf.json`** — decided by the
+   maintainer (`"DeadlyVirusIn / Snapmaker Studio"` → `"DVOpenLabs"`,
+   applied to both platforms) and implemented in
+   `desktop/src-tauri/tauri.conf.json`. The Linux side is unconditionally
+   fine and landed: the `.deb`'s `Maintainer:` field is now `DVOpenLabs`,
+   asserted as a hard check in `linux-ci.yml`. A repo-wide sweep for
    `DeadlyVirusIn`/`github.com/DeadlyVirusIn` was done alongside this: live
    surfaces (README, landing page, the app's own update-check URL in
    `main.rs`, issue templates, etc.) updated to `DVOpenLabs`; genuinely
@@ -42,39 +41,58 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
    Innovation Fund submission records — submitted under the old name, so
    rewriting them would falsify what was actually submitted) left untouched
    on purpose, not missed. `@DeadlyVirusIn` as Kunal's personal GitHub
-   handle (distinct from the org/repo rename) was also left alone — that's
-   a different identity than the one this decision was about.
-2. **Version-numbering scheme for a Linux prerelease.** The `.deb` today
-   ships `Version: 0.9.0` — identical to the stable, EXTERNAL-USER-VERIFIED
-   Windows release, with nothing in the number itself signaling Linux is at
-   PACKAGE/HEADLESS-RUNTIME tier only. Two real options, because Debian
-   version ordering and the shared `tauri.conf.json`/`Cargo.toml` version
-   collide:
-   - **Option A** — bump the whole project to `0.10.0-beta.N` for the next
-     prerelease. The trap: Debian version comparison treats the part after
-     the hyphen as the package *revision*, so a later plain `0.10.0` (no
-     revision suffix) sorts LOWER than `0.10.0-beta.N`, not higher —
-     verified directly with `dpkg --compare-versions`. A real `0.10.0`
-     stable release would then look like a *downgrade* from the beta to
-     apt, which refuses downgrades without `--allow-downgrades`. This is
-     the opposite of the usual semver intuition. Debian's own prerelease
-     convention avoids exactly this with `~` (e.g. `0.10.0~beta.1`, which
-     correctly sorts BELOW plain `0.10.0`), but Tauri's semver-driven
-     `Version:` field does not emit `~`.
-   - **Option B** — keep ordinary `0.9.x`/next patch numbers; carry "beta"
-     via the GitHub prerelease flag and the package's long description
-     text only. Debian-clean upgrade ordering; the version number alone no
-     longer signals maturity tier.
-   No number has been changed. This decision governs how L6 (permanent
-   Linux CI/release integration) wires versioning. **Status: still open as
-   of L6's autonomous slice landing** (renamed/retriggered workflow, this
-   record) — that slice does not touch versioning or release wiring at
-   all, so it does not depend on this decision, but any RELEASE-wiring
-   part of L6 (see below) does, and this document's own earlier text said
-   to record the decision "before L6 starts." Flagging that explicitly
-   rather than silently treating it as satisfied or waived (per Astra's
-   L6-planning review) — the maintainer should resolve or explicitly defer
-   it before any release-wiring work begins.
+   handle (distinct from the org/repo rename) was also left alone.
+
+   **⚠ NOT RESOLVED — a real Windows consequence surfaced during the L6
+   final-review gate, genuinely not in front of the maintainer when the
+   Windows side of this decision was made.** Tauri's NSIS template derives
+   the installer's Windows Registry key path directly from `publisher`:
+   `Software\<publisher>\<productName>` under `HKCU`. That key is where the
+   installer reads an existing install's custom location back on an
+   upgrade, and where the default "uninstall before installing" flow finds
+   the previous version's uninstaller. Verified directly (read-only
+   registry query, this session): `HKCU\Software\DeadlyVirusIn \ Snapmaker
+   Studio\Snapmaker Studio` genuinely exists and holds a real install path;
+   `HKCU\Software\DVOpenLabs` does not. **The next Windows installer built
+   with `publisher: "DVOpenLabs"` will not find any existing v0.9.0
+   install's registry entry** — a custom install location will not be
+   restored, and the default upgrade-over-existing-install flow is very
+   likely to break (the uninstall-first path looks up the OLD key, finds
+   nothing, and either silently skips uninstalling the old copy or fails
+   in a way a user has to click through). This does not affect this PR,
+   this merge, or Linux at all — it only matters the next time a Windows
+   installer is actually built and shipped. **Options, none chosen here:**
+   (1) merge as-is and make fixing the Windows upgrade path (custom NSIS
+   template, or an explicit "uninstall the old version first" release
+   note) a hard gate before the next Windows release; (2) keep
+   `DeadlyVirusIn` as the Windows publisher and apply `DVOpenLabs` to Linux
+   only, via `tauri.linux.conf.json`'s own `publisher` override (mechanism
+   confirmed real — Tauri's config merge, RFC 7396 JSON Merge Patch, lets a
+   platform file override a shared `bundle.*` key) — this directly
+   contradicts the maintainer's explicit "Apply this to Windows too"; (3)
+   something else. This is the maintainer's call, not Boss Orchestrator's —
+   it trades an org-identity correction against breaking the upgrade path
+   for every existing Windows user, and the maintainer chose the rename
+   without this specific consequence in front of them.
+2. **Version-numbering scheme for a Linux prerelease — RESOLVED, decided by
+   the maintainer.** Public SemVer/Git/GitHub tag: `v0.10.0-beta.N` (the
+   next MINOR version, not a `0.9.x` patch — the maintainer's own reasoning:
+   Linux support is substantial enough to earn it). Debian `.deb` `Version:`
+   field: independently `0.10.0~beta.N` (Option A's `~`-based approach,
+   confirmed the only Debian-correct choice — `dpkg --compare-versions`
+   proves `0.10.0~beta.1 lt 0.10.0` while a plain hyphen (`0.10.0-beta.1`)
+   does NOT sort below `0.10.0`, which would make a real stable release
+   look like a downgrade from the beta). Tauri's bundler has no config-only
+   way to emit `~` (verified against the pinned tauri-utils 2.9.3 source:
+   its version deserializer parses with `semver::Version::from_str`, which
+   rejects `~` outright) — implemented instead as a dedicated,
+   independently-tested packaging-boundary script,
+   `desktop/scripts/debianize-version.sh`, run after `tauri build --bundles
+   deb` and before the artifact is used anywhere. No version number has
+   actually been changed anywhere in the repo — this is the mechanism only,
+   proven against real fixtures and a real `dpkg --compare-versions`
+   ordering check, ready for whenever the maintainer reaches the actual
+   beta-release gate.
 
 ## What landed so far (this record's own change log)
 
@@ -82,7 +100,8 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
   (`GraphicsAndDesign`), `shortDescription`, `longDescription`, and
   `linux.deb.section` (`utils`). Linux-only file, no Windows-shared field
   touched.
-- `.github/workflows/linux-support-ci.yml`: new `dpkg-deb -f` assertions for
+- `.github/workflows/linux-ci.yml` (was `linux-support-ci.yml` before L6's
+  rename): new `dpkg-deb -f` assertions for
   Homepage/Section/Description; the install step now also validates the
   installed `.desktop` file (`desktop-file-validate` + an explicit
   non-empty-`Categories=` check, since `desktop-file-validate` itself exits
@@ -119,25 +138,24 @@ landed (see below); everything that makes the integration operationally
 
 ### Facts that shaped this (verified directly, not taken from either plan on faith)
 
-- `origin/main` is at `a400fe0` ("ecosystem: correct the Snapmaker U1
-  Toolkit entry (#9)"). The task branch is 14 commits ahead of it, 1
-  commit BEHIND (`git rev-list --left-right --count origin/main...branch`
-  = "1  14") — confirmed with a real `git fetch` + `rev-list`, not assumed.
-  A straight fast-forward merge is no longer possible; this needs
-  reconciliation as part of any future merge decision.
+- `origin/main` diverged after this branch started (a real external PR #9
+  by a community contributor, correcting `backend/snapstudio_core/data/
+  ecosystem.json`) — reconciled via a real `git merge origin/main`
+  (commit `ea1429f`), zero conflicts (the branch never touched that file).
+  Confirmed via `git fetch` + `git rev-list --left-right --count`, not
+  assumed, both before and after the merge.
 - `ci.yml` was already modified by L1 (added a `windows-latest` leg to the
   backend pytest matrix) — "production workflows untouched" has only ever
   been true for `release.yml` and the full Linux packaging workflow, not
   `ci.yml` in full.
-- **`ci.yml` has never once run against this branch.** No PR against
-  `main` exists, and `ci.yml` triggers only on `push: [main]` +
-  `pull_request` — so the Windows `cargo check --all-targets` in `ci.yml`'s
-  `shell` job (which covers the `sidecar.rs` extraction from L1, and
-  everything added to it since) has only ever been verified by running it
-  locally on the Windows development machine this session (repeatedly,
-  clean, zero warnings) — never through GitHub's own CI infrastructure on
-  this exact branch. This is real evidence, but a weaker tier than the
-  Linux side's real-CI proof.
+- **`ci.yml` now HAS run against this branch, for the first time, via
+  PR #20** — opened once the branch was reconciled with `main`, per the
+  maintainer's explicit authorization. Both required gates green on that
+  PR: `ci.yml` (Windows backend pytest, `cargo check --all-targets`,
+  frontend) and `linux-ci.yml`. This is the first time the `sidecar.rs`
+  extraction (and everything added to it since) has compiled through
+  GitHub's own CI infrastructure, not just local `cargo check` on the dev
+  machine.
 - `main` has no branch protection configured (`GET /branches/main/protection`
   → 404 at the time this was checked). The only merge gate today is this
   session's own standing git-discipline rule, not a repository setting.
@@ -174,56 +192,56 @@ landed (see below); everything that makes the integration operationally
   own MANIFEST-generation echo line; a comment in `sidecar.rs`).
 - This record.
 
-### What does NOT proceed without the maintainer (four named decisions)
+### Status of the four decisions (maintainer decided all four; one has an
+### unresolved consequence — see below)
 
-1. **Merge `linux-support/l1-platform-abstraction` into `main`.** Explicit
-   approval required every time per this session's standing rules,
-   independent of any Linux-phase authorization — this is not new, but
-   worth restating because L6 cannot be operationally "permanent" (running
-   on every real PR to `main`) until this happens. Consequences to weigh
-   beyond CI: the merge puts the refactored Windows sidecar-lifecycle code
-   (`main.rs` → `sidecar.rs`, from L1) onto `main` — the installed-build
-   acceptance harness (`tools/acceptance/run.ps1`) should run against a
-   `main` build before the next Windows release, as a merge consequence,
-   not L6 work itself. It also makes the Linux workflow and
-   `tauri.linux.conf.json` visible on the public default branch (not an
-   announcement — README stays Windows-only until L9/L10 — but visible).
-   Deleting the feature branch afterward is its own separate hard stop
-   (branch deletion). Because `main` has diverged (see above), the useful
-   pre-merge step is a PR (draft or otherwise) so `ci.yml` and the renamed
-   `linux-ci.yml` both run on the real merge candidate — proving Windows
-   compile-time compatibility for the first time via GitHub's own CI, not
-   just local review. **Not opened yet** — creating even a draft PR is a
-   publicly-visible action; the maintainer should say go before one exists.
-2. **Release wiring.** Three mechanical options, all needing sign-off
-   before any implementation, because touching `release.yml` or adding a
-   `v*` tag trigger anywhere is a production pipeline change:
-   - **R1** — add `push: tags: ["v*"]` to `linux-ci.yml` itself. Zero new
-     files, `release.yml` stays untouched. The workflow already produces
-     the exact release-shaped artifact (labeled `.deb` + `SHA256SUMS` +
-     `MANIFEST.txt`).
-   - **R2** — add a `linux-deb` job to `release.yml`. Touches the
-     production Windows release file directly — highest-review option.
-   - **R3** — new `release-linux.yml` on the same `v*` trigger. Cleanest
-     separation, one more file to maintain.
-   Attaching any artifact to an actual GitHub Release stays the same
-   manual `gh release create` step regardless of which option (mirrors how
-   Windows releases work today) — none of R1/R2/R3 by itself publishes
-   anything. What's genuinely blocked on the version-scheme decision (item
-   3 below): under Option A (`0.10.0-beta.N`), the release job needs a
-   guard step refusing a hyphenated `Version:` from ever being mistaken
-   for the "real" release (see the Debian-ordering trap explained above);
-   under Option B, no guard is needed, but the MANIFEST/description must
-   still carry the "beta" signal some other way. Which guard (or none) to
-   add is not something an agent should pick.
-3. **Version-numbering scheme** — Option A vs Option B, above. Still open;
-   this document's own earlier text asked for it to be resolved before L6
-   starts, and L6's release-wiring half genuinely depends on it (the
-   autonomous CI-plumbing slice above does not).
-4. ~~**`bundle.publisher` value and scope**~~ **RESOLVED — see the L5
-   section above.** Maintainer chose `"DVOpenLabs"`, applied to both
-   platforms via the shared `tauri.conf.json` (not Linux-only — the
-   maintainer explicitly asked to fix Windows too, not leave it for later).
+1. **Merge `linux-support/l1-platform-abstraction` into `main`.** DECIDED —
+   the maintainer explicitly authorized both opening the PR and merging it,
+   once branch reconciliation + both CI checks + a Boss Orchestrator review
+   of the complete diff are satisfied. Reconciliation done (`ea1429f`, zero
+   conflicts). PR #20 opened. Both `ci.yml` and `linux-ci.yml` green on it.
+   Opus + Sol reviewed the complete accumulated diff (paired, per the
+   pre-merge gate) — Sol: APPROVE-WITH-NOTES, zero CRITICAL/HIGH; Opus
+   found one genuine HIGH (below) that blocks the merge specifically, not
+   the rest of the work. Separate hard stops, unaffected by this decision:
+   deleting the feature branch after merge; enabling branch protection on
+   `main`.
+2. **Release wiring — DECIDED: R3.** New, separate `release-linux.yml`,
+   `workflow_dispatch` ONLY (deliberately no `push: tags: [...]` — that
+   stays a future, separately-authorized step). Cannot create a Release,
+   cannot create/push a tag, cannot mark anything stable — verified
+   directly by reading the file, not just its own commit message. Mirrors
+   `linux-ci.yml`'s proven build pipeline, then translates the version
+   (`debianize-version.sh` — a no-op today, since the project version has
+   no prerelease suffix yet), runs a real install + `/health` smoke-test,
+   checksums, manifests, and uploads. `release.yml` (Windows) is completely
+   untouched by this decision.
+3. **Version-numbering scheme — DECIDED**, see the resolved item 2 above
+   (public `v0.10.0-beta.N`, Debian `0.10.0~beta.N`, mechanism only,
+   version not yet bumped anywhere).
+4. **`bundle.publisher` value and scope — DECIDED, value applied, but see
+   the ⚠ note above: a real Windows consequence (registry key path used
+   for upgrade-over-existing-install) was not in front of the maintainer
+   when this was decided, and is not yet resolved.** This is the one open
+   item blocking the merge itself.
+
+### HIGH finding from the final review gate (blocks merge, decision needed)
+
+Opus's review of the complete PR diff (the final "Boss Orchestrator review"
+gate the merge decision requires) found one real HIGH, reproduced directly
+on this machine (a read-only registry query, not just reading Tauri's NSIS
+template source): renaming `bundle.publisher` changes the Windows
+installer's `HKCU\Software\<publisher>\<productName>` registry key path,
+which the NSIS installer uses to find an existing install's custom
+location and to run its previous uninstaller during an upgrade. See the ⚠
+note under decision 4 above for the full detail and the three options
+Opus laid out. **Nothing in this repo is broken by merging** — the
+consequence only lands the next time a Windows installer is actually
+built and shipped from `main`. But the merge itself is on hold pending the
+maintainer's choice among the three options, since silently picking one
+(especially option 2, which would contradict the maintainer's explicit
+"apply to Windows too") is exactly the kind of call this program's own
+rules reserve for the maintainer.
 
 ### Adjacent, explicitly NOT part of L6
 
