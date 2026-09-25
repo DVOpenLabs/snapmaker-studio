@@ -36,7 +36,7 @@ if [ ! -f "$deb_path" ]; then
   exit 1
 fi
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 workdir="${SNAPSTUDIO_ACCEPT_WORKDIR:-$(mktemp -d)}"
 mkdir -p "$workdir/evidence"
 evidence_dir="$workdir/evidence"
@@ -131,10 +131,25 @@ xdg_data_home="$user_home/.local/share"
 chown -R "$test_user:$test_user" "$user_home"
 
 echo "=== Starting Xvfb + a real window manager ==="
-Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
+# Earlier steps in this same CI job use xvfb-run, whose --auto-servernum
+# default starts searching FROM :99 — an uncleanly-killed prior instance
+# (several earlier steps in this file do `kill -9` on xvfb-run-wrapped
+# processes) can leave a stale /tmp/.X99-lock behind even though nothing
+# is actually listening anymore. Only remove it if the PID it names is
+# genuinely gone; never touch a lock a live process might still own.
+x_display=99
+lock_file="/tmp/.X${x_display}-lock"
+if [ -f "$lock_file" ]; then
+  lock_pid="$(tr -d ' \t' < "$lock_file" 2>/dev/null || true)"
+  if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+    echo "Removing stale $lock_file (PID $lock_pid is not running)"
+    rm -f "$lock_file"
+  fi
+fi
+Xvfb ":$x_display" -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
 xvfb_pid=$!
 owned_pids+=("$xvfb_pid")
-export DISPLAY=:99
+export DISPLAY=":$x_display"
 for _ in $(seq 1 20); do
   xdpyinfo >/dev/null 2>&1 && break
   sleep 0.25
@@ -157,7 +172,7 @@ fixture_sha_before="$(sudo -u "$test_user" sha256sum "$fixture_copy" | cut -d' '
 
 echo "=== Launching the installed app as $test_user, with the fixture ==="
 app_log="$evidence_dir/app.log"
-sudo -u "$test_user" env DISPLAY=:99 XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+sudo -u "$test_user" env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" "$fixture_copy" > "$app_log" 2>&1 &
 app_shell_pid=$!
 owned_pids+=("$app_shell_pid")
@@ -290,7 +305,7 @@ if [ "$graceful_close_ok" != "true" ]; then
 fi
 
 echo "=== Reopening (proves the app isn't left in a broken state after a real close) ==="
-sudo -u "$test_user" env DISPLAY=:99 XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+sudo -u "$test_user" env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" > "$evidence_dir/app_reopen.log" 2>&1 &
 reopen_shell_pid=$!
 owned_pids+=("$reopen_shell_pid")
