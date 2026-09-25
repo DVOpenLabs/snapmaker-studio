@@ -296,13 +296,20 @@ fn wait_briefly(child: &mut Child, deadline: Duration) -> bool {
     }
 }
 
-// No CI runtime step drives the graceful RunEvent::Exit path (every zero-
-// orphan CI check kills the app by signal, which never fires it — see
-// linux-ci.yml), so shutdown_sidecar()'s own forced-fallback branch
-// gets no coverage anywhere else. This exercises it directly: nothing
-// listens on the bogus port, so the /shutdown POST fails and the killpg
-// fallback is what actually has to end the process, bounded by its own
-// deadline rather than this test's.
+// This exercises shutdown_sidecar()'s FORCED-FALLBACK branch specifically:
+// nothing listens on the bogus port, so the /shutdown POST fails and killpg
+// is what actually has to end the process, bounded by its own deadline
+// rather than this test's. It does not exercise the graceful POST-succeeds
+// branch — that needed a real close of the app's own main window to reach
+// RunEvent::Exit at all (main.rs didn't request exit on main-window close
+// until L7's fix; see tools/acceptance/linux/run.sh's close check, and the
+// equivalent check in tools/acceptance/run.ps1 on Windows, for that
+// coverage). The two are complementary, not redundant: this test proves the
+// fallback path in isolation; the acceptance harnesses prove the real user
+// path end to end, including which branch actually ran (see the
+// "shutdown: server stopped cleanly" line server.py's serve() prints only
+// when the graceful path — not a signal death or the stdin lifeline —
+// is what ended the process).
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;

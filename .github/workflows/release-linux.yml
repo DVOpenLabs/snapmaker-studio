@@ -230,6 +230,20 @@ jobs:
           echo "Installed cleanly and the bundled sidecar answers /health with 200."
           apt-get remove -y "$pkg_name"
 
+      - name: Installed-build acceptance harness (real GUI workflow, real window close)
+        env:
+          SNAPSTUDIO_ACCEPT_WORKDIR: /tmp/linux-acceptance
+        run: bash tools/acceptance/linux/run.sh "$deb_path"
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-candidate-acceptance-evidence
+          path: /tmp/linux-acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Checksum and label the release-candidate .deb
         run: |
           set -euo pipefail
@@ -241,6 +255,19 @@ jobs:
           cp "$deb_path" "$labeled_deb"
           (cd "$artifact_dir" && sha256sum "$(basename "$labeled_deb")" > SHA256SUMS)
           cat "$artifact_dir/SHA256SUMS"
+
+          acceptance_summary="not run"
+          acceptance_report="/tmp/linux-acceptance/evidence/acceptance.json"
+          if [ -f "$acceptance_report" ]; then
+            acceptance_summary="$(python3.13 -c "
+          import json
+          d = json.load(open('$acceptance_report'))
+          checks = d['checks']
+          passed = sum(1 for c in checks if c['ok'])
+          print(f'{passed}/{len(checks)} checks passed')
+          ")"
+          fi
+
           {
             echo "package: $pkg_name"
             echo "version: $version"
@@ -248,6 +275,7 @@ jobs:
             echo "branch: $GITHUB_REF_NAME"
             echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "workflow: release-linux.yml (workflow_dispatch)"
+            echo "acceptance: $acceptance_summary (see the linux-release-candidate-acceptance-evidence artifact for the full report)"
             echo "status: RELEASE CANDIDATE ARTIFACT — this workflow does not create a GitHub Release or a tag, and this build is NOT designated stable. It exists for maintainer verification only, downloadable as a CI artifact from a public repository, same as any other Actions artifact."
           } > "$artifact_dir/MANIFEST.txt"
           cat "$artifact_dir/MANIFEST.txt"

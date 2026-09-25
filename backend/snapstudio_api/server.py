@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import secrets
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1067,3 +1068,11 @@ def serve(host: str = "127.0.0.1", port: int = 0) -> None:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    # Only reached via the /shutdown route's httpd.shutdown() call (a signal
+    # death exits the process directly, never returning here; the stdin
+    # lifeline calls os._exit(0), same). Distinguishes "the graceful POST-
+    # then-wait path actually ran" from "the killpg fallback ran instead" —
+    # this process's stderr is inherited by the desktop shell, so an
+    # acceptance check watching the app's own log can tell the two apart.
+    # Never log the token; nothing here does.
+    print("[snapstudio-api] shutdown: server stopped cleanly", file=sys.stderr, flush=True)
