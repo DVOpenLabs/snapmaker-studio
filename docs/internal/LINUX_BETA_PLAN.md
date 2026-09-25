@@ -1,4 +1,4 @@
-# Linux beta plan — L5 record
+# Linux beta plan — L5 and L6 record
 
 **UNRELEASED. Internal only, not linked from README/docs/landing. Not an
 announcement.** No public GitHub Release, tag, or change to the stable
@@ -58,8 +58,15 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
      text only. Debian-clean upgrade ordering; the version number alone no
      longer signals maturity tier.
    No number has been changed. This decision governs how L6 (permanent
-   Linux CI/release integration) wires versioning — record it before L6
-   starts, not during.
+   Linux CI/release integration) wires versioning. **Status: still open as
+   of L6's autonomous slice landing** (renamed/retriggered workflow, this
+   record) — that slice does not touch versioning or release wiring at
+   all, so it does not depend on this decision, but any RELEASE-wiring
+   part of L6 (see below) does, and this document's own earlier text said
+   to record the decision "before L6 starts." Flagging that explicitly
+   rather than silently treating it as satisfied or waived (per Astra's
+   L6-planning review) — the maintainer should resolve or explicitly defer
+   it before any release-wiring work begins.
 
 ## What landed so far (this record's own change log)
 
@@ -90,5 +97,131 @@ plus install/upgrade/purge lifecycle proof. Scope agreed by Fable + Astra
 
 ## Evidence tiers claimed
 
-PACKAGE VERIFIED / HEADLESS RUNTIME VERIFIED only, same as L4. Not claimed:
-DESKTOP WORKFLOW VERIFIED, REAL U1 VERIFIED, EXTERNAL USER VERIFIED.
+PACKAGE VERIFIED / HEADLESS RUNTIME VERIFIED only, same as L4/L5. L6 adds
+CI plumbing, not a new evidence tier — a green `pull_request` run is not
+new evidence by itself.
+
+## L6 — permanent Linux CI/release integration
+
+Independently planned by Fable + Astra (dispatched in parallel); both
+converged on the same shape. L6 is **mostly a maintainer-decision phase**,
+not an implementation phase — the technical work is small and already
+landed (see below); everything that makes the integration operationally
+*permanent* depends on decisions only the maintainer can make.
+
+### Facts that shaped this (verified directly, not taken from either plan on faith)
+
+- `origin/main` is at `a400fe0` ("ecosystem: correct the Snapmaker U1
+  Toolkit entry (#9)"). The task branch is 14 commits ahead of it, 1
+  commit BEHIND (`git rev-list --left-right --count origin/main...branch`
+  = "1  14") — confirmed with a real `git fetch` + `rev-list`, not assumed.
+  A straight fast-forward merge is no longer possible; this needs
+  reconciliation as part of any future merge decision.
+- `ci.yml` was already modified by L1 (added a `windows-latest` leg to the
+  backend pytest matrix) — "production workflows untouched" has only ever
+  been true for `release.yml` and the full Linux packaging workflow, not
+  `ci.yml` in full.
+- **`ci.yml` has never once run against this branch.** No PR against
+  `main` exists, and `ci.yml` triggers only on `push: [main]` +
+  `pull_request` — so the Windows `cargo check --all-targets` in `ci.yml`'s
+  `shell` job (which covers the `sidecar.rs` extraction from L1, and
+  everything added to it since) has only ever been verified by running it
+  locally on the Windows development machine this session (repeatedly,
+  clean, zero warnings) — never through GitHub's own CI infrastructure on
+  this exact branch. This is real evidence, but a weaker tier than the
+  Linux side's real-CI proof.
+- `main` has no branch protection configured (`GET /branches/main/protection`
+  → 404 at the time this was checked). The only merge gate today is this
+  session's own standing git-discipline rule, not a repository setting.
+- `release.yml` never itself creates a GitHub Release — it builds a
+  Windows artifact on a `v*` tag or manual dispatch; the Release itself is
+  created by hand (`gh release create --prerelease`, per
+  `docs/RELEASE_CHECKLIST.md` §6). A Linux equivalent would not itself
+  cross the release boundary, but editing `release.yml`, or adding any
+  `v*`-tag trigger anywhere, is still a production CI/CD pipeline change
+  needing sign-off regardless.
+- Tauri's config merge (`json_patch::merge`, RFC 7396) means a
+  `bundle.publisher` set in `tauri.linux.conf.json` overrides the `.deb`'s
+  `Maintainer:` WITHOUT touching the Windows NSIS publisher string — the
+  Linux-only-fix option from the L5 open decision above is mechanically
+  real, not just theoretical. The exact npm `@tauri-apps/cli` bundler
+  version isn't pinned in `Cargo.lock` (it's a Rust-side lockfile), so this
+  should be spot-checked with a `dpkg-deb -f ... Maintainer` print in CI
+  before being fully relied on, if/when the value is decided.
+
+### What landed (L6 autonomous slice — no maintainer decision needed)
+
+- `.github/workflows/linux-support-ci.yml` renamed to `linux-ci.yml`
+  (`git mv`, done before any status-check name could become "required" and
+  therefore sticky). Workflow `name:` changed from `Linux support (branch
+  CI)` to `Linux CI`. Triggers changed from branch-push-only to
+  `push: [main, linux-support/**]` + `pull_request` + `workflow_dispatch`
+  (mirrors `ci.yml`'s own trigger shape). The `linux-support/**` push
+  trigger is kept for now so the task branch keeps self-verifying; safe to
+  drop after merge. Header comment rewritten to describe permanent status,
+  the evidence tiers it can and cannot establish, and the corrected L6
+  (not L7) phase reference. No step logic changed — same 25 steps that
+  went real-CI-green on run 36081506854.
+- Two stale self-references to the old filename fixed (`linux-ci.yml`'s
+  own MANIFEST-generation echo line; a comment in `sidecar.rs`).
+- This record.
+
+### What does NOT proceed without the maintainer (four named decisions)
+
+1. **Merge `linux-support/l1-platform-abstraction` into `main`.** Explicit
+   approval required every time per this session's standing rules,
+   independent of any Linux-phase authorization — this is not new, but
+   worth restating because L6 cannot be operationally "permanent" (running
+   on every real PR to `main`) until this happens. Consequences to weigh
+   beyond CI: the merge puts the refactored Windows sidecar-lifecycle code
+   (`main.rs` → `sidecar.rs`, from L1) onto `main` — the installed-build
+   acceptance harness (`tools/acceptance/run.ps1`) should run against a
+   `main` build before the next Windows release, as a merge consequence,
+   not L6 work itself. It also makes the Linux workflow and
+   `tauri.linux.conf.json` visible on the public default branch (not an
+   announcement — README stays Windows-only until L9/L10 — but visible).
+   Deleting the feature branch afterward is its own separate hard stop
+   (branch deletion). Because `main` has diverged (see above), the useful
+   pre-merge step is a PR (draft or otherwise) so `ci.yml` and the renamed
+   `linux-ci.yml` both run on the real merge candidate — proving Windows
+   compile-time compatibility for the first time via GitHub's own CI, not
+   just local review. **Not opened yet** — creating even a draft PR is a
+   publicly-visible action; the maintainer should say go before one exists.
+2. **Release wiring.** Three mechanical options, all needing sign-off
+   before any implementation, because touching `release.yml` or adding a
+   `v*` tag trigger anywhere is a production pipeline change:
+   - **R1** — add `push: tags: ["v*"]` to `linux-ci.yml` itself. Zero new
+     files, `release.yml` stays untouched. The workflow already produces
+     the exact release-shaped artifact (labeled `.deb` + `SHA256SUMS` +
+     `MANIFEST.txt`).
+   - **R2** — add a `linux-deb` job to `release.yml`. Touches the
+     production Windows release file directly — highest-review option.
+   - **R3** — new `release-linux.yml` on the same `v*` trigger. Cleanest
+     separation, one more file to maintain.
+   Attaching any artifact to an actual GitHub Release stays the same
+   manual `gh release create` step regardless of which option (mirrors how
+   Windows releases work today) — none of R1/R2/R3 by itself publishes
+   anything. What's genuinely blocked on the version-scheme decision (item
+   3 below): under Option A (`0.10.0-beta.N`), the release job needs a
+   guard step refusing a hyphenated `Version:` from ever being mistaken
+   for the "real" release (see the Debian-ordering trap explained above);
+   under Option B, no guard is needed, but the MANIFEST/description must
+   still carry the "beta" signal some other way. Which guard (or none) to
+   add is not something an agent should pick.
+3. **Version-numbering scheme** — Option A vs Option B, above. Still open;
+   this document's own earlier text asked for it to be resolved before L6
+   starts, and L6's release-wiring half genuinely depends on it (the
+   autonomous CI-plumbing slice above does not).
+4. **`bundle.publisher` value and scope** — now confirmed mechanically
+   possible to fix Linux-only (via `tauri.linux.conf.json`) without
+   touching the Windows NSIS string, so the remaining question is purely
+   the maintainer's: what value, and whether to also fix Windows at the
+   same time or leave that for later.
+
+### Adjacent, explicitly NOT part of L6
+
+Enabling branch protection on `main` and/or making `linux-ci.yml` a
+required check (a policy choice, and premature before it's run against
+real PRs); deleting the feature branch after merge (separate hard stop);
+running the Windows acceptance harness against a `main` build (a merge
+consequence, listed above for visibility, not L6 work).
