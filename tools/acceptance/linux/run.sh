@@ -746,7 +746,7 @@ if [ "$api_ok" = "true" ]; then
       convert_src="$api_workdir/demo_u1_showcase.3mf"
       convert_sha_before="$(runuser -u "$test_user" -- sha256sum "$convert_src" | cut -d' ' -f1)"
       convert_out="$(api_curl /convert "$(jq -n --arg p "$convert_src" --arg d "$api_workdir" '{path:$p,out_dir:$d,prepare_mode:"preserve"}')")"
-      convert_output_path="$(echo "$convert_out" | jq -r '.output_path // empty' 2>/dev/null)"
+      convert_output_path="$(echo "$convert_out" | jq -r '.output_path // empty' 2>/dev/null || true)"
       convert_created="false"
       [ -n "$convert_output_path" ] && [ -f "$convert_output_path" ] && convert_created="true"
       add_check "API /convert (Prepare) creates a new output file" "$convert_created" "$convert_output_path"
