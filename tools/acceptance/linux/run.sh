@@ -132,22 +132,32 @@ chown -R "$test_user:$test_user" "$user_home"
 
 echo "=== Starting Xvfb + a real window manager ==="
 # Earlier steps in this same CI job use xvfb-run, whose --auto-servernum
-# default starts searching FROM :99 — an uncleanly-killed prior instance
-# (several earlier steps in this file do `kill -9` on xvfb-run-wrapped
-# processes) can leave a stale /tmp/.X99-lock behind even though nothing
-# is actually listening anymore. Only remove it if the PID it names is
-# genuinely gone; never touch a lock a live process might still own.
-x_display=99
-lock_file="/tmp/.X${x_display}-lock"
-if [ -f "$lock_file" ]; then
-  lock_pid="$(tr -d ' \t' < "$lock_file" 2>/dev/null || true)"
-  if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-    echo "Removing stale $lock_file (PID $lock_pid is not running)"
-    rm -f "$lock_file"
+# default starts searching FROM :99 — one of those earlier steps can still
+# genuinely be holding it (not just a stale lock file: an xvfb-run-wrapped
+# process that a `kill -9` in an earlier step didn't fully reap can still
+# be alive and correctly refusing a second server on the same display).
+# Rather than trying to distinguish "stale" from "still legitimately in
+# use" by another step, use a distinct range (150+) nothing else in this
+# job goes near, and actually try starting Xvfb rather than trusting a
+# lock file's presence/absence either way.
+x_display=""
+for candidate in 150 151 152 153 154 155; do
+  rm -f "/tmp/.X${candidate}-lock"
+  Xvfb ":$candidate" -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
+  candidate_pid=$!
+  sleep 0.5
+  if kill -0 "$candidate_pid" 2>/dev/null; then
+    x_display="$candidate"
+    xvfb_pid="$candidate_pid"
+    break
   fi
+  wait "$candidate_pid" 2>/dev/null || true
+done
+if [ -z "$x_display" ]; then
+  echo "Could not start Xvfb on any candidate display (150-155)." >&2
+  exit 1
 fi
-Xvfb ":$x_display" -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
-xvfb_pid=$!
+echo "Xvfb started on display :$x_display (PID $xvfb_pid)"
 owned_pids+=("$xvfb_pid")
 export DISPLAY=":$x_display"
 for _ in $(seq 1 20); do
@@ -168,11 +178,11 @@ fi
 fixture_copy="$user_home/demo_u1_showcase.3mf"
 cp "$fixture_src" "$fixture_copy"
 chown "$test_user:$test_user" "$fixture_copy"
-fixture_sha_before="$(sudo -u "$test_user" sha256sum "$fixture_copy" | cut -d' ' -f1)"
+fixture_sha_before="$(runuser -u "$test_user" -- sha256sum "$fixture_copy" | cut -d' ' -f1)"
 
 echo "=== Launching the installed app as $test_user, with the fixture ==="
 app_log="$evidence_dir/app.log"
-sudo -u "$test_user" env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" "$fixture_copy" > "$app_log" 2>&1 &
 app_shell_pid=$!
 owned_pids+=("$app_shell_pid")
@@ -245,7 +255,7 @@ done
 add_check "Launch-file path recorded a library.db row" "$db_found" "$db_path"
 
 echo "=== Verifying the original fixture file was never modified ==="
-fixture_sha_after="$(sudo -u "$test_user" sha256sum "$fixture_copy" | cut -d' ' -f1)"
+fixture_sha_after="$(runuser -u "$test_user" -- sha256sum "$fixture_copy" | cut -d' ' -f1)"
 add_check "Original file untouched (hash unchanged)" "$([ "$fixture_sha_before" = "$fixture_sha_after" ] && echo true || echo false)" "before=$fixture_sha_before after=$fixture_sha_after"
 
 echo "=== Verifying XDG data dir permissions ==="
@@ -305,7 +315,7 @@ if [ "$graceful_close_ok" != "true" ]; then
 fi
 
 echo "=== Reopening (proves the app isn't left in a broken state after a real close) ==="
-sudo -u "$test_user" env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
   "$bin_path" > "$evidence_dir/app_reopen.log" 2>&1 &
 reopen_shell_pid=$!
 owned_pids+=("$reopen_shell_pid")
