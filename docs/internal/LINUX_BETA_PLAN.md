@@ -631,6 +631,6 @@ MEDIUM, 7 LOW. All were fixed in the same commit round:
   risks unrelated false failures for no real protection the M1 rewrite and
   the print-guarantee guard don't already provide.
 
-Verified after fixes: `backend/tests/test_public_claims.py` and
-`test_evidence_consistency.py` (90 passed), full backend suite (1829
-passed, 7 skipped).
+Verified after fixes: `test_public_claims.py` + `test_evidence_consistency.py`
+(57 passed); those two plus `test_release_docs.py` (72 passed); full backend
+suite (1830 passed, 7 skipped).

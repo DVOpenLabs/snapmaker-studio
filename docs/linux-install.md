@@ -96,18 +96,22 @@ sudo apt install ./snapmaker-studio_<new-version>_amd64_<short-hash>.deb
 ## Uninstall
 
 ```bash
-sudo apt remove snapmaker-studio    # keeps nothing behind but your project data
+sudo apt remove snapmaker-studio    # uninstalls the app, keeps your data (below)
 sudo apt purge snapmaker-studio     # same effect for this package — it ships no conffiles
 sudo apt autoremove                 # optional: drops any dependency apt pulled in only for Studio
 ```
 
 Studio's package does not own your data directory (below), so removing the
-app does not delete your projects. Delete
-`~/.local/share/SnapmakerStudio` (or your `$XDG_DATA_HOME` equivalent)
-yourself if you want that gone too. UI preferences (theme, printer address,
-filament price, materials-provider settings) are kept separately, by the
-embedded browser view, not in that directory — removing the package does not
-clear them, and this page does not yet document where they live on disk.
+app does not delete your projects. Neither `remove` nor `purge` clears any
+of the following — delete them yourself if you want everything gone:
+
+- Your project data: `~/.local/share/SnapmakerStudio`, or your
+  `$XDG_DATA_HOME` equivalent, or the path you set `SNAPSTUDIO_DATA_DIR` to
+  if you used that override.
+- UI preferences (theme, printer address, filament price,
+  materials-provider settings): kept separately, by the embedded browser
+  view, not in the directory above. This page does not yet document where
+  that storage lives on disk.
 
 ## Where Studio keeps your data
 
