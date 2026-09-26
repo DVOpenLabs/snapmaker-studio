@@ -1,4 +1,4 @@
-# Linux beta plan — L5 through L9 record
+# Linux beta plan — L5 through L10 record
 
 **UNRELEASED. Internal only, not linked from README/docs/landing. Not an
 announcement.** No public GitHub Release, tag, or change to the stable
@@ -424,7 +424,12 @@ graceful `RunEvent::Exit` path — only L7's harness does).
   through the full 35-check harness, not simulated.
 - **REAL U1 VERIFIED**: not touched (no printer in CI). **EXTERNAL USER
   VERIFIED**: not touched (no external human tester yet) — stays false
-  until L10 produces one.
+  until a real report arrives from outside this project. L10 prepared the
+  reporting path for that; it does not, and structurally cannot, produce
+  the report itself, since no Linux package is publicly downloadable yet
+  (see L10's own section below). This tier is not a gate on v1.0.0
+  shipping Linux — the maintainer's v1.0.0 authorization already directs
+  one Release with both platforms, independent of this tier.
 
 ### Not yet done (tracked, not silently dropped)
 
@@ -634,3 +639,97 @@ MEDIUM, 7 LOW. All were fixed in the same commit round:
 Verified after fixes: `test_public_claims.py` + `test_evidence_consistency.py`
 (57 passed); those two plus `test_release_docs.py` (72 passed); full backend
 suite (1830 passed, 7 skipped).
+
+## What L10 covers
+
+External Linux beta readiness — making sure a real outside tester has a
+working path to report back, without requiring that anyone has actually
+done so yet. **EXTERNAL USER VERIFIED stays false**; nothing in this phase
+changes that, and nothing here is gated on it changing.
+
+### What shipped
+
+- **`.github/ISSUE_TEMPLATE/bug_report.md`**: the "Windows version" field
+  was the only OS-specific assumption in either issue template — it asked
+  every reporter for a Windows version even though nothing else in the
+  template assumed Windows. Changed to "OS and version", with a
+  Linux-specific prompt to also say how Studio was installed (the official
+  `.deb`, or something else) — useful because a report from a hand-built
+  or third-party package is a different kind of bug than one against the
+  real release artifact.
+- **`.github/ISSUE_TEMPLATE/studio-got-this-wrong.yml`**: this is the
+  primary report link `docs/linux-install.md`'s Troubleshooting section
+  actually points to, and it had no OS field at all — a real gap Opus's
+  review caught (it was OS-neutral only in the sense of asking about no OS,
+  not in genuinely covering Linux). The known Orca-auto-detection gap
+  (L9's finding) will plausibly produce "Studio got this wrong"-shaped
+  reports from Linux users that are actually the known missing-detection
+  behaviour, not a new defect — without an OS field there would be no way
+  to tell those apart from a real cross-platform analysis bug. Added an
+  optional "OS and version" field, matching bug_report.md's wording.
+- `docs/linux-install.md` (L9) already gives Linux-specific Known
+  Limitations and Troubleshooting sections and an explicit SHA256
+  verification step. Its download-filename guidance is a pattern
+  (`snapmaker-studio_<version>_amd64_<short-hash>.deb`) rather than a
+  concrete example, and `docs/RELEASE_METADATA.md` has no Linux row yet —
+  both correct only because no Linux release exists; "understandable
+  filename" and "easy checksum verification" are satisfied as *documented
+  process*, not yet as a real example a tester can point at, which the
+  v1.0.0 release closes.
+
+### What was deliberately NOT done this phase
+
+**No outreach was posted anywhere** (Reddit, the Snapmaker forum, or
+otherwise). Two independent reasons, not a missed step:
+
+1. There is still nothing a reader could download — no Linux `.deb` has
+   been published in any GitHub Release (same fact `docs/linux-install.md`
+   itself leads with). Posting "try the Linux beta" with no working link is
+   the exact kind of premature announcement `docs/internal/LINUX_BETA_PLAN.md`
+   has disclaimed since L5.
+2. Posting to an external, public service is visible to others and not
+   easily reversible — outside what a documentation/readiness phase should
+   do on its own initiative. `docs/innovation-fund/BETA_TEST_PLAN.md`
+   already did this analysis for the Windows beta (channel-by-channel fit
+   assessment, the Snapmaker forum ranked best) and its reasoning — no
+   asking for stars/votes, lead with something useful to the reader, state
+   beta status up front — applies unchanged to a future Linux post; L10
+   does not re-do or duplicate that plan, and does not act on it early
+   for a platform with nothing shippable yet.
+
+The correct trigger for actually posting Linux-specific outreach is the
+v1.0.0 release existing (a real download link to point to) — that
+belongs in the v1.0.0 phase or after, not here.
+
+### A real sequencing question this phase's review surfaced, and its resolution
+
+Opus's review of this phase correctly identified an apparent deadlock in
+the project's own prior wording: `release-linux.yml`'s original comment
+said the real release trigger waits for "external Linux evidence"; this
+section says outreach waits for a real download to exist; and the old L8
+evidence-tier wording said EXTERNAL USER VERIFIED "stays false until L10
+produces one." Chained together, nothing ever ships. This is now resolved,
+not left open: the maintainer's explicit v1.0.0 authorization already
+directs ONE GitHub Release carrying both the Windows installer and this
+Linux `.deb`, independent of EXTERNAL USER VERIFIED — that tier was never
+meant to gate v1.0.0 shipping Linux, only to honestly track whether a real
+outside report has arrived. `release-linux.yml`'s comment and the L8
+evidence-tier wording above were both corrected in this phase to say so
+explicitly, rather than carrying forward language that predates that
+authorization.
+
+### Not addressed this phase (carried forward, not silently dropped)
+
+The Linux Orca-auto-detection gap L9 found (`desktop/src-tauri/src/main.rs`'s
+`orca_candidates()`/`tool_candidates()` returning empty under
+`#[cfg(not(windows))]`) is unchanged. It remains a real, open, contained
+fix candidate for whenever Linux desktop work resumes — L10 documented it
+in the reporting templates (the new OS field helps distinguish "wrong
+analysis" reports caused by it from genuine bugs) rather than fixing the
+underlying code, which is out of this phase's documentation-only scope.
+
+### Evidence tiers earned this phase
+
+None — L10 is reporting-path readiness only. EXTERNAL USER VERIFIED
+remains honestly false, as it must until a real report arrives from
+outside this project.

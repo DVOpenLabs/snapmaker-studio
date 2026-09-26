@@ -56,6 +56,13 @@ body:
       placeholder: "e.g. MakerWorld, exported from Bambu Studio · or: my own STL from Fusion"
 
   - type: input
+    id: os
+    attributes:
+      label: OS and version (optional)
+      description: On Linux, also say how you installed Studio (the official `.deb`, or something else).
+      placeholder: "e.g. Windows 11, or Ubuntu 24.04 (installed via the official .deb)"
+
+  - type: input
     id: version
     attributes:
       label: Studio version
