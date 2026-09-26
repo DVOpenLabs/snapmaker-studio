@@ -157,12 +157,14 @@ const text = JSON.stringify(rows).toLowerCase();
 
 const nozzle = rows.find((r) => r.id === "nozzle.match");
 // Stock U1 firmware DOES report the fitted nozzle diameter via
-// /machine/system_info (confirmed live this session) — the nozzle check can
-// now come back ok or attention, not only unknown. What must never happen,
-// whichever it is, is the old "unsupported" framing, and an ok/attention
-// result must cite where the reading actually came from.
-record("Fitted nozzle is read from real firmware when available, never called unsupported",
-  ["ok", "attention", "unknown"].includes(nozzle?.result)
+// /machine/system_info (confirmed live this session), and the demo project
+// (examples/demo_u1_showcase.3mf) states a 0.4mm nozzle matching what a real
+// U1 reports — so this fixture's own result is pinned to "ok", the same way
+// the post-slice gcode.nozzle assertion below is pinned. What must never
+// happen is the old "unsupported" framing, and an ok result must cite where
+// the reading actually came from.
+record("Fitted nozzle matches the real firmware reading, never called unsupported",
+  nozzle?.result === "ok"
     && !JSON.stringify(nozzle).toLowerCase().includes("unsupported"),
   `${nozzle?.result}: ${nozzle?.evidence ?? nozzle?.title ?? "no nozzle check"}`);
 record("A matched nozzle reading is credited to the printer, not asserted with no source",

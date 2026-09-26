@@ -333,7 +333,8 @@ def test_machine_info_result_is_always_valid_json_even_with_nan_in_the_wire_resp
     httpd, port, _ = _mock_moonraker(system_info=system_info)
     try:
         m = moonraker.machine_info("127.0.0.1", port, timeout=5)
-        text = json.dumps(m)  # raises if m itself contains a non-finite float
+        text = json.dumps(m)  # does not raise on a non-finite float — it writes a bare
+                              # NaN token instead, which the assert below is what catches
         assert "NaN" not in text
     finally:
         httpd.shutdown()

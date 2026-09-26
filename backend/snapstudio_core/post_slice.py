@@ -309,6 +309,18 @@ def _nozzle_number(value) -> str:
         return str(value)
 
 
+def _nozzles_match(wanted: list, reported: list) -> bool:
+    """Same toolhead count on both sides: compare position by position — a
+    job sliced for [0.4, 0.6, 0.4, 0.4] and a printer reporting
+    [0.4, 0.4, 0.6, 0.4] have the identical sizes but on different
+    toolheads, a real mismatch a set comparison would call a match.
+    Different counts: there is no toolhead to align position by position,
+    so fall back to comparing which sizes exist at all."""
+    if len(wanted) == len(reported):
+        return all(_nozzle_number(w) == _nozzle_number(r) for w, r in zip(wanted, reported))
+    return {_nozzle_number(w) for w in wanted} == {_nozzle_number(r) for r in reported}
+
+
 def _nozzle(g: dict, printer: dict) -> dict:
     sizes = g.get("nozzle_diameter_mm") or []
     unique = sorted({s for s in sizes if s})
@@ -337,9 +349,8 @@ def _nozzle(g: dict, printer: dict) -> dict:
             label, who, verb = "user confirmed", "you", "confirmed"
         else:
             label, who, verb = "an unstated source", "something Studio read", "reports"
-        reported_set = {_nozzle_number(n) for n in reported}
-        stated_set = {_nozzle_number(s) for s in unique}
-        if reported_set == stated_set:
+        reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
+        if _nozzles_match(sizes, reported):
             return _check(
                 "gcode.nozzle", "Nozzle size matches", OK,
                 evidence=f"the job was sliced for {stated}; {who} {verb} the same",
@@ -348,8 +359,7 @@ def _nozzle(g: dict, printer: dict) -> dict:
                 source=f"G-code configuration block; {label}")
         return _check(
             "gcode.nozzle", "Nozzle size does not match", ATTENTION,
-            evidence=(f"the job was sliced for {stated}; {who} {verb} "
-                      + ", ".join(f"{n} mm" for n in sorted(reported_set))),
+            evidence=(f"the job was sliced for {stated}; {who} {verb} " + reported_txt),
             confidence=CONFIRMED,
             consequence=("Printing with a different nozzle than the job was sliced for changes "
                         "line width and can ruin fine detail."),
