@@ -438,3 +438,35 @@ def test_with_providers_returns_unchanged_with_no_host():
     printer = {"reachable": False}
     result = service._with_providers(printer, None, 7125, provider_url=None, slot_map=None)
     assert result is printer
+
+
+def test_a_configured_provider_is_reached_even_with_no_printer_host(monkeypatch):
+    """Regression (caught by tools/acceptance/checks.mjs's "A configured
+    provider is actually contacted", which passed on the published v1.0.0 and
+    failed on the v1.1.0 release candidate): _with_providers used to return
+    the printer unchanged the moment `host` was empty, before ever looking at
+    provider_url — but a Spoolman/Bambuddy server is reached through its OWN
+    address (provider_url), which has nothing to do with the printer's host.
+    A person can read material info from their provider with no printer
+    connected at all; only the local-spool lookup is actually keyed by host."""
+    calls = []
+
+    def fake_stock_u1(host, port):
+        calls.append(("stock_u1", host, port))
+        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
+                "available": False, "slots": []}
+
+    def fake_read(provider, url, slot_map, slot_base=None):
+        calls.append(("read", provider, url))
+        return {"schema_version": providers.SCHEMA_VERSION, "source": provider,
+                "available": True, "remaining_known": True,
+                "slots": [providers._slot(0, material="PLA", confirmed_by=providers.BY_PROVIDER)]}
+
+    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
+    monkeypatch.setattr(providers, "read", fake_read)
+
+    printer = service._with_providers({"reachable": False}, "", 7125,
+                                      provider_url="spoolman.local:7912",
+                                      slot_map={"0": 1}, slot_base=1)
+    assert ("read", providers.SPOOLMAN, "spoolman.local:7912") in calls
+    assert printer["loaded_filaments"][0]["material"] == "PLA"
