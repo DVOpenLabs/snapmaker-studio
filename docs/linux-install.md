@@ -142,8 +142,12 @@ whether you already have it on Linux.
 ## Known limitations
 
 - **Orca auto-detection**: see above — not implemented on Linux yet.
-- **No automatic update check**: Studio doesn't notify you of a new release on
-  its own. Use Help → Check GitHub now, or watch the Releases page.
+- **Update checks are opt-in**: by default Studio doesn't notify you of a new
+  release on its own — use Help → Check GitHub now, or watch the Releases
+  page. Help also has an "Automatically check for updates" checkbox, off
+  unless you turn it on, that does the same one-request check itself, at
+  most once a day. Either way Studio only ever tells you a version number
+  and a link; it never downloads or installs anything.
 - **A `python3` package may appear as a side effect of installing this `.deb`
   on a genuinely minimal system** — not because Studio needs it. On a bare
   system, `systemd` recommends `networkd-dispatcher`, which depends on

@@ -69,9 +69,17 @@ def redact(value):
         text = _IPV4.sub("<ip>", text)
         for pattern, token in subs:
             text = pattern.sub(token, text)
-        # A long opaque run is more likely a token than prose. Hashes are kept:
-        # they are useful and not secret.
-        text = _TOKENISH.sub(lambda m: m.group(0) if _looks_like_hash(m.group(0)) else "<redacted>", text)
+        # A long opaque run is more likely a token than prose, and there is no
+        # way to tell a hash from a credential by shape alone: a hex-format API
+        # key is indistinguishable from a sha256 digest under any regex. This
+        # used to keep anything that looked like a hash on the reasoning that
+        # hashes are "useful and not secret" — but this same file already
+        # strips a genuinely harmless hash (`name_hashes`, below) on the
+        # opposite reasoning, that a bundle goes to a stranger who could check
+        # a guess against it. A support bundle is not the place to bet on
+        # which reasoning applies to a given 32-64 character run; everything
+        # that shape is redacted, unconditionally.
+        text = _TOKENISH.sub("<redacted>", text)
         return text
 
     def walk(node):
@@ -84,10 +92,6 @@ def redact(value):
         return node
 
     return walk(value)
-
-
-def _looks_like_hash(text: str) -> bool:
-    return bool(re.fullmatch(r"[0-9a-f]{32,64}", text, re.I))
 
 
 def _version() -> str:

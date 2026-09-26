@@ -31,9 +31,21 @@ def test_redaction_removes_the_things_that_identify_a_person(monkeypatch):
     assert "abcdefghijklmnopqrstuvwxyz012345" not in text
 
 
-def test_a_sha256_survives_because_it_is_useful_and_not_secret():
+def test_a_sha256_shaped_value_is_redacted_because_a_credential_can_look_identical():
+    """This used to survive, on the reasoning that hashes are "useful and not
+    secret" — but a hex-format API key or Bambuddy-style token is exactly this
+    shape, and no regex can tell the two apart. Item E hardening: closed."""
     digest = "50fc5434e266f0b8c025336410534d019f8d41c0ec5190290024c702126cbf26"
-    assert diagnostics.redact({"sha256": digest})["sha256"] == digest
+    assert diagnostics.redact({"sha256": digest})["sha256"] != digest
+    assert digest not in json.dumps(diagnostics.redact({"sha256": digest}))
+
+
+def test_a_hex_token_that_could_be_a_credential_is_redacted():
+    """Same length/charset as a real digest, but keyed like a credential would
+    be — the exact ambiguity that made the old hash exemption a leak risk."""
+    token = "9f8b3c1a7e2d4f60ab5c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3"
+    out = diagnostics.redact({"api_key": token})
+    assert token not in json.dumps(out)
 
 
 def test_redaction_does_not_mutate_what_it_was_given():
