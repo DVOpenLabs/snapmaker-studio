@@ -90,9 +90,11 @@ def test_the_timeline_counts_layers_tools_and_pauses(multi):
 def test_it_records_when_each_tool_arrives_and_leaves(multi):
     plan = print_plan.scan(multi)
     assert plan["tool_first_layer"]["3"] == 3
-    # Tool 0 is still the selected tool going into layer 3 — T3 does not fire
-    # until partway through that layer's G-code — so 3, not 2, is where it was
-    # last credited (the carry-forward fix, tested in isolation below).
+    # Tool 0 is still the selected tool at the instant layer 3's own
+    # ;LAYER_CHANGE line is read, one line before T3 fires — so 3, not 2, is
+    # where it was last credited (the carry-forward fix, tested in isolation
+    # below). This is a conservative upper bound on selection, not a claim
+    # tool 0 extruded anything on layer 3.
     assert plan["tool_last_layer"]["0"] == 3
 
 

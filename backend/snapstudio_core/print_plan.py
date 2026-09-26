@@ -26,25 +26,29 @@ real slicer does not repeat a tool-change command for every layer that keeps
 using the same tool. That much is a fact read straight off the G-code.
 
 Whether two tools ever shared a single printed layer is a different, harder
-question this scan deliberately does not answer. Three attempts at it are
-recorded in this module's git history, each defeated by the same root cause:
-a `T<n>` line proves the active tool changed, never that filament was
+question this scan deliberately does not answer. Multiple attempts at it were
+tried and abandoned in this branch's history, each defeated by the same root
+cause: a `T<n>` line proves the active tool changed, never that filament was
 deposited before the next change, and no combination of *which* layers a
 tool was selected on or *how many times* it changed within one layer can
 tell a genuine same-layer multi-tool print apart from an ordinary sequential
 handoff. A print where two tools alternate one clean switch per layer, each
 extruding for the whole layer it owns, and a print where those same two
 tools both extrude within *every* layer, produce IDENTICAL tool-change
-traces — the only way to tell them apart is to know where the extrusion
-moves themselves fall relative to the tool-change and layer-change lines,
-which this scan's line-level regex does not parse (see the Cost note below
-for why: on a real multi-megabyte job, extrusion lines are most of the
-file, and matching them the way `_TOOL`/`_LAYER` are matched here would cost
-real time this module currently avoids). Reporting a guess either
-direction — "safe to swap" or "needs a toolhead" — built on a trace that
-cannot distinguish the two would be worse than not answering: color_plan's
+traces — telling them apart needs to know where the extrusion moves
+themselves fall relative to the tool-change and layer-change lines, which
+this scan's line-level regex does not parse (see the Cost note below for
+why: on a real multi-megabyte job, extrusion lines are most of the file, and
+matching them the way `_TOOL`/`_LAYER` are matched here would cost real,
+currently unmeasured, time). A slicer's own per-feature comments (Orca's
+`;TYPE:` lines, for one) might narrow this more cheaply than parsing
+extrusion moves, but that is a slicer convention rather than a fact every
+job carries, and has not been tried. Reporting a guess either direction —
+"safe to swap" or "needs a toolhead" — built on a trace that cannot
+distinguish the two would be worse than not answering: color_plan's
 pre-slice "reserve a toolhead" stays the honest answer for coexistence,
-before AND after slicing, until this module reads extrusion moves too.
+before AND after slicing, until this module reads more than tool-change and
+layer-change lines.
 
 **Cost.** A pass over a 330 MB job takes a few seconds, so this is deliberately
 separate from the cheap facts: the Post-Slice Doctor answers immediately, and the
