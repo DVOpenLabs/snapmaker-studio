@@ -315,7 +315,7 @@ jobs:
           fi
           echo "Gate 4 OK: draft has exactly the expected 3 assets."
 
-      - name: Dry run — delete the draft (and its throwaway tag, if this run created one), stop here
+      - name: Dry run — delete the draft, stop here
         if: steps.input.outputs.dry_run == 'true'
         run: |
           set -euo pipefail
@@ -331,15 +331,21 @@ jobs:
             echo "Release id $release_id is no longer a draft — refusing to delete it. Investigate before doing anything else." >&2
             exit 1
           fi
-          # --cleanup-tag ONLY when this run's own `gh release create --target`
-          # is what created the tag (tag_preexisted=false). A rehearsal must
-          # NEVER delete a tag that existed before it ran, for any reason.
-          if [ "${{ steps.input.outputs.tag_preexisted }}" = "true" ]; then
-            gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes
-          else
-            gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes --cleanup-tag
-          fi
-          echo "Dry run complete: every gate passed, a draft was created and verified, nothing was published. Draft deleted (tag cleaned up only if this run created it)."
+          # NEVER --cleanup-tag here. The concurrency group above only
+          # serializes WORKFLOW RUNS — it cannot stop an operator from
+          # running `git push origin <tag>` for real, by hand, at any
+          # moment, including while this rehearsal is mid-flight. A
+          # tag_preexisted flag sampled once at the start of this run can
+          # therefore go stale, and --cleanup-tag deleting a git tag is
+          # exactly the HARD STOP action this project's own rules require
+          # explicit maintainer approval for, every time — never something
+          # a rehearsal does automatically. Deleting only the draft release
+          # is safe (drafts and any tag GitHub auto-created for one are
+          # explicitly mutable/deletable per `gh release create --help`);
+          # worst case a stray tag needs a manual `git push --delete`,
+          # which is a minor cleanup, not an incident.
+          gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes
+          echo "Dry run complete: every gate passed, a draft was created and verified, nothing was published. Draft deleted. If this rehearsal used a tag name that did not exist before it ran, verify no stray tag was left behind (git ls-remote origin refs/tags/<tag>) and delete it by hand if so."
 
       - name: Publish — flip the draft to public (the one moment this becomes real)
         if: steps.input.outputs.dry_run != 'true'

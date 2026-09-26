@@ -75,14 +75,26 @@ gh workflow run release-publish.yml --ref scratch/vX.Y.Z-rehearsal -f tag=vX.Y.Z
 ```
 Exercises every gate — tag/metadata/manifest agreement, RC provenance and
 ancestry, artifact re-download and re-hash, draft creation and asset check —
-creates and deletes a draft Release, publishes nothing, and cleans up its own
-throwaway tag (never a real pre-existing one — the workflow itself refuses to
-touch a tag it didn't create). Delete `scratch/vX.Y.Z-rehearsal` once green;
-it was never merged.
+creates and deletes a draft Release, and publishes nothing. It deliberately
+does NOT delete any git tag itself (tag deletion is always a HARD STOP,
+never automatic) — if GitHub auto-created a throwaway tag for this
+rehearsal's draft, verify with `git ls-remote origin refs/tags/vX.Y.Z` and
+delete it by hand if so. Delete `scratch/vX.Y.Z-rehearsal` once green; it
+was never merged.
 
-If this fails, fix `release-publish.yml` directly on `release/vX.Y.Z`
-(carrying the fix into commit B later) and re-rehearse — still before
-spending time on the local gates below.
+**If a rehearsal run fails partway (not the gates — the workflow itself
+crashing) it can leave its draft behind**, uncleaned. That draft will make
+the REAL publish later fail its "refuse if a release already exists" check.
+Check `gh release view vX.Y.Z` before assuming something is wrong with the
+real run; delete a leftover rehearsal draft by hand if you find one.
+
+If this fails, fix `release-publish.yml` on `release/vX.Y.Z`, then
+**re-run step 3 (rebuild the RC)** before rehearsing again — never just
+re-rehearse against the old RC build. Gate 2 checks that everything between
+the RC build commit and the tag is docs-only; a `.github/**` fix committed
+*after* the RC was built would itself fail that gate forever. Still worth
+doing now, before spending time on the local gates below — a second RC
+build here is far cheaper than discovering this after the real U1 run.
 
 ## 5. Local gates against the RC artifacts
 
