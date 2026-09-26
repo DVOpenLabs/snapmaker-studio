@@ -308,10 +308,12 @@ def verify_printer_cmd(host, port):
     Checks whether your printer answers, what Moonraker and its firmware
     report, and whether Studio recognises the model — nothing more. Every
     check is read-only: no print is started, nothing is uploaded, nothing on
-    the printer is changed. The address you gave never appears in the
-    output, and neither does anything else that would identify your network
-    — everything is passed through the same redaction Studio's own support
-    bundles use before you see it.
+    the printer is changed. The address you gave is never copied into the
+    output in the first place — the checks below only ever report what the
+    printer SAID, never the address they asked — and whatever else could
+    identify your network (your own username, hostname, a stray IPv4
+    address) goes through the same redaction Studio's own support bundles
+    use before you see it.
 
     Paste the JSON this prints into a "Help - Verify my printer" issue, or
     into docs/PRINTER_COMPATIBILITY.md's evidence table if you are the one

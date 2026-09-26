@@ -83,9 +83,11 @@ u1convert verify-printer --host <your-printer-address> --port 7125
 
 This is read-only: it only ever issues GET requests (probe, capabilities,
 loaded-filament state), never a control call, and nothing about your printer
-is changed. The address you give it never appears in the output — the result
-goes through the same redaction Studio's own support bundles use before you
-see it, so it is safe to paste into a GitHub issue or discussion as-is.
+is changed. The address you give it is never copied into the output in the
+first place — every check reports what the printer said, never the address
+that was asked — and whatever else could identify your network goes through
+the same redaction Studio's own support bundles use before you see it, so it
+is safe to paste into a GitHub issue or discussion as-is.
 
 Open an issue with the output attached, and say which printer it was. A
 maintainer reading it is what turns "profile verified" into "hardware

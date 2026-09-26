@@ -62,6 +62,43 @@ def _mock_moonraker(*, with_print_task_config=True):
 _GENERIC_OBJECTS_LIST = {"result": {"objects": ["print_stats", "heater_bed", "toolhead",
                                                  "extruder", "extruder1", "extruder2", "extruder3"]}}
 
+_SERVER_INFO_KLIPPY_DOWN = {"result": {"klippy_state": "error", "moonraker_version": "v0.9.3",
+                                       "api_version_string": "1.5.0"}}
+
+
+def _mock_klippy_down():
+    """Moonraker answers (the printer is reachable) but Klipper itself is
+    not connected — a common, ordinary state (a firmware restart, a config
+    reload) that a real /printer/objects/list request answers with an HTTP
+    error rather than a body, and /printer/objects/query drops the same way."""
+    methods_seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def _send(self, obj):
+            b = json.dumps(obj).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        def do_GET(self):
+            methods_seen.append(("GET", self.path))
+            if self.path == "/server/info":
+                self._send(_SERVER_INFO_KLIPPY_DOWN)
+            elif self.path == "/printer/objects/list":
+                self.send_response(503); self.end_headers()
+            elif self.path.startswith("/printer/objects/query"):
+                self.send_response(500); self.end_headers()
+            else:
+                self.send_response(404); self.end_headers()
+
+        def do_POST(self):
+            methods_seen.append(("POST", self.path)); self.send_response(405); self.end_headers()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, httpd.server_address[1], methods_seen
+
 
 def _mock_generic_klipper():
     """A four-toolhead Klipper printer with no Snapmaker-specific object —
@@ -173,6 +210,75 @@ def test_every_check_is_pass_fail_or_unknown_never_anything_else():
             assert check["id"] and check["title"] and check["evidence"]
     finally:
         httpd.shutdown()
+
+
+# --- MEDIUM-1/MEDIUM-2 regression: Moonraker reachable, Klipper is not ------
+#
+# Opus review of a8cd356: the printer is reachable (answers /server/info),
+# but Klipper itself is disconnected — an ordinary, common state, and exactly
+# when someone would run this tool. /printer/objects/list and
+# /printer/objects/query both answer with an HTTP error rather than a body in
+# that state; before this fix, that error propagated straight out of run(),
+# and the command printed a traceback with no bundle at all.
+
+def test_klipper_disconnected_never_crashes_and_reports_unknown_not_a_failure():
+    httpd, port, _ = _mock_klippy_down()
+    try:
+        out = hardware_verify.run("127.0.0.1", port)  # must not raise
+        by_id = {c["id"]: c for c in out["checks"]}
+        assert by_id["printer.reachable"]["result"] == hardware_verify.PASS
+        assert by_id["printer.klippy_ready"]["result"] == hardware_verify.UNKNOWN
+        assert by_id["capabilities.toolhead_count"]["result"] == hardware_verify.UNKNOWN
+        assert by_id["capabilities.bed_size"]["result"] == hardware_verify.UNKNOWN
+        assert by_id["capabilities.object_list"]["result"] == hardware_verify.UNKNOWN
+        assert out["capabilities"] is None
+        assert out["klippy_state"] == "error"
+    finally:
+        httpd.shutdown()
+
+
+def test_a_dropped_connection_while_reading_loaded_filament_is_not_a_firmware_claim():
+    """A transport failure (PrinterUnavailable) must never be reported as
+    "this firmware does not report loaded filament" — that is a claim about
+    the printer's own firmware, made on no evidence, and it is exactly the
+    distinction moonraker.loaded_filaments() raises PrinterUnavailable to
+    preserve."""
+    httpd, port, _ = _mock_klippy_down()
+    try:
+        out = hardware_verify.run("127.0.0.1", port)
+        check = next(c for c in out["checks"] if c["id"] == "material.loaded_filaments")
+        assert check["result"] == hardware_verify.UNKNOWN
+        assert "could not read it" in check["evidence"]
+        assert "does not report loaded filament" not in check["evidence"]
+    finally:
+        httpd.shutdown()
+
+
+def test_klippy_ready_is_pass_on_a_healthy_printer():
+    httpd, port, _ = _mock_moonraker()
+    try:
+        out = hardware_verify.run("127.0.0.1", port)
+        by_id = {c["id"]: c for c in out["checks"]}
+        assert by_id["printer.klippy_ready"]["result"] == hardware_verify.PASS
+        assert out["klippy_state"] == "ready"
+    finally:
+        httpd.shutdown()
+
+
+def test_build_evidence_redacts_a_hostname_not_only_an_ipv4_address():
+    """LOW-1: redact() only strips IPv4 addresses and the local machine's own
+    username/hostname — a printer HOSTNAME passes straight through it
+    untouched. The protection this module promises comes from run() never
+    copying the host it was given into its output in the first place, which
+    this proves directly with a real (non-loopback-IP) hostname string — the
+    other tests all use 127.0.0.1, which redact()'s own IPv4 pattern would
+    catch regardless, so they cannot tell the two protections apart.
+    moonraker.probe() itself catches every connection failure and returns
+    reachable=False rather than raising, so this never needs a real DNS
+    answer or a mock server — the hostname just needs to never appear in
+    the returned bundle either way."""
+    bundle = hardware_verify.build_evidence("my-actual-printer-hostname.lan", 7125)
+    assert "my-actual-printer-hostname" not in json.dumps(bundle)
 
 
 # --- the evidence bundle: redacted, and never claims hardware-verified -------
