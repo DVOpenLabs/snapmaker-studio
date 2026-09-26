@@ -245,6 +245,15 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
     That is the same defect as the one the address check was written for, one
     hop later, and it is fixed in the same place for every provider rather than
     in whichever adapter happened to notice.
+
+    It also refuses a redirect that STAYS local but changes *host* while an
+    Authorization header is on the request. No provider reader sends one today
+    — none of them supports a credential yet — but `urllib`'s own redirect
+    handling forwards every header, Authorization included, to whatever new
+    host a `Location` names. That is the confused-deputy problem most HTTP
+    clients have had to patch at some point, and the fix belongs here, once,
+    before any provider is allowed to hold a credential — not added later as a
+    follow-up once something has already had the chance to leak.
     """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -254,6 +263,14 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
                 f"That provider redirected Studio to {parts.hostname or newurl}, which is "
                 "not on your own network. Studio makes no requests to the internet, so it "
                 "stopped rather than following it.")
+        original_host = (urllib.parse.urlsplit(req.full_url).hostname or "").lower()
+        new_host = (parts.hostname or "").lower()
+        if new_host != original_host and any(name.lower() == "authorization" for name in req.headers):
+            raise InvalidProviderAddress(
+                f"That provider redirected Studio to a different host ({parts.hostname}) on a "
+                "request that carried credentials. Studio does not forward credentials to a "
+                "host that never received them directly, so it stopped rather than following "
+                "the redirect.")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 

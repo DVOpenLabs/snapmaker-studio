@@ -252,3 +252,72 @@ def test_the_redirect_rule_is_one_rule_for_every_provider():
     from snapstudio_core import material_providers as mp
 
     assert any(isinstance(h, mp._LocalOnlyRedirects) for h in mp._OPENER.handlers)
+
+
+# --- credentials must not follow a cross-host redirect (item E hardening) ---
+#
+# No provider reader sends an Authorization header today — none of them
+# supports a credential yet. This is tested directly against the handler
+# rather than through `read()`/`spoolman()`/`bambuddy()` because there is no
+# public path to attach one yet; the point is to have the protection already
+# in place, and already proven, before one exists.
+
+def _request(url: str, *, authorization: str | None = None) -> object:
+    import urllib.request as _ur
+    headers = {"Accept": "application/json"}
+    if authorization is not None:
+        headers["Authorization"] = authorization
+    return _ur.Request(url, headers=headers)
+
+
+def test_a_credentialed_request_refuses_a_redirect_to_a_different_local_host():
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api", authorization="Bearer secret-token")
+    with pytest.raises(mp.InvalidProviderAddress, match="carried credentials"):
+        mp._LocalOnlyRedirects().redirect_request(
+            req, None, 302, "Found", {}, "http://127.0.0.2:1234/api")
+
+
+def test_a_credentialed_request_still_follows_a_same_host_redirect():
+    """The rule is about the host changing, not about redirects generally —
+    the same distinction the local-network rule already draws."""
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api", authorization="Bearer secret-token")
+    new_req = mp._LocalOnlyRedirects().redirect_request(
+        req, None, 302, "Found", {}, "http://127.0.0.1:1234/moved")
+    assert new_req is not None
+
+
+def test_a_request_with_no_credentials_still_follows_a_cross_host_local_redirect():
+    """Nothing here restricts an ordinary redirect that carries nothing worth
+    protecting — only a credentialed one is refused."""
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api")
+    new_req = mp._LocalOnlyRedirects().redirect_request(
+        req, None, 302, "Found", {}, "http://127.0.0.2:1234/api")
+    assert new_req is not None
+
+
+def test_authorization_header_check_is_case_insensitive():
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api")
+    req.add_header("authorization", "Bearer secret-token")  # lowercase, as a real client might send
+    with pytest.raises(mp.InvalidProviderAddress, match="carried credentials"):
+        mp._LocalOnlyRedirects().redirect_request(
+            req, None, 302, "Found", {}, "http://127.0.0.2:1234/api")
+
+
+def test_off_network_refusal_still_wins_over_the_credential_check():
+    """A redirect that leaves the network entirely is refused for that reason
+    even when it also happens to carry credentials — the more serious defect
+    is reported, not silently superseded by the newer check."""
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api", authorization="Bearer secret-token")
+    with pytest.raises(mp.InvalidProviderAddress, match="not on your own network"):
+        mp._LocalOnlyRedirects().redirect_request(
+            req, None, 302, "Found", {}, "http://example.com/")
