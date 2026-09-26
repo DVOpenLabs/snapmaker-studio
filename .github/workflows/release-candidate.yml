@@ -73,14 +73,22 @@ jobs:
           if (@($before).Count -ne 1) { throw "Expected exactly one v0.9.0 registration, found $(@($before).Count)" }
           $beforeProps = Get-ItemProperty $before.PSPath
           if ($beforeProps.DisplayVersion -ne "0.9.0") { throw "v0.9.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 0.9.0" }
-          "install_location=$($beforeProps.InstallLocation)" >> $env:GITHUB_ENV
-          Write-Host "v0.9.0 installed at $($beforeProps.InstallLocation), DisplayVersion 0.9.0"
+          # NSIS can write InstallLocation wrapped in literal quote
+          # characters (part of the string value itself, not just how it
+          # displays) — trim them unconditionally so every later
+          # Test-Path/Join-Path against this value uses a real path. A
+          # value with no quotes is untouched by Trim.
+          $installLocation = $beforeProps.InstallLocation.Trim('"')
+          "install_location=$installLocation" >> $env:GITHUB_ENV
+          Write-Host "v0.9.0 installed at $installLocation, DisplayVersion 0.9.0"
 
       - name: Install the release candidate over it (default path, same key)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $rc = Get-ChildItem "rc\*_x64-setup.exe" | Select-Object -First 1
+          $rcVersion = if ($rc.Name -match '_([0-9]+\.[0-9]+\.[0-9]+[^_]*)_') { $matches[1] } else { $null }
+          if ($null -eq $rcVersion) { throw "Could not parse a version out of RC installer filename $($rc.Name)" }
           $p = Start-Process -FilePath $rc.FullName -ArgumentList '/S', '/NCRC' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "RC silent install failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
@@ -88,20 +96,24 @@ jobs:
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
           if (@($after).Count -ne 1) { throw "Expected exactly ONE registration after the upgrade (no duplicate), found $(@($after).Count)" }
           $afterProps = Get-ItemProperty $after.PSPath
-          if ($afterProps.DisplayVersion -eq "0.9.0") { throw "Registration still says 0.9.0 after installing the RC — upgrade did not take effect" }
-          if ($afterProps.InstallLocation -ne $env:install_location) {
-            throw "InstallLocation changed from $env:install_location to $($afterProps.InstallLocation) — should be the SAME location (in-place upgrade)"
+          if ($afterProps.DisplayVersion -ne $rcVersion) {
+            throw "Registration says DisplayVersion=$($afterProps.DisplayVersion) after installing the RC, expected $rcVersion"
+          }
+          $afterLocation = $afterProps.InstallLocation.Trim('"')
+          if ($afterLocation -ne $env:install_location) {
+            throw "InstallLocation changed from $env:install_location to $afterLocation — should be the SAME location (in-place upgrade)"
           }
           $legacyKey = 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker Studio'
           if (-not (Test-Path $legacyKey)) {
             throw "Legacy publisher registry key $legacyKey is gone — bundle.publisher must stay unchanged for upgrade detection"
           }
-          $exe = Join-Path $afterProps.InstallLocation "Snapmaker Studio.exe"
-          if (Test-Path $exe) {
-            $ver = (Get-Item $exe).VersionInfo.FileVersion
-            Write-Host "Installed exe FileVersion: $ver"
+          $exe = Join-Path $afterLocation "snapmaker-studio-desktop.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Installed exe not found at $exe"
           }
-          Write-Host "Upgrade verified: one registration, DisplayVersion $($afterProps.DisplayVersion), same InstallLocation, legacy publisher key present."
+          $ver = (Get-Item $exe).VersionInfo.FileVersion
+          Write-Host "Installed exe FileVersion: $ver"
+          Write-Host "Upgrade verified: one registration, DisplayVersion $rcVersion, same InstallLocation ($afterLocation), legacy publisher key present."
 
       - name: Uninstall, verify the machine is clean
         shell: pwsh

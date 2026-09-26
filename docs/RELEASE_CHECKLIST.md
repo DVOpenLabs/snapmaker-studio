@@ -56,7 +56,35 @@ registration, version updated, same install location, uninstall leaves
 nothing). Download the `release-candidate-manifest` artifact; note the run
 URL and the four hash/size/name values for both platforms.
 
-## 4. Local gates against the RC artifacts
+## 4. Rehearse the publish workflow NOW, before the expensive local gates
+
+Do this here, not after commit B — a bug in `release-publish.yml` itself is
+cheap to fix now and expensive to discover only after the real U1 run below.
+`release-publish.yml` only reads `docs/RELEASE_METADATA.md`, the version
+manifests, and `docs/RELEASE_NOTES.md` — none of which need the real
+acceptance/hardware counts to exist yet, so a throwaway scratch commit with
+just the RC's real hashes (known from the manifest above) is enough to
+exercise every gate honestly:
+
+```
+git checkout -b scratch/vX.Y.Z-rehearsal release/vX.Y.Z
+# edit docs/RELEASE_METADATA.md with the RC's real name/size/sha256 for both
+# platforms and the "Build run" URL from step 3; docs/RELEASE_NOTES.md can be
+# a placeholder for this rehearsal only. Commit.
+gh workflow run release-publish.yml --ref scratch/vX.Y.Z-rehearsal -f tag=vX.Y.Z -f dry_run=true
+```
+Exercises every gate — tag/metadata/manifest agreement, RC provenance and
+ancestry, artifact re-download and re-hash, draft creation and asset check —
+creates and deletes a draft Release, publishes nothing, and cleans up its own
+throwaway tag (never a real pre-existing one — the workflow itself refuses to
+touch a tag it didn't create). Delete `scratch/vX.Y.Z-rehearsal` once green;
+it was never merged.
+
+If this fails, fix `release-publish.yml` directly on `release/vX.Y.Z`
+(carrying the fix into commit B later) and re-rehearse — still before
+spending time on the local gates below.
+
+## 5. Local gates against the RC artifacts
 
 ```
 cd backend  && python -m pytest -q
@@ -75,13 +103,32 @@ the harness backs up and restores its registry entry, never deletes it.
 
 **Real Snapmaker U1, read-only hardware verification (the one genuinely
 human-gated step in this whole checklist):**
+
+Start seeded, session-owned Spoolman and Bambuddy containers first, then run:
 ```
+$env:SNAPSTUDIO_HW_SPOOLMAN = "<host:port>"
+$env:SNAPSTUDIO_HW_BAMBUDDY = "<host:port>"
+$env:SNAPSTUDIO_HW_SP_AGREE = "<spool id that agrees with what the U1 reports loaded>"
+$env:SNAPSTUDIO_HW_SP_CONFLICT = "<spool id that conflicts with it>"
+$env:SNAPSTUDIO_HW_BB_AGREE = "<same, for Bambuddy>"
+$env:SNAPSTUDIO_HW_BB_CONFLICT = "<same, for Bambuddy>"
 pwsh -File tools/hardware/verify.ps1 -PrinterHost <U1 LAN IP> -Installer <RC exe>
 ```
 Needs the printer powered on and its LAN IP (Moonraker, port 7125 — hostnames
 do not resolve). Writes `docs/internal/hardware-X.Y.Z.json`, IP redacted by
 the harness itself. If the printer is unreachable, this step blocks — nothing
 downstream substitutes for it; wait for the printer rather than skip it.
+
+**The env vars above are not optional decoration.** `tools/hardware/checks.mjs`
+only runs its provider-on-hardware checks when both `SNAPSTUDIO_HW_SPOOLMAN`
+and `SNAPSTUDIO_HW_BAMBUDDY` are set; without them it logs "the
+provider-on-hardware checks were skipped" and silently reports a SMALLER
+`total` — a run missing them can still print "N/N passed" (100%) while
+covering fewer checks than a real run does. **The real, full total is 57**
+(confirmed in `docs/internal/hardware-0.9.0.json`). If a run's `total` is
+below 57, the env vars were not set — do not accept that run as the release's
+hardware evidence; re-run with the containers seeded. Require `passed == total`
+AND `total >= 57`, not `passed == total` alone.
 
 Re-capture the four README screenshots from this RC's own installed run into
 `docs/screenshots/vX.Y.Z/`; anonymize (no real paths/IPs/private model names).
@@ -91,7 +138,7 @@ python tools/evidence/update.py --backend <N> --backend-skipped <K> --desktop <M
 ```
 writes `docs/internal/evidence.json` and `docs/internal/evidence/X.Y.Z.json`.
 
-## 5. Docs commit (commit B)
+## 6. Docs commit (commit B)
 
 Update, all referencing the same RC hashes/counts: `docs/RELEASE_METADATA.md`
 (Windows values under the bare `Version`/`Installer`/`Size (bytes)`/`SHA256`
@@ -110,17 +157,16 @@ Run the full governance test suite before committing:
 cd backend && python -m pytest -q backend/tests/test_release_docs.py backend/tests/test_evidence_consistency.py backend/tests/test_public_claims.py backend/tests/test_doc_truth_guard.py
 ```
 
-## 6. Rehearse the publish workflow BEFORE tagging
+## 7. Optional: re-rehearse against commit B
 
-```
-gh workflow run release-publish.yml --ref release/vX.Y.Z -f tag=vX.Y.Z -f dry_run=true
-```
-Exercises every gate against commit B, creates and deletes a draft Release,
-publishes nothing. Do this as early as commit B allows — a bug in
-`release-publish.yml` itself is cheap to fix here and expensive to discover
-after a real U1 run.
+Step 4 already proved the publish workflow's gates against the RC's real
+bytes. If commit B's content (README/CHANGELOG/RELEASE_NOTES wording,
+anything besides RELEASE_METADATA.md's already-rehearsed values) changed
+`release-publish.yml` itself, or if in doubt, repeat step 4's rehearsal
+against `release/vX.Y.Z` directly (now that commit B is real, not a scratch
+commit) before merging. Otherwise this step can be skipped.
 
-## 7. Merge, tag, publish
+## 8. Merge, tag, publish
 
 ```
 gh pr create --base main --head release/vX.Y.Z ...
@@ -138,7 +184,7 @@ git push origin vX.Y.Z
 `release-publish.yml` fires automatically. Confirm it goes green and the
 Release is public, not a draft.
 
-## 8. Post-publish verification (live, not assumed)
+## 9. Post-publish verification (live, not assumed)
 
 - `gh api repos/DVOpenLabs/snapmaker-studio/releases/latest` → `tag_name` is
   the new tag, `prerelease: false`, `draft: false`, exactly 3 assets, sizes
@@ -155,7 +201,7 @@ Release is public, not a draft.
   the update check reports "up to date" (proves the version bump reached the
   running binary, not just the manifest).
 
-## 9. Public release-notes protocol (every release)
+## 10. Public release-notes protocol (every release)
 
 `docs/RELEASE_NOTES.md` becomes the GitHub release body. Public/marketing:
 - **User-facing only.** Never mention internal review tools, AI model/vendor

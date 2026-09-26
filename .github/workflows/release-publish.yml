@@ -46,7 +46,11 @@ permissions:
   actions: read
 
 concurrency:
-  group: publish-${{ github.ref }}
+  # Keyed on the TAG NAME (not github.ref) so a rehearsal dispatch and a
+  # real tag push for the SAME version can never run concurrently — a
+  # rehearsal's cleanup step must never race a real publish for the tag it
+  # is about to delete.
+  group: publish-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -106,6 +110,17 @@ jobs:
           echo "tag_preexisted=$tag_preexisted" >> "$GITHUB_OUTPUT"
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
           echo "Resolved: tag=$tag dry_run=$dry_run tag_preexisted=$tag_preexisted target_sha=$target_sha"
+
+      - name: Check out the target commit
+        # A no-op for a tag push and for a pure pre-tag rehearsal (both
+        # already checked out target_sha == GITHUB_SHA above). NOT a no-op
+        # for the workflow_dispatch RECOVERY path (dry_run=false, an
+        # already-pushed tag): without this, every later step would read
+        # RELEASE_METADATA.md/RELEASE_NOTES.md/the manifests from whatever
+        # branch was selected in the dispatch UI, not from the tag's own
+        # commit — publishing metadata that was never actually verified
+        # against these bytes.
+        run: git checkout --quiet "${{ steps.input.outputs.target_sha }}"
 
       - name: 'Gate 0: the target commit is on main (skipped only for a pure pre-tag rehearsal)'
         if: steps.input.outputs.dry_run != 'true' || steps.input.outputs.tag_preexisted == 'true'
@@ -220,11 +235,16 @@ jobs:
       - name: 'Gate 3: download + re-hash both artifacts against the metadata'
         run: |
           set -euo pipefail
-          mkdir -p dist
-          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-installer --dir dist/win-raw
-          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-linux-release-candidate --dir dist/linux-raw
+          # Raw downloads live OUTSIDE dist/ on purpose: `gh release create`
+          # below globs `dist/*` as its asset list, and `gh` refuses a
+          # directory as an asset — dist/ must contain ONLY the 3 final
+          # files (both renamed binaries + SHA256SUMS), never these
+          # subdirectories.
+          mkdir -p dist raw/win raw/linux
+          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-installer --dir raw/win
+          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-linux-release-candidate --dir raw/linux
 
-          win_src="$(find dist/win-raw -name '*.exe' -print -quit)"
+          win_src="$(find raw/win -name '*.exe' -print -quit)"
           cp "$win_src" "dist/${{ steps.metadata.outputs.win_name }}"
           win_hash="$(sha256sum "dist/${{ steps.metadata.outputs.win_name }}" | awk '{print $1}')"
           win_size="$(stat -c%s "dist/${{ steps.metadata.outputs.win_name }}")"
@@ -237,7 +257,7 @@ jobs:
             exit 1
           fi
 
-          linux_src="$(find dist/linux-raw -name '*.deb' -print -quit)"
+          linux_src="$(find raw/linux -name '*.deb' -print -quit)"
           cp "$linux_src" "dist/${{ steps.metadata.outputs.linux_name }}"
           linux_hash="$(sha256sum "dist/${{ steps.metadata.outputs.linux_name }}" | awk '{print $1}')"
           linux_size="$(stat -c%s "dist/${{ steps.metadata.outputs.linux_name }}")"
@@ -250,7 +270,7 @@ jobs:
             exit 1
           fi
 
-          upstream_sums="$(find dist/linux-raw -name 'SHA256SUMS' -print -quit)"
+          upstream_sums="$(find raw/linux -name 'SHA256SUMS' -print -quit)"
           if [ -n "$upstream_sums" ] && ! grep -q "$linux_hash" "$upstream_sums"; then
             echo "The .deb's own SHA256SUMS (from the RC run) disagrees with the re-hashed value." >&2
             exit 1
@@ -269,6 +289,7 @@ jobs:
           fi
 
       - name: Create the release as a DRAFT
+        id: create
         run: |
           set -euo pipefail
           create_args=(--draft --title "Snapmaker Studio ${{ steps.input.outputs.tag }}" --notes-file docs/RELEASE_NOTES.md dist/*)
@@ -277,6 +298,8 @@ jobs:
           else
             gh release create "${{ steps.input.outputs.tag }}" --verify-tag "${create_args[@]}"
           fi
+          release_id="$(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json databaseId --jq .databaseId)"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
 
       - name: 'Gate 4: the draft has exactly the 3 expected assets'
         run: |
@@ -296,6 +319,18 @@ jobs:
         if: steps.input.outputs.dry_run == 'true'
         run: |
           set -euo pipefail
+          # Defense in depth on top of the tag-name-keyed concurrency group
+          # above (which already prevents a rehearsal and a real publish for
+          # the SAME tag from ever running at once): re-check, by the exact
+          # release id THIS run created, that it is still a draft before
+          # deleting anything. If something published it in the meantime,
+          # refuse rather than delete a live release.
+          release_id="${{ steps.create.outputs.release_id }}"
+          is_draft="$(gh api "repos/${{ github.repository }}/releases/$release_id" --jq .draft)"
+          if [ "$is_draft" != "true" ]; then
+            echo "Release id $release_id is no longer a draft — refusing to delete it. Investigate before doing anything else." >&2
+            exit 1
+          fi
           # --cleanup-tag ONLY when this run's own `gh release create --target`
           # is what created the tag (tag_preexisted=false). A rehearsal must
           # NEVER delete a tag that existed before it ran, for any reason.
