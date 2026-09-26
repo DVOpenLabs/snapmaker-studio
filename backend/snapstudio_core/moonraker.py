@@ -588,6 +588,44 @@ def capabilities(host: str, port: int = DEFAULT_PORT, timeout: float = 3.0) -> d
     }
 
 
+def machine_info(host: str, port: int = DEFAULT_PORT, timeout: float = 3.0) -> dict:
+    """Read-only GET /machine/system_info — the one Moonraker call this project has
+    never made before. Its `product_info` block reports the fitted nozzle diameter
+    per toolhead directly from firmware (confirmed live against a real Snapmaker U1:
+    `product_info.nozzle_diameter` is a real, populated array, not empty/absent as
+    the nozzle check previously assumed). Its `sd_info` block is the only storage-
+    capacity-shaped data Moonraker exposes; confirmed live that stock U1 firmware
+    reports `total_bytes: 0` / `capacity: "Unknown"` there — genuinely not obtainable,
+    not a Studio gap, so this function returns `storage_bytes: None` rather than a
+    fabricated number when that's what the printer says.
+
+    `/machine/system_info` also carries real identifying data this function must
+    NEVER surface past this point: `device_name` (a user-chosen label — the printer
+    used to verify this lived one), `serial_number`, `cpu_info.serial_number`,
+    `network.*.mac_address`, and real LAN/global IP addresses. Only the two fields
+    below are ever read out of the response; nothing else from `product_info`,
+    `cpu_info`, `network`, or `sd_info` is extracted, logged, or returned — by
+    construction, not by a redaction pass applied afterward.
+    """
+    result = _get(host, port, "/machine/system_info", timeout).get("result", {}).get("system_info", {}) or {}
+    product = result.get("product_info", {}) or {}
+    sd = result.get("sd_info", {}) or {}
+
+    nozzle_diameters = product.get("nozzle_diameter")
+    if not isinstance(nozzle_diameters, list) or not all(isinstance(n, (int, float)) for n in nozzle_diameters):
+        nozzle_diameters = None
+
+    storage_bytes = sd.get("total_bytes")
+    if not isinstance(storage_bytes, (int, float)) or storage_bytes <= 0:
+        storage_bytes = None
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nozzle_diameters": nozzle_diameters,
+        "storage_bytes": storage_bytes,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Printer Hub Phase B — CONTROL (user-initiated only).
 #

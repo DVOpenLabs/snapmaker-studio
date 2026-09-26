@@ -110,3 +110,23 @@ def require_port(data: dict, key: str = "port", default: int = 7125) -> int:
     if not (1 <= p <= 65535):
         raise ValidationError(f"Invalid {key}")
     return p
+
+
+def optional_positive_float_list(data: dict, key: str, max_len: int = 8) -> list[float] | None:
+    """A list of positive, finite numbers (e.g. user-confirmed nozzle diameters
+    per toolhead), or None if the key is absent/null. Bounded length so a
+    malformed/hostile body can't make Studio allocate an unbounded list."""
+    v = data.get(key)
+    if v is None:
+        return None
+    if not isinstance(v, list) or not v or len(v) > max_len:
+        raise ValidationError(f"Invalid {key}")
+    out: list[float] = []
+    for item in v:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValidationError(f"Invalid {key}")
+        f = float(item)
+        if not math.isfinite(f) or f <= 0:
+            raise ValidationError(f"Invalid {key}")
+        out.append(f)
+    return out

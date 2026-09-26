@@ -148,12 +148,18 @@ def _toolheads_vs_filaments(project: dict, printer: dict) -> dict:
 def _nozzle(project: dict, printer: dict) -> dict:
     """The check that most often has to answer 'I do not know', and must.
 
-    Stock U1 firmware does not publish the fitted nozzle diameter anywhere Studio
-    can read. Reporting a pass here because the project looks ordinary would be
-    inventing hardware state.
+    Stock U1 firmware DOES publish the fitted nozzle diameter, via
+    /machine/system_info's product_info.nozzle_diameter (confirmed live
+    against a real U1) — printer_facts() reads it and stamps
+    nozzle_confirmed_by="printer" when it did. When the printer did not
+    answer that (unreachable, or firmware genuinely omits the field), a
+    user can confirm it themselves; that path is stamped
+    nozzle_confirmed_by="user" and is reported as such, never blended into
+    a live reading. Only when neither exists does this stay UNKNOWN.
     """
     wanted = _trait(project, "nozzle_diameters") or []
     reported = printer.get("nozzle_diameters")
+    confirmed_by = printer.get("nozzle_confirmed_by")
     if not wanted:
         return _check(
             "nozzle.match", "Nozzle size", UNKNOWN,
@@ -172,25 +178,30 @@ def _nozzle(project: dict, printer: dict) -> dict:
             consequence=("Printing with a different nozzle than the project was made for "
                          "changes line width and can ruin fine detail — and Studio has no "
                          "way to see which one is installed."),
-            action=f"Check the nozzle on the printer is {wanted_txt} before slicing.",
+            action=f"Check the nozzle on the printer is {wanted_txt} before slicing, "
+                   "or confirm it in Printer settings so Studio can check it for you.",
             source="firmware exposes no nozzle diameter")
+    if confirmed_by == "printer":
+        source, who, verb = "printer firmware", "the printer", "reports"
+    else:
+        source, who, verb = "user confirmed", "you", "confirmed"
     reported_set = {str(n) for n in reported}
     if reported_set == {str(w) for w in wanted}:
         return _check(
             "nozzle.match", "Nozzle size", OK,
-            evidence=f"project expects {wanted_txt}; printer reports the same",
+            evidence=f"project expects {wanted_txt}; {who} {verb} the same",
             confidence=CONFIRMED,
-            consequence="The project was made for the nozzle this printer reports.",
-            source="printer configuration")
+            consequence=f"The project was made for the nozzle {who} {verb}.",
+            source=source)
     return _check(
         "nozzle.match", "Nozzle size does not match", ATTENTION,
-        evidence=f"project expects {wanted_txt}; printer reports "
+        evidence=f"project expects {wanted_txt}; {who} {verb} "
                  + ", ".join(f"{n} mm" for n in sorted(reported_set)),
         confidence=CONFIRMED,
         consequence=("Line width and detail will not come out as the creator intended, "
                      "and very fine features may disappear."),
         action="Fit the nozzle the project expects, or re-slice for the nozzle you have.",
-        source="printer configuration")
+        source=source)
 
 
 def _bed(project: dict, printer: dict, placement: dict | None) -> dict:

@@ -320,6 +320,20 @@ def printer_facts(host: str | None = None, port: int = 7125) -> dict:
     except Exception:
         facts["klipper_objects"] = []
     try:
+        # /machine/system_info was never queried before this release — its
+        # product_info.nozzle_diameter is a real, live, per-toolhead firmware
+        # report (confirmed against a real Snapmaker U1), not a guess. When it
+        # answers, this is genuine PRINTER REPORTED evidence, stamped as such
+        # so preflight._nozzle() can say so rather than "unknown".
+        minfo = moonraker.machine_info(host, port)
+        if minfo.get("nozzle_diameters"):
+            facts["nozzle_diameters"] = minfo["nozzle_diameters"]
+            facts["nozzle_confirmed_by"] = "printer"
+        if minfo.get("storage_bytes"):
+            facts["storage_bytes"] = minfo["storage_bytes"]
+    except Exception:
+        pass
+    try:
         # The temperature channels follow the printer's own extruder count rather
         # than a list sized for four toolheads.
         facts["print_state"] = moonraker.status(
@@ -386,17 +400,29 @@ def fidelity_audit(original: str, prepared: str) -> dict:
     return fidelity.audit(original, prepared)
 
 
-def preflight(path: str, host: str | None = None, port: int = 7125) -> dict:
+def preflight(path: str, host: str | None = None, port: int = 7125,
+              confirmed_nozzle_diameters: list[float] | None = None,
+              confirmed_nozzle_at: str | None = None) -> dict:
     """Join what this project needs to what this printer reports.
 
     When a printer is reachable, object placement is re-checked against the
     printer's *real* bed rather than the published U1 volume.
+
+    `confirmed_nozzle_diameters` is the USER CONFIRMED escape hatch: only
+    used when the printer itself did not answer (facts has no live
+    `nozzle_diameters` — see printer_facts' /machine/system_info read). A
+    live firmware report always wins; a user's own confirmation never
+    silently overrides what the printer just said.
     """
     from snapstudio_core import preflight as pf
     from snapstudio_core import plate_placement, project_traits
 
     project = project_traits.extract(path)
     facts = printer_facts(host, port)
+    if not facts.get("nozzle_diameters") and confirmed_nozzle_diameters:
+        facts["nozzle_diameters"] = confirmed_nozzle_diameters
+        facts["nozzle_confirmed_by"] = "user"
+        facts["nozzle_confirmed_at"] = confirmed_nozzle_at
 
     bed = None
     dims = facts.get("bed_mm") or {}

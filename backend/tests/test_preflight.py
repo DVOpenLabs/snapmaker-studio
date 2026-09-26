@@ -116,6 +116,38 @@ def test_a_project_without_a_nozzle_size_is_unknown_not_ok():
     assert by_id(out, "nozzle.match")["result"] == pf.UNKNOWN
 
 
+def test_nozzle_reported_by_printer_says_so_in_the_source():
+    """/machine/system_info answering is real firmware evidence — say so, not
+    a generic 'printer configuration'."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "printer firmware"
+
+
+def test_nozzle_confirmed_by_user_is_never_reported_as_printer_evidence():
+    """A user-confirmed nozzle must be distinguishable from a live firmware
+    read — the mandate is explicit that these are different evidence tiers."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="user"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "user confirmed"
+    assert "printer" not in check["source"]
+
+
+def test_nozzle_mismatch_still_flagged_when_only_user_confirmed():
+    """A user-confirmed nozzle that doesn't match the project is just as real
+    and actionable a warning as a printer-reported mismatch."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.2"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="user"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.ATTENTION
+    assert check["source"] == "user confirmed"
+    assert check["confidence"] == pf.CONFIRMED
+
+
 # --- the bed ----------------------------------------------------------------
 
 def test_bed_uses_the_printers_real_dimensions_in_its_evidence():
