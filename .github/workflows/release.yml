@@ -1,19 +1,34 @@
-name: Release (Windows installer)
+name: Release build (Windows installer)
 
-# Tag-triggered release build that CLOSES the beta.4 stale-sidecar class of bug
-# in tooling (not just the manual checklist): it always re-freezes the PyInstaller
-# sidecar, builds the NSIS installer, and SMOKE-TESTS the freshly-bundled sidecar's
-# endpoints before uploading the artifact. If any required endpoint 404s (i.e. the
-# bundled sidecar is stale/missing a route), the job fails and no artifact ships.
+# Build-only Windows release-candidate workflow: it always re-freezes the
+# PyInstaller sidecar, builds the NSIS installer, and SMOKE-TESTS the
+# freshly-bundled sidecar's endpoints before uploading the artifact. If any
+# required endpoint 404s (i.e. the bundled sidecar is stale/missing a
+# route), the job fails and no artifact ships. Closes the beta.4
+# stale-sidecar bug class in tooling, not just the manual checklist.
 #
-# Does NOT auto-publish a GitHub Release or sign the installer (signing needs a
-# certificate — see docs/windows-code-signing.md). It uploads the installer as a
-# build artifact for a human to attach via the documented release flow.
+# Does NOT auto-publish a GitHub Release or sign the installer (signing needs
+# a certificate — see docs/windows-code-signing.md). It uploads the
+# installer as a build artifact only.
+#
+# v1.0.0 release-prep: no longer tag-triggered. `release-candidate.yml`
+# calls this via `workflow_call` (plus `release-publish.yml`, the ONLY
+# tag-triggered workflow, promotes the exact bytes this produces — never
+# rebuilds). `workflow_dispatch` stays for standalone manual builds.
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch: {}
+  workflow_call:
+    outputs:
+      installer_name:
+        description: "The built installer's filename (dotted form, matching the published asset name)"
+        value: ${{ jobs.windows-installer.outputs.installer_name }}
+      installer_size:
+        description: "The built installer's size in bytes"
+        value: ${{ jobs.windows-installer.outputs.installer_size }}
+      installer_sha256:
+        description: "The built installer's SHA256"
+        value: ${{ jobs.windows-installer.outputs.installer_sha256 }}
 
 permissions:
   contents: read
@@ -21,6 +36,10 @@ permissions:
 jobs:
   windows-installer:
     runs-on: windows-latest
+    outputs:
+      installer_name: ${{ steps.hash.outputs.installer_name }}
+      installer_size: ${{ steps.hash.outputs.installer_size }}
+      installer_sha256: ${{ steps.hash.outputs.installer_sha256 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,11 +110,29 @@ jobs:
           if ($fail.Count -gt 0) { throw "bundled-sidecar smoke FAILED: $($fail -join ', ')" }
           Write-Host "bundled-sidecar smoke OK"
 
-      - name: Compute SHA256
+      - name: Rename to the dotted form GitHub publishes assets under, then hash
+        # Tauri's NSIS bundler names the file with a space
+        # ("Snapmaker Studio_<v>_x64-setup.exe"); GitHub has always renamed
+        # the space to a dot on upload to a Release, so every past
+        # published asset is actually "Snapmaker.Studio_<v>_x64-setup.exe"
+        # (confirmed against every prior release). Renaming here BEFORE
+        # hashing/uploading means the artifact name, the published asset
+        # name, and the hash all refer to the exact same bytes under the
+        # exact same name — nothing renames or re-hashes downstream.
+        id: hash
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "desktop/src-tauri/target/release/bundle/nsis/*_x64-setup.exe" | Select-Object -First 1
-          "$((Get-FileHash -Algorithm SHA256 $exe.FullName).Hash)  $($exe.Name)  $($exe.Length) bytes"
+          $ErrorActionPreference = "Stop"
+          $src = Get-ChildItem "desktop/src-tauri/target/release/bundle/nsis/*_x64-setup.exe" | Select-Object -First 1
+          $dotted = $src.Name -replace " ", "."
+          $dest = Join-Path $src.DirectoryName $dotted
+          Move-Item -Path $src.FullName -Destination $dest
+          $hash = (Get-FileHash -Algorithm SHA256 $dest).Hash.ToLower()
+          $size = (Get-Item $dest).Length
+          "$hash  $dotted  $size bytes"
+          "installer_name=$dotted" >> $env:GITHUB_OUTPUT
+          "installer_size=$size" >> $env:GITHUB_OUTPUT
+          "installer_sha256=$hash" >> $env:GITHUB_OUTPUT
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

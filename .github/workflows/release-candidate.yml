@@ -1,0 +1,162 @@
+name: Release candidate (Windows + Linux)
+
+# v1.0.0 release-prep. Builds BOTH platforms from the exact code on the
+# dispatched ref, runs the Windows default-path upgrade smoke test against
+# it, and writes a manifest naming both artifacts' names/sizes/hashes plus
+# this run's own id/URL — the maintainer/agent copies those four values
+# into docs/RELEASE_METADATA.md's "Build run" row. Nothing here publishes
+# anything: this is the "build once, verify locally" half of the
+# build-once/verify-locally/promote-exact-bytes architecture
+# (docs/internal/LINUX_BETA_PLAN.md L11) — release-publish.yml, the ONLY
+# tag-triggered workflow, later promotes these SAME bytes without rebuilding.
+#
+# Must be present on the default branch before it can be dispatched (a
+# GitHub Actions constraint on workflow_dispatch-triggered workflows) — this
+# file, release.yml's and release-linux.yml's workflow_call additions, and
+# release-publish.yml all land on main together in one PR before any
+# release/vX.Y.Z branch tries to dispatch this.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    uses: ./.github/workflows/release.yml
+
+  linux:
+    uses: ./.github/workflows/release-linux.yml
+
+  windows-upgrade-smoke:
+    name: Windows upgrade smoke test (default install path)
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the release-candidate installer
+        uses: actions/download-artifact@v4
+        with:
+          name: snapmaker-studio-installer
+          path: rc
+
+      - name: Download the published v0.9.0 installer, verify its checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v0.9.0/Snapmaker.Studio_0.9.0_x64-setup.exe"
+          $dest = "old\Snapmaker.Studio_0.9.0_x64-setup.exe"
+          New-Item -ItemType Directory -Force -Path old | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          $hash = (Get-FileHash -Algorithm SHA256 $dest).Hash.ToLower()
+          $expected = "294f7d25d8b1ef0f3fe26df9f83df6fa7482fa86aa998928db2a40335b4d202b"
+          if ($hash -ne $expected) {
+            throw "Downloaded v0.9.0 installer hash $hash does not match the published $expected"
+          }
+          Write-Host "v0.9.0 installer verified: $hash"
+
+      - name: Install v0.9.0 (default path), record its registration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $old = (Resolve-Path "old\Snapmaker.Studio_0.9.0_x64-setup.exe").Path
+          $p = Start-Process -FilePath $old -ArgumentList '/S', '/NCRC' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "v0.9.0 silent install failed, exit $($p.ExitCode)" }
+          Start-Sleep -Seconds 2
+          $before = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
+          if (@($before).Count -ne 1) { throw "Expected exactly one v0.9.0 registration, found $(@($before).Count)" }
+          $beforeProps = Get-ItemProperty $before.PSPath
+          if ($beforeProps.DisplayVersion -ne "0.9.0") { throw "v0.9.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 0.9.0" }
+          # NSIS can write InstallLocation wrapped in literal quote
+          # characters (part of the string value itself, not just how it
+          # displays) — trim them unconditionally so every later
+          # Test-Path/Join-Path against this value uses a real path. A
+          # value with no quotes is untouched by Trim.
+          $installLocation = $beforeProps.InstallLocation.Trim('"')
+          "install_location=$installLocation" >> $env:GITHUB_ENV
+          Write-Host "v0.9.0 installed at $installLocation, DisplayVersion 0.9.0"
+
+      - name: Install the release candidate over it (default path, same key)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $rc = Get-ChildItem "rc\*_x64-setup.exe" | Select-Object -First 1
+          $rcVersion = if ($rc.Name -match '_([0-9]+\.[0-9]+\.[0-9]+[^_]*)_') { $matches[1] } else { $null }
+          if ($null -eq $rcVersion) { throw "Could not parse a version out of RC installer filename $($rc.Name)" }
+          $p = Start-Process -FilePath $rc.FullName -ArgumentList '/S', '/NCRC' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "RC silent install failed, exit $($p.ExitCode)" }
+          Start-Sleep -Seconds 2
+          $after = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
+          if (@($after).Count -ne 1) { throw "Expected exactly ONE registration after the upgrade (no duplicate), found $(@($after).Count)" }
+          $afterProps = Get-ItemProperty $after.PSPath
+          if ($afterProps.DisplayVersion -ne $rcVersion) {
+            throw "Registration says DisplayVersion=$($afterProps.DisplayVersion) after installing the RC, expected $rcVersion"
+          }
+          $afterLocation = $afterProps.InstallLocation.Trim('"')
+          if ($afterLocation -ne $env:install_location) {
+            throw "InstallLocation changed from $env:install_location to $afterLocation — should be the SAME location (in-place upgrade)"
+          }
+          $legacyKey = 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker Studio'
+          if (-not (Test-Path $legacyKey)) {
+            throw "Legacy publisher registry key $legacyKey is gone — bundle.publisher must stay unchanged for upgrade detection"
+          }
+          $exe = Join-Path $afterLocation "snapmaker-studio-desktop.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Installed exe not found at $exe"
+          }
+          $ver = (Get-Item $exe).VersionInfo.FileVersion
+          Write-Host "Installed exe FileVersion: $ver"
+          Write-Host "Upgrade verified: one registration, DisplayVersion $rcVersion, same InstallLocation ($afterLocation), legacy publisher key present."
+
+      - name: Uninstall, verify the machine is clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $reg = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
+          $props = Get-ItemProperty $reg.PSPath
+          $uninstallString = $props.UninstallString -replace '"', ''
+          $p = Start-Process -FilePath $uninstallString -ArgumentList '/S' -PassThru -Wait
+          Start-Sleep -Seconds 2
+          $remaining = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
+          if (@($remaining).Count -ne 0) { throw "Uninstall left $(@($remaining).Count) registration(s) behind" }
+          if (Test-Path $env:install_location) { throw "Uninstall left $env:install_location behind" }
+          Write-Host "Uninstalled cleanly: no registration, no install directory."
+
+  manifest:
+    name: Release-candidate manifest
+    needs: [windows, linux, windows-upgrade-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the manifest
+        run: |
+          {
+            echo "# Release-candidate manifest"
+            echo "source_commit: ${{ github.sha }}"
+            echo "source_ref: ${{ github.ref }}"
+            echo "run_id: ${{ github.run_id }}"
+            echo "run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "windows_installer: ${{ needs.windows.outputs.installer_name }}"
+            echo "windows_size: ${{ needs.windows.outputs.installer_size }}"
+            echo "windows_sha256: ${{ needs.windows.outputs.installer_sha256 }}"
+            echo ""
+            echo "linux_deb: ${{ needs.linux.outputs.deb_name }}"
+            echo "linux_size: ${{ needs.linux.outputs.deb_size }}"
+            echo "linux_sha256: ${{ needs.linux.outputs.deb_sha256 }}"
+          } | tee RELEASE_CANDIDATE.txt
+
+      - name: Upload the manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-manifest
+          path: RELEASE_CANDIDATE.txt
+          if-no-files-found: error

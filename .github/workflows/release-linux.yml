@@ -1,51 +1,38 @@
-name: Release (Linux .deb, workflow_dispatch only)
+name: Release build (Linux .deb)
 
-# Linux counterpart to release.yml, deliberately narrower in what it's
-# allowed to do while Linux support is still beta. R3 of the L6 release-
-# integration decision (docs/internal/LINUX_BETA_PLAN.md): a SEPARATE file
-# from release.yml (preserves the already-proven Windows release workflow
-# untouched, isolates Linux packaging/release risk while Linux has no
-# EXTERNAL USER VERIFIED evidence yet), workflow_dispatch ONLY (no tag
-# trigger — deliberately not `push: tags: ["v*"]` the way release.yml has).
+# Linux counterpart to release.yml: builds and validates a real .deb, but
+# creates no GitHub Release and no git tag itself, exactly as release.yml
+# does not either. Same build pipeline linux-ci.yml proves continuously,
+# plus a clean-image validation (see clean-env-validate job below) against
+# these exact release-candidate bytes.
 #
-# This workflow MUST NOT, and as written CANNOT:
-#   - create a GitHub Release (no `gh release create`, no release-management
-#     action anywhere in this file)
-#   - create or push a git tag
-#   - mark anything as stable (the manifest step below explicitly states
-#     the opposite)
-#   - alter release.yml or Windows release behaviour (this file does not
-#     touch that file, its triggers, or its job)
-# It MAY: build the real .deb via the same pipeline linux-ci.yml already
-# proves continuously, translate its version through
-# desktop/scripts/debianize-version.sh (a no-op today — the project version
-# is still the plain "0.9.0" release, so there is nothing to translate yet;
-# this workflow exists to have the mechanism ready and exercised, not to
-# publish anything now), checksum it, write a manifest, and upload it as a
-# CI artifact — the same "prerelease-quality package for verification"
-# category the maintainer has standing-authorized throughout the Linux-
-# support program.
-#
-# Enabling a real release trigger is meant to be a small, clean, reviewable
-# diff: add `push: tags: ["v*"]` to the `on:` block below, next to the
-# `workflow_dispatch` that's already there. Nothing else about this file
-# should need to change for that step — the whole point of keeping it
-# separate from release.yml and self-contained is that enabling it is not
-# itself the crossing of the release boundary; publishing IS.
-#
-# UPDATED (v1.0.0 release-prep authorization, docs/internal/LINUX_BETA_PLAN.md
-# L10): the maintainer's explicit v1.0.0 authorization directs ONE GitHub
-# Release carrying both the Windows installer and this Linux .deb — Linux
-# ships in v1.0.0 on that explicit authorization, not gated on
-# EXTERNAL USER VERIFIED arriving first (no realistic way exists to get
+# v1.0.0 release-prep: this file's tag trigger was deliberately never
+# added (see git history for the L5-L10 reasoning — Linux packaging/release
+# risk was kept isolated from the proven Windows release.yml while Linux
+# had no EXTERNAL USER VERIFIED evidence). Publishing is now centralised in
+# a single tag-triggered workflow, `release-publish.yml`, which promotes
+# the exact bytes both this file and release.yml produce — it never
+# rebuilds. This file gained `workflow_call` so `release-candidate.yml` can
+# call it alongside release.yml; `workflow_dispatch` stays for standalone
+# manual builds. The maintainer's explicit v1.0.0 authorization directs ONE
+# GitHub Release carrying both the Windows installer and this Linux .deb,
+# independent of EXTERNAL USER VERIFIED (no realistic way exists to get
 # external Linux evidence before a Linux package is ever publicly
-# downloadable). The actual converging release workflow is v1.0.0
-# release-prep's own scope, not this comment; this note only corrects the
-# stale "after external Linux evidence" framing above, which predates that
-# authorization.
+# downloadable — see docs/internal/LINUX_BETA_PLAN.md's L10 section).
 
 on:
   workflow_dispatch: {}
+  workflow_call:
+    outputs:
+      deb_name:
+        description: "The built .deb's labelled filename"
+        value: ${{ jobs.linux-deb.outputs.deb_name }}
+      deb_size:
+        description: "The built .deb's size in bytes"
+        value: ${{ jobs.linux-deb.outputs.deb_size }}
+      deb_sha256:
+        description: "The built .deb's SHA256"
+        value: ${{ jobs.linux-deb.outputs.deb_sha256 }}
 
 permissions:
   contents: read
@@ -67,6 +54,10 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      deb_name: ${{ steps.label.outputs.deb_name }}
+      deb_size: ${{ steps.label.outputs.deb_size }}
+      deb_sha256: ${{ steps.label.outputs.deb_sha256 }}
     steps:
       - name: Install base tooling (git, curl, ca-certificates, gnupg)
         run: |
@@ -254,17 +245,51 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+      - name: Package the acceptance kit (scripts + fixtures) for the clean-environment job
+        # Same reasoning as linux-ci.yml's identical step: the clean-env
+        # job below needs the acceptance scripts and fixtures WITHOUT a
+        # full repo checkout (a checkout there would undercut the "no
+        # project checkout required at runtime" claim). This build job
+        # already has the checkout, so it packages exactly what's needed.
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/acceptance-kit/tools/acceptance/linux
+          mkdir -p /tmp/acceptance-kit/examples
+          mkdir -p /tmp/acceptance-kit/backend/tests/fixtures/painted
+          cp tools/acceptance/linux/run.sh tools/acceptance/linux/package-lifecycle.sh \
+            /tmp/acceptance-kit/tools/acceptance/linux/
+          cp examples/demo_u1_showcase.3mf examples/sample_cube.stl \
+            /tmp/acceptance-kit/examples/
+          cp backend/tests/fixtures/painted/orcaslicer-2.4.2-painted-cube.3mf \
+            /tmp/acceptance-kit/backend/tests/fixtures/painted/
+
+      - name: Upload acceptance kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-candidate-acceptance-kit
+          path: /tmp/acceptance-kit/
+          if-no-files-found: error
+
       - name: Checksum and label the release-candidate .deb
+        id: label
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA:0:12}"
           version="$(dpkg-deb -f "$deb_path" Version)"
           artifact_dir="dist-linux"
           mkdir -p "$artifact_dir"
-          labeled_deb="$artifact_dir/snapmaker-studio_${version}_amd64_${short_sha}.deb"
+          deb_name="snapmaker-studio_${version}_amd64_${short_sha}.deb"
+          labeled_deb="$artifact_dir/$deb_name"
           cp "$deb_path" "$labeled_deb"
           (cd "$artifact_dir" && sha256sum "$(basename "$labeled_deb")" > SHA256SUMS)
           cat "$artifact_dir/SHA256SUMS"
+          deb_sha256="$(awk '{print $1}' "$artifact_dir/SHA256SUMS")"
+          deb_size="$(stat -c%s "$labeled_deb")"
+          {
+            echo "deb_name=$deb_name"
+            echo "deb_size=$deb_size"
+            echo "deb_sha256=$deb_sha256"
+          } >> "$GITHUB_OUTPUT"
 
           acceptance_summary="not run"
           acceptance_report="/tmp/linux-acceptance/evidence/acceptance.json"
@@ -297,3 +322,29 @@ jobs:
           path: dist-linux/
           if-no-files-found: error
           retention-days: 90
+
+  clean-env-validate:
+    name: Clean-environment validation (${{ matrix.label }})
+    needs: linux-deb
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "ubuntu:22.04"
+            label: "22.04"
+          - image: "ubuntu:24.04"
+            label: "24.04"
+    # v1.0.0 release-prep (HIGH-3 finding): the build job above only runs
+    # its own acceptance harness INSIDE the build container, which already
+    # has a full dev toolchain — that proves the workflow's mechanics, not
+    # that a real user's clean machine can install and run THIS EXACT
+    # release-candidate .deb. This job runs the same clean-image proof
+    # linux-ci.yml continuously runs, but against these release-candidate
+    # bytes specifically, so any TRUST_STATUS claim about the shipped file
+    # is backed by evidence against the shipped file, not a different build.
+    uses: ./.github/workflows/linux-clean-env-validate.yml
+    with:
+      image: ${{ matrix.image }}
+      label: ${{ matrix.label }}
+      deb_artifact_name: snapmaker-studio-linux-release-candidate
+      kit_artifact_name: linux-release-candidate-acceptance-kit

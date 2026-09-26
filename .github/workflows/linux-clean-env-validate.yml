@@ -1,0 +1,193 @@
+name: Linux clean-environment validation (reusable)
+
+# Extracted from linux-ci.yml (L8) during v1.0.0 release-prep so the EXACT
+# same clean-image proof can run against two different .deb builds — the
+# continuous linux-ci.yml build AND release-linux.yml's release-candidate
+# build — without duplicating ~180 lines of job YAML that could silently
+# drift apart between the two callers. Same reasoning as extracting
+# tools/acceptance/linux/package-lifecycle.sh out of the inline CI script in
+# L8: one definition, called from two places.
+#
+# The caller is responsible for matrixing over ubuntu:22.04/24.04 (via
+# `strategy: matrix:` on its own `uses:` job) and for having already built
+# and uploaded a `.deb` artifact plus a `linux-acceptance-kit` artifact
+# (tools/acceptance/linux/{run.sh,package-lifecycle.sh} + the fixtures
+# run.sh needs — see linux-ci.yml's "Package the acceptance kit" step for
+# the exact contents) in the SAME workflow run.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Container image to validate against, e.g. "ubuntu:22.04"'
+        required: true
+        type: string
+      label:
+        description: 'Short label for job naming, e.g. "22.04"'
+        required: true
+        type: string
+      deb_artifact_name:
+        description: 'Name of the artifact (uploaded earlier in this run) containing the .deb'
+        required: true
+        type: string
+      kit_artifact_name:
+        description: 'Name of the artifact (uploaded earlier in this run) containing the acceptance kit'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    name: Clean-environment validation (${{ inputs.label }})
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.image }}
+      options: --init
+    timeout-minutes: 25
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        # The bare ubuntu:22.04/24.04 container images default `run:` steps
+        # to /bin/sh (dash), not bash — `set -o pipefail` is bash-only and
+        # dash rejects it outright. GitHub Actions `defaults:` doesn't
+        # inherit across jobs, so this is needed here independently.
+        shell: bash
+    steps:
+      - name: Pre-install clean-environment assertions (items 3-6, 30)
+        # Proves this image genuinely has no Python/Node/Rust before
+        # anything touches it — checked against the running container
+        # itself, not assumed from the base image's documentation.
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in python python3 node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "UNEXPECTED: $t is present on a supposedly clean ${{ inputs.image }}: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "This image is not clean as assumed — every check below would be unreliable." >&2
+            exit 1
+          fi
+          echo "CONFIRMED CLEAN: no python/python3/node/npm/cargo/rustc on ${{ inputs.image }} before anything was installed."
+          echo "--- pre-existing accounts (uid >= 1000), relevant to the uid-recycling investigation ---"
+          awk -F: '$3>=1000{print}' /etc/passwd || true
+
+      - name: ca-certificates (needed for HTTPS artifact download only)
+        run: apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates >/dev/null
+
+      - name: Download the .deb built earlier in this run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.deb_artifact_name }}
+          path: /tmp/deb
+
+      - name: Download the acceptance kit (scripts + fixtures — not a project checkout)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.kit_artifact_name }}
+          path: /tmp/kit
+
+      - name: Snapshot installed packages before touching anything
+        run: dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-before.txt || true
+
+      - name: Install ONLY the .deb and its declared dependencies (item 8)
+        run: |
+          set -euo pipefail
+          deb="$(find /tmp/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          if [ -z "$deb" ]; then
+            echo "No .deb found in the downloaded artifact." >&2
+            exit 1
+          fi
+          echo "deb_path=$deb" >> "$GITHUB_ENV"
+          apt-get install -y "$deb"
+
+      - name: Post-install clean-environment assertions (item 30 — real evidence, not static inspection)
+        # See linux-ci.yml's git history for the full investigation behind
+        # this exact check (the python3/networkd-dispatcher causal chain,
+        # verified live against apt-cache, not inferred from install order).
+        run: |
+          set -euo pipefail
+          bad=0
+          for t in node npm cargo rustc; do
+            if command -v "$t" >/dev/null 2>&1; then
+              echo "REGRESSION: $t became available after installing ONLY the .deb: $(command -v "$t")" >&2
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "The .deb's declared Depends pulled in a developer tool with no known legitimate cause — a real packaging defect." >&2
+            exit 1
+          fi
+          if command -v python3 >/dev/null 2>&1; then
+            if dpkg-query -W -f='${db:Status-Abbrev}' networkd-dispatcher 2>/dev/null | grep -q '^.i' \
+              && apt-cache depends networkd-dispatcher 2>/dev/null | grep -Eq '^[[:space:]]*Depends:[[:space:]]+python3-gi([[:space:]]|$)'; then
+              echo "EXPECTED (not a defect): python3 is present at $(command -v python3). Verified LIVE against this image's real apt database: networkd-dispatcher is installed and directly Depends on python3-gi — networkd-dispatcher itself arrives via systemd's Recommends, part of the OS's own desktop dependency closure, not this package's Depends. This project's own .deb declares no dependency on python3, node, or any build toolchain." >&2
+            else
+              echo "REGRESSION: python3 became available after installing ONLY the .deb, and the verified networkd-dispatcher->python3-gi dependency edge is NOT confirmed on this image — this is NOT the known/verified cause. Investigate before assuming it's benign." >&2
+              exit 1
+            fi
+          fi
+          echo "CONFIRMED: installing only the .deb pulled in no node/npm/cargo/rustc, and any python3 present is accounted for."
+          dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > /tmp/pkgs-after-app.txt || true
+          echo "--- packages the .deb's own Depends closure pulled in ---"
+          comm -13 /tmp/pkgs-before.txt /tmp/pkgs-after-app.txt || true
+
+      - name: ldd sweep — no missing shared library across the installed app + sidecar
+        run: |
+          set -euo pipefail
+          pkg_name="$(dpkg-deb -f "$deb_path" Package)"
+          bin_path="$(dpkg -L "$pkg_name" | grep -E '^/usr/bin/[^/]+$' | head -n1)"
+          resource_dir="$(dirname "$(dpkg -L "$pkg_name" | grep -m1 'snapstudio-api-x86_64-unknown-linux-gnu$')")"
+          apt-get install -y --no-install-recommends file >/dev/null
+          bad=0
+          while IFS= read -r -d '' f; do
+            file "$f" 2>/dev/null | grep -q 'ELF' || continue
+            out="$(ldd "$f" 2>&1 || true)"
+            if echo "$out" | grep -q "not found"; then
+              echo "MISSING SHARED LIBRARY in $f:" >&2
+              echo "$out" | grep "not found" >&2
+              bad=1
+            fi
+          done < <(find "$resource_dir" "$bin_path" -type f -print0)
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "CONFIRMED: no missing shared libraries across the installed app + bundled sidecar on ${{ inputs.image }}."
+
+      - name: Static check — the .deb's own dependency fields declare no dev toolchain
+        run: |
+          set -euo pipefail
+          fields="$(dpkg-deb -f "$deb_path" Depends Pre-Depends Recommends 2>/dev/null || true)"
+          echo "--- .deb dependency fields ---"
+          echo "$fields"
+          if echo "$fields" | grep -qiE '(^|[^-a-z])(python[0-9.]*|nodejs|npm|cargo|rustc)([^a-z0-9]|$)'; then
+            echo "REGRESSION: the .deb's own Depends/Pre-Depends/Recommends directly name a dev toolchain package." >&2
+            exit 1
+          fi
+          echo "CONFIRMED: the .deb's own dependency fields name no python/node/rust package directly."
+
+      - name: Package lifecycle (install/reinstall/upgrade/purge) on this clean image (items 25-28)
+        run: |
+          chmod +x /tmp/kit/tools/acceptance/linux/*.sh
+          bash /tmp/kit/tools/acceptance/linux/package-lifecycle.sh "$deb_path"
+
+      - name: Install test tooling (kept separate from app deps, for driving the GUI)
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            xvfb openbox wmctrl xdotool imagemagick sqlite3 dbus-x11 jq curl desktop-file-utils >/dev/null
+
+      - name: Installed-build acceptance harness on a genuinely clean ${{ inputs.image }} (DESKTOP WORKFLOW VERIFIED)
+        env:
+          SNAPSTUDIO_ACCEPT_WORKDIR: /tmp/linux-acceptance
+        run: bash /tmp/kit/tools/acceptance/linux/run.sh "$deb_path"
+
+      - name: Upload clean-environment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-clean-env-evidence-${{ inputs.label }}
+          path: /tmp/linux-acceptance/evidence/
+          if-no-files-found: warn

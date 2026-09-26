@@ -247,6 +247,18 @@ try {
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' })
         Add-Check "Upgrade does not leave two installations" ($installs.Count -le 1) `
             "$($installs.Count) registration(s)"
+
+        # v1.0.0 release-prep: proves the registration was REPLACED, not
+        # merely left alone (e.g. a broken upgrade that silently no-ops
+        # would still leave exactly one registration, passing the check
+        # above, but with the OLD version still recorded).
+        if ($installs.Count -eq 1) {
+            $newVersion = if ((Split-Path $installer -Leaf) -match '_([0-9]+\.[0-9]+\.[0-9]+[^_]*)_') { $matches[1] } else { $null }
+            $regVersion = (Get-ItemProperty $installs[0].PSPath -ErrorAction SilentlyContinue).DisplayVersion
+            Add-Check "Upgrade registration reports the new version" `
+                ($null -ne $newVersion -and $regVersion -eq $newVersion) `
+                "registry says $regVersion, installer filename says $newVersion"
+        }
     }
 
     $appExe = Join-Path $installDir "snapmaker-studio-desktop.exe"
