@@ -127,6 +127,11 @@ def test_mixed_nozzle_sizes(tmp_path):
     t = pt.extract(p)
     assert t["mixed_nozzle_sizes"]["value"] is True
     assert t["nozzle_diameters"]["value"] == ["0.2", "0.4", "0.8"]
+    # Opus delta review of 9b638c6: nozzle_diameters is deduplicated and sorted,
+    # so preflight cannot use it to tell which size belongs to which toolhead.
+    # nozzle_diameters_by_toolhead keeps the original, one-entry-per-toolhead
+    # order, duplicates and all — the shape preflight actually needs.
+    assert t["nozzle_diameters_by_toolhead"]["value"] == ["0.2", "0.4", "0.4", "0.8"]
 
 
 def test_uniform_nozzles_are_not_called_mixed(tmp_path):

@@ -11,8 +11,11 @@ Three buckets, and the separation is the whole point:
   have; a slot it prints from is empty; it was sliced for another machine.
 * **Warning** — a real concern that is not proof. A different colour is loaded; the
   printer is busy; the job pauses part-way through and nobody is standing there.
-* **Unknown** — Studio cannot verify it. The fitted nozzle. Free storage on a
-  firmware that does not report any.
+* **Unknown** — Studio cannot verify it. Free storage on a firmware that does
+  not report any. The fitted nozzle, when neither the printer nor a person
+  has said — firmware that does report it turns this into a pass or a
+  warning instead (a nozzle mismatch is a real concern, not proof the print
+  will fail, so it warns rather than blocks).
 
 An unknown is never promoted to a blocker to look thorough, and never demoted to
 a pass to look clean. And nothing here sends anything: this module returns a

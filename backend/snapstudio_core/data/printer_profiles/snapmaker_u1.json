@@ -24,7 +24,8 @@
   "tool_count_source": "four Klipper extruder objects (extruder, extruder1, extruder2, extruder3) observed on a real U1",
 
   "nozzle_diameter_mm": null,
-  "reports_fitted_nozzle": false,
+  "reports_fitted_nozzle": true,
+  "reports_fitted_nozzle_note": "live-verified on a real U1: /machine/system_info's product_info.nozzle_diameter is a real, populated per-toolhead array — read by snapstudio_core.moonraker.machine_info(). The earlier profile said the opposite; it was written before this endpoint had ever been queried.",
   "reports_free_storage": false,
   "storage_note": "traced on a real U1: /machine/system_info reports total_bytes 0 and /server/files/roots reports no sizes, so there is nothing to read",
 
@@ -46,7 +47,6 @@
   },
 
   "known_unknowns": [
-    "which nozzle is physically fitted — stock firmware publishes no diameter",
     "free storage on the printer — the firmware reports no sizes",
     "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
   ],

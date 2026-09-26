@@ -14,11 +14,17 @@ The rule that matters most:
 
     **Not detected is not the same as not supported.**
 
-Stock Snapmaker U1 firmware does not report which nozzle is fitted — which was
-established by looking, on a U1. That makes the nozzle check `unknown`, and
-`unknown` is a real answer that tells the user to go and look; it is never quietly
-rewritten as a pass or a failure. Every check here can return `unknown`, and
-several usually do.
+Stock Snapmaker U1 firmware does not report free storage — established by
+looking, on a U1: `/machine/system_info` answers with `total_bytes: 0`. That
+makes `send_check.py`'s storage check `unknown` (this module has no storage
+check of its own), and `unknown` is a real answer that tells the user to go
+and look; it is never quietly rewritten as a pass or a failure. (The fitted
+nozzle used to be this module's own example of the same rule — until
+`/machine/system_info`'s `product_info.nozzle_diameter` turned out to be
+real, live, per-toolhead firmware data nobody had queried; see
+`moonraker.machine_info()`. The nozzle check now reads it, and only falls
+back to `unknown` when neither the printer nor a person has said.) Every
+check here can return `unknown`, and several still do.
 
 Nothing in this module is written for one printer. Every check reads what the
 machine reported — its toolheads, its axis limits, its Klipper objects, its
@@ -145,15 +151,78 @@ def _toolheads_vs_filaments(project: dict, printer: dict) -> dict:
         source="Klipper extruder objects")
 
 
+def _profile(printer: dict | None) -> dict | None:
+    """The full profile of the printer that actually answered, or None.
+
+    `printer.get("profile")` (set by printer_facts()) is the SUMMARISED,
+    UI-facing shape — it does not carry `reports_fitted_nozzle`. This loads
+    the raw profile record instead, the same way post_slice._profile() does,
+    so both halves of the nozzle check (before and after slicing) gate the
+    same wording on the same fact rather than each keeping its own copy.
+    None is the common case and the correct one: most machines Moonraker
+    talks to are never identified, and every check here works without
+    knowing which one it is.
+    """
+    from . import printer_profiles
+
+    identity = (printer or {}).get("identity") or {}
+    pid = identity.get("printer_id")
+    if not pid:
+        return None
+    try:
+        return printer_profiles.load(pid)
+    except KeyError:
+        return None
+
+
+def _nozzle_number(value) -> str:
+    """Normalise a nozzle-size value for comparison: 0.4, "0.4", "0.40" and
+    0.4000000059604645 (real float noise a firmware or a project can report)
+    all compare equal. Falls back to the raw string for anything that is not
+    numeric, rather than crashing on malformed trait/firmware data."""
+    try:
+        return f"{round(float(value), 2):g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _nozzles_match(wanted: list, reported: list) -> bool:
+    """Same toolhead count on both sides: compare position by position — a
+    project sliced for [0.4, 0.6, 0.4, 0.4] and a printer reporting
+    [0.4, 0.4, 0.6, 0.4] have the identical sizes but on different
+    toolheads, a real mismatch a set comparison would call a match.
+    Different counts: there is no toolhead to align position by position,
+    so fall back to comparing which sizes exist at all."""
+    if len(wanted) == len(reported):
+        return all(_nozzle_number(w) == _nozzle_number(r) for w, r in zip(wanted, reported))
+    return {_nozzle_number(w) for w in wanted} == {_nozzle_number(r) for r in reported}
+
+
 def _nozzle(project: dict, printer: dict) -> dict:
     """The check that most often has to answer 'I do not know', and must.
 
-    Stock U1 firmware does not publish the fitted nozzle diameter anywhere Studio
-    can read. Reporting a pass here because the project looks ordinary would be
-    inventing hardware state.
+    Stock U1 firmware DOES publish the fitted nozzle diameter, via
+    /machine/system_info's product_info.nozzle_diameter (confirmed live
+    against a real U1) — printer_facts() reads it and stamps
+    nozzle_confirmed_by="printer" when it did. When the printer did not
+    answer that (unreachable, or firmware genuinely omits the field), a
+    user can confirm it themselves; that path is stamped
+    nozzle_confirmed_by="user" and is reported as such, never blended into
+    a live reading. Only when neither exists does this stay UNKNOWN.
     """
     wanted = _trait(project, "nozzle_diameters") or []
+    # nozzle_diameters above is deduplicated and sorted — it has no per-toolhead
+    # order, so it must never be compared position by position: two DIFFERENT
+    # sizes that happen to sort into the same order as the printer's reading
+    # would otherwise be wrongly flagged a mismatch. nozzle_diameters_by_toolhead
+    # is the same reading kept in the order the slicer actually wrote it. Only
+    # when that ordered trait is genuinely present does this do a positional
+    # comparison; a caller that only sets nozzle_diameters (an older trait
+    # shape, or a test fixture) gets the plain set comparison instead, same as
+    # before positional matching existed.
+    ordered = _trait(project, "nozzle_diameters_by_toolhead")
     reported = printer.get("nozzle_diameters")
+    confirmed_by = printer.get("nozzle_confirmed_by")
     if not wanted:
         return _check(
             "nozzle.match", "Nozzle size", UNKNOWN,
@@ -164,33 +233,70 @@ def _nozzle(project: dict, printer: dict) -> dict:
             source="project settings")
     wanted_txt = ", ".join(f"{w} mm" for w in wanted)
     if not reported:
+        # "Stock firmware does not report which nozzle is fitted" is a fact
+        # about a specific machine this project has actually checked. Stated
+        # flatly it becomes a claim about every printer Studio is pointed at
+        # — including the same U1 profile that, elsewhere in this same
+        # check, is credited with reporting the nozzle live. Offered only
+        # for a printer that was actually established NOT to, matching
+        # post_slice._nozzle's identical fallback.
+        profile = _profile(printer)
+        if profile is not None and profile.get("reports_fitted_nozzle") is False:
+            why = "the printer does not report which nozzle is fitted"
+            source = "firmware exposes no nozzle diameter"
+        else:
+            why = "Studio has no reading of which nozzle is fitted"
+            source = "no nozzle diameter was read from the printer"
         return _check(
             "nozzle.match", "Nozzle size — check this yourself", UNKNOWN,
-            evidence=f"project expects {wanted_txt}; the printer does not report which "
-                     "nozzle is fitted",
+            evidence=f"project expects {wanted_txt}; {why}",
             confidence=CONFIRMED,
             consequence=("Printing with a different nozzle than the project was made for "
                          "changes line width and can ruin fine detail — and Studio has no "
                          "way to see which one is installed."),
             action=f"Check the nozzle on the printer is {wanted_txt} before slicing.",
-            source="firmware exposes no nozzle diameter")
-    reported_set = {str(n) for n in reported}
-    if reported_set == {str(w) for w in wanted}:
+            source=source)
+    if confirmed_by == "printer":
+        source, who, verb = "printer firmware", "the printer", "reports"
+    elif confirmed_by == "user":
+        source, who, verb = "user confirmed", "you", "confirmed"
+    else:
+        # A reported value with no recorded source. Should not happen through
+        # printer_facts()/service.preflight() — both always stamp one of the
+        # two — but a caller that builds printer facts directly (a test
+        # fixture, another integration) can hand this function a nozzle
+        # reading with nothing saying where it came from, and that must never
+        # be mislabelled as either firmware evidence or a person's own word.
+        source, who, verb = "unstated source", "something Studio read", "reports"
+    matched = (_nozzles_match(ordered, reported) if ordered
+              else {_nozzle_number(w) for w in wanted} == {_nozzle_number(n) for n in reported})
+    if matched:
         return _check(
             "nozzle.match", "Nozzle size", OK,
-            evidence=f"project expects {wanted_txt}; printer reports the same",
+            evidence=f"project expects {wanted_txt}; {who} {verb} the same",
             confidence=CONFIRMED,
-            consequence="The project was made for the nozzle this printer reports.",
-            source="printer configuration")
+            consequence=f"The project was made for the nozzle {who} {verb}.",
+            source=source)
+    # With genuine per-toolhead order and a matching toolhead count, show the
+    # real per-toolhead values, not a deduplicated set — [0.4, 0.6] vs
+    # [0.4, 0.6] would otherwise look identical in the evidence even though
+    # the sizes sit on different toolheads, which is exactly the mismatch
+    # this check exists to catch. Otherwise (no order, or no toolhead to line
+    # up) fall back to the deduplicated sets.
+    if ordered and len(ordered) == len(reported):
+        wanted_mismatch_txt = ", ".join(f"{_nozzle_number(w)} mm" for w in ordered)
+        reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+    else:
+        wanted_mismatch_txt = wanted_txt
+        reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
     return _check(
         "nozzle.match", "Nozzle size does not match", ATTENTION,
-        evidence=f"project expects {wanted_txt}; printer reports "
-                 + ", ".join(f"{n} mm" for n in sorted(reported_set)),
+        evidence=f"project expects {wanted_mismatch_txt}; {who} {verb} {reported_txt}",
         confidence=CONFIRMED,
         consequence=("Line width and detail will not come out as the creator intended, "
                      "and very fine features may disappear."),
         action="Fit the nozzle the project expects, or re-slice for the nozzle you have.",
-        source="printer configuration")
+        source=source)
 
 
 def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
