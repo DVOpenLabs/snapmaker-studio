@@ -555,9 +555,9 @@ def _with_providers(printer: dict, host: str | None, port: int,
     after the read returns: everything below this line is handed normalised
     facts.
     """
-    if not host:
-        return printer
-    local_rows = _local_spool_rows(host)
+    # Only local notes are keyed by the printer's host; a provider has its own
+    # address (provider_url) and stock_u1() already tolerates an empty host.
+    local_rows = _local_spool_rows(host) if host else []
     if not provider_url and not local_rows:
         return printer
     from snapstudio_core import material_providers as providers
