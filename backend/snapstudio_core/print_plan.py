@@ -16,12 +16,19 @@ own painted/assigned colours, whether two colours *can* land on the same printed
 layer — proven only when their height ranges cannot overlap; everywhere else it
 reserves a toolhead rather than guess. That is the honest limit of reading a
 project: heights overlapping shows two colours *can* meet on a layer, not that
-they do. This module is what closes that gap once the job is sliced: it already
-walks every tool-change line in order, so it also knows exactly which layers each
-tool is actually used on — not just the range between its first and last use.
-Two tools that are only ever used on disjoint layers provably never share one;
-two seen on the very same layer number provably do. Both are read directly off
-the G-code the slicer wrote, never inferred from geometry.
+they do. This module narrows that gap once the job is sliced: it already walks
+every tool-change line in order, so it also knows which layers each tool was
+*selected* on — carried forward from the layer it was chosen on to every later
+layer until something else is chosen, not only the exact layer a `T<n>` line
+appears on, since a real slicer does not repeat a tool-change command for every
+layer that keeps using the same tool.
+
+That is selection, not confirmed extrusion — a `T<n>` line proves the active
+tool changed, not that filament was actually deposited before the next change.
+Two tools never selected on the same layer number are a fact read straight off
+the G-code the slicer wrote; two selected on the same layer number are reported
+as exactly that — selected together — never as "printed together" or "proven",
+which would be a claim about motion this module does not read.
 
 **Cost.** A pass over a 330 MB job takes a few seconds, so this is deliberately
 separate from the cheap facts: the Post-Slice Doctor answers immediately, and the
@@ -140,9 +147,13 @@ def scan(path: str | Path) -> dict:
 
                     if line.startswith((";LAYER_CHANGE", "; CHANGE_LAYER")):
                         layer += 1
+                        if current_tool is not None:
+                            tool_layers.setdefault(current_tool, []).append(layer)
                         continue
                     if line.startswith(";LAYER:"):
                         layer = int(line.split(":", 1)[1] or 0)
+                        if current_tool is not None:
+                            tool_layers.setdefault(current_tool, []).append(layer)
                         continue
                     if line.startswith(";Z:"):
                         try:
@@ -154,6 +165,8 @@ def scan(path: str | Path) -> dict:
                         found = _STATS_LAYER.match(line)
                         if found:
                             layer = max(layer, int(found.group(1)))
+                            if current_tool is not None:
+                                tool_layers.setdefault(current_tool, []).append(layer)
                         continue
 
                     tool = _TOOL.match(line)
@@ -200,7 +213,12 @@ def scan(path: str | Path) -> dict:
 
     first_tool = next((e["tool"] for e in events if e["kind"] == "tool"), None)
     last_tool = next((e["tool"] for e in reversed(events) if e["kind"] == "tool"), None)
-    coexistence = _tool_coexistence(tool_layers)
+    # A capped scan stopped part-way through the file. A tool introduced after
+    # the cap would look disjoint from everything only because the scan never
+    # saw where it actually went — that is not proof of anything, so no
+    # coexistence claim is made on a truncated scan rather than a wrong one.
+    coexistence = [] if truncated else _tool_coexistence(tool_layers)
+    disjoint = [] if truncated else _provably_disjoint(tool_layers, coexistence)
 
     out.update({
         "available": True,
@@ -215,7 +233,7 @@ def scan(path: str | Path) -> dict:
         "tool_first_layer": {str(t): min(ls) for t, ls in tool_layers.items() if ls},
         "tool_last_layer": {str(t): max(ls) for t, ls in tool_layers.items() if ls},
         "tool_coexistence": coexistence,
-        "tools_provably_disjoint": _provably_disjoint(tool_layers, coexistence),
+        "tools_provably_disjoint": disjoint,
         "pauses": pauses,
         "objects_started": objects,
         "bed_target_c": bed_target,
@@ -230,15 +248,21 @@ def scan(path: str | Path) -> dict:
 # color_plan proves separation from *heights*: a colour used only between two
 # heights with nothing else in that band can be a planned swap, and everything
 # else reserves a toolhead because an overlapping height range only shows two
-# colours *can* land on the same layer. Once the job is sliced, "can" is
-# answerable as "does": tool_layers (built during the scan above) already
-# holds, for every tool, the exact layer number of every line that selects it —
-# so whether two tools were ever active on the very same layer is a plain set
-# question, not an inference.
+# colours *can* land on the same layer. Once the job is sliced, tool_layers
+# (built during the scan above) holds, for every tool, every layer it was the
+# SELECTED tool on — carried forward across layers that repeat no T-command,
+# not just the layers a T<n> line literally appears on. Whether two tools were
+# ever selected on the very same layer is then a plain set question. It is
+# still a claim about selection, not about confirmed extrusion: a tool can be
+# selected and not deposit anything before the next change (a purge move, a
+# priming pass in start G-code). "Selected on the same layer" is the honest
+# ceiling on what this can say; "printed together" would be a claim about
+# motion this scan does not read.
 
 def _tool_coexistence(tool_layers: dict[int, list[int]]) -> list[dict]:
-    """For every pair of tools this job actually used, did they ever share a
-    printed layer? Proven from the G-code, not estimated from a height range."""
+    """For every pair of tools this job actually used, were they ever the
+    selected tool on the same layer number? Read from the G-code's own tool
+    changes and layer markers, never estimated from a height range."""
     sets = {tool: set(layers) for tool, layers in tool_layers.items() if layers}
     tools = sorted(sets)
     out = []
@@ -255,13 +279,13 @@ def _tool_coexistence(tool_layers: dict[int, list[int]]) -> list[dict]:
 
 
 def _provably_disjoint(tool_layers: dict[int, list[int]], coexistence: list[dict]) -> list[int]:
-    """Tools that never shared a layer with any other tool this job used.
+    """Tools never selected on the same layer as any other tool this job used.
 
     Not the same claim as color_plan's "possible without repainting": that one
-    is a plan for a project that has not been sliced yet. This one is proof,
-    from the slice that already happened, that a manual swap for this tool
-    would have worked — the toolhead it would have freed up was never needed
-    on the same layer as anything else.
+    is a plan for a project that has not been sliced yet. This one holds for
+    the slice that already happened — the toolhead this tool would have freed
+    up was never the selected tool at the same time as anything else, so a
+    manual swap for it would have been safe to make.
     """
     tools = sorted(t for t, ls in tool_layers.items() if ls)
     if len(tools) < 2:
@@ -350,18 +374,22 @@ def narrate(plan: dict, facts: dict | None = None,
                 "evidence": f"last T{tool} at layer {layer}",
             })
 
-    # Real, proven coexistence — the answer color_plan cannot give before the
-    # job is sliced. Only worth a line when there is more than one tool to
-    # relate; a single-tool job has nothing to coexist with.
-    for pair in plan.get("tool_coexistence") or []:
-        if pair["shares_a_layer"]:
-            a, b = pair["tools"]
-            layer = pair["first_shared_layer"]
-            lines.append({
-                "at": f"Layer {layer}",
-                "text": f"Slot {a + 1} and slot {b + 1} are both active on the same layer",
-                "evidence": f"T{a} and T{b} both appear at layer {layer}",
-            })
+    # A selection overlap color_plan cannot see before the job is sliced. Only
+    # worth a line when there is more than one tool to relate; a single-tool
+    # job has nothing to coexist with. Sorted by where it first happens, same
+    # as every other narration line here, and never claims more than
+    # selection — see the module docstring.
+    shared_pairs = sorted(
+        (p for p in (plan.get("tool_coexistence") or []) if p["shares_a_layer"]),
+        key=lambda p: p["first_shared_layer"])
+    for pair in shared_pairs:
+        a, b = pair["tools"]
+        layer = pair["first_shared_layer"]
+        lines.append({
+            "at": _ordinal_layer(layer).capitalize(),
+            "text": f"Slot {a + 1} and slot {b + 1} are both selected on the same layer",
+            "evidence": f"T{a} and T{b} both appear at layer {layer}",
+        })
 
     for event in plan.get("events", []):
         if event["kind"] == "pause":
