@@ -148,6 +148,28 @@ def test_nozzle_mismatch_still_flagged_when_only_user_confirmed():
     assert check["confidence"] == pf.CONFIRMED
 
 
+def test_a_reported_nozzle_with_no_recorded_source_is_neither_printer_nor_user():
+    """L1: a caller can hand this a nozzle_diameters reading with no
+    nozzle_confirmed_by at all — printer_facts()/service.preflight() always
+    stamp one, but a test fixture or another integration might not — and
+    that must never be mislabelled as either evidence tier."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"]))  # no nozzle_confirmed_by
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "unstated source"
+    assert "printer" not in check["source"] and "user" not in check["source"]
+
+
+def test_nozzle_comparison_tolerates_formatting_and_float_noise():
+    """M3: 0.4, "0.40" and 0.4000000059604645 (real firmware float noise)
+    must all compare equal — a formatting difference is not a mismatch."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.40"]),
+                      printer(nozzle_diameters=[0.4000000059604645], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+
+
 # --- the bed ----------------------------------------------------------------
 
 def test_bed_uses_the_printers_real_dimensions_in_its_evidence():

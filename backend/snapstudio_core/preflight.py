@@ -14,11 +14,16 @@ The rule that matters most:
 
     **Not detected is not the same as not supported.**
 
-Stock Snapmaker U1 firmware does not report which nozzle is fitted — which was
-established by looking, on a U1. That makes the nozzle check `unknown`, and
-`unknown` is a real answer that tells the user to go and look; it is never quietly
-rewritten as a pass or a failure. Every check here can return `unknown`, and
-several usually do.
+Stock Snapmaker U1 firmware does not report free storage — established by
+looking, on a U1: `/machine/system_info` answers with `total_bytes: 0`. That
+makes the storage check `unknown`, and `unknown` is a real answer that tells
+the user to go and look; it is never quietly rewritten as a pass or a
+failure. (The fitted nozzle used to be this module's example of the same
+rule — until `/machine/system_info`'s `product_info.nozzle_diameter` turned
+out to be real, live, per-toolhead firmware data nobody had queried; see
+`moonraker.machine_info()`. The nozzle check now reads it, and only falls
+back to `unknown` when neither the printer nor a person has said.) Every
+check here can return `unknown`, and several still do.
 
 Nothing in this module is written for one printer. Every check reads what the
 machine reported — its toolheads, its axis limits, its Klipper objects, its
@@ -145,6 +150,17 @@ def _toolheads_vs_filaments(project: dict, printer: dict) -> dict:
         source="Klipper extruder objects")
 
 
+def _nozzle_number(value) -> str:
+    """Normalise a nozzle-size value for comparison: 0.4, "0.4", "0.40" and
+    0.4000000059604645 (real float noise a firmware or a project can report)
+    all compare equal. Falls back to the raw string for anything that is not
+    numeric, rather than crashing on malformed trait/firmware data."""
+    try:
+        return f"{round(float(value), 2):g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _nozzle(project: dict, printer: dict) -> dict:
     """The check that most often has to answer 'I do not know', and must.
 
@@ -178,15 +194,22 @@ def _nozzle(project: dict, printer: dict) -> dict:
             consequence=("Printing with a different nozzle than the project was made for "
                          "changes line width and can ruin fine detail — and Studio has no "
                          "way to see which one is installed."),
-            action=f"Check the nozzle on the printer is {wanted_txt} before slicing, "
-                   "or confirm it in Printer settings so Studio can check it for you.",
+            action=f"Check the nozzle on the printer is {wanted_txt} before slicing.",
             source="firmware exposes no nozzle diameter")
     if confirmed_by == "printer":
         source, who, verb = "printer firmware", "the printer", "reports"
-    else:
+    elif confirmed_by == "user":
         source, who, verb = "user confirmed", "you", "confirmed"
-    reported_set = {str(n) for n in reported}
-    if reported_set == {str(w) for w in wanted}:
+    else:
+        # A reported value with no recorded source. Should not happen through
+        # printer_facts()/service.preflight() — both always stamp one of the
+        # two — but a caller that builds printer facts directly (a test
+        # fixture, another integration) can hand this function a nozzle
+        # reading with nothing saying where it came from, and that must never
+        # be mislabelled as either firmware evidence or a person's own word.
+        source, who, verb = "unstated source", "something Studio read", "reports"
+    reported_set = {_nozzle_number(n) for n in reported}
+    if reported_set == {_nozzle_number(w) for w in wanted}:
         return _check(
             "nozzle.match", "Nozzle size", OK,
             evidence=f"project expects {wanted_txt}; {who} {verb} the same",

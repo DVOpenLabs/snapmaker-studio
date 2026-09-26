@@ -4,6 +4,8 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
 from snapstudio_core import moonraker
 
 _SERVER_INFO = {"result": {"klippy_state": "ready", "moonraker_version": "v0.9.3",
@@ -271,5 +273,67 @@ def test_machine_info_storage_present_when_firmware_reports_it():
         m = moonraker.machine_info("127.0.0.1", port, timeout=5)
         assert m["storage_bytes"] == 16000000000
         assert m["nozzle_diameters"] == [0.4, 0.6]
+    finally:
+        httpd.shutdown()
+
+
+# --- M1: a value that only looks like a measurement is never trusted --------
+#
+# Opus review of 571f4e4: `isinstance(n, (int, float))` alone accepts `True`
+# (bool is an int subclass in Python, and JSON's `true` decodes to one), and
+# neither the old nozzle nor storage check rejected zero, a negative number,
+# or NaN — the last of which especially matters because Python's `json.dumps`
+# writes a bare `NaN` token for it, which is not valid JSON and the desktop's
+# parser cannot read at all.
+
+@pytest.mark.parametrize("bad_nozzle", [
+    [True, True, True, True],           # bool: an int subclass, not a measurement
+    [0.4, 0.4, "0.4", 0.4],              # one non-numeric entry taints the whole reading
+    [0.0, 0.0, 0.0, 0.0],                # zero is "none", not a nozzle
+    [-0.4, 0.4, 0.4, 0.4],               # a negative diameter cannot be real
+    [float("nan"), 0.4, 0.4, 0.4],       # NaN: json.dumps writes a bare, unparseable token
+    [],                                  # an empty list is not a reading either
+])
+def test_machine_info_rejects_junk_nozzle_values(bad_nozzle):
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": bad_nozzle},
+        "sd_info": {"capacity": "Unknown", "total_bytes": 0},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["nozzle_diameters"] is None
+        assert "NaN" not in json.dumps(m)
+    finally:
+        httpd.shutdown()
+
+
+@pytest.mark.parametrize("bad_storage", [True, 0, -1000, float("nan"), float("inf")])
+def test_machine_info_rejects_junk_storage_values(bad_storage):
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": [0.4, 0.4, 0.4, 0.4]},
+        "sd_info": {"capacity": "junk", "total_bytes": bad_storage},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["storage_bytes"] is None
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_result_is_always_valid_json_even_with_nan_in_the_wire_response():
+    """The raw HTTP response itself can legally contain a bare NaN (some
+    firmware/JSON encoders emit it); machine_info's OWN return value must
+    never propagate one regardless of what the wire sent."""
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": [float("nan"), float("nan")]},
+        "sd_info": {"total_bytes": float("nan")},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        text = json.dumps(m)  # raises if m itself contains a non-finite float
+        assert "NaN" not in text
     finally:
         httpd.shutdown()

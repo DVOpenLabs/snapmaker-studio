@@ -18,6 +18,7 @@ no cloud.
 """
 from __future__ import annotations
 import json
+import math
 import re
 import time
 import urllib.error
@@ -588,6 +589,17 @@ def capabilities(host: str, port: int = DEFAULT_PORT, timeout: float = 3.0) -> d
     }
 
 
+def _is_real_positive_number(value) -> bool:
+    """A genuine, finite, positive measurement — never a bool (an int subclass
+    in Python, and JSON `true`/`false` decode to one), never NaN or infinity
+    (which `<= 0` never catches, since every NaN comparison is False — a NaN
+    read from firmware would otherwise sail through as a literal `NaN` token
+    in the JSON response, which the desktop's JSON parser cannot read at all),
+    and never zero or negative, which a firmware reporting "none" would use."""
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value > 0)
+
+
 def machine_info(host: str, port: int = DEFAULT_PORT, timeout: float = 3.0) -> dict:
     """Read-only GET /machine/system_info — the one Moonraker call this project has
     never made before. Its `product_info` block reports the fitted nozzle diameter
@@ -612,11 +624,12 @@ def machine_info(host: str, port: int = DEFAULT_PORT, timeout: float = 3.0) -> d
     sd = result.get("sd_info", {}) or {}
 
     nozzle_diameters = product.get("nozzle_diameter")
-    if not isinstance(nozzle_diameters, list) or not all(isinstance(n, (int, float)) for n in nozzle_diameters):
+    if (not isinstance(nozzle_diameters, list) or not nozzle_diameters
+            or not all(_is_real_positive_number(n) for n in nozzle_diameters)):
         nozzle_diameters = None
 
     storage_bytes = sd.get("total_bytes")
-    if not isinstance(storage_bytes, (int, float)) or storage_bytes <= 0:
+    if not _is_real_positive_number(storage_bytes):
         storage_bytes = None
 
     return {

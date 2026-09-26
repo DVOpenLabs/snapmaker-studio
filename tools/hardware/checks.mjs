@@ -156,10 +156,18 @@ const rows = pre.body?.checks ?? [];
 const text = JSON.stringify(rows).toLowerCase();
 
 const nozzle = rows.find((r) => r.id === "nozzle.match");
-record("Fitted nozzle is reported as unknown, not unsupported",
-  nozzle?.result === "unknown"
+// Stock U1 firmware DOES report the fitted nozzle diameter via
+// /machine/system_info (confirmed live this session) — the nozzle check can
+// now come back ok or attention, not only unknown. What must never happen,
+// whichever it is, is the old "unsupported" framing, and an ok/attention
+// result must cite where the reading actually came from.
+record("Fitted nozzle is read from real firmware when available, never called unsupported",
+  ["ok", "attention", "unknown"].includes(nozzle?.result)
     && !JSON.stringify(nozzle).toLowerCase().includes("unsupported"),
-  nozzle?.title ?? "no nozzle check");
+  `${nozzle?.result}: ${nozzle?.evidence ?? nozzle?.title ?? "no nozzle check"}`);
+record("A matched nozzle reading is credited to the printer, not asserted with no source",
+  nozzle?.result !== "ok" || /the printer reports|you confirmed/.test(nozzle?.evidence ?? ""),
+  nozzle?.evidence ?? "");
 
 record("Nothing undetected is called unsupported", !text.includes("unsupported"));
 
@@ -246,8 +254,14 @@ record("Loaded material checked against the job's material",
 record("The job's bed is compared with the printer's own bed",
   check("gcode.bed")?.result === "ok", check("gcode.bed")?.evidence ?? "");
 
-record("Fitted nozzle stays unknown after slicing too",
-  check("gcode.nozzle")?.result === "unknown", check("gcode.nozzle")?.title ?? "");
+// The JOB fixture above states nozzle_diameter = 0.4 for every toolhead, and
+// a real U1's firmware reports the same (confirmed live this session), so
+// this now matches — the post-slice nozzle check reads the SAME printer
+// reading preflight's does, not a second, still-blind implementation.
+record("Fitted nozzle after slicing matches the real firmware reading, never called unsupported",
+  check("gcode.nozzle")?.result === "ok"
+    && !JSON.stringify(check("gcode.nozzle")).toLowerCase().includes("unsupported"),
+  check("gcode.nozzle")?.evidence ?? check("gcode.nozzle")?.title ?? "");
 
 record("Nothing undetected is called unsupported after slicing",
   !JSON.stringify(postChecks).toLowerCase().includes("unsupported"));

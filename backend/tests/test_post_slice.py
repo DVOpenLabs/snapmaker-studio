@@ -139,12 +139,60 @@ def test_no_printer_makes_printer_checks_unknown_never_failed():
     assert post_slice.ATTENTION not in results.values()
 
 
-def test_the_nozzle_is_always_unknown_and_never_unsupported():
+def test_the_nozzle_is_unknown_and_never_unsupported_when_nothing_reported_it():
     report = post_slice.analyse(job(), printer())
     check = by_id(report, "gcode.nozzle")
     assert check["result"] == post_slice.UNKNOWN
     assert "0.4 mm" in check["action"]
     assert "unsupported" not in repr(report).lower()
+
+
+# --- H1: post_slice reads the same printer-reported/user-confirmed nozzle
+# preflight() already does, instead of always staying unknown after slicing.
+
+def test_the_nozzle_matches_when_the_printer_reports_the_same_size():
+    report = post_slice.analyse(
+        job(), printer(nozzle_diameters=[0.4, 0.4, 0.4, 0.4], nozzle_confirmed_by="printer"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.OK
+    assert "the printer reports the same" in check["evidence"]
+    assert "this printer's firmware" in check["source"]
+
+
+def test_the_nozzle_mismatches_when_the_printer_reports_a_different_size():
+    report = post_slice.analyse(
+        job(), printer(nozzle_diameters=[0.2, 0.2, 0.2, 0.2], nozzle_confirmed_by="printer"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.ATTENTION
+    assert "0.2 mm" in check["evidence"] and "0.4 mm" in check["evidence"]
+    assert check["action"]
+
+
+def test_a_user_confirmed_nozzle_is_never_reported_as_printer_evidence():
+    report = post_slice.analyse(
+        job(), printer(nozzle_diameters=[0.4, 0.4, 0.4, 0.4], nozzle_confirmed_by="user"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.OK
+    assert "you confirmed the same" in check["evidence"]
+    assert "printer's firmware" not in check["source"]
+
+
+def test_a_reported_nozzle_with_no_recorded_source_is_neither_printer_nor_user():
+    report = post_slice.analyse(
+        job(), printer(nozzle_diameters=[0.4, 0.4, 0.4, 0.4]))  # no nozzle_confirmed_by at all
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.OK
+    assert "the printer" not in check["evidence"]
+    assert "you confirmed" not in check["evidence"]
+
+
+def test_the_nozzle_comparison_tolerates_float_and_string_formatting_noise():
+    """0.4, "0.40" and float noise a real firmware can report must compare
+    equal — a formatting difference is not a mismatch."""
+    report = post_slice.analyse(
+        job(), printer(nozzle_diameters=[0.4000000059604645] * 4, nozzle_confirmed_by="printer"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.OK
 
 
 def test_an_unreadable_file_is_never_reported_as_a_healthy_job():
