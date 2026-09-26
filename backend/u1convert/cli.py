@@ -299,6 +299,31 @@ def colors_cmd(path, toolheads):
     click.echo(json.dumps(color_plan.analyse(path, toolheads=toolheads), indent=2))
 
 
+@cli.command("verify-printer")
+@click.option("--host", required=True, help="Printer address (IP or hostname).")
+@click.option("--port", type=int, default=7125, show_default=True)
+def verify_printer_cmd(host, port):
+    """Read-only hardware verification, safe to attach to a GitHub issue.
+
+    Checks whether your printer answers, what Moonraker and its firmware
+    report, and whether Studio recognises the model — nothing more. Every
+    check is read-only: no print is started, nothing is uploaded, nothing on
+    the printer is changed. The address you gave never appears in the
+    output, and neither does anything else that would identify your network
+    — everything is passed through the same redaction Studio's own support
+    bundles use before you see it.
+
+    Paste the JSON this prints into a "Help - Verify my printer" issue, or
+    into docs/PRINTER_COMPATIBILITY.md's evidence table if you are the one
+    maintaining it.
+    """
+    from snapstudio_core import hardware_verify
+    bundle = hardware_verify.build_evidence(host, port=port)
+    click.echo(json.dumps(bundle, indent=2))
+    if any(c["result"] == "fail" for c in (bundle.get("checks") or [])):
+        sys.exit(1)
+
+
 @cli.command("selfcheck")
 @click.option("--sample", type=click.Path(exists=True), default=None,
               help="Run against your own 3MF instead of the built-in fixture.")
