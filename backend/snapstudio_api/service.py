@@ -555,9 +555,14 @@ def _with_providers(printer: dict, host: str | None, port: int,
     after the read returns: everything below this line is handed normalised
     facts.
     """
-    if not host:
-        return printer
-    local_rows = _local_spool_rows(host)
+    # A provider is reached through provider_url (Spoolman/Bambuddy's own
+    # address), which has nothing to do with the printer's host — a person can
+    # read material info from their Spoolman server with no printer connected
+    # at all. Only the LOCAL spool notes are keyed by the printer's host, so
+    # only that lookup is skipped when host is empty; stock_u1() already
+    # handles an empty host gracefully on its own (returns unavailable, never
+    # raises).
+    local_rows = _local_spool_rows(host) if host else []
     if not provider_url and not local_rows:
         return printer
     from snapstudio_core import material_providers as providers
