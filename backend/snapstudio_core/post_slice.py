@@ -298,6 +298,29 @@ def _material_match(g: dict, printer: dict) -> dict | None:
         source="G-code filament types vs printer filament state — compared by family, so PLA Matte counts as PLA")
 
 
+def _nozzle_number(value) -> str:
+    """Normalise a nozzle-size value for comparison: 0.4, "0.4", "0.40" and
+    0.4000000059604645 (real float noise a firmware or a job can report) all
+    compare equal. Falls back to the raw string for anything not numeric,
+    rather than crashing on malformed G-code or firmware data."""
+    try:
+        return f"{round(float(value), 2):g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _nozzles_match(wanted: list, reported: list) -> bool:
+    """Same toolhead count on both sides: compare position by position — a
+    job sliced for [0.4, 0.6, 0.4, 0.4] and a printer reporting
+    [0.4, 0.4, 0.6, 0.4] have the identical sizes but on different
+    toolheads, a real mismatch a set comparison would call a match.
+    Different counts: there is no toolhead to align position by position,
+    so fall back to comparing which sizes exist at all."""
+    if len(wanted) == len(reported):
+        return all(_nozzle_number(w) == _nozzle_number(r) for w, r in zip(wanted, reported))
+    return {_nozzle_number(w) for w in wanted} == {_nozzle_number(r) for r in reported}
+
+
 def _nozzle(g: dict, printer: dict) -> dict:
     sizes = g.get("nozzle_diameter_mm") or []
     unique = sorted({s for s in sizes if s})
@@ -310,6 +333,50 @@ def _nozzle(g: dict, printer: dict) -> dict:
             consequence="Printing with a different nozzle than the job expects changes every line width.",
             action="Check the nozzle on the printer before starting.",
             source="G-code configuration block")
+
+    # Once a job is sliced, the same live-firmware or user-confirmed reading
+    # preflight() already joins against the *project* can be joined against
+    # the *job* instead — a stock U1 genuinely does publish this via
+    # /machine/system_info (printer_facts() reads it), and a person can
+    # confirm it themselves when firmware does not. Neither is invented here;
+    # this only reads what printer_facts() already put on `printer`.
+    reported = (printer or {}).get("nozzle_diameters")
+    if reported:
+        confirmed_by = (printer or {}).get("nozzle_confirmed_by")
+        if confirmed_by == "printer":
+            label, who, verb = "this printer's firmware", "the printer", "reports"
+        elif confirmed_by == "user":
+            label, who, verb = "user confirmed", "you", "confirmed"
+        else:
+            label, who, verb = "an unstated source", "something Studio read", "reports"
+        if _nozzles_match(sizes, reported):
+            return _check(
+                "gcode.nozzle", "Nozzle size matches", OK,
+                evidence=f"the job was sliced for {stated}; {who} {verb} the same",
+                confidence=CONFIRMED,
+                consequence=f"The job was sliced for the nozzle {who} {verb}.",
+                source=f"G-code configuration block; {label}")
+        # Same toolhead count: show the real per-toolhead values, not the
+        # deduplicated `stated` set — [0.4, 0.6] vs [0.4, 0.6] would otherwise
+        # look identical in the evidence even though the sizes sit on
+        # different toolheads, which is exactly the mismatch being reported.
+        # Different counts: there is no toolhead to line up, so fall back to
+        # the deduplicated sets, same as _nozzles_match's own fallback.
+        if len(sizes) == len(reported):
+            stated_mismatch_txt = ", ".join(f"{_nozzle_number(s)} mm" for s in sizes)
+            reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+        else:
+            stated_mismatch_txt = stated
+            reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
+        return _check(
+            "gcode.nozzle", "Nozzle size does not match", ATTENTION,
+            evidence=(f"the job was sliced for {stated_mismatch_txt}; {who} {verb} " + reported_txt),
+            confidence=CONFIRMED,
+            consequence=("Printing with a different nozzle than the job was sliced for changes "
+                        "line width and can ruin fine detail."),
+            action="Fit the nozzle the job expects, or re-slice for the nozzle you have.",
+            source=f"G-code configuration block; {label}")
+
     # "Stock firmware does not report which nozzle is fitted" is a fact about the
     # U1, established by looking. Stated flatly it becomes a claim about every
     # machine Studio is pointed at, which this project has not checked. So that

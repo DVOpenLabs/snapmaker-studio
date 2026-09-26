@@ -4,6 +4,8 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
 from snapstudio_core import moonraker
 
 _SERVER_INFO = {"result": {"klippy_state": "ready", "moonraker_version": "v0.9.3",
@@ -49,10 +51,31 @@ _BEDMESH = {"result": {"status": {"bed_mesh": {
 _PRINTER_INFO = {"result": {"state": "ready", "state_message": "Printer is ready", "hostname": "U1"}}
 _OBJECTS_LIST = {"result": {"objects": ["print_stats", "heater_bed", "toolhead",
                                         "extruder", "extruder1", "extruder2", "extruder3"]}}
+# Fabricated for testing only — shaped like a real /machine/system_info response
+# (confirmed live against a real Snapmaker U1 this session) but every value here
+# is synthetic. device_name/serial_number/mac_address are included specifically
+# so test_machine_info_never_returns_identifying_fields can prove they never
+# reach moonraker.machine_info()'s return value.
+_SYSTEM_INFO = {"result": {"system_info": {
+    "product_info": {
+        "machine_type": "Snapmaker U1", "nozzle_diameter": [0.4, 0.4, 0.4, 0.4],
+        "serial_number": "TEST-SERIAL-DO-NOT-USE", "device_name": "Test Printer Name",
+        "firmware_version": "2.0.0",
+    },
+    "cpu_info": {"serial_number": "TEST-CPU-SERIAL"},
+    "sd_info": {"capacity": "Unknown", "total_bytes": 0},
+    "network": {"eth0": {"mac_address": "00:00:00:00:00:00",
+                         "ip_addresses": [{"family": "ipv4", "address": "203.0.113.1"}]}},
+}}}
+_SYSTEM_INFO_WITH_STORAGE = {"result": {"system_info": {
+    "product_info": {"nozzle_diameter": [0.4, 0.6]},
+    "sd_info": {"capacity": "16 GB", "total_bytes": 16000000000},
+}}}
 
 
-def _mock_moonraker():
+def _mock_moonraker(system_info=None):
     methods_seen = []
+    system_info = system_info if system_info is not None else _SYSTEM_INFO
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -65,6 +88,7 @@ def _mock_moonraker():
             if self.path == "/server/info": self._send(_SERVER_INFO)
             elif self.path == "/printer/info": self._send(_PRINTER_INFO)
             elif self.path == "/printer/objects/list": self._send(_OBJECTS_LIST)
+            elif self.path == "/machine/system_info": self._send(system_info)
             elif self.path.startswith("/server/history/list"): self._send(_HISTORY)
             elif self.path == "/server/history/totals": self._send(_TOTALS)
             elif self.path.startswith("/server/files/metadata"): self._send(_METADATA)
@@ -202,5 +226,115 @@ def test_capabilities_reads_real_bed_and_toolheads():
         c = moonraker.capabilities("127.0.0.1", port, timeout=5)
         assert c["toolhead_count"] == 4
         assert c["bed_mm"] == {"x": 270.0, "y": 270.0, "z": 270.0}
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_reads_nozzle_diameters():
+    httpd, port, seen = _mock_moonraker()
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["nozzle_diameters"] == [0.4, 0.4, 0.4, 0.4]
+        assert ("GET", "/machine/system_info") in seen
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_never_returns_identifying_fields():
+    """The response this test's mock sends carries device_name/serial_number/
+    cpu serial/mac_address/ip_addresses — none of them may survive into the
+    return value, by construction, not because a redaction pass caught them."""
+    httpd, port, _ = _mock_moonraker()
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert set(m.keys()) == {"schema_version", "nozzle_diameters", "storage_bytes"}
+        dumped = json.dumps(m)
+        for leak in ("Test Printer Name", "TEST-SERIAL-DO-NOT-USE", "TEST-CPU-SERIAL",
+                     "00:00:00:00:00:00", "203.0.113.1"):
+            assert leak not in dumped
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_storage_absent_when_firmware_says_unknown():
+    """Real stock U1 firmware reports sd_info.total_bytes=0 / capacity="Unknown"
+    (confirmed live) — this must come back as None, never a fabricated number."""
+    httpd, port, _ = _mock_moonraker()
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["storage_bytes"] is None
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_storage_present_when_firmware_reports_it():
+    httpd, port, _ = _mock_moonraker(system_info=_SYSTEM_INFO_WITH_STORAGE)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["storage_bytes"] == 16000000000
+        assert m["nozzle_diameters"] == [0.4, 0.6]
+    finally:
+        httpd.shutdown()
+
+
+# --- M1: a value that only looks like a measurement is never trusted --------
+#
+# Opus review of 571f4e4: `isinstance(n, (int, float))` alone accepts `True`
+# (bool is an int subclass in Python, and JSON's `true` decodes to one), and
+# neither the old nozzle nor storage check rejected zero, a negative number,
+# or NaN — the last of which especially matters because Python's `json.dumps`
+# writes a bare `NaN` token for it, which is not valid JSON and the desktop's
+# parser cannot read at all.
+
+@pytest.mark.parametrize("bad_nozzle", [
+    [True, True, True, True],           # bool: an int subclass, not a measurement
+    [0.4, 0.4, "0.4", 0.4],              # one non-numeric entry taints the whole reading
+    [0.0, 0.0, 0.0, 0.0],                # zero is "none", not a nozzle
+    [-0.4, 0.4, 0.4, 0.4],               # a negative diameter cannot be real
+    [float("nan"), 0.4, 0.4, 0.4],       # NaN: json.dumps writes a bare, unparseable token
+    [],                                  # an empty list is not a reading either
+])
+def test_machine_info_rejects_junk_nozzle_values(bad_nozzle):
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": bad_nozzle},
+        "sd_info": {"capacity": "Unknown", "total_bytes": 0},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["nozzle_diameters"] is None
+        assert "NaN" not in json.dumps(m)
+    finally:
+        httpd.shutdown()
+
+
+@pytest.mark.parametrize("bad_storage", [True, 0, -1000, float("nan"), float("inf")])
+def test_machine_info_rejects_junk_storage_values(bad_storage):
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": [0.4, 0.4, 0.4, 0.4]},
+        "sd_info": {"capacity": "junk", "total_bytes": bad_storage},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        assert m["storage_bytes"] is None
+    finally:
+        httpd.shutdown()
+
+
+def test_machine_info_result_is_always_valid_json_even_with_nan_in_the_wire_response():
+    """The raw HTTP response itself can legally contain a bare NaN (some
+    firmware/JSON encoders emit it); machine_info's OWN return value must
+    never propagate one regardless of what the wire sent."""
+    system_info = {"result": {"system_info": {
+        "product_info": {"nozzle_diameter": [float("nan"), float("nan")]},
+        "sd_info": {"total_bytes": float("nan")},
+    }}}
+    httpd, port, _ = _mock_moonraker(system_info=system_info)
+    try:
+        m = moonraker.machine_info("127.0.0.1", port, timeout=5)
+        text = json.dumps(m)  # does not raise on a non-finite float — it writes a bare
+                              # NaN token instead, which the assert below is what catches
+        assert "NaN" not in text
     finally:
         httpd.shutdown()

@@ -116,6 +116,110 @@ def test_a_project_without_a_nozzle_size_is_unknown_not_ok():
     assert by_id(out, "nozzle.match")["result"] == pf.UNKNOWN
 
 
+def test_nozzle_reported_by_printer_says_so_in_the_source():
+    """/machine/system_info answering is real firmware evidence — say so, not
+    a generic 'printer configuration'."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "printer firmware"
+
+
+def test_nozzle_confirmed_by_user_is_never_reported_as_printer_evidence():
+    """A user-confirmed nozzle must be distinguishable from a live firmware
+    read — the mandate is explicit that these are different evidence tiers."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="user"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "user confirmed"
+    assert "printer" not in check["source"]
+
+
+def test_nozzle_mismatch_still_flagged_when_only_user_confirmed():
+    """A user-confirmed nozzle that doesn't match the project is just as real
+    and actionable a warning as a printer-reported mismatch."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.2"]),
+                      printer(nozzle_diameters=["0.4"], nozzle_confirmed_by="user"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.ATTENTION
+    assert check["source"] == "user confirmed"
+    assert check["confidence"] == pf.CONFIRMED
+
+
+def test_a_reported_nozzle_with_no_recorded_source_is_neither_printer_nor_user():
+    """L1: a caller can hand this a nozzle_diameters reading with no
+    nozzle_confirmed_by at all — printer_facts()/service.preflight() always
+    stamp one, but a test fixture or another integration might not — and
+    that must never be mislabelled as either evidence tier."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4"]),
+                      printer(nozzle_diameters=["0.4"]))  # no nozzle_confirmed_by
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+    assert check["source"] == "unstated source"
+    assert "printer" not in check["source"] and "user" not in check["source"]
+
+
+def test_nozzle_comparison_tolerates_formatting_and_float_noise():
+    """M3: 0.4, "0.40" and 0.4000000059604645 (real firmware float noise)
+    must all compare equal — a formatting difference is not a mismatch."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.40"]),
+                      printer(nozzle_diameters=[0.4000000059604645], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+
+
+# --- M-B regression: positional comparison needs a genuinely ordered list ---
+#
+# Opus delta review of 9b638c6: nozzle_diameters is deduplicated and sorted by
+# project_traits.py, so it carries no per-toolhead order at all — comparing it
+# position by position against the printer's reading either does nothing (the
+# lengths differ, so it falls back to sets, same as before) or is actively
+# wrong (two DIFFERENT sizes, coincidentally sorted into the same order as the
+# printer's reading, are wrongly flagged ATTENTION even though every toolhead
+# matches). nozzle_diameters_by_toolhead is the fix: the same reading, kept in
+# the slicer's own per-toolhead order, never deduplicated or sorted.
+
+def test_swapped_toolheads_are_caught_only_with_the_ordered_trait():
+    """The project was sliced for [0.4, 0.6] on toolheads 0/1; the printer
+    reports [0.6, 0.4] — same sizes, swapped toolheads, a real mismatch."""
+    out = pf.evaluate(
+        traits(nozzle_diameters=["0.4", "0.6"],
+               nozzle_diameters_by_toolhead=["0.4", "0.6"]),
+        printer(nozzle_diameters=["0.6", "0.4"], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.ATTENTION
+    # The evidence must show the real per-toolhead order on each side, not a
+    # deduplicated set — {0.4, 0.6} vs {0.4, 0.6} would look identical despite
+    # the swap, but "0.4 mm, 0.6 mm" vs "0.6 mm, 0.4 mm" shows it plainly.
+    assert "project expects 0.4 mm, 0.6 mm" in check["evidence"]
+    assert "0.6 mm, 0.4 mm" in check["evidence"]
+
+
+def test_matching_toolhead_order_is_ok_with_the_ordered_trait():
+    """Same case as above, but the printer's order actually matches the
+    project's — this must stay OK, not a false positive from comparing
+    positions that happen to differ only because one side got sorted."""
+    out = pf.evaluate(
+        traits(nozzle_diameters=["0.2", "0.4", "0.6", "0.8"],
+               nozzle_diameters_by_toolhead=["0.4", "0.2", "0.6", "0.8"]),
+        printer(nozzle_diameters=["0.4", "0.2", "0.6", "0.8"], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+
+
+def test_without_the_ordered_trait_falls_back_to_todays_set_comparison():
+    """A caller that only sets nozzle_diameters (an older trait shape, or any
+    fixture that predates nozzle_diameters_by_toolhead) must keep working
+    exactly as before — this is what every other nozzle test in this file
+    relies on."""
+    out = pf.evaluate(traits(nozzle_diameters=["0.4", "0.6"]),
+                      printer(nozzle_diameters=["0.6", "0.4"], nozzle_confirmed_by="printer"))
+    check = by_id(out, "nozzle.match")
+    assert check["result"] == pf.OK
+
+
 # --- the bed ----------------------------------------------------------------
 
 def test_bed_uses_the_printers_real_dimensions_in_its_evidence():

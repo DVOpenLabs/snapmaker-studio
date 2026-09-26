@@ -90,7 +90,37 @@ def test_the_timeline_counts_layers_tools_and_pauses(multi):
 def test_it_records_when_each_tool_arrives_and_leaves(multi):
     plan = print_plan.scan(multi)
     assert plan["tool_first_layer"]["3"] == 3
-    assert plan["tool_last_layer"]["0"] == 2
+    # Tool 0 is still the selected tool at the instant layer 3's own
+    # ;LAYER_CHANGE line is read, one line before T3 fires — so 3, not 2, is
+    # where it was last credited (the carry-forward fix, tested in isolation
+    # below). This is a conservative upper bound on selection, not a claim
+    # tool 0 extruded anything on layer 3.
+    assert plan["tool_last_layer"]["0"] == 3
+
+
+# --- carrying a tool forward through layers with no repeated T-command -----
+#
+# What survives from the three-round tool-coexistence attempt (see git log
+# and the module docstring): tool_first_layer/tool_last_layer must reflect
+# every layer a tool was actually selected on, not only the layer its own
+# T-line happens to sit on. Whether two tools ever shared a layer is a
+# separate question this module does not attempt to answer — three attempts
+# each found a different way the file alone cannot prove it either way.
+
+def test_a_tool_carried_across_many_layers_has_its_last_layer_extended(tmp_path):
+    """A real slicer issues T<n> once and keeps using it for many layers
+    without repeating the line, so tool_last_layer must reflect every layer
+    it was carried through — not stay stuck at wherever its one T-line
+    happened to be."""
+    body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 E1\n"
+            ";LAYER_CHANGE\n;Z:0.4\nG1 X1 E1\n"
+            ";LAYER_CHANGE\n;Z:0.6\nG1 X1 E1\n"
+            ";LAYER_CHANGE\n;Z:0.8\nT1\nG1 X1 E1\n"
+            ";LAYER_CHANGE\n;Z:1.0\n")
+    plan = print_plan.scan(build(tmp_path, body, name="carryover.gcode"))
+    assert plan["tool_first_layer"]["0"] == 0
+    assert plan["tool_last_layer"]["0"] == 4
+    assert plan["tool_first_layer"]["1"] == 4
 
 
 def test_it_reads_the_temperature_targets_the_job_sets(multi):

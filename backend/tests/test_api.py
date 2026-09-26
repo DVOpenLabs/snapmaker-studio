@@ -332,6 +332,36 @@ def test_server_input_validation_returns_400(tmp_path):
         httpd.shutdown()
 
 
+def test_server_preflight_confirmed_nozzle_diameters(tmp_path):
+    """End-to-end: /preflight accepts confirmed_nozzle_diameters, rejects a
+    malformed one with 400, and never lets a bad value reach the engine."""
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        out = str(_sample_u1(tmp_path))
+        # No printer configured (host omitted) — still a valid request; the
+        # engine reports "unreachable"/no live nozzle data, which is exactly
+        # the case confirmed_nozzle_diameters exists to help with.
+        c, b = _post_full(port, "/preflight",
+                          {"path": out, "confirmed_nozzle_diameters": [0.4],
+                           "confirmed_nozzle_at": "2026-09-26"}, token)
+        assert c == 200, b
+        # Rejected: zero is not a valid nozzle diameter.
+        c, b = _post_full(port, "/preflight",
+                          {"path": out, "confirmed_nozzle_diameters": [0.0]}, token)
+        assert c == 400 and "confirmed_nozzle_diameters" in b
+        # Rejected: not a list.
+        c, b = _post_full(port, "/preflight",
+                          {"path": out, "confirmed_nozzle_diameters": "0.4"}, token)
+        assert c == 400 and "confirmed_nozzle_diameters" in b
+        # Absent entirely still works (the existing, pre-this-feature behaviour).
+        c, b = _post_full(port, "/preflight", {"path": out}, token)
+        assert c == 200, b
+    finally:
+        httpd.shutdown()
+
+
 def test_server_400_body_has_no_traceback(tmp_path):
     httpd, token = build_server(port=0)
     _run(httpd)

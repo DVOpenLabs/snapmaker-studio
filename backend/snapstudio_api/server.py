@@ -238,7 +238,10 @@ def _make_handler(token: str):
                     self._send(200, service.preflight(
                         rv.require_path_string(data),
                         host=rv.optional_str(data, "host", "") or None,
-                        port=rv.require_port(data)))
+                        port=rv.require_port(data),
+                        confirmed_nozzle_diameters=rv.optional_positive_float_list(
+                            data, "confirmed_nozzle_diameters"),
+                        confirmed_nozzle_at=rv.optional_str(data, "confirmed_nozzle_at", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
                 except Exception:
