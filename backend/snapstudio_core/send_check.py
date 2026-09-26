@@ -120,10 +120,12 @@ def evaluate(gcode_facts: dict, printer: dict | None,
     for slot in (materials.get("slots") or []):
         sufficiency = slot.get("sufficiency") or {}
         # A blocker says "this print will fail". Only a figure that says where it
-        # came from earns that: a tracked weight, short by more than the tracking
-        # itself can drift. Anything less certain is a warning — stopping someone
-        # from sending a job over bookkeeping that has not been updated since the
-        # last three prints would teach them to ignore the warnings that matter.
+        # came from AND is still fresh earns that — a tool-tracked weight, or a
+        # person's own recently-confirmed one, short by more than the figure
+        # itself can drift (`sufficiency["trusted"]`, computed in material_plan).
+        # Anything less certain is a warning — stopping someone from sending a
+        # job over bookkeeping that has not been updated since the last three
+        # prints would teach them to ignore the warnings that matter.
         if sufficiency.get("verdict") == "insufficient" and sufficiency.get("trusted"):
             items.append(_item(
                 BLOCKER, "Not enough filament in " + slot["label"],

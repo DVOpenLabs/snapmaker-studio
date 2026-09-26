@@ -526,6 +526,19 @@ def _provider_choice(provider: str | None, provider_url: str | None,
     return kind, url
 
 
+def _local_spool_rows(host: str) -> list[dict]:
+    """This printer's local/manual spool notes, or nothing if the library DB
+    cannot be read. A bookkeeping read must never break a printer report."""
+    try:
+        conn = _conn()
+        try:
+            return library.list_spools(conn, host)
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
 def _with_providers(printer: dict, host: str | None, port: int,
                     provider_url: str | None, slot_map: dict | None,
                     slot_base: int | None = None,
@@ -534,24 +547,31 @@ def _with_providers(printer: dict, host: str | None, port: int,
 
     The printer stays authoritative about what is in a slot; a provider can only
     add what the machine cannot know, such as a spool identity or a remaining
-    weight. None of them is required for anything here to work.
+    weight. None of them is required for anything here to work — including the
+    person's own local spool notes, which are offered even when no Spoolman or
+    Bambuddy is configured, because that is the whole point of them existing.
 
-    `provider` names which one to read and is not consulted again after the read
-    returns: everything below this line is handed normalised facts.
+    `provider` names which network provider to read and is not consulted again
+    after the read returns: everything below this line is handed normalised
+    facts.
     """
-    if not provider_url:
+    if not host:
+        return printer
+    local_rows = _local_spool_rows(host)
+    if not provider_url and not local_rows:
         return printer
     from snapstudio_core import material_providers as providers
 
-    states = []
-    if host:
-        states.append(providers.stock_u1(host, port))
-    # Whether the user counted their slots from 0 or from 1 is a fact only they
-    # have. Guessing it puts every spool one slot out and then reports the wrong
-    # material with complete confidence, so the app states it rather than leaving
-    # the engine to infer it from the shape of the map.
-    states.append(providers.read(provider or providers.SPOOLMAN, provider_url,
-                                 slot_map, slot_base=slot_base))
+    states = [providers.stock_u1(host, port)]
+    if provider_url:
+        # Whether the user counted their slots from 0 or from 1 is a fact only
+        # they have. Guessing it puts every spool one slot out and then reports
+        # the wrong material with complete confidence, so the app states it
+        # rather than leaving the engine to infer it from the shape of the map.
+        states.append(providers.read(provider or providers.SPOOLMAN, provider_url,
+                                     slot_map, slot_base=slot_base))
+    if local_rows:
+        states.append(providers.local_spools(local_rows))
     combined = providers.combine(*states)
     loaded = providers.as_loaded_filaments(combined)
     if loaded is not None:
@@ -565,6 +585,122 @@ def _with_providers(printer: dict, host: str | None, port: int,
         printer["material_sources"] = combined.get("sources")
         printer["remaining_known"] = combined.get("remaining_known", False)
     return printer
+
+
+# --- local / manual spools (the fallback with no Spoolman or Bambuddy) -------
+
+def local_spools(host: str) -> dict:
+    """This printer's own local spool notes, one per slot the person has told
+    Studio about — the fallback for a printer with no Spoolman or Bambuddy, or
+    for a slot neither of them tracks."""
+    from snapstudio_core import material_providers as providers
+    conn = _conn()
+    try:
+        rows = library.list_spools(conn, host)
+    finally:
+        conn.close()
+    return providers.local_spools(rows)
+
+
+def save_local_spool(host: str, slot: int, *, material: str | None = None,
+                     subtype: str | None = None, color: str | None = None,
+                     vendor: str | None = None, starting_g: float | None = None,
+                     remaining_g: float | None = None, notes: str | None = None) -> dict:
+    """Record what a person says is on a spool, in their own words, right now.
+
+    A partial update: any field left as None keeps whatever was already on
+    record for this slot, so editing the colour cannot wipe out a remaining
+    weight nobody touched. remaining_g is the one field with two real edges —
+    only ever stamped USER_CONFIRMED, with a fresh timestamp, when THIS call
+    explicitly gives a new figure; otherwise the existing weight, quality and
+    timestamp are carried through, UNLESS this same call also changes the
+    material, subtype, colour or vendor to something different from what was
+    on record. Any of those four changing means a different physical spool
+    went into this slot — a colour or subtype swap (red PLA to blue PLA) is
+    exactly as physical a change as a material or vendor swap — and whatever
+    was known about the OLD spool's remaining weight says nothing about this
+    one; carrying it over would report a made-up spool's weight under the
+    new one's name. That case resets the remaining weight to unknown rather
+    than either guessing or blocking the rest of the edit. Without the
+    general carry-through rule, resending an old, already-DERIVED figure
+    just to change something else would silently turn Studio's own
+    arithmetic back into a claim the person just reconfirmed it. Comparisons
+    are case-insensitive, matching material_providers.combine()'s own
+    normalization — "PLA" replacing "pla" is not a material change.
+    """
+    from snapstudio_core import material_providers as providers
+
+    def _changed(new, old) -> bool:
+        return new is not None and old is not None and str(new).upper() != str(old).upper()
+
+    now = _now()
+    conn = _conn()
+    try:
+        existing = library.get_spool(conn, host, slot) or {}
+        spool_changed = (
+            _changed(material, existing.get("material"))
+            or _changed(subtype, existing.get("subtype"))
+            or _changed(color, existing.get("color"))
+            or _changed(vendor, existing.get("vendor")))
+        if remaining_g is not None:
+            merged_remaining_g = remaining_g
+            remaining_quality = providers.USER_CONFIRMED
+            remaining_as_of = now
+        elif spool_changed:
+            merged_remaining_g = None
+            remaining_quality = None
+            remaining_as_of = None
+        else:
+            merged_remaining_g = existing.get("remaining_g")
+            remaining_quality = existing.get("remaining_quality")
+            remaining_as_of = existing.get("remaining_as_of")
+        library.upsert_spool(
+            conn, host=host, slot=slot,
+            material=material if material is not None else existing.get("material"),
+            subtype=subtype if subtype is not None else existing.get("subtype"),
+            color=color if color is not None else existing.get("color"),
+            vendor=vendor if vendor is not None else existing.get("vendor"),
+            starting_g=starting_g if starting_g is not None else existing.get("starting_g"),
+            remaining_g=merged_remaining_g, remaining_quality=remaining_quality,
+            remaining_as_of=remaining_as_of,
+            notes=notes if notes is not None else existing.get("notes"),
+            updated_at=now)
+        row = library.get_spool(conn, host, slot)
+    finally:
+        conn.close()
+    return row or {}
+
+
+def delete_local_spool(host: str, slot: int) -> None:
+    conn = _conn()
+    try:
+        library.delete_spool(conn, host, slot)
+    finally:
+        conn.close()
+
+
+def mark_local_spool_used(host: str, slot: int, used_g: float) -> dict:
+    """Subtract a confirmed amount from a local spool's remaining weight.
+
+    Only ever reached from an explicit "mark N g as used?" confirmation a
+    person made after a print — never a side effect of slicing, sending or
+    printing. The result is stamped DERIVED (estimated), not USER_CONFIRMED:
+    Studio did the subtraction, the person did not just weigh the spool and
+    tell it a fresh number.
+    """
+    from snapstudio_core import material_providers as providers
+    conn = _conn()
+    try:
+        row = library.apply_spool_usage(
+            conn, host=host, slot=slot, used_g=used_g,
+            remaining_quality=providers.DERIVED, at=_now())
+    finally:
+        conn.close()
+    if row is None:
+        raise ValueError(
+            "no local spool record for that slot with a remaining weight to subtract from — "
+            "give it a remaining weight first")
+    return row
 
 
 def provider_test(url: str, provider: str | None = None) -> dict:

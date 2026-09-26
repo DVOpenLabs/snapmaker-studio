@@ -283,6 +283,51 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception:
                     self._send(500, {"error": "internal error"})
+            elif self.path == "/local_spools":
+                # A person's own spool notes for a printer with no Spoolman or
+                # Bambuddy configured. Read-only.
+                try:
+                    self._send(200, service.local_spools(rv.require_str(data, "host")))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception:
+                    self._send(500, {"error": "internal error"})
+            elif self.path == "/local_spools/save":
+                try:
+                    self._send(200, service.save_local_spool(
+                        rv.require_str(data, "host"),
+                        rv.require_slot_index(data),
+                        material=rv.optional_str(data, "material", "") or None,
+                        subtype=rv.optional_str(data, "subtype", "") or None,
+                        color=rv.optional_str(data, "color", "") or None,
+                        vendor=rv.optional_str(data, "vendor", "") or None,
+                        starting_g=rv.optional_non_negative_float(data, "starting_g", None),
+                        remaining_g=rv.optional_non_negative_float(data, "remaining_g", None),
+                        notes=rv.optional_str(data, "notes", "") or None))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception:
+                    self._send(500, {"error": "internal error"})
+            elif self.path == "/local_spools/delete":
+                try:
+                    service.delete_local_spool(rv.require_str(data, "host"), rv.require_slot_index(data))
+                    self._send(200, {"deleted": True})
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception:
+                    self._send(500, {"error": "internal error"})
+            elif self.path == "/local_spools/mark_used":
+                try:
+                    self._send(200, service.mark_local_spool_used(
+                        rv.require_str(data, "host"),
+                        rv.require_slot_index(data),
+                        rv.require_positive_float(data, "used_g")))
+                except ValueError as e:
+                    # Covers both a bad request body (ValidationError, a ValueError
+                    # subclass) and "no such local spool record" from the service.
+                    self._send(400, {"error": str(e)})
+                except Exception:
+                    self._send(500, {"error": "internal error"})
             elif self.path == "/material_plan":
                 try:
                     slot_map = data.get("slot_map")

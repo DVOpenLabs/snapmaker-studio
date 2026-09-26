@@ -153,6 +153,12 @@ def plan(job_slots: list[dict], loaded: list | None,
             entry["confirmed_by"] = (fact or {}).get("confirmed_by")
             entry["printer_confirmed"] = (fact or {}).get("confirmed_by") == "printer"
             entry["notes"] = list((fact or {}).get("notes") or ())
+            # A provider or local note disagreeing with the printer's own
+            # "empty" observation is recorded as a conflict (combine()), not
+            # a note — surfaced here too, so a caller showing this slot can
+            # explain WHY it says empty despite something else claiming
+            # otherwise, not just state the safe headline with no context.
+            entry["conflicts"] = list((fact or {}).get("conflicts") or ())
             if entry["printer_confirmed"]:
                 entry["detail"] = ("This job prints from this slot and the printer "
                                    "reports it empty.")
@@ -336,25 +342,35 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
 
     from . import freshness as fr
 
-    known = "tracked" if quality in ("tracked", "derived") else "unknown"
+    # A local note's fresh, person-confirmed figure ("user_confirmed") is
+    # neither of these origin-labelled tiers on its own: it did not come from
+    # a bookkeeping tool ("tracked"/"derived"), but it is not unstated either
+    # — someone looked at the spool and said so. It counts as known here, and
+    # as trustworthy exactly as long as it stays fresh, same as a tracked one.
+    known = "tracked" if quality in ("tracked", "derived", "user_confirmed") else "unknown"
     age = fr.assess(as_of)
 
-    # Only a figure that is *both* something a tool has been keeping and recent
-    # enough to still be true may block a send. Two rules, and each was being
-    # broken:
+    # Only a figure that is *both* something a tool has kept track of OR a
+    # person's own fresh word — and recent enough to still be true — may
+    # block a send. Three rules, and each was being broken at some point:
     #
     #  * a DERIVED weight is arithmetic from a declared initial weight, not a
     #    record of consumption, and it used to map to "tracked" and block a print;
     #  * a TRACKED weight nobody has updated in a fortnight used to block one too,
-    #    which is being stopped over bookkeeping rather than over filament.
+    #    which is being stopped over bookkeeping rather than over filament;
+    #  * a USER_CONFIRMED figure is neither of those — someone looked at the
+    #    spool and said so — and while fresh it is trusted exactly like a
+    #    tracked figure, including for blocking a send.
     #
-    # Both now warn. A warning that turns out to be right costs someone a glance
-    # at the spool; a blocker that turns out to be wrong costs them the print they
-    # were told not to start.
-    trusted = quality == "tracked" and age["state"] in (fr.FRESH, fr.AGEING)
+    # Anything not trusted only warns. A warning that turns out to be right
+    # costs someone a glance at the spool; a blocker that turns out to be
+    # wrong costs them the print they were told not to start.
+    trusted = quality in ("tracked", "user_confirmed") and age["state"] in (fr.FRESH, fr.AGEING)
     where = ("tracked spool weight" if quality == "tracked" else
              "spool weight worked out from what the spool held and what has been used"
-             if quality == "derived" else "a remaining weight of unstated origin")
+             if quality == "derived" else
+             "a remaining weight you confirmed yourself" if quality == "user_confirmed" else
+             "a remaining weight of unstated origin")
     since = ""
     if age["state"] not in (fr.UNKNOWN,):
         since = " " + age["detail"]
@@ -381,6 +397,8 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
                "a figure nothing has updated recently" if age["state"] == fr.STALE else
                "a figure worked out from what the spool held rather than one anything "
                "has been keeping" if quality == "derived" else
+               "the figure you confirmed yourself, with little margin to spare"
+               if quality == "user_confirmed" else
                "a figure of unstated origin")
         return {"verdict": "probably_short",
                 "detail": (f"{remaining:g} g recorded and the job needs {needed:g} g — "

@@ -51,3 +51,99 @@ def test_history_and_delete(tmp_path):
     library.delete_project(conn, pid)
     assert library.list_projects(conn) == []
     assert library.get_history(conn, pid) == []
+
+
+# --- local/manual spools ------------------------------------------------------
+
+def test_upsert_spool_then_list_and_get(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype="Matte",
+                         color="#FF0000", vendor="Snapmaker", starting_g=1000.0,
+                         remaining_g=800.0, remaining_quality="user_confirmed",
+                         remaining_as_of="2026-09-26T00:00:00Z", notes=None,
+                         updated_at="2026-09-26T00:00:00Z")
+    rows = library.list_spools(conn, "u1.local")
+    assert len(rows) == 1 and rows[0]["material"] == "PLA" and rows[0]["remaining_g"] == 800.0
+    assert library.get_spool(conn, "u1.local", 0)["color"] == "#FF0000"
+    assert library.get_spool(conn, "u1.local", 1) is None
+
+
+def test_upsert_spool_by_same_host_and_slot_updates_in_place(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype=None,
+                         color="#FF0000", vendor=None, starting_g=1000.0, remaining_g=800.0,
+                         remaining_quality="user_confirmed", remaining_as_of="2026-09-26T00:00:00Z",
+                         notes=None, updated_at="2026-09-26T00:00:00Z")
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PETG", subtype=None,
+                         color="#00FF00", vendor=None, starting_g=1000.0, remaining_g=600.0,
+                         remaining_quality="user_confirmed", remaining_as_of="2026-09-26T01:00:00Z",
+                         notes=None, updated_at="2026-09-26T01:00:00Z")
+    rows = library.list_spools(conn, "u1.local")
+    assert len(rows) == 1
+    assert rows[0]["material"] == "PETG" and rows[0]["remaining_g"] == 600.0
+
+
+def test_spools_are_scoped_per_host(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype=None,
+                         color=None, vendor=None, starting_g=None, remaining_g=None,
+                         remaining_quality=None, remaining_as_of=None, notes=None,
+                         updated_at="2026-09-26T00:00:00Z")
+    library.upsert_spool(conn, host="second-u1.local", slot=0, material="ABS", subtype=None,
+                         color=None, vendor=None, starting_g=None, remaining_g=None,
+                         remaining_quality=None, remaining_as_of=None, notes=None,
+                         updated_at="2026-09-26T00:00:00Z")
+    assert [r["material"] for r in library.list_spools(conn, "u1.local")] == ["PLA"]
+    assert [r["material"] for r in library.list_spools(conn, "second-u1.local")] == ["ABS"]
+
+
+def test_delete_spool_removes_only_that_slot(tmp_path):
+    conn = _db(tmp_path)
+    for slot in (0, 1):
+        library.upsert_spool(conn, host="u1.local", slot=slot, material="PLA", subtype=None,
+                             color=None, vendor=None, starting_g=None, remaining_g=None,
+                             remaining_quality=None, remaining_as_of=None, notes=None,
+                             updated_at="2026-09-26T00:00:00Z")
+    library.delete_spool(conn, "u1.local", 0)
+    rows = library.list_spools(conn, "u1.local")
+    assert [r["slot"] for r in rows] == [1]
+
+
+def test_apply_spool_usage_subtracts_and_marks_estimated(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype=None,
+                         color=None, vendor=None, starting_g=1000.0, remaining_g=800.0,
+                         remaining_quality="user_confirmed", remaining_as_of="2026-09-26T00:00:00Z",
+                         notes=None, updated_at="2026-09-26T00:00:00Z")
+    updated = library.apply_spool_usage(conn, host="u1.local", slot=0, used_g=50.0,
+                                        remaining_quality="derived", at="2026-09-26T02:00:00Z")
+    assert updated["remaining_g"] == 750.0
+    assert updated["remaining_quality"] == "derived"
+    assert updated["remaining_as_of"] == "2026-09-26T02:00:00Z"
+
+
+def test_apply_spool_usage_never_goes_negative(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype=None,
+                         color=None, vendor=None, starting_g=1000.0, remaining_g=30.0,
+                         remaining_quality="user_confirmed", remaining_as_of="2026-09-26T00:00:00Z",
+                         notes=None, updated_at="2026-09-26T00:00:00Z")
+    updated = library.apply_spool_usage(conn, host="u1.local", slot=0, used_g=50.0,
+                                        remaining_quality="derived", at="2026-09-26T02:00:00Z")
+    assert updated["remaining_g"] == 0.0
+
+
+def test_apply_spool_usage_on_a_record_with_no_record_ever_is_none(tmp_path):
+    conn = _db(tmp_path)
+    assert library.apply_spool_usage(conn, host="u1.local", slot=0, used_g=10.0,
+                                     remaining_quality="derived", at="2026-09-26T00:00:00Z") is None
+
+
+def test_apply_spool_usage_on_a_record_with_no_remaining_weight_is_none(tmp_path):
+    conn = _db(tmp_path)
+    library.upsert_spool(conn, host="u1.local", slot=0, material="PLA", subtype=None,
+                         color=None, vendor=None, starting_g=1000.0, remaining_g=None,
+                         remaining_quality=None, remaining_as_of=None, notes=None,
+                         updated_at="2026-09-26T00:00:00Z")
+    assert library.apply_spool_usage(conn, host="u1.local", slot=0, used_g=10.0,
+                                     remaining_quality="derived", at="2026-09-26T02:00:00Z") is None

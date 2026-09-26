@@ -10,7 +10,15 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 
-SCHEMA_VERSION = 1
+# Bumping this is a ONE-WAY upgrade for whoever's local DB was already at a
+# lower version: `_migrate` refuses (LibraryVersionError, never silently
+# downgrades or drops data) to open a DB whose recorded `user_version` is
+# HIGHER than what the running app understands. A person who upgrades
+# Studio, opens it once (migrating their local library.db to this version),
+# and then reinstalls an older release will see that refusal on their own
+# library until they upgrade again. There is no reverse migration — schema
+# changes here are additive only, and going backwards is not supported.
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -35,6 +43,22 @@ CREATE TABLE IF NOT EXISTS project_tags (
 CREATE TABLE IF NOT EXISTS history (
   id INTEGER PRIMARY KEY, project_id INTEGER,
   action TEXT, detail TEXT, at TEXT
+);
+CREATE TABLE IF NOT EXISTS spools (
+  id INTEGER PRIMARY KEY,
+  host TEXT NOT NULL,
+  slot INTEGER NOT NULL,
+  material TEXT,
+  subtype TEXT,
+  color TEXT,
+  vendor TEXT,
+  starting_g REAL,
+  remaining_g REAL,
+  remaining_quality TEXT,
+  remaining_as_of TEXT,
+  notes TEXT,
+  updated_at TEXT NOT NULL,
+  UNIQUE(host, slot)
 );
 """
 
@@ -150,3 +174,78 @@ def get_history(conn: sqlite3.Connection, project_id: int) -> list[dict]:
     rows = conn.execute("SELECT * FROM history WHERE project_id=? ORDER BY at DESC",
                         (project_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+# --- local/manual spools -----------------------------------------------------
+#
+# A person's own record of what is on a spool, for a printer that has no
+# Spoolman or Bambuddy — or for a slot neither of those tracks. Keyed by the
+# printer's address plus the slot number, exactly like the U1 connection
+# itself is addressed everywhere else in Studio: local-only, never synced,
+# never read by anything but the person who typed it in.
+
+def upsert_spool(conn: sqlite3.Connection, *, host: str, slot: int,
+                 material: str | None, subtype: str | None, color: str | None,
+                 vendor: str | None, starting_g: float | None,
+                 remaining_g: float | None, remaining_quality: str | None,
+                 remaining_as_of: str | None, notes: str | None,
+                 updated_at: str) -> int:
+    """Insert or update one local spool record, keyed by (host, slot)."""
+    with conn:
+        conn.execute(
+            """INSERT INTO spools
+                 (host, slot, material, subtype, color, vendor, starting_g,
+                  remaining_g, remaining_quality, remaining_as_of, notes, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(host, slot) DO UPDATE SET
+                 material=excluded.material, subtype=excluded.subtype,
+                 color=excluded.color, vendor=excluded.vendor,
+                 starting_g=excluded.starting_g, remaining_g=excluded.remaining_g,
+                 remaining_quality=excluded.remaining_quality,
+                 remaining_as_of=excluded.remaining_as_of, notes=excluded.notes,
+                 updated_at=excluded.updated_at""",
+            (host, slot, material, subtype, color, vendor, starting_g, remaining_g,
+             remaining_quality, remaining_as_of, notes, updated_at),
+        )
+    row = conn.execute("SELECT id FROM spools WHERE host=? AND slot=?", (host, slot)).fetchone()
+    return int(row["id"])
+
+
+def list_spools(conn: sqlite3.Connection, host: str) -> list[dict]:
+    rows = conn.execute("SELECT * FROM spools WHERE host=? ORDER BY slot",
+                        (host,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_spool(conn: sqlite3.Connection, host: str, slot: int) -> dict | None:
+    row = conn.execute("SELECT * FROM spools WHERE host=? AND slot=?",
+                       (host, slot)).fetchone()
+    return dict(row) if row else None
+
+
+def delete_spool(conn: sqlite3.Connection, host: str, slot: int) -> None:
+    with conn:
+        conn.execute("DELETE FROM spools WHERE host=? AND slot=?", (host, slot))
+
+
+def apply_spool_usage(conn: sqlite3.Connection, *, host: str, slot: int,
+                      used_g: float, remaining_quality: str,
+                      at: str) -> dict | None:
+    """Subtract a confirmed amount used from a spool's remaining weight.
+
+    Only ever called from the one place a person explicitly confirmed "mark
+    this much used" — never as a side effect of slicing, sending or printing.
+    A spool Studio has no record of, or with no remaining weight to subtract
+    from, is left alone rather than guessed at; the caller gets None either
+    way and must not invent a row.
+    """
+    existing = get_spool(conn, host, slot)
+    if not existing or existing.get("remaining_g") is None:
+        return None
+    remaining = max(0.0, round(float(existing["remaining_g"]) - float(used_g), 1))
+    with conn:
+        conn.execute(
+            """UPDATE spools SET remaining_g=?, remaining_quality=?, remaining_as_of=?,
+                 updated_at=? WHERE host=? AND slot=?""",
+            (remaining, remaining_quality, at, at, host, slot))
+    return get_spool(conn, host, slot)
