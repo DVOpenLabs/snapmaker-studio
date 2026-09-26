@@ -25,10 +25,13 @@ layer that keeps using the same tool.
 
 That is selection, not confirmed extrusion — a `T<n>` line proves the active
 tool changed, not that filament was actually deposited before the next change.
-Two tools never selected on the same layer number are a fact read straight off
-the G-code the slicer wrote; two selected on the same layer number are reported
-as exactly that — selected together — never as "printed together" or "proven",
-which would be a claim about motion this module does not read.
+And carrying a tool forward through every layer it was not switched away from
+means an ordinary sequential swap always lands the outgoing and incoming tool
+on the very same boundary layer — that is not evidence they shared it, only
+that a slicer put the tool-change line on one side of the boundary rather than
+the other. Only a layer where the active tool changed twice or more — a real
+mid-layer switch, not a handoff — counts as proof of sharing; see the
+`tool_coexistence` section below for exactly how that is drawn.
 
 **Cost.** A pass over a 330 MB job takes a few seconds, so this is deliberately
 separate from the cheap facts: the Post-Slice Doctor answers immediately, and the
@@ -103,6 +106,15 @@ def scan(path: str | Path) -> dict:
     current_tool: int | None = None
     events: list[dict] = []
     tool_layers: dict[int, list[int]] = {}
+    # How many *changes* of the active tool happened while scanning each
+    # layer — not which tools, how many switches. A layer with exactly one
+    # switch on it is an ordinary clean handoff: one tool's last moment and
+    # the next tool's first, wherever the G-code chose to place the line.
+    # That is not evidence the two were ever on the plate together, only that
+    # neither the file nor this scan can prove they were not. Two or more
+    # switches on the same layer is different: something really did select a
+    # second tool without a full layer between it and the first.
+    tool_change_layer_counts: dict[int, int] = {}
     tool_changes = 0
     pauses = 0
     objects = 0
@@ -175,6 +187,7 @@ def scan(path: str | Path) -> dict:
                         if index != current_tool:
                             tool_changes += 1
                             add("tool", tool=index, previous=current_tool)
+                            tool_change_layer_counts[layer] = tool_change_layer_counts.get(layer, 0) + 1
                             current_tool = index
                         tool_layers.setdefault(index, []).append(layer)
                         continue
@@ -213,11 +226,12 @@ def scan(path: str | Path) -> dict:
 
     first_tool = next((e["tool"] for e in events if e["kind"] == "tool"), None)
     last_tool = next((e["tool"] for e in reversed(events) if e["kind"] == "tool"), None)
+    ambiguous_layers = {l for l, count in tool_change_layer_counts.items() if count <= 1}
     # A capped scan stopped part-way through the file. A tool introduced after
     # the cap would look disjoint from everything only because the scan never
     # saw where it actually went — that is not proof of anything, so no
     # coexistence claim is made on a truncated scan rather than a wrong one.
-    coexistence = [] if truncated else _tool_coexistence(tool_layers)
+    coexistence = [] if truncated else _tool_coexistence(tool_layers, ambiguous_layers)
     disjoint = [] if truncated else _provably_disjoint(tool_layers, coexistence)
 
     out.update({
@@ -251,24 +265,40 @@ def scan(path: str | Path) -> dict:
 # colours *can* land on the same layer. Once the job is sliced, tool_layers
 # (built during the scan above) holds, for every tool, every layer it was the
 # SELECTED tool on — carried forward across layers that repeat no T-command,
-# not just the layers a T<n> line literally appears on. Whether two tools were
-# ever selected on the very same layer is then a plain set question. It is
-# still a claim about selection, not about confirmed extrusion: a tool can be
-# selected and not deposit anything before the next change (a purge move, a
-# priming pass in start G-code). "Selected on the same layer" is the honest
-# ceiling on what this can say; "printed together" would be a claim about
-# motion this scan does not read.
+# not just the layers a T<n> line literally appears on.
+#
+# That carry-forward is what makes a plain set intersection unsafe on its own:
+# a slicer places a tool-change command at ONE side of a layer boundary — the
+# tail of the layer that is ending, or the head of the one starting — never
+# both, and never because the two tools genuinely shared the layer. Crediting
+# the outgoing tool up to that boundary (to fix the layers-with-no-repeated-
+# T-command undercount) means the outgoing and incoming tool always intersect
+# on exactly that one boundary layer, for every ordinary sequential swap in
+# the file — which would make the "proven to share" claim fire on every swap
+# and never on nothing, the opposite of proof.
+#
+# The distinction that survives is COUNT: a layer where the active tool
+# changed exactly once is an ordinary handoff, evidence of nothing beyond
+# "the file does not say these avoid each other". A layer where it changed
+# TWICE OR MORE — T0 to T1 and back to T0 without a layer between them, say —
+# is different: something really did select a second tool mid-layer, and an
+# intersection landing there is real. Only layers meeting that bar count as
+# proof; a single-change layer is excluded from every pair's intersection.
 
-def _tool_coexistence(tool_layers: dict[int, list[int]]) -> list[dict]:
+def _tool_coexistence(tool_layers: dict[int, list[int]],
+                      ambiguous_layers: set[int]) -> list[dict]:
     """For every pair of tools this job actually used, were they ever the
-    selected tool on the same layer number? Read from the G-code's own tool
-    changes and layer markers, never estimated from a height range."""
+    selected tool on the same layer, at a point that isn't just an ordinary
+    single handoff between them? Read from the G-code's own tool changes and
+    layer markers, never estimated from a height range. `ambiguous_layers` are
+    layers with at most one tool change on them — see the module comment
+    above for why those cannot be used as proof of sharing."""
     sets = {tool: set(layers) for tool, layers in tool_layers.items() if layers}
     tools = sorted(sets)
     out = []
     for i, a in enumerate(tools):
         for b in tools[i + 1:]:
-            shared = sorted(sets[a] & sets[b])
+            shared = sorted((sets[a] & sets[b]) - ambiguous_layers)
             out.append({
                 "tools": [a, b],
                 "shares_a_layer": bool(shared),
@@ -369,9 +399,13 @@ def narrate(plan: dict, facts: dict | None = None,
             key=lambda pair: pair[1]):
         if layers_total and layer < layers_total - 1 and len(introduced) > 1:
             lines.append({
-                "at": f"Layer {layer}",
+                "at": _ordinal_layer(layer).capitalize(),
                 "text": f"Slot {tool + 1} is finished with",
-                "evidence": f"last T{tool} at layer {layer}",
+                # Not necessarily a literal T{tool} line at this layer: once a
+                # tool is carried forward through every layer it stays
+                # selected on, this is the last layer it was still the
+                # selected tool for, which may be later than its last T-line.
+                "evidence": f"T{tool} last selected through layer {layer}",
             })
 
     # A selection overlap color_plan cannot see before the job is sliced. Only
@@ -388,7 +422,15 @@ def narrate(plan: dict, facts: dict | None = None,
         lines.append({
             "at": _ordinal_layer(layer).capitalize(),
             "text": f"Slot {a + 1} and slot {b + 1} are both selected on the same layer",
-            "evidence": f"T{a} and T{b} both appear at layer {layer}",
+            # Not "T{a} and T{b} both appear at layer {layer}": either one can
+            # be carried forward onto this layer from an earlier T-line
+            # rather than have its own switch here. What is actually proven,
+            # regardless of which of the two switched here, is that the
+            # active tool changed more than once while this layer was
+            # current — a real mid-layer switch, not just a handoff — and
+            # that both slots were the selected tool at some point during it.
+            "evidence": (f"the active tool changed more than once at layer {layer}, "
+                        f"and slot {a + 1} and slot {b + 1} were both selected during it"),
         })
 
     for event in plan.get("events", []):

@@ -98,35 +98,44 @@ def test_it_records_when_each_tool_arrives_and_leaves(multi):
 
 # --- post-slice tool coexistence ---------------------------------------------
 
-def test_multi_tool_transitions_touch_the_layer_they_switch_on(multi):
-    """Every tool change in MULTI_BODY happens mid-layer — the outgoing tool
-    is still credited to the layer a T-command switches away from it, and the
-    incoming tool is credited to that same layer number, because both really
-    were selected somewhere in that layer's G-code span. Before the
-    carry-forward fix (crediting the current tool on every layer change, not
-    only on a repeated T-command), a tool used across many layers with a
-    single T-line recorded just that one layer and looked wrongly disjoint
-    from anything introduced later, however much their ranges really met."""
+def test_multi_body_sequential_swaps_are_ordinary_handoffs_not_proven_sharing(multi):
+    """Opus delta review of 8d5cfac (BLOCK, HIGH-1): crediting the outgoing
+    tool up to the boundary layer made EVERY sequential swap look like
+    "proven sharing", because the outgoing and incoming tool always land on
+    that one boundary layer together — which is true of a completely clean
+    handoff too, and made the feature unable to ever report a disjoint pair.
+    MULTI_BODY changes tool exactly once per transition layer (0, 1, 2, 3, 5
+    each see a single switch) — an ordinary sequence of handoffs, with no
+    layer where the active tool changed more than once. None of that is
+    proof of sharing, so every pair here stays unproven and every tool is
+    provably safe to swap."""
     plan = print_plan.scan(multi)
-    pairs = {tuple(p["tools"]): p for p in plan["tool_coexistence"]}
-    assert pairs[(0, 1)]["shares_a_layer"] is True
-    assert pairs[(0, 1)]["first_shared_layer"] == 1
-    assert pairs[(0, 3)]["shares_a_layer"] is True
-    assert pairs[(0, 3)]["first_shared_layer"] == 3
-    assert pairs[(1, 3)]["shares_a_layer"] is True
-    assert pairs[(1, 3)]["first_shared_layer"] == 5
-    # Every tool here touches a neighbour at its own transition layer, so none
-    # of them is provably safe to swap without checking that layer by hand.
+    assert all(not pair["shares_a_layer"] for pair in plan["tool_coexistence"])
+    assert plan["tools_provably_disjoint"] == [0, 1, 3]
+
+
+def test_two_switches_on_one_layer_is_proven_sharing(tmp_path):
+    """The case single-switch handoffs must be told apart from: T0 switches
+    to T1 and back to T0 WITHOUT a layer change in between — two switches on
+    the same layer, real evidence something used two tools within one
+    layer's G-code, not just a slicer's choice of which side of a boundary to
+    put one tool-change line on."""
+    body = "T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1 E1\nT1\nG1 X2 Y2 E1\nT0\n;LAYER_CHANGE\n;Z:0.4\n"
+    plan = print_plan.scan(build(tmp_path, body, name="two-switches.gcode"))
+    pair = next(p for p in plan["tool_coexistence"] if p["tools"] == [0, 1])
+    assert pair["shares_a_layer"] is True
+    assert pair["first_shared_layer"] == 1
     assert plan["tools_provably_disjoint"] == []
 
 
-def test_a_tool_carried_across_many_layers_is_credited_to_all_of_them(tmp_path):
-    """The bug this fix closes, isolated: a real slicer issues T<n> once and
-    keeps using it for many layers without repeating the line. tool_last_layer
-    must reflect every layer it was carried through, and a tool introduced
-    later must show up as sharing the layer where the switch actually happens
-    — not as disjoint just because the first tool's own T-line was far
-    earlier in the file."""
+def test_a_tool_carried_across_many_layers_has_its_last_layer_extended(tmp_path):
+    """The carry-forward fix in isolation, apart from the coexistence
+    question: a real slicer issues T<n> once and keeps using it for many
+    layers without repeating the line, so tool_last_layer must reflect every
+    layer it was carried through — not stay stuck at wherever its one T-line
+    happened to be. A single switch away from it later is still an ordinary
+    handoff (see test_two_switches_on_one_layer_is_proven_sharing for what
+    is NOT ordinary), so no coexistence is claimed from this alone."""
     body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 E1\n"
             ";LAYER_CHANGE\n;Z:0.4\nG1 X1 E1\n"
             ";LAYER_CHANGE\n;Z:0.6\nG1 X1 E1\n"
@@ -136,8 +145,8 @@ def test_a_tool_carried_across_many_layers_is_credited_to_all_of_them(tmp_path):
     assert plan["tool_first_layer"]["0"] == 0
     assert plan["tool_last_layer"]["0"] == 4
     pair = next(p for p in plan["tool_coexistence"] if p["tools"] == [0, 1])
-    assert pair["shares_a_layer"] is True
-    assert pair["first_shared_layer"] == 4
+    assert pair["shares_a_layer"] is False
+    assert plan["tools_provably_disjoint"] == [0, 1]
 
 
 def test_a_single_tool_job_has_no_coexistence_pairs(tmp_path):
@@ -150,11 +159,14 @@ def test_a_single_tool_job_has_no_coexistence_pairs(tmp_path):
 def test_coexistence_makes_no_claim_when_the_scan_was_truncated(tmp_path, monkeypatch):
     """A tool introduced after the event cap would look disjoint from
     everything only because the scan never saw where it actually went — that
-    is not proof of anything, so nothing is claimed on a truncated scan."""
-    monkeypatch.setattr(print_plan, "MAX_EVENTS", 2)
+    is not proof of anything, so nothing is claimed on a truncated scan. The
+    cap has to land AFTER real tool events are recorded, or this would pass
+    against unfixed code too — asserted explicitly below."""
+    monkeypatch.setattr(print_plan, "MAX_EVENTS", 8)
     body = "".join(f"T{i % 2}\n;LAYER_CHANGE\n;Z:{i / 10}\n" for i in range(50))
     plan = print_plan.scan(build(tmp_path, body, name="truncated.gcode"))
     assert plan["truncated"] is True
+    assert len(plan["tools_seen"]) >= 2, "the cap hit before any tool event was recorded"
     assert plan["tool_coexistence"] == []
     assert plan["tools_provably_disjoint"] == []
 
