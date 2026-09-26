@@ -1,0 +1,1317 @@
+{
+  "schema_version": "hardware/1",
+  "printer": "<printer-on-lan>",
+  "read_only_routes": [
+    "/printer/status",
+    "/printer/capabilities",
+    "/printer/firmware",
+    "/preflight",
+    "/post_slice",
+    "/send_check",
+    "/material_plan"
+  ],
+  "checks": [
+    {
+      "name": "Printer discovered and answering",
+      "ok": true,
+      "detail": "print state: standby"
+    },
+    {
+      "name": "Firmware object list enumerated",
+      "ok": true,
+      "detail": "205 objects"
+    },
+    {
+      "name": "Printer reports its own bed size",
+      "ok": true,
+      "detail": "271 × 335 × 281 mm"
+    },
+    {
+      "name": "Printer reports its toolhead count",
+      "ok": true,
+      "detail": "4 toolheads"
+    },
+    {
+      "name": "Preflight ran against the real machine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Loaded filament read from the real firmware",
+      "ok": true,
+      "detail": "#000000 PETG, #F55A7C PLA Matte, #8E24AA PLA Matte, #1E88E5 PLA Matte"
+    },
+    {
+      "name": "Each loaded slot carries a material and a colour",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Fitted nozzle is reported as unknown, not unsupported",
+      "ok": true,
+      "detail": "Nozzle size — check this yourself"
+    },
+    {
+      "name": "Nothing undetected is called unsupported",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "The printer's own bed size was used in the bed check",
+      "ok": true,
+      "detail": "1 object(s) fall outside this printer's 271.0 × 335.0 × 281.0 mm area"
+    },
+    {
+      "name": "Project materials compared against the machine's toolheads",
+      "ok": true,
+      "detail": "project uses 6 filament slot(s); printer reports 4 toolheads"
+    },
+    {
+      "name": "Project materials compared against what is actually loaded",
+      "ok": true,
+      "detail": "printer reports 4 loaded; project uses 6"
+    },
+    {
+      "name": "Preflight recorded the printer as found",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Sliced job joined to the real printer",
+      "ok": true,
+      "detail": "1 thing(s) Studio cannot check for you."
+    },
+    {
+      "name": "The tool the job needs is confirmed to exist",
+      "ok": true,
+      "detail": "the job prints from slot 2; this printer reports 4 toolheads"
+    },
+    {
+      "name": "The slot the job prints from is confirmed loaded",
+      "ok": true,
+      "detail": "1 slot(s) in use, all reporting a spool"
+    },
+    {
+      "name": "Loaded material checked against the job's material",
+      "ok": true,
+      "detail": "1 slot(s) compared at material-family level"
+    },
+    {
+      "name": "The job's bed is compared with the printer's own bed",
+      "ok": true,
+      "detail": "sliced for 270.0 × 270.0 mm; this printer reports 271.0 × 335.0 mm"
+    },
+    {
+      "name": "Fitted nozzle stays unknown after slicing too",
+      "ok": true,
+      "detail": "Nozzle size — check this yourself"
+    },
+    {
+      "name": "Nothing undetected is called unsupported after slicing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "The send check fingerprints what it looked at",
+      "ok": true,
+      "detail": "token 943d1359…"
+    },
+    {
+      "name": "The fingerprint carries the machine's real loadout",
+      "ok": true,
+      "detail": "4 slot(s) with a spool"
+    },
+    {
+      "name": "Filament sufficiency stays unknown on a stock printer",
+      "ok": true,
+      "detail": "slot 2: unknown"
+    },
+    {
+      "name": "Nothing on a stock printer is called short of filament",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Community firmware is not claimed on a stock machine",
+      "ok": true,
+      "detail": "119 macros, many=true"
+    },
+    {
+      "name": "Not finding a firmware marker is never called stock",
+      "ok": true,
+      "detail": "no community firmware answered for itself on the paths Studio knows about — which is not the same as this printer running stock firmware"
+    },
+    {
+      "name": "The real machine is identified as a Snapmaker U1",
+      "ok": true,
+      "detail": "snapmaker_u1 (confirmed)"
+    },
+    {
+      "name": "Identification is drawn from the printer's own vendor object",
+      "ok": true,
+      "detail": "the printer exposes the print_task_config object, which mainline Klipper does not have; it reports 4 toolheads, as this profile records"
+    },
+    {
+      "name": "The U1 profile still reads as hardware verified",
+      "ok": true,
+      "detail": "Hardware verified"
+    },
+    {
+      "name": "The live toolhead count is used, not the profile's",
+      "ok": true,
+      "detail": "4 from live"
+    },
+    {
+      "name": "The live bed is used, not the profile's",
+      "ok": true,
+      "detail": "271 × 335 × 281 from live"
+    },
+    {
+      "name": "Travel beyond the printable plate is not called a conflict",
+      "ok": true,
+      "detail": "0 conflict(s)"
+    },
+    {
+      "name": "Loaded filament is recorded as the printer's own observation",
+      "ok": true,
+      "detail": "4 slot(s) from live"
+    },
+    {
+      "name": "All four toolhead temperature channels still come back",
+      "ok": true,
+      "detail": "4 channel(s)"
+    },
+    {
+      "name": "A U1-targeted job matches this identified U1",
+      "ok": true,
+      "detail": "the file says it was sliced for Snapmaker U1"
+    },
+    {
+      "name": "The firmware summary names this machine, having identified it",
+      "ok": true,
+      "detail": "Your Snapmaker U1 reports 4 toolheads, 271.0×335.0×281.0 mm bed; 7 capabilities detected (119 custom macros on it)."
+    },
+    {
+      "name": "No material provider ran, and none was contacted",
+      "ok": true,
+      "detail": "sources=undefined remaining_known=false"
+    },
+    {
+      "name": "What the plan compares against came from the printer itself",
+      "ok": true,
+      "detail": "slot 1:printer, slot 2:printer, slot 3:printer, slot 4:printer"
+    },
+    {
+      "name": "An address that answers nothing gets a generic hint",
+      "ok": true,
+      "detail": "Nothing answered Moonraker at that address. Check the printer is powered on and on this network, and that the address and port are the ones it shows. If it is a Snapmaker U1, its network interface only opens once Advanced Mode is turned on under Settings → Maintenance on the touchscreen."
+    }
+  ],
+  "passed": 39,
+  "total": 39,
+  "evidence": {
+    "status": {
+      "schema_version": "printer/1",
+      "host": "<printer-on-lan>",
+      "port": 7125,
+      "print_state": "standby",
+      "filename": null,
+      "message": null,
+      "progress": 0,
+      "print_duration_s": 0,
+      "total_duration_s": 0,
+      "filament_used_mm": 0,
+      "current_layer": null,
+      "total_layer": null,
+      "speed_factor": 1,
+      "extrude_factor": 1,
+      "bed": {
+        "temperature": 23,
+        "target": 0
+      },
+      "toolheads": [
+        {
+          "index": 0,
+          "temperature": 25,
+          "target": 0,
+          "active": false
+        },
+        {
+          "index": 1,
+          "temperature": 25,
+          "target": 0,
+          "active": false
+        },
+        {
+          "index": 2,
+          "temperature": 25,
+          "target": 0,
+          "active": false
+        },
+        {
+          "index": 3,
+          "temperature": 25,
+          "target": 0,
+          "active": false
+        }
+      ]
+    },
+    "capabilities": {
+      "schema_version": "printer/1",
+      "host": "<printer-on-lan>",
+      "port": 7125,
+      "toolhead_count": 4,
+      "bed_mm": {
+        "x": 271,
+        "y": 335,
+        "z": 281
+      },
+      "klipper_objects": [
+        "gcode",
+        "webhooks",
+        "exception_manager",
+        "configfile",
+        "mcu",
+        "mcu e0",
+        "mcu e1",
+        "mcu e2",
+        "mcu e3",
+        "gcode_move",
+        "print_stats",
+        "gcode_macro _PL_SAVE_VARIABLE",
+        "virtual_sdcard",
+        "pause_resume",
+        "display_status",
+        "gcode_macro M600",
+        "gcode_macro T4",
+        "gcode_macro T5",
+        "gcode_macro T6",
+        "gcode_macro T7",
+        "gcode_macro T8",
+        "gcode_macro T9",
+        "gcode_macro T10",
+        "gcode_macro T11",
+        "gcode_macro T12",
+        "gcode_macro T13",
+        "gcode_macro T14",
+        "gcode_macro T15",
+        "gcode_macro T16",
+        "gcode_macro T17",
+        "gcode_macro T18",
+        "gcode_macro T19",
+        "gcode_macro T20",
+        "gcode_macro T21",
+        "gcode_macro T22",
+        "gcode_macro T23",
+        "gcode_macro T24",
+        "gcode_macro T25",
+        "gcode_macro T26",
+        "gcode_macro T27",
+        "gcode_macro T28",
+        "gcode_macro T29",
+        "gcode_macro T30",
+        "gcode_macro T31",
+        "gcode_macro MOVE_TO_DISCARD_FILAMENT_POSITION",
+        "gcode_macro SHAPER_CALIBRATE",
+        "gcode_macro PRINT_START",
+        "gcode_macro PRINT_PRESTART_CHECK",
+        "gcode_macro PRINT_END",
+        "gcode_macro CANCEL_PRINT",
+        "gcode_macro INNER_PAUSE",
+        "gcode_macro INNER_RESUME",
+        "gcode_macro SET_PAUSE_NEXT_LAYER",
+        "gcode_macro SET_PAUSE_AT_LAYER",
+        "gcode_macro SET_PRINT_STATS_INFO",
+        "gcode_macro _CLIENT_EXTRUDE",
+        "gcode_macro _CLIENT_RETRACT",
+        "gcode_macro INNER_FILAMENT_UNLOAD",
+        "gcode_macro AUTO_FEEDING",
+        "gcode_macro AUTO_FEEDING_PREHEAT",
+        "gcode_macro MANUAL_FEEDING",
+        "gcode_macro FEEDING_RUNOUT_EVENT_HANDLE",
+        "gcode_macro ROUGHLY_CLEAN_NOZZLE",
+        "gcode_macro ROUGHLY_CLEAN_NOZZLE_WITH_DISCARD",
+        "gcode_macro FINELY_CLEAN_NOZZLE_STAGE_1",
+        "gcode_macro FINELY_CLEAN_NOZZLE_STAGE_2",
+        "gcode_macro SM_PRINT_CHECK_SWITCH_EXTRUDER",
+        "gcode_macro SM_PRINT_EXTRUDER_PREHEAT",
+        "gcode_macro SM_PRINT_AUTO_FEED",
+        "gcode_macro SM_PRINT_END_AUTO_UNLOAD_FILAMENT",
+        "gcode_macro SM_PRINT_START_LINE",
+        "gcode_macro SM_PRINT_START_LINE_EXTRUDER_0",
+        "gcode_macro SM_PRINT_START_LINE_EXTRUDER_1",
+        "gcode_macro SM_PRINT_START_LINE_EXTRUDER_2",
+        "gcode_macro SM_PRINT_START_LINE_EXTRUDER_3",
+        "gcode_macro INNER_ROUGHLY_CLEAN_NOZZLE_BASE_DISCARD",
+        "gcode_macro INNER_DISCARD_FILAMENT_BASE_DISCARD",
+        "gcode_macro INNER_CUTOFF_BASE_DISCARD",
+        "gcode_macro INNER_FLUSH_FILAMENT",
+        "gcode_macro INNER_MANUAL_FEED_STAGE_PREPARE",
+        "gcode_macro INNER_MANUAL_FEED_STAGE_EXTRUDE",
+        "gcode_macro INNER_MANUAL_FEED_STAGE_FLUSH",
+        "gcode_macro INNER_MANUAL_FEED_STAGE_FINISH",
+        "gcode_macro INNER_MANUAL_FEED_STAGE_CANCEL",
+        "gcode_macro INNER_FLOW_MEASURE_END_BASE_DISCARD",
+        "gcode_macro INNER_FLOW_CALIB_END_BASE_DISCARD",
+        "gcode_macro INNER_PREEXTRUDE_FILAMENT",
+        "gcode_macro INNER_DETECT_NOZZLE_STAGE_1",
+        "gcode_macro INNER_DETECT_NOZZLE_STAGE_2",
+        "gcode_macro CONTROL_EXTRUDE_ACTION",
+        "gcode_macro CONTROL_RETRACT_ACTION",
+        "gcode_macro FEED_HANG_NEUTRAL",
+        "gcode_macro AUTO_FEEDING_BATCH",
+        "exclude_object",
+        "print_task_config",
+        "mqtt",
+        "timelapse",
+        "filament_detect",
+        "resonance_tester",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PRESTART",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PREHOMING",
+        "gcode_macro _DETECT_PLATE",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PREHEAT",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_HEAT_T0",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_HEAT_T1",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_HEAT_T2",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_HEAT_T3",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_AUTO_CLEAN_T0",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_AUTO_CLEAN_T1",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_AUTO_CLEAN_T2",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_AUTO_CLEAN_T3",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_MANUAL_CLEAN_T0",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_MANUAL_CLEAN_T1",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_MANUAL_CLEAN_T2",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_MANUAL_CLEAN_T3",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_WAIT_COOL_T0",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_WAIT_COOL_T1",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_WAIT_COOL_T2",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_WAIT_COOL_T3",
+        "gcode_macro EXTRUDER_OFFSET_ACTION_PROBE_CALIBRATE_ALL",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PROBE_CALIBRATE_T0",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PROBE_CALIBRATE_T1",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PROBE_CALIBRATE_T2",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_PROBE_CALIBRATE_T3",
+        "gcode_macro _EXTRUDER_OFFSET_ACTION_EXIT",
+        "gcode_macro XYZ_OFFSET_CALIBRATE",
+        "gcode_macro XYZ_OFFSET_CALIBRATE_ALL",
+        "heaters",
+        "stepper_enable",
+        "tmc2240 stepper_x",
+        "tmc2240 stepper_y",
+        "tmc2209 stepper_z",
+        "heater_bed",
+        "temperature_sensor cavity",
+        "fan_generic cavity_fan",
+        "led cavity_led",
+        "fan_generic exhaust_fan",
+        "fan_generic circulation_fan",
+        "purifier",
+        "bed_mesh",
+        "homing_precise_corexy",
+        "heater_fan power_fan",
+        "adc_current_sensor I_AD",
+        "power_loss_check",
+        "auto_screws_tilt_adjust",
+        "gcode_macro AUTO_BED_MESH_CALIBRATE",
+        "gcode_macro SHAKE_Z",
+        "gcode_macro SENSORLESS_HOME_X",
+        "gcode_macro SENSORLESS_HOME_Y",
+        "gcode_macro SENSORLESS_HOME_Z",
+        "gcode_macro _HOMING_PRECISE_COREXY_ADVANCED",
+        "gcode_macro _CLIENT_VARIABLE",
+        "tmc2209 extruder",
+        "fan",
+        "heater_fan e0_nozzle_fan",
+        "output_pin e0_heat_sw",
+        "filament_motion_sensor e0_filament",
+        "filament_entangle_detect e0_filament",
+        "extruder_offset_calibration",
+        "probe",
+        "sensor_accelerometer_identify e0_accelerometer",
+        "power_loss_check e0",
+        "tmc2209 extruder1",
+        "fan_generic e1_fan",
+        "heater_fan e1_nozzle_fan",
+        "output_pin e1_heat_sw",
+        "filament_motion_sensor e1_filament",
+        "filament_entangle_detect e1_filament",
+        "power_loss_check e1",
+        "tmc2209 extruder2",
+        "fan_generic e2_fan",
+        "heater_fan e2_nozzle_fan",
+        "output_pin e2_heat_sw",
+        "filament_motion_sensor e2_filament",
+        "filament_entangle_detect e2_filament",
+        "power_loss_check e2",
+        "tmc2209 extruder3",
+        "fan_generic e3_fan",
+        "heater_fan e3_nozzle_fan",
+        "output_pin e3_heat_sw",
+        "filament_motion_sensor e3_filament",
+        "filament_entangle_detect e3_filament",
+        "power_loss_check e3",
+        "filament_feed left",
+        "filament_feed right",
+        "gcode_macro _FILAMENT_FEED_VARIABLE",
+        "idle_timeout",
+        "filament_parameters",
+        "defect_detection",
+        "gcode_macro PAUSE",
+        "gcode_macro RESUME",
+        "panda_breath",
+        "heater_generic panda_breath",
+        "gcode_macro M141",
+        "gcode_macro M191",
+        "motion_report",
+        "query_endstops",
+        "system_stats",
+        "manual_probe",
+        "machine_state_manager",
+        "toolhead",
+        "extruder",
+        "extruder1",
+        "extruder2",
+        "extruder3"
+      ]
+    },
+    "preflight": {
+      "schema_version": "preflight/1",
+      "checks": [
+        {
+          "id": "bed.fit",
+          "title": "Objects sit outside this printer's bed",
+          "result": "attention",
+          "evidence": "1 object(s) fall outside this printer's 271.0 × 335.0 × 281.0 mm area",
+          "confidence": "confirmed",
+          "consequence": "The slicer will refuse to slice, or the print will start off the plate.",
+          "action": "Use Studio's object-placement fix to move them on — it saves a copy and leaves your original alone.",
+          "source": "project geometry vs printer bed"
+        },
+        {
+          "id": "materials.toolheads",
+          "title": "More materials than toolheads",
+          "result": "attention",
+          "evidence": "project uses 6 filament slot(s); printer reports 4 toolheads",
+          "confidence": "confirmed",
+          "consequence": "This project asks for 6 materials and your printer can hold 4 at once. Some will need to be combined, dropped, or swapped by hand during the print.",
+          "action": "Open Colours & Materials to see which colours could be handled as swaps.",
+          "source": "Klipper extruder objects"
+        },
+        {
+          "id": "materials.loaded",
+          "title": "Fewer materials loaded than the project uses",
+          "result": "attention",
+          "evidence": "printer reports 4 loaded; project uses 6",
+          "confidence": "confirmed",
+          "consequence": "Some of the project's materials have nothing to print with.",
+          "action": "Load the missing materials before you start.",
+          "source": "printer filament state"
+        },
+        {
+          "id": "nozzle.match",
+          "title": "Nozzle size — check this yourself",
+          "result": "unknown",
+          "evidence": "project expects 0.4 mm; the printer does not report which nozzle is fitted",
+          "confidence": "confirmed",
+          "consequence": "Printing with a different nozzle than the project was made for changes line width and can ruin fine detail — and Studio has no way to see which one is installed.",
+          "action": "Check the nozzle on the printer is 0.4 mm before slicing.",
+          "source": "firmware exposes no nozzle diameter"
+        },
+        {
+          "id": "printer.reachable",
+          "title": "Printer found",
+          "result": "ok",
+          "evidence": "<printer-on-lan> answered on port 7125",
+          "confidence": "confirmed",
+          "consequence": "Studio can compare this project against your actual printer.",
+          "action": null,
+          "source": "Moonraker /server/info"
+        },
+        {
+          "id": "printer.busy",
+          "title": "Printer is free",
+          "result": "ok",
+          "evidence": "the printer reports it is standby",
+          "confidence": "confirmed",
+          "consequence": "Nothing else is using the printer.",
+          "action": null,
+          "source": "Klipper print_stats"
+        },
+        {
+          "id": "project.sliced",
+          "title": "Already sliced",
+          "result": "ok",
+          "evidence": "1 plate g-code part(s)",
+          "confidence": "confirmed",
+          "consequence": "This project already contains toolpaths from another machine. Studio removes them when it prepares a U1 copy so Snapmaker Orca slices fresh.",
+          "action": "Prepare a U1 copy, then slice it in Snapmaker Orca.",
+          "source": "project archive"
+        }
+      ],
+      "counts": {
+        "blocked": 0,
+        "attention": 3,
+        "unknown": 1,
+        "ok": 3
+      },
+      "needs_attention": [
+        {
+          "id": "bed.fit",
+          "title": "Objects sit outside this printer's bed",
+          "result": "attention",
+          "evidence": "1 object(s) fall outside this printer's 271.0 × 335.0 × 281.0 mm area",
+          "confidence": "confirmed",
+          "consequence": "The slicer will refuse to slice, or the print will start off the plate.",
+          "action": "Use Studio's object-placement fix to move them on — it saves a copy and leaves your original alone.",
+          "source": "project geometry vs printer bed"
+        },
+        {
+          "id": "materials.toolheads",
+          "title": "More materials than toolheads",
+          "result": "attention",
+          "evidence": "project uses 6 filament slot(s); printer reports 4 toolheads",
+          "confidence": "confirmed",
+          "consequence": "This project asks for 6 materials and your printer can hold 4 at once. Some will need to be combined, dropped, or swapped by hand during the print.",
+          "action": "Open Colours & Materials to see which colours could be handled as swaps.",
+          "source": "Klipper extruder objects"
+        },
+        {
+          "id": "materials.loaded",
+          "title": "Fewer materials loaded than the project uses",
+          "result": "attention",
+          "evidence": "printer reports 4 loaded; project uses 6",
+          "confidence": "confirmed",
+          "consequence": "Some of the project's materials have nothing to print with.",
+          "action": "Load the missing materials before you start.",
+          "source": "printer filament state"
+        }
+      ],
+      "unknowns": [
+        {
+          "id": "nozzle.match",
+          "title": "Nozzle size — check this yourself",
+          "result": "unknown",
+          "evidence": "project expects 0.4 mm; the printer does not report which nozzle is fitted",
+          "confidence": "confirmed",
+          "consequence": "Printing with a different nozzle than the project was made for changes line width and can ruin fine detail — and Studio has no way to see which one is installed.",
+          "action": "Check the nozzle on the printer is 0.4 mm before slicing.",
+          "source": "firmware exposes no nozzle diameter"
+        }
+      ],
+      "printer_reachable": true,
+      "summary": "3 things to resolve and 1 thing Studio cannot check for you before you slice.",
+      "disclaimer": "These are checks against what your printer reports right now. They are advisory — Studio cannot promise a print will succeed.",
+      "printer": {
+        "reachable": true,
+        "host": "<printer-on-lan>",
+        "port": 7125,
+        "observed_at": 1790387310.9005165,
+        "toolhead_count": 4,
+        "bed_mm": {
+          "x": 271,
+          "y": 335,
+          "z": 281
+        },
+        "print_state": "standby",
+        "loaded_filaments": [
+          {
+            "color": "#000000",
+            "material": "PETG",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#F55A7C",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#8E24AA",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#1E88E5",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          }
+        ],
+        "identity": {
+          "matched": true,
+          "printer_id": "snapmaker_u1",
+          "confidence": "confirmed",
+          "evidence": "the printer exposes the print_task_config object, which mainline Klipper does not have; it reports 4 toolheads, as this profile records",
+          "matched_on": [
+            "the printer exposes the print_task_config object, which mainline Klipper does not have",
+            "it reports 4 toolheads, as this profile records"
+          ]
+        },
+        "profile": {
+          "printer_id": "snapmaker_u1",
+          "display_name": "Snapmaker U1",
+          "manufacturer": "Snapmaker",
+          "model": "U1",
+          "verification_level": "hardware_verified",
+          "verification_label": "Hardware verified",
+          "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+          "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+          "tool_count": 4,
+          "build_volume_mm": {
+            "x": 270,
+            "y": 270,
+            "z": 270.05
+          },
+          "known_unknowns": [
+            "which nozzle is physically fitted — stock firmware publishes no diameter",
+            "free storage on the printer — the firmware reports no sizes",
+            "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+          ],
+          "not_verified": [],
+          "source_refs": [
+            {
+              "kind": "hardware",
+              "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+              "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+            },
+            {
+              "kind": "repository",
+              "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+            }
+          ]
+        },
+        "resolved": {
+          "schema_version": "printerprofile/1",
+          "printer_reachable": true,
+          "profile": {
+            "printer_id": "snapmaker_u1",
+            "display_name": "Snapmaker U1",
+            "manufacturer": "Snapmaker",
+            "model": "U1",
+            "verification_level": "hardware_verified",
+            "verification_label": "Hardware verified",
+            "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+            "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+            "tool_count": 4,
+            "build_volume_mm": {
+              "x": 270,
+              "y": 270,
+              "z": 270.05
+            },
+            "known_unknowns": [
+              "which nozzle is physically fitted — stock firmware publishes no diameter",
+              "free storage on the printer — the firmware reports no sizes",
+              "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+            ],
+            "not_verified": [],
+            "source_refs": [
+              {
+                "kind": "hardware",
+                "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+                "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+              },
+              {
+                "kind": "repository",
+                "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+              }
+            ]
+          },
+          "conflicts": [],
+          "sources": {
+            "tool_count": "live",
+            "build_volume_mm": "live"
+          },
+          "tool_count": 4,
+          "build_volume_mm": {
+            "x": 271,
+            "y": 335,
+            "z": 281
+          },
+          "build_volume_note": "measured from the printer's own axis limits, which include travel beyond the printable plate",
+          "capabilities": {
+            "bed_mesh": {
+              "name": "bed_mesh",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists bed_mesh"
+            },
+            "exclude_object": {
+              "name": "exclude_object",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists exclude_object"
+            },
+            "input_shaper": {
+              "name": "input_shaper",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list input_shaper"
+            },
+            "pause_resume": {
+              "name": "pause_resume",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists pause_resume"
+            },
+            "eddy_probe": {
+              "name": "eddy_probe",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list probe_eddy_current"
+            },
+            "filament_runout": {
+              "name": "filament_runout",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists filament_switch_sensor"
+            },
+            "quad_gantry_level": {
+              "name": "quad_gantry_level",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list quad_gantry_level"
+            },
+            "z_tilt": {
+              "name": "z_tilt",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list z_tilt"
+            },
+            "virtual_sdcard": {
+              "name": "virtual_sdcard",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists virtual_sdcard"
+            }
+          },
+          "material_state": {
+            "known": true,
+            "source": "live",
+            "slots": 4,
+            "evidence": "the printer reports which filaments are loaded"
+          }
+        }
+      }
+    },
+    "post_slice": {
+      "schema_version": "post_slice/1",
+      "available": true,
+      "printer_reachable": true,
+      "job": {
+        "slicer": "Snapmaker Orca",
+        "slicer_version": "2.3.4",
+        "printer_model": "Snapmaker U1",
+        "layer_count": 12,
+        "layer_height_mm": 0.2,
+        "max_z_mm": 2.4,
+        "estimated_seconds": 250,
+        "tools_used": [
+          1
+        ],
+        "total_g": 0.36,
+        "size_bytes": 726,
+        "purge": {
+          "separable": false,
+          "expected": false,
+          "detail": "single-tool job — no tool-change purge",
+          "confidence": "confirmed"
+        }
+      },
+      "checks": [
+        {
+          "id": "gcode.nozzle",
+          "title": "Nozzle size — check this yourself",
+          "result": "unknown",
+          "evidence": "the job was sliced for 0.4 mm; this printer's firmware does not report which nozzle is fitted",
+          "confidence": "confirmed",
+          "consequence": "Printing with a different nozzle than the job was sliced for changes line width and can ruin fine detail — and Studio has no way to see which one is installed.",
+          "action": "Check the nozzle on the printer is 0.4 mm before starting.",
+          "source": "G-code configuration block; this printer's firmware exposes no nozzle diameter"
+        },
+        {
+          "id": "gcode.machine",
+          "title": "Sliced for this machine",
+          "result": "ok",
+          "evidence": "the file says it was sliced for Snapmaker U1",
+          "confidence": "confirmed",
+          "consequence": "The job's commands were generated for a Snapmaker U1.",
+          "action": null,
+          "source": "G-code configuration block"
+        },
+        {
+          "id": "gcode.tools",
+          "title": "Every toolhead this job needs exists",
+          "result": "ok",
+          "evidence": "the job prints from slot 2; this printer reports 4 toolheads",
+          "confidence": "confirmed",
+          "consequence": "The printer can select every tool the job asks for.",
+          "action": null,
+          "source": "G-code vs Klipper extruder objects"
+        },
+        {
+          "id": "gcode.loaded",
+          "title": "Every slot this job uses is loaded",
+          "result": "ok",
+          "evidence": "1 slot(s) in use, all reporting a spool",
+          "confidence": "confirmed",
+          "consequence": "Nothing will stop for a missing spool.",
+          "action": null,
+          "source": "G-code tool use vs printer filament state"
+        },
+        {
+          "id": "gcode.material",
+          "title": "Loaded material matches the job",
+          "result": "ok",
+          "evidence": "1 slot(s) compared at material-family level",
+          "confidence": "likely",
+          "consequence": "The job's temperatures and speeds suit what is loaded.",
+          "action": null,
+          "source": "G-code filament types vs printer filament state — compared by family, so PLA Matte counts as PLA"
+        },
+        {
+          "id": "gcode.bed",
+          "title": "Bed size matches",
+          "result": "ok",
+          "evidence": "sliced for 270.0 × 270.0 mm; this printer reports 271.0 × 335.0 mm",
+          "confidence": "confirmed",
+          "consequence": "The job was sliced for this printer's bed.",
+          "action": null,
+          "source": "G-code vs the printer's own reported bed"
+        },
+        {
+          "id": "printer.busy",
+          "title": "Printer is free",
+          "result": "ok",
+          "evidence": "the printer reports it is standby",
+          "confidence": "confirmed",
+          "consequence": "Nothing else is using the printer.",
+          "action": null,
+          "source": "Klipper print_stats"
+        }
+      ],
+      "counts": {
+        "unknown": 1,
+        "ok": 6
+      },
+      "needs_attention": [],
+      "unknowns": [
+        {
+          "id": "gcode.nozzle",
+          "title": "Nozzle size — check this yourself",
+          "result": "unknown",
+          "evidence": "the job was sliced for 0.4 mm; this printer's firmware does not report which nozzle is fitted",
+          "confidence": "confirmed",
+          "consequence": "Printing with a different nozzle than the job was sliced for changes line width and can ruin fine detail — and Studio has no way to see which one is installed.",
+          "action": "Check the nozzle on the printer is 0.4 mm before starting.",
+          "source": "G-code configuration block; this printer's firmware exposes no nozzle diameter"
+        }
+      ],
+      "summary": "1 thing(s) Studio cannot check for you.",
+      "disclaimer": "This reads what the sliced file says it will do. It is not a simulation of the print, and Studio does not slice — Snapmaker Orca does.",
+      "printer": {
+        "reachable": true,
+        "host": "<printer-on-lan>",
+        "port": 7125,
+        "observed_at": 1790387311.680842,
+        "toolhead_count": 4,
+        "bed_mm": {
+          "x": 271,
+          "y": 335,
+          "z": 281
+        },
+        "print_state": "standby",
+        "loaded_filaments": [
+          {
+            "color": "#000000",
+            "material": "PETG",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#F55A7C",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#8E24AA",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          },
+          {
+            "color": "#1E88E5",
+            "material": "PLA Matte",
+            "vendor": "Snapmaker",
+            "confirmed_by": "printer"
+          }
+        ],
+        "identity": {
+          "matched": true,
+          "printer_id": "snapmaker_u1",
+          "confidence": "confirmed",
+          "evidence": "the printer exposes the print_task_config object, which mainline Klipper does not have; it reports 4 toolheads, as this profile records",
+          "matched_on": [
+            "the printer exposes the print_task_config object, which mainline Klipper does not have",
+            "it reports 4 toolheads, as this profile records"
+          ]
+        },
+        "profile": {
+          "printer_id": "snapmaker_u1",
+          "display_name": "Snapmaker U1",
+          "manufacturer": "Snapmaker",
+          "model": "U1",
+          "verification_level": "hardware_verified",
+          "verification_label": "Hardware verified",
+          "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+          "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+          "tool_count": 4,
+          "build_volume_mm": {
+            "x": 270,
+            "y": 270,
+            "z": 270.05
+          },
+          "known_unknowns": [
+            "which nozzle is physically fitted — stock firmware publishes no diameter",
+            "free storage on the printer — the firmware reports no sizes",
+            "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+          ],
+          "not_verified": [],
+          "source_refs": [
+            {
+              "kind": "hardware",
+              "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+              "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+            },
+            {
+              "kind": "repository",
+              "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+            }
+          ]
+        },
+        "resolved": {
+          "schema_version": "printerprofile/1",
+          "printer_reachable": true,
+          "profile": {
+            "printer_id": "snapmaker_u1",
+            "display_name": "Snapmaker U1",
+            "manufacturer": "Snapmaker",
+            "model": "U1",
+            "verification_level": "hardware_verified",
+            "verification_label": "Hardware verified",
+            "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+            "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+            "tool_count": 4,
+            "build_volume_mm": {
+              "x": 270,
+              "y": 270,
+              "z": 270.05
+            },
+            "known_unknowns": [
+              "which nozzle is physically fitted — stock firmware publishes no diameter",
+              "free storage on the printer — the firmware reports no sizes",
+              "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+            ],
+            "not_verified": [],
+            "source_refs": [
+              {
+                "kind": "hardware",
+                "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+                "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+              },
+              {
+                "kind": "repository",
+                "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+              }
+            ]
+          },
+          "conflicts": [],
+          "sources": {
+            "tool_count": "live",
+            "build_volume_mm": "live"
+          },
+          "tool_count": 4,
+          "build_volume_mm": {
+            "x": 271,
+            "y": 335,
+            "z": 281
+          },
+          "build_volume_note": "measured from the printer's own axis limits, which include travel beyond the printable plate",
+          "capabilities": {
+            "bed_mesh": {
+              "name": "bed_mesh",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists bed_mesh"
+            },
+            "exclude_object": {
+              "name": "exclude_object",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists exclude_object"
+            },
+            "input_shaper": {
+              "name": "input_shaper",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list input_shaper"
+            },
+            "pause_resume": {
+              "name": "pause_resume",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists pause_resume"
+            },
+            "eddy_probe": {
+              "name": "eddy_probe",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list probe_eddy_current"
+            },
+            "filament_runout": {
+              "name": "filament_runout",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists filament_switch_sensor"
+            },
+            "quad_gantry_level": {
+              "name": "quad_gantry_level",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list quad_gantry_level"
+            },
+            "z_tilt": {
+              "name": "z_tilt",
+              "state": "absent",
+              "source": "live",
+              "evidence": "the printer's firmware does not list z_tilt"
+            },
+            "virtual_sdcard": {
+              "name": "virtual_sdcard",
+              "state": "present",
+              "source": "live",
+              "evidence": "the printer's firmware lists virtual_sdcard"
+            }
+          },
+          "material_state": {
+            "known": true,
+            "source": "live",
+            "slots": 4,
+            "evidence": "the printer reports which filaments are loaded"
+          }
+        }
+      }
+    },
+    "firmware": {
+      "schema_version": "firmwarecaps/1",
+      "available": true,
+      "toolhead_count": 4,
+      "bed_mm": {
+        "x": 271,
+        "y": 335,
+        "z": 281
+      },
+      "macro_count": 119,
+      "many_custom_macros": true,
+      "extended_firmware": false,
+      "extended_firmware_evidence": "no community firmware answered for itself on the paths Studio knows about — which is not the same as this printer running stock firmware",
+      "features": [
+        {
+          "name": "Automatic bed mesh levelling",
+          "detail": "compensates for an uneven bed across the whole plate"
+        },
+        {
+          "name": "Auto bed probing",
+          "detail": "automatic Z/level probing"
+        },
+        {
+          "name": "Object exclusion",
+          "detail": "cancel one failed object mid-print without losing the rest"
+        },
+        {
+          "name": "Pause / resume",
+          "detail": "safely pause and continue a print"
+        },
+        {
+          "name": "Filament runout detection",
+          "detail": "stops the print if filament runs out or jams"
+        },
+        {
+          "name": "Custom macros",
+          "detail": "119 gcode macros on this printer"
+        },
+        {
+          "name": "4-toolhead multimaterial",
+          "detail": "prints up to 4 colours/materials in one job"
+        }
+      ],
+      "summary": "Your Snapmaker U1 reports 4 toolheads, 271.0×335.0×281.0 mm bed; 7 capabilities detected (119 custom macros on it).",
+      "identity": {
+        "matched": true,
+        "printer_id": "snapmaker_u1",
+        "confidence": "confirmed",
+        "evidence": "the printer exposes the print_task_config object, which mainline Klipper does not have; it reports 4 toolheads, as this profile records",
+        "matched_on": [
+          "the printer exposes the print_task_config object, which mainline Klipper does not have",
+          "it reports 4 toolheads, as this profile records"
+        ]
+      }
+    },
+    "identity": {
+      "matched": true,
+      "printer_id": "snapmaker_u1",
+      "confidence": "confirmed",
+      "evidence": "the printer exposes the print_task_config object, which mainline Klipper does not have; it reports 4 toolheads, as this profile records",
+      "matched_on": [
+        "the printer exposes the print_task_config object, which mainline Klipper does not have",
+        "it reports 4 toolheads, as this profile records"
+      ]
+    },
+    "resolved": {
+      "schema_version": "printerprofile/1",
+      "printer_reachable": true,
+      "profile": {
+        "printer_id": "snapmaker_u1",
+        "display_name": "Snapmaker U1",
+        "manufacturer": "Snapmaker",
+        "model": "U1",
+        "verification_level": "hardware_verified",
+        "verification_label": "Hardware verified",
+        "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+        "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+        "tool_count": 4,
+        "build_volume_mm": {
+          "x": 270,
+          "y": 270,
+          "z": 270.05
+        },
+        "known_unknowns": [
+          "which nozzle is physically fitted — stock firmware publishes no diameter",
+          "free storage on the printer — the firmware reports no sizes",
+          "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+        ],
+        "not_verified": [],
+        "source_refs": [
+          {
+            "kind": "hardware",
+            "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+            "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+          },
+          {
+            "kind": "repository",
+            "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+          }
+        ]
+      },
+      "conflicts": [],
+      "sources": {
+        "tool_count": "live",
+        "build_volume_mm": "live"
+      },
+      "tool_count": 4,
+      "build_volume_mm": {
+        "x": 271,
+        "y": 335,
+        "z": 281
+      },
+      "build_volume_note": "measured from the printer's own axis limits, which include travel beyond the printable plate",
+      "capabilities": {
+        "bed_mesh": {
+          "name": "bed_mesh",
+          "state": "present",
+          "source": "live",
+          "evidence": "the printer's firmware lists bed_mesh"
+        },
+        "exclude_object": {
+          "name": "exclude_object",
+          "state": "present",
+          "source": "live",
+          "evidence": "the printer's firmware lists exclude_object"
+        },
+        "input_shaper": {
+          "name": "input_shaper",
+          "state": "absent",
+          "source": "live",
+          "evidence": "the printer's firmware does not list input_shaper"
+        },
+        "pause_resume": {
+          "name": "pause_resume",
+          "state": "present",
+          "source": "live",
+          "evidence": "the printer's firmware lists pause_resume"
+        },
+        "eddy_probe": {
+          "name": "eddy_probe",
+          "state": "absent",
+          "source": "live",
+          "evidence": "the printer's firmware does not list probe_eddy_current"
+        },
+        "filament_runout": {
+          "name": "filament_runout",
+          "state": "present",
+          "source": "live",
+          "evidence": "the printer's firmware lists filament_switch_sensor"
+        },
+        "quad_gantry_level": {
+          "name": "quad_gantry_level",
+          "state": "absent",
+          "source": "live",
+          "evidence": "the printer's firmware does not list quad_gantry_level"
+        },
+        "z_tilt": {
+          "name": "z_tilt",
+          "state": "absent",
+          "source": "live",
+          "evidence": "the printer's firmware does not list z_tilt"
+        },
+        "virtual_sdcard": {
+          "name": "virtual_sdcard",
+          "state": "present",
+          "source": "live",
+          "evidence": "the printer's firmware lists virtual_sdcard"
+        }
+      },
+      "material_state": {
+        "known": true,
+        "source": "live",
+        "slots": 4,
+        "evidence": "the printer reports which filaments are loaded"
+      }
+    },
+    "profile": {
+      "printer_id": "snapmaker_u1",
+      "display_name": "Snapmaker U1",
+      "manufacturer": "Snapmaker",
+      "model": "U1",
+      "verification_level": "hardware_verified",
+      "verification_label": "Hardware verified",
+      "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+      "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+      "tool_count": 4,
+      "build_volume_mm": {
+        "x": 270,
+        "y": 270,
+        "z": 270.05
+      },
+      "known_unknowns": [
+        "which nozzle is physically fitted — stock firmware publishes no diameter",
+        "free storage on the printer — the firmware reports no sizes",
+        "how much filament is left on a loaded spool — the printer tracks which spool, not what remains"
+      ],
+      "not_verified": [],
+      "source_refs": [
+        {
+          "kind": "hardware",
+          "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+          "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+        },
+        {
+          "kind": "repository",
+          "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json — the known-good U1 machine preset extracted from a reference project"
+        }
+      ]
+    }
+  }
+}

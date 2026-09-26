@@ -1,8 +1,11 @@
-# Linux beta plan — L5 through L10 record
+# Linux beta plan — L5 through L11 record
 
-**UNRELEASED. Internal only, not linked from README/docs/landing. Not an
-announcement.** No public GitHub Release, tag, or change to the stable
-v0.9.0 release is authorized by this document.
+**Internal-only engineering record, not linked from README/docs/landing —
+not the public announcement of anything.** L1 through L10 covered
+unreleased preparation; L11 records the actual v1.0.0 release, once it
+happened, under the maintainer's own explicit release authorization
+(recorded in this file's L11 section) — this document does not itself
+authorize anything beyond what's already in that section.
 
 ## What L5 covers
 
@@ -733,3 +736,95 @@ underlying code, which is out of this phase's documentation-only scope.
 None — L10 is reporting-path readiness only. EXTERNAL USER VERIFIED
 remains honestly false, as it must until a real report arrives from
 outside this project.
+
+## L11 — v1.0.0 release: Linux ships for real
+
+Linux's first real GitHub Release. Two PRs: `release/v1.0.0-infra` (PR #26 —
+the converging release architecture, workflow infrastructure only) merged
+to `main` first, satisfying the GitHub constraint that a
+`workflow_dispatch`-triggered workflow must exist on the default branch
+before it can be dispatched from a branch; then `release/v1.0.0-version-bump`
+(the version bump and all release-governance docs).
+
+### What actually happened, in order
+
+1. `release-candidate.yml` dispatched against the version-bump branch —
+   **succeeded on its first live run**: Windows build + bundled-sidecar
+   smoke, Linux build, both clean-environment legs (`ubuntu:22.04` and
+   `ubuntu:24.04`, 35/35 each, against THIS build's own `.deb` — the L10
+   fix for HIGH-3), the new `windows-upgrade-smoke` job (silent
+   v0.9.0→v1.0.0 install, one registration, version updated, same
+   location, legacy publisher key intact, clean uninstall), and the
+   manifest job. No infrastructure bug surfaced despite three rounds of
+   review having found and fixed real ones beforehand — the review process
+   held.
+2. `release-publish.yml` rehearsed via `workflow_dispatch` (`dry_run=true`)
+   against a throwaway scratch branch carrying the RC's real hashes —
+   **every gate passed on the second attempt** (the first attempt used a
+   deliberately mismatched tag name to test Gate 1 itself, which correctly
+   rejected it). Gate 0 correctly skipped for the pre-tag rehearsal; Gate
+   1 (tag/metadata/manifest agreement), Gate 2 (provenance — the RC
+   commit is an ancestor of the target with only a docs-only diff since),
+   Gate 3 (both artifacts re-downloaded and re-hashed against the
+   metadata) and Gate 4 (exactly 3 expected assets) all passed; the draft
+   was created, verified, and deleted; no tag was touched (confirmed via
+   `git ls-remote` afterward — clean). This is the first time
+   `release-publish.yml` — the only workflow with `contents: write` and
+   the power to publish a public Release — has ever actually run.
+3. Real hardware verification, twice: once as a rehearsal against the
+   still-installed v0.9.0 build (confirming the discovery mechanism and
+   the read-only safety gate before committing to the real run), once
+   officially against the actual v1.0.0 RC installer. Printer discovered
+   via a bounded, read-only TCP-connect sweep of the local `/24` for
+   Moonraker's port (7125) after the printer did not yet appear in the
+   ARP cache — confirmed genuinely a Snapmaker U1 via a real `GET
+   /server/info` before anything else touched it. 39/39 checks passed
+   both times, identical results, confirming the printer's real state
+   (four loaded filaments, 271×335×281mm bed, `print_task_config` object)
+   rather than a fluke. The provider-on-hardware checks (18 more, real
+   total 57) were not captured this release — they need seeded,
+   session-owned Spoolman and Bambuddy containers with spool ids matching
+   this printer's actual current loadout, and standing those up blind
+   (Docker was not running, and no existing seed data matches this
+   printer's real filament) was judged not worth fabricating data for.
+   39/39 is reported as the honest, complete count of what actually ran —
+   not presented as a reduced 57.
+4. Real Windows UI-driven acceptance, including the real upgrade proof
+   (`tools/acceptance/run.ps1 -UpgradeFrom <published v0.9.0>`): 39/39,
+   including the exact new check this phase's `windows-upgrade-smoke`
+   twin also proves — the surviving registration reports the new version,
+   not just "not the old one" — and confirming live that the beta.13
+   window-close/orphan-sidecar bug is genuinely fixed in these bytes.
+
+### Version-metadata audit and CHANGELOG
+
+Full CURRENT/HISTORICAL/STALE/GENERATED classification and the CHANGELOG's
+"New in 1.0.0" vs "The v1.0 product includes" split were planned by Fable
+(Astra/Codex unavailable all session — three independent 401 auth
+failures across Astra, Sol and Terra — disclosed incomplete pair
+throughout this entire release). Plan-stage and result-stage review both
+by Opus alone, same reason. The plan review found 4 HIGH findings (the
+GitHub dispatch-before-merge constraint; a real, confirmed Windows fix
+the CHANGELOG draft had omitted; the shipped `.deb` never being tested on
+a clean image; the U1 hardware gate silently accepting reduced coverage)
+— all fixed before implementation. The implementation review found 2 more
+HIGH and 4 MEDIUM in the new workflows themselves (an asset-glob bug that
+would have failed every publish attempt; a race that could let a
+rehearsal delete a real git tag; wrong exe name and an incomplete version
+assertion in the upgrade smoke test; rehearsal ordering; the recovery
+path reading the wrong commit) — all fixed, confirmed by a delta-confirm
+pass.
+
+### Evidence tiers earned this release
+
+- **BUILD VERIFIED / PACKAGE VERIFIED / HEADLESS RUNTIME VERIFIED /
+  DESKTOP WORKFLOW VERIFIED**: unchanged from L8, now against v1.0.0's
+  own release-candidate bytes specifically rather than a continuously-built
+  artifact.
+- **REAL U1 VERIFIED**: earned for v1.0.0 specifically — 39/39, against
+  the actual published installer, honestly bounded (provider-on-hardware
+  not captured, stated plainly rather than rounded up to the historical
+  57).
+- **EXTERNAL USER VERIFIED**: still false. Nothing in this release changes
+  that, and nothing was gated on it — matching the maintainer's explicit
+  v1.0.0 authorization.

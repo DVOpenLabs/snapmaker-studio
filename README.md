@@ -17,7 +17,7 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
 [![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
@@ -64,30 +64,40 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 ## Download
 
-**[⬇ Download Snapmaker Studio v0.9.0 for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0)**
-— one click, no Python, runs offline. Windows 10/11 x64.
+**Windows 10/11 (x64)** ✅ · **Linux x86_64 (.deb)** ✅ · **macOS** not supported.
 
-**v0.9.0 is the current stable release** — not a prerelease, so this is also what
+**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0)**
+— one click, no Python, runs offline.
+**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0)**
+— one `.deb`, no Python, no Node, no Rust. Install guide:
+[docs/linux-install.md](docs/linux-install.md).
+
+**v1.0.0 is the current stable release** — not a prerelease, so this is also what
 GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
 points at. Every build ever published is on the
 [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
-- Release: [v0.9.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v0.9.0)
-- Installer: `Snapmaker.Studio_0.9.0_x64-setup.exe`
-- Size: 17,100,560 bytes
-- SHA256: `294f7d25d8b1ef0f3fe26df9f83df6fa7482fa86aa998928db2a40335b4d202b`
+- Release: [v1.0.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0)
+- Windows installer: `Snapmaker.Studio_1.0.0_x64-setup.exe`
+  — 18,119,559 bytes — SHA256: `e15029af0af2fd268a546000473f21c52c7a5b302556e1cd7fda300b65f8d501`
+- Linux package: `snapmaker-studio_1.0.0_amd64_3c7bef9f0a34.deb`
+  — 20,676,536 bytes — SHA256: `d5fdb69a9f443a73e682ba3515d7c974e3bf242ce3525f148788822274aae516`
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_0.9.0_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.0.0_x64-setup.exe
+```
+```bash
+sha256sum snapmaker-studio_1.0.0_amd64_3c7bef9f0a34.deb
 ```
 
-The installer is not code-signed yet, so Windows SmartScreen will show "Unknown
+Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
 publisher" until it builds reputation — verify the hash above, then choose
 **More info → Run anyway**. Why it is unsigned, and what is being done about it:
 [docs/CODE_SIGNING_POLICY.md](docs/CODE_SIGNING_POLICY.md). Full instructions and
-uninstall: [docs/windows-install.md](docs/windows-install.md).
+uninstall: [docs/windows-install.md](docs/windows-install.md) (Windows),
+[docs/linux-install.md](docs/linux-install.md) (Linux).
 
 Canonical release values live in
 [docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md); what was verified, and how,
@@ -112,11 +122,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v0.9.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v0.9.0/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.0.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.0.0/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v0.9.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v0.9.0/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.0.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.0.0/what-to-load.png) |
 
-From the v0.9.0 build's own installed-application run, on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf) — reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.0.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -150,17 +160,24 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was verified against the published v0.9.0 installer, not
+Everything below was verified against the published v1.0.0 installer, not
 against a development build. Commands, counts and full reports:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, driven through the real UI | **47/47** |
-| Read-only verification against a real Snapmaker U1 | **57/57** |
+| Installed-application acceptance, driven through the real UI (incl. the v0.9.0→v1.0.0 upgrade) | **39/39** |
+| Read-only verification against a real Snapmaker U1 | **39/39** |
+| Linux clean-image validation, Ubuntu 22.04 + 24.04 | **35/35** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 1813 · 340 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 1833 · 340 · clean · clean |
+
+Both counts above are lower than v0.9.0's (47/47 and 57/57): this release's
+runs did not include the optional materials-provider checks, which need a
+Spoolman and Bambuddy instance seeded and running — 39/39 is the honest count
+of what actually ran, not a partial version of the larger number. Full detail:
+[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 Reproduce any of it yourself:
 [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md).
@@ -171,7 +188,26 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
-## What's new in v0.9.0 — the project that crosses whole
+## What's new in v1.0.0 — two platforms, one release
+
+**Snapmaker Studio now runs on Linux**, as a self-contained `.deb` for Ubuntu
+22.04/24.04 x86_64 — no Python, no Node, no Rust to install. Verified
+installing on genuinely clean containers, launching the real app under a real
+display, and closing its real window. Guide: [docs/linux-install.md](docs/linux-install.md).
+Known gap: Snapmaker Orca isn't auto-detected on Linux yet — see the guide's
+Known Limitations.
+
+**Closing the window now actually quits Studio and its engine, on both
+platforms.** Since beta.13, closing the main window on Windows silently left
+the process and its sidecar running in the background — confirmed against a
+real built release binary. Every "zero orphan" proof before this one only
+covered a process being killed outright, never a normal window close.
+
+Windows install identity is unchanged, so v1.0.0 installs over v0.9.0 in
+place and keeps your data — verified, including that the upgraded
+installation reports the new version and nothing is left duplicated.
+
+### And what v0.9.0 brought
 
 **Bring a project from another slicer and it arrives as the project you
 made.** Painted colour survives the crossing, an object's parts arrive as
@@ -443,15 +479,16 @@ validation is mandatory and never removed. Full detail in
 
 ## Roadmap
 
-**Shipped (stable, v0.9.0):** the whole loop — read a project, diagnose it,
+**Shipped (stable, v1.0.0):** the whole loop — read a project, diagnose it,
 compare it against the printer, prepare a copy, prove what survived, hand it to
 Snapmaker Orca, then read the sliced G-code back and check what the printer will
 actually execute against the printer as it is right now, with cost from the
 figures the slicer measured. Plus Batch, Design Library, Printer Hub (monitor and
-user-confirmed control/send), the engine and CLI, and a one-click Windows
-installer with the engine bundled.
+user-confirmed control/send), the engine and CLI, a one-click Windows installer
+with the engine bundled, and a self-contained Linux `.deb`.
 
 **Next:**
+- Snapmaker Orca auto-detection on Linux
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input
 - More printer targets beyond the U1

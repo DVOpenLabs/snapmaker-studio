@@ -26,6 +26,7 @@ RELEASE_NOTES = ROOT / "docs" / "RELEASE_NOTES.md"
 PACKAGE_JSON = ROOT / "desktop" / "package.json"
 TAURI_CONF = ROOT / "desktop" / "src-tauri" / "tauri.conf.json"
 CARGO_TOML = ROOT / "desktop" / "src-tauri" / "Cargo.toml"
+PYPROJECT = ROOT / "backend" / "pyproject.toml"
 
 # Keep-a-Changelog heading: "## [0.4.0-beta.22] - 2026-08-22". [Unreleased] and
 # historical prose headings are allowed through and checked separately.
@@ -167,6 +168,18 @@ def test_the_rust_crate_version_matches_the_released_version(metadata):
     assert found, "Cargo.toml has no version field"
     assert found.group(1) == version, (
         f"Cargo.toml says {found.group(1)}, metadata says {version}")
+
+
+def test_the_backend_package_version_matches_the_released_version(metadata):
+    """backend/pyproject.toml drifted silently from beta.12 for a dozen
+    releases — nothing at runtime reads it, but it is runtime-visible in
+    diagnostics.py's support bundle and convert.py's settings summary, and a
+    1.0 product whose engine package still claims 0.4.0b12 is a trust wart."""
+    version = metadata["version"].lstrip("v")
+    found = re.search(r'^version\s*=\s*"([^"]+)"', _read(PYPROJECT), re.M)
+    assert found, "backend/pyproject.toml has no version field"
+    assert found.group(1) == version, (
+        f"backend/pyproject.toml says {found.group(1)}, metadata says {version}")
 
 
 # --- trust status -----------------------------------------------------------

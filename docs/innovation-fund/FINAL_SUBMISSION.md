@@ -48,7 +48,7 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 ## 3. What is being submitted
 
-**Release:** [v0.8.0](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.9.0)
+**Release:** [v1.0.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0)
 — the current stable build; v0.4.0 was the first verified against a real Snapmaker
 U1, and every release since has been. Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
@@ -71,15 +71,16 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the published v0.9.0 installer, not a development build.
+Verified against the published v1.0.0 installer, not a development build.
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 47/47 |
-| Read-only verification against a real Snapmaker U1 | 57/57 |
+| Installed-application acceptance, through the real UI (incl. the v0.9.0→v1.0.0 upgrade) | 39/39 |
+| Linux clean-image validation, Ubuntu 22.04 + 24.04 | 35/35 each |
+| Read-only verification against a real Snapmaker U1 | 39/39 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 1813 passed, 4 skipped |
+| Backend tests | 1833 passed, 7 skipped |
 | Desktop tests | 340 passed |
 | TypeScript · production build · Rust | clean |
 

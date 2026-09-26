@@ -1,12 +1,5 @@
 # Installing Snapmaker Studio on Linux
 
-> **No Linux package has been published in any GitHub Release yet.** This page
-> documents a `.deb` build that has been verified in continuous integration —
-> it is not an announcement of a release date. If you found this page before a
-> Linux download appears on the
-> [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases),
-> there is nothing to install yet — check back there.
-
 ## What you get, and what you don't need to install
 
 The `.deb` is self-contained. It bundles the Python engine as a frozen binary
@@ -149,7 +142,8 @@ whether you already have it on Linux.
 ## Known limitations
 
 - **Orca auto-detection**: see above — not implemented on Linux yet.
-- **No in-app update check**: check the Releases page yourself for new versions.
+- **No automatic update check**: Studio doesn't notify you of a new release on
+  its own. Use Help → Check GitHub now, or watch the Releases page.
 - **A `python3` package may appear as a side effect of installing this `.deb`
   on a genuinely minimal system** — not because Studio needs it. On a bare
   system, `systemd` recommends `networkd-dispatcher`, which depends on
