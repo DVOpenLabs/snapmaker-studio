@@ -11,6 +11,45 @@ This does a single streaming pass and builds a timeline of the events that are
 filament changes, temperature targets, and object boundaries. It never simulates
 motion, never estimates, and never invents an event the file does not contain.
 
+**What an unsliced project cannot know, and what this narrows without fully
+closing.** `color_plan` answers, from a project's own painted/assigned
+colours, whether two colours *can* land on the same printed layer — proven
+only when their height ranges cannot overlap; everywhere else it reserves a
+toolhead rather than guess. That is the honest limit of reading a project:
+heights overlapping shows two colours *can* meet on a layer, not that they
+do. This module narrows that gap once the job is sliced, but does not close
+it: it walks every tool-change line in order, so `tool_first_layer` and
+`tool_last_layer` are the real layers a tool was *selected* on — carried
+forward from the layer it was chosen on to every later layer until something
+else is chosen, not only the exact layer a `T<n>` line appears on, since a
+real slicer does not repeat a tool-change command for every layer that keeps
+using the same tool. That much is a fact read straight off the G-code.
+
+Whether two tools ever shared a single printed layer is a different, harder
+question this scan deliberately does not answer. Multiple attempts at it were
+tried and abandoned in this branch's history, each defeated by the same root
+cause: a `T<n>` line proves the active tool changed, never that filament was
+deposited before the next change, and no combination of *which* layers a
+tool was selected on or *how many times* it changed within one layer can
+tell a genuine same-layer multi-tool print apart from an ordinary sequential
+handoff. A print where two tools alternate one clean switch per layer, each
+extruding for the whole layer it owns, and a print where those same two
+tools both extrude within *every* layer, produce IDENTICAL tool-change
+traces — telling them apart needs to know where the extrusion moves
+themselves fall relative to the tool-change and layer-change lines, which
+this scan's line-level regex does not parse (see the Cost note below for
+why: on a real multi-megabyte job, extrusion lines are most of the file, and
+matching them the way `_TOOL`/`_LAYER` are matched here would cost real,
+currently unmeasured, time). A slicer's own per-feature comments (Orca's
+`;TYPE:` lines, for one) might narrow this more cheaply than parsing
+extrusion moves, but that is a slicer convention rather than a fact every
+job carries, and has not been tried. Reporting a guess either direction —
+"safe to swap" or "needs a toolhead" — built on a trace that cannot
+distinguish the two would be worse than not answering: color_plan's
+pre-slice "reserve a toolhead" stays the honest answer for coexistence,
+before AND after slicing, until this module reads more than tool-change and
+layer-change lines.
+
 **Cost.** A pass over a 330 MB job takes a few seconds, so this is deliberately
 separate from the cheap facts: the Post-Slice Doctor answers immediately, and the
 timeline is asked for. Memory stays flat regardless of file size — the file is
@@ -128,9 +167,13 @@ def scan(path: str | Path) -> dict:
 
                     if line.startswith((";LAYER_CHANGE", "; CHANGE_LAYER")):
                         layer += 1
+                        if current_tool is not None:
+                            tool_layers.setdefault(current_tool, []).append(layer)
                         continue
                     if line.startswith(";LAYER:"):
                         layer = int(line.split(":", 1)[1] or 0)
+                        if current_tool is not None:
+                            tool_layers.setdefault(current_tool, []).append(layer)
                         continue
                     if line.startswith(";Z:"):
                         try:
@@ -142,6 +185,8 @@ def scan(path: str | Path) -> dict:
                         found = _STATS_LAYER.match(line)
                         if found:
                             layer = max(layer, int(found.group(1)))
+                            if current_tool is not None:
+                                tool_layers.setdefault(current_tool, []).append(layer)
                         continue
 
                     tool = _TOOL.match(line)
@@ -280,9 +325,13 @@ def narrate(plan: dict, facts: dict | None = None,
             key=lambda pair: pair[1]):
         if layers_total and layer < layers_total - 1 and len(introduced) > 1:
             lines.append({
-                "at": f"Layer {layer}",
+                "at": _ordinal_layer(layer).capitalize(),
                 "text": f"Slot {tool + 1} is finished with",
-                "evidence": f"last T{tool} at layer {layer}",
+                # Not necessarily a literal T{tool} line at this layer: once a
+                # tool is carried forward through every layer it stays
+                # selected on, this is the last layer it was still the
+                # selected tool for, which may be later than its last T-line.
+                "evidence": f"T{tool} last selected through layer {layer}",
             })
 
     for event in plan.get("events", []):
