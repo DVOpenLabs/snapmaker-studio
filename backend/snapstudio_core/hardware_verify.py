@@ -124,7 +124,7 @@ def run(host: str, port: int = 7125) -> dict:
     if loaded_error:
         checks.append(_check(
             "material.loaded_filaments", "Loaded filament reported by firmware", UNKNOWN,
-            f"Studio could not read it: {loaded_error}"))
+            loaded_error))
     else:
         checks.append(_check(
             "material.loaded_filaments", "Loaded filament reported by firmware",
@@ -132,13 +132,25 @@ def run(host: str, port: int = 7125) -> dict:
             f"{len([f for f in loaded if f])} slot(s) reported" if loaded is not None
             else "this firmware does not report loaded filament"))
 
-    identity = printer_profiles.identify({
-        "reachable": True, "toolhead_count": toolhead_count, "klipper_objects": objects,
-    })
-    checks.append(_check(
-        "printer.identified", "Studio recognises this printer model",
-        PASS if identity.get("matched") else UNKNOWN,
-        identity.get("evidence") or "not recognised"))
+    # identify() decides from toolhead count and the object list — both came
+    # from capabilities(), so if that failed there is nothing to identify
+    # from. Calling it anyway on the empty fallbacks above would report "none
+    # of the vendor-specific objects Studio knows about are present", a false
+    # statement about this firmware: those objects were never read, not
+    # absent.
+    if capabilities_error:
+        checks.append(_check(
+            "printer.identified", "Studio recognises this printer model", UNKNOWN,
+            "could not identify: capabilities could not be read"))
+        identity = {}
+    else:
+        identity = printer_profiles.identify({
+            "reachable": True, "toolhead_count": toolhead_count, "klipper_objects": objects,
+        })
+        checks.append(_check(
+            "printer.identified", "Studio recognises this printer model",
+            PASS if identity.get("matched") else UNKNOWN,
+            identity.get("evidence") or "not recognised"))
 
     return {
         "schema_version": SCHEMA_VERSION,

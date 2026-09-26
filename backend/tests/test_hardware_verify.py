@@ -233,6 +233,14 @@ def test_klipper_disconnected_never_crashes_and_reports_unknown_not_a_failure():
         assert by_id["capabilities.object_list"]["result"] == hardware_verify.UNKNOWN
         assert out["capabilities"] is None
         assert out["klippy_state"] == "error"
+        # MEDIUM regression (opus-review-H-delta): identify() decides from the
+        # toolhead count and object list capabilities() would have returned —
+        # calling it anyway on the empty fallbacks falsely reports "none of the
+        # vendor-specific objects Studio knows about are present". Those
+        # objects were never read, not absent.
+        assert by_id["printer.identified"]["result"] == hardware_verify.UNKNOWN
+        assert "capabilities could not be read" in by_id["printer.identified"]["evidence"]
+        assert out["printer_model"] is None
     finally:
         httpd.shutdown()
 
@@ -248,7 +256,7 @@ def test_a_dropped_connection_while_reading_loaded_filament_is_not_a_firmware_cl
         out = hardware_verify.run("127.0.0.1", port)
         check = next(c for c in out["checks"] if c["id"] == "material.loaded_filaments")
         assert check["result"] == hardware_verify.UNKNOWN
-        assert "could not read it" in check["evidence"]
+        assert "could not read" in check["evidence"]
         assert "does not report loaded filament" not in check["evidence"]
     finally:
         httpd.shutdown()
@@ -273,12 +281,19 @@ def test_build_evidence_redacts_a_hostname_not_only_an_ipv4_address():
     this proves directly with a real (non-loopback-IP) hostname string — the
     other tests all use 127.0.0.1, which redact()'s own IPv4 pattern would
     catch regardless, so they cannot tell the two protections apart.
-    moonraker.probe() itself catches every connection failure and returns
-    reachable=False rather than raising, so this never needs a real DNS
-    answer or a mock server — the hostname just needs to never appear in
-    the returned bundle either way."""
-    bundle = hardware_verify.build_evidence("my-actual-printer-hostname.lan", 7125)
-    assert "my-actual-printer-hostname" not in json.dumps(bundle)
+
+    Uses "localhost" against the real mock server rather than an unresolved
+    name: "localhost" resolves off the loopback route with no outside DNS
+    query, so this exercises the whole reachable path — not just the
+    unreachable early return — and still proves the hostname stays out of
+    a real, successful bundle."""
+    httpd, port, _ = _mock_moonraker()
+    try:
+        bundle = hardware_verify.build_evidence("localhost", port)
+        assert bundle["checks"][0]["result"] == hardware_verify.PASS
+        assert "localhost" not in json.dumps(bundle)
+    finally:
+        httpd.shutdown()
 
 
 # --- the evidence bundle: redacted, and never claims hardware-verified -------
