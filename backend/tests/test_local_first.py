@@ -99,9 +99,15 @@ def test_the_printer_address_is_always_supplied_not_baked_in():
 
 
 def test_the_update_check_sends_nothing_about_the_user():
-    """One GET, a User-Agent, and no body. No identifier, no usage, no file names."""
+    """One GET, a User-Agent, and no body. No identifier, no usage, no file names.
+
+    `check_for_update` itself is now only an async wrapper around
+    `check_for_update_blocking` (M1: it hands the blocking ureq call to
+    `spawn_blocking` so it never runs on the async runtime's own worker
+    threads) — the request itself lives in the blocking function, so that
+    is what this scans."""
     shell = SHELL.read_text(encoding="utf-8")
-    block = shell[shell.index("fn check_for_update"):]
+    block = shell[shell.index("fn check_for_update_blocking"):]
     block = block[:block.index("\n}\n")]
     for leak in ("hostname", "username", "machine_id", "uuid", "send_json",
                  ".send(", "os_info", "telemetry"):

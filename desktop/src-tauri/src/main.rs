@@ -411,8 +411,20 @@ fn is_newer(latest: &str, current: &str) -> bool {
 /// request itself — no identifiers, no usage, no telemetry. Studio never
 /// downloads or installs an update on its own; the answer is a version
 /// number and a link.
+/// `async` here does not change what this does — only where it runs. `ureq`
+/// blocks the thread it's called on for up to the 10s timeout below; wrapping
+/// it in `spawn_blocking` keeps that off the async runtime's own worker
+/// threads (shared with the rest of the app) instead of just moving the
+/// problem, per Tauri's documented pattern for a blocking call inside a
+/// command.
 #[tauri::command]
-fn check_for_update() -> Result<UpdateInfo, String> {
+async fn check_for_update() -> Result<UpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_for_update_blocking)
+        .await
+        .map_err(|e| format!("the update check task panicked: {e}"))?
+}
+
+fn check_for_update_blocking() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let response = ureq::get(
         "https://api.github.com/repos/DVOpenLabs/snapmaker-studio/releases/latest",
@@ -456,12 +468,13 @@ fn check_for_update() -> Result<UpdateInfo, String> {
 
 // ---- Opt-in automatic update check ------------------------------------------
 //
-// The manual "Check GitHub now" button above is the whole feature today: Studio
-// never asks on its own. That is the right default, and it stays the default —
-// but a person who wants to know without remembering to press a button should be
-// able to say so, once, rather than being asked every session. This adds exactly
-// that: a persisted, opt-in preference, checked no more than once a day, using
-// the identical no-telemetry GET request `check_for_update` already makes.
+// Studio never asks on its own by default: the manual "Check GitHub now" button
+// above is what a person presses when they want an answer. That stays the
+// default — but a person who wants to know without remembering to press a
+// button should be able to say so, once, rather than being asked every session.
+// This adds exactly that: a persisted, opt-in preference, checked no more than
+// once a day, using the identical no-telemetry GET request `check_for_update`
+// already makes.
 //
 // What this does NOT add: a background timer, a silent retry loop, or anything
 // that runs while the app is not open. The check only ever happens because the
@@ -547,7 +560,7 @@ fn should_check_now(pref: &UpdateCheckPref, now: u64) -> bool {
 /// or the request itself failed; the manual button remains for someone who wants
 /// an answer right now regardless.
 #[tauri::command]
-fn maybe_auto_check_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
+async fn maybe_auto_check_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     let mut pref = read_update_pref(&app);
     let now = now_unix();
     if !should_check_now(&pref, now) {
@@ -555,7 +568,7 @@ fn maybe_auto_check_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     }
     pref.last_checked_at_unix = Some(now);
     write_update_pref(&app, &pref);
-    check_for_update().ok()
+    check_for_update().await.ok()
 }
 
 /// The model this launch was asked to open, if any. The frontend calls this once
