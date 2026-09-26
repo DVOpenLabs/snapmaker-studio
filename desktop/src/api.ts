@@ -1394,6 +1394,32 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   return invoke<UpdateInfo>("check_for_update");
 }
 
+/** The opt-in automatic-check preference, persisted locally by the app shell. */
+export interface UpdateCheckPref {
+  auto_check: boolean;
+  last_checked_at_unix: number | null;
+}
+
+export async function getUpdateCheckPref(): Promise<UpdateCheckPref> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<UpdateCheckPref>("get_update_check_pref");
+}
+
+export async function setAutoCheckUpdates(enabled: boolean): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_auto_check_updates", { enabled });
+}
+
+/**
+ * Called once per app launch. Returns null whenever the preference is off, a
+ * check already happened within the last day, or the request failed — all
+ * silently, by design: this is never allowed to interrupt anyone.
+ */
+export async function maybeAutoCheckUpdate(): Promise<UpdateInfo | null> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<UpdateInfo | null>("maybe_auto_check_update");
+}
+
 // ---- Print plan, materials, and the send confirmation ------------------------
 // The three questions that only exist after slicing: what happens and when, what
 // should be loaded, and whether to press send.
