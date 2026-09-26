@@ -195,6 +195,38 @@ def test_the_nozzle_comparison_tolerates_float_and_string_formatting_noise():
     assert check["result"] == post_slice.OK
 
 
+# --- M-B regression: nozzle_diameter_mm is genuinely per-toolhead ordered ---
+#
+# Opus delta review of 9b638c6: unlike preflight's nozzle_diameters trait,
+# g["nozzle_diameter_mm"] is read straight off the G-code config block's
+# per-toolhead comma list, so a positional comparison against it is sound —
+# but it needs a test that actually exercises a swap, not just the uniform
+# same-value-on-every-toolhead fixture every other test here uses.
+
+def test_swapped_toolheads_are_a_real_mismatch_not_a_matching_set():
+    """Sliced for [0.4, 0.6] on toolheads 0/1; the printer reports [0.6, 0.4]
+    — same sizes, swapped toolheads, a real mismatch a set comparison would
+    call a match."""
+    report = post_slice.analyse(
+        job(nozzle_diameter_mm=[0.4, 0.6]),
+        printer(nozzle_diameters=[0.6, 0.4], nozzle_confirmed_by="printer"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.ATTENTION
+    # The evidence must show the real per-toolhead order on each side, not a
+    # deduplicated set — {0.4, 0.6} vs {0.4, 0.6} would look identical despite
+    # the swap, but "0.4 mm, 0.6 mm" vs "0.6 mm, 0.4 mm" shows it plainly.
+    assert "sliced for 0.4 mm, 0.6 mm" in check["evidence"]
+    assert "0.6 mm, 0.4 mm" in check["evidence"]
+
+
+def test_matching_toolhead_order_with_mixed_sizes_is_ok():
+    report = post_slice.analyse(
+        job(nozzle_diameter_mm=[0.4, 0.2, 0.6, 0.8]),
+        printer(nozzle_diameters=[0.4, 0.2, 0.6, 0.8], nozzle_confirmed_by="printer"))
+    check = by_id(report, "gcode.nozzle")
+    assert check["result"] == post_slice.OK
+
+
 def test_an_unreadable_file_is_never_reported_as_a_healthy_job():
     report = post_slice.analyse({"available": False, "error": "that does not look like a sliced G-code file"})
     assert report["available"] is False

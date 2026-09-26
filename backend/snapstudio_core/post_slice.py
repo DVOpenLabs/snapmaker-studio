@@ -349,7 +349,6 @@ def _nozzle(g: dict, printer: dict) -> dict:
             label, who, verb = "user confirmed", "you", "confirmed"
         else:
             label, who, verb = "an unstated source", "something Studio read", "reports"
-        reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
         if _nozzles_match(sizes, reported):
             return _check(
                 "gcode.nozzle", "Nozzle size matches", OK,
@@ -357,9 +356,21 @@ def _nozzle(g: dict, printer: dict) -> dict:
                 confidence=CONFIRMED,
                 consequence=f"The job was sliced for the nozzle {who} {verb}.",
                 source=f"G-code configuration block; {label}")
+        # Same toolhead count: show the real per-toolhead values, not the
+        # deduplicated `stated` set — [0.4, 0.6] vs [0.4, 0.6] would otherwise
+        # look identical in the evidence even though the sizes sit on
+        # different toolheads, which is exactly the mismatch being reported.
+        # Different counts: there is no toolhead to line up, so fall back to
+        # the deduplicated sets, same as _nozzles_match's own fallback.
+        if len(sizes) == len(reported):
+            stated_mismatch_txt = ", ".join(f"{_nozzle_number(s)} mm" for s in sizes)
+            reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+        else:
+            stated_mismatch_txt = stated
+            reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
         return _check(
             "gcode.nozzle", "Nozzle size does not match", ATTENTION,
-            evidence=(f"the job was sliced for {stated}; {who} {verb} " + reported_txt),
+            evidence=(f"the job was sliced for {stated_mismatch_txt}; {who} {verb} " + reported_txt),
             confidence=CONFIRMED,
             consequence=("Printing with a different nozzle than the job was sliced for changes "
                         "line width and can ruin fine detail."),

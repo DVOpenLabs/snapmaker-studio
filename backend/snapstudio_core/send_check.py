@@ -14,7 +14,8 @@ Three buckets, and the separation is the whole point:
 * **Unknown** — Studio cannot verify it. Free storage on a firmware that does
   not report any. The fitted nozzle, when neither the printer nor a person
   has said — firmware that does report it turns this into a pass or a
-  blocker instead.
+  warning instead (a nozzle mismatch is a real concern, not proof the print
+  will fail, so it warns rather than blocks).
 
 An unknown is never promoted to a blocker to look thorough, and never demoted to
 a pass to look clean. And nothing here sends anything: this module returns a

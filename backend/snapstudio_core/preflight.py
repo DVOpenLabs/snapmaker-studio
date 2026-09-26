@@ -211,6 +211,16 @@ def _nozzle(project: dict, printer: dict) -> dict:
     a live reading. Only when neither exists does this stay UNKNOWN.
     """
     wanted = _trait(project, "nozzle_diameters") or []
+    # nozzle_diameters above is deduplicated and sorted — it has no per-toolhead
+    # order, so it must never be compared position by position: two DIFFERENT
+    # sizes that happen to sort into the same order as the printer's reading
+    # would otherwise be wrongly flagged a mismatch. nozzle_diameters_by_toolhead
+    # is the same reading kept in the order the slicer actually wrote it. Only
+    # when that ordered trait is genuinely present does this do a positional
+    # comparison; a caller that only sets nozzle_diameters (an older trait
+    # shape, or a test fixture) gets the plain set comparison instead, same as
+    # before positional matching existed.
+    ordered = _trait(project, "nozzle_diameters_by_toolhead")
     reported = printer.get("nozzle_diameters")
     confirmed_by = printer.get("nozzle_confirmed_by")
     if not wanted:
@@ -258,17 +268,30 @@ def _nozzle(project: dict, printer: dict) -> dict:
         # reading with nothing saying where it came from, and that must never
         # be mislabelled as either firmware evidence or a person's own word.
         source, who, verb = "unstated source", "something Studio read", "reports"
-    reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
-    if _nozzles_match(wanted, reported):
+    matched = (_nozzles_match(ordered, reported) if ordered
+              else {_nozzle_number(w) for w in wanted} == {_nozzle_number(n) for n in reported})
+    if matched:
         return _check(
             "nozzle.match", "Nozzle size", OK,
             evidence=f"project expects {wanted_txt}; {who} {verb} the same",
             confidence=CONFIRMED,
             consequence=f"The project was made for the nozzle {who} {verb}.",
             source=source)
+    # With genuine per-toolhead order and a matching toolhead count, show the
+    # real per-toolhead values, not a deduplicated set — [0.4, 0.6] vs
+    # [0.4, 0.6] would otherwise look identical in the evidence even though
+    # the sizes sit on different toolheads, which is exactly the mismatch
+    # this check exists to catch. Otherwise (no order, or no toolhead to line
+    # up) fall back to the deduplicated sets.
+    if ordered and len(ordered) == len(reported):
+        wanted_mismatch_txt = ", ".join(f"{_nozzle_number(w)} mm" for w in ordered)
+        reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+    else:
+        wanted_mismatch_txt = wanted_txt
+        reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
     return _check(
         "nozzle.match", "Nozzle size does not match", ATTENTION,
-        evidence=f"project expects {wanted_txt}; {who} {verb} {reported_txt}",
+        evidence=f"project expects {wanted_mismatch_txt}; {who} {verb} {reported_txt}",
         confidence=CONFIRMED,
         consequence=("Line width and detail will not come out as the creator intended, "
                      "and very fine features may disappear."),

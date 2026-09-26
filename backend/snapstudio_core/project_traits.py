@@ -84,7 +84,7 @@ TRAIT_KEYS = (
     "is_u1_project", "foreign_printer", "is_sliced", "plate_count",
     "object_count", "filament_count", "has_painted_color", "has_texture",
     "has_custom_per_layer_gcode", "has_support_enforcers", "unit", "non_mm_unit",
-    "nozzle_diameters", "mixed_nozzle_sizes", "required_extensions",
+    "nozzle_diameters", "nozzle_diameters_by_toolhead", "mixed_nozzle_sizes", "required_extensions",
     "unknown_required_extensions", "likely_makerworld", "expects_object_exclusion",
 )
 
@@ -207,6 +207,7 @@ def _stl_traits() -> dict:
         "unit": _tier(None, UNKNOWN, "STL files do not record their unit"),
         "non_mm_unit": _tier(False, UNKNOWN, "STL files do not record their unit"),
         "nozzle_diameters": _tier([], UNKNOWN, None),
+        "nozzle_diameters_by_toolhead": _tier([], UNKNOWN, None),
         "mixed_nozzle_sizes": _tier(False, UNKNOWN, None),
         "required_extensions": _tier([], CONFIRMED, None),
         "unknown_required_extensions": _tier(False, CONFIRMED, None),
@@ -525,6 +526,16 @@ def extract(path: str) -> dict:
                              f"unit = {unit}" if unit else None),
         "nozzle_diameters": _tier(distinct_nozzles, CONFIRMED if nozzles else UNKNOWN,
                                   f"{BAMBU_SETTINGS} nozzle_diameter" if nozzles else None),
+        # One entry per toolhead, in the order the slicer wrote them — unlike
+        # nozzle_diameters above, this is deliberately NOT deduplicated or
+        # sorted, because preflight needs to compare toolhead 2's size against
+        # toolhead 2's size, not just check whether the same sizes exist
+        # somewhere in each set. A project with [0.4, 0.6, 0.4, 0.4] and a
+        # printer reporting [0.4, 0.4, 0.6, 0.4] have identical sizes but on
+        # different toolheads — a real mismatch nozzle_diameters' deduplicated
+        # form cannot express.
+        "nozzle_diameters_by_toolhead": _tier(nozzles, CONFIRMED if nozzles else UNKNOWN,
+                                              f"{BAMBU_SETTINGS} nozzle_diameter" if nozzles else None),
         "mixed_nozzle_sizes": _tier(len(distinct_nozzles) > 1,
                                     CONFIRMED if nozzles else UNKNOWN,
                                     ", ".join(distinct_nozzles) if len(distinct_nozzles) > 1
