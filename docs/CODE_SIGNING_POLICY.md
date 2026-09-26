@@ -15,7 +15,7 @@ downloading an installer should be able to see how it was produced.
 | Repository | <https://github.com/DVOpenLabs/snapmaker-studio> |
 | Licence | MIT |
 | Distribution | GitHub Releases, free of charge |
-| Platforms | Windows 10/11 x64 |
+| Platforms | Windows 10/11 x64; Linux x86_64 (`.deb`) |
 
 ## Team and roles
 

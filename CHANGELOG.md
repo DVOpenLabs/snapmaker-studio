@@ -6,6 +6,74 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-26
+
+**Two platforms, one release.**
+
+### New in 1.0.0
+(everything below shipped on `main` between v0.9.0 and this tag — nothing else did)
+
+#### Added
+- **Linux, as a `.deb`.** Ubuntu 22.04 / 24.04 x86_64. Self-contained: the engine
+  ships as a frozen sidecar; `apt` only needs `libwebkit2gtk-4.1-0` and
+  `libgtk-3-0`. Installed with `apt install ./<file>.deb`, upgraded in place,
+  removed with `apt remove`. Verified on genuinely clean containers by an
+  installed-build acceptance harness that launches the real app under a real
+  display and closes its real window. Guide: [docs/linux-install.md](docs/linux-install.md).
+- **Data lives where Linux expects it.** `$XDG_DATA_HOME/SnapmakerStudio`,
+  falling back to `~/.local/share/SnapmakerStudio`, created `0700`;
+  `SNAPSTUDIO_DATA_DIR` still overrides. Windows is unchanged
+  (`%LOCALAPPDATA%\SnapmakerStudio`).
+
+#### Fixed
+- **Closing the window now actually quits Studio and its engine (Windows and
+  Linux).** Since beta.13, closing the main window left the process and its
+  sidecar running silently in the background — confirmed against a real
+  built release binary, not inferred. Every previous "zero orphan" proof only
+  covered a process being killed outright, never a normal window close.
+- **No orphaned engine on Linux**, closing, crashing, or killing the app stops
+  its sidecar every time (parent-death signal, a stdin lifeline, and a
+  graceful `/shutdown`, with the sidecar's own process group killed as the
+  last resort).
+
+#### Changed
+- **The project's home is `github.com/DVOpenLabs/snapmaker-studio`.** The
+  in-app update check and the public docs now say so. Old links redirect.
+- The Ecosystem entry for the Snapmaker U1 Toolkit now says what it is: driven
+  from a terminal or a phone over Telegram, and needs a Linux or WSL host
+  (corrections from that project's own maintainer).
+
+#### Known limitations (Linux)
+- Snapmaker Orca is not auto-detected on Linux: after Prepare, the handoff
+  button always offers Orca's download page — open the prepared `.3mf` in
+  Orca yourself.
+- No in-app update notification on either platform; check the Releases page.
+- Not yet verified from Linux: Printer Hub against a real Snapmaker U1; no
+  external-user report yet.
+
+#### Not changed
+- Windows install identity is unchanged, so v1.0.0 installs over v0.9.0 in
+  place and keeps your data — verified, including that the upgraded
+  installation reports the new version and nothing is left duplicated. The
+  Windows installer is still unsigned; verify the SHA256.
+
+### The v1.0 product includes
+(already shipped in 0.4.0–0.9.0 — listed so 1.0 reads as a whole, not as new work)
+- Project Doctor / Printer Doctor / Cost Doctor — read-only, plain-language,
+  "unknown" stays unknown.
+- Prepare a U1 copy for Snapmaker Orca without touching the original; painted
+  colour, parts, modifiers, multi-object layout and three per-object settings
+  cross (0.7–0.9).
+- Read the sliced G-code back and check it against the printer as it is right
+  now (0.4).
+- Printer Hub: monitor, and user-confirmed send/pause/resume/cancel — never
+  autonomous.
+- Materials providers: Spoolman and Bambuddy, read-only, local-network only
+  (0.8–0.9).
+- Batch, Design Library, Ecosystem directory, the engine and the `u1convert` CLI.
+- Local-first: no cloud, no account, no telemetry; the one transfer is a
+  sliced job to your own printer after you confirm it.
+
 ## [0.9.0] - 2026-08-28
 
 **The project that crosses whole.**

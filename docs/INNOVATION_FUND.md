@@ -57,7 +57,7 @@ Re-read from the official page on **2026-08-23**. Source:
 ## Project
 
 **Name:** Snapmaker Studio
-**URL:** <https://github.com/DeadlyVirusIn/snapmaker-studio>
+**URL:** <https://github.com/DVOpenLabs/snapmaker-studio>
 **Licence:** MIT
 **Category:** Workflow / software tooling
 **Cover image:** `docs/brand/hero.svg` (export at 640×360)
@@ -170,7 +170,7 @@ guessing in the direction that looks better.
   to end and prints a 27-check pass/fail table, so the claims can be verified
   without reading the source. It runs in CI on every pull request.
 - **An acceptance harness that drives the installed application**, not a dev
-  server: 47 checks over the real window and the frozen engine, including that the
+  server: 39 checks over the real window and the frozen engine, including that the
   input file is byte-identical afterwards and that uninstalling leaves nothing
   behind.
 - **Regression tests against genuine slicer output** — real OrcaSlicer,
@@ -208,17 +208,17 @@ simply the machine it is verified against.
 
 ## Evidence
 
-Everything below was verified against the **published v0.9.0 installer**, not a
+Everything below was verified against the **published v1.0.0 installer**, not a
 development build. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 47/47 |
-| Read-only verification against a real Snapmaker U1 | 57/57 |
+| Installed-application acceptance, through the real UI | 39/39 |
+| Read-only verification against a real Snapmaker U1 | 39/39 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 1813 passed, 4 skipped |
+| Backend tests | 1833 passed, 7 skipped |
 | Desktop tests | 340 passed |
 | TypeScript, Rust, production build | clean |
 
@@ -243,7 +243,7 @@ still zero, it says so.
   reputation over time through [SignPath Foundation](CODE_SIGNING_POLICY.md),
   which signs qualifying open-source projects at no cost. Funding is not the
   blocker here, and saying so is better than inflating the ask.
-- **macOS and Linux builds**, with a CI release pipeline.
+- **macOS builds.** Linux shipped in v1.0.0, with its own CI release pipeline.
 - **Broadening the verified hardware surface** — more real printers, more firmware
   versions, and more genuine slicer projects in the regression corpus.
 - **Maintainer time** for review, releases and community contributions.

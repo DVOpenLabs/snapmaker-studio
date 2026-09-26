@@ -5,6 +5,70 @@ Honest, current verification state for the current release. A release is only ma
 published installer, and — from beta.24 onward — read-only verification against a
 real Snapmaker U1 have all passed and are recorded here.
 
+## v1.0.0 — ACCEPTED
+
+**Two platforms, one release.** Everything below ran against *these exact
+artifacts* — the Windows installer and the Linux `.deb` on the release page,
+both verified by SHA256, both built in the same CI run
+(`release-candidate.yml`) and never rebuilt afterward. Canonical values:
+[RELEASE_METADATA.md](RELEASE_METADATA.md). This release's own immutable
+snapshot: [internal/evidence/1.0.0.json](internal/evidence/1.0.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **1833 passed / 7 skipped**, desktop **340** |
+| `u1convert selfcheck` | **27/27** |
+| Windows installed-application acceptance | **39/39**, including the in-place upgrade from the published v0.9.0 |
+| Windows default-path upgrade smoke (CI, silent install) | **pass** — one registration, version updated, same install location, legacy publisher key intact, clean uninstall |
+| Linux installed-build acceptance, clean `ubuntu:22.04` | **35/35** |
+| Linux installed-build acceptance, clean `ubuntu:24.04` | **35/35** |
+| Real Snapmaker U1, read-only | **39/39** |
+| `tsc`, `cargo check`, production build (both platforms) | clean |
+
+### What is verified, and what is not
+
+**Windows — hardware verified, upgrade verified.** The published v1.0.0
+installer was run through the full UI-driven acceptance harness (39/39),
+including a real upgrade from the published v0.9.0 installer: one
+registration afterward (no duplicate), the registration reports 1.0.0 (not
+still 0.9.0), the install location is unchanged, and the app's own data
+survived. Closing the real app window was confirmed to actually exit the
+process and its sidecar — the beta.13 regression this release fixes.
+
+**Linux — clean-image verified, DESKTOP WORKFLOW VERIFIED, not yet
+EXTERNAL USER VERIFIED.** The published `.deb` was installed on genuinely
+clean `ubuntu:22.04` and `ubuntu:24.04` containers (no prior checkout, no
+dev toolchain) and driven through 35 checks each: a real virtual display
+(Xvfb), a real window manager (Openbox), a real window close, plus direct
+calls to the local engine. This is the SAME clean-image validation
+`linux-ci.yml` runs continuously, but against this release's own
+release-candidate bytes specifically — see
+[internal/LINUX_BETA_PLAN.md](internal/LINUX_BETA_PLAN.md) for the full
+program record. **Not verified from Linux:** a real GNOME/KDE/Wayland
+desktop session (only Xvfb+Openbox); real physical hardware or a VM (only
+CI containers); Printer Hub against a real Snapmaker U1; any report from an
+outside user. **Known limitation, not a defect in this release's own
+testing:** Snapmaker Orca auto-detection is not implemented on Linux — the
+post-Prepare handoff button always offers Orca's download page.
+
+**Snapmaker U1 — hardware verified, read-only.** A physical U1 answered this
+release's read-only harness against the actual published v1.0.0 installer:
+identified from the `print_task_config` object it exposes and mainline
+Klipper does not, four toolheads, a 271 × 335 × 281 mm reported travel
+envelope, 205 firmware objects, and all four loaded filament slots read
+correctly and recorded as the machine's own observation. Full report:
+[internal/hardware-1.0.0.json](internal/hardware-1.0.0.json). **Not
+captured this release:** the additional 18 provider-on-hardware checks that
+require seeded, session-owned Spoolman and Bambuddy containers (these ran
+for v0.9.0's 57/57; standing up matching seed data against this printer's
+current real loadout was not done for this release — 39/39 is the honest,
+complete count of what actually ran, not a reduced version of 57).
+
+The harness is read-only by construction: seven read routes on an allow-list
+asserted against a deny-list of every control route, printed before the first
+request. Nothing was uploaded, started, paused, resumed, cancelled, heated,
+homed, moved or configured.
+
 ## v0.9.0 — ACCEPTED
 
 **The project that crosses whole.** Everything below ran against *this installer*

@@ -1,0 +1,204 @@
+{
+  "schema_version": "acceptance/1",
+  "installer": "<temp>\\rc-win\\Snapmaker.Studio_1.0.0_x64-setup.exe",
+  "checks": [
+    {
+      "name": "Probe servers this run owns are up",
+      "ok": true,
+      "detail": "count 9401, redirect 9402"
+    },
+    {
+      "name": "Previous version installs",
+      "ok": true,
+      "detail": "exit code 0"
+    },
+    {
+      "name": "Previous version left state to migrate",
+      "ok": true,
+      "detail": "<workdir>\\engine-data"
+    },
+    {
+      "name": "Scripted install completes",
+      "ok": true,
+      "detail": "exit code 0"
+    },
+    {
+      "name": "Upgrade keeps the user's data",
+      "ok": true,
+      "detail": "1 file(s) before, 1 after"
+    },
+    {
+      "name": "Upgrade does not leave two installations",
+      "ok": true,
+      "detail": "1 registration(s)"
+    },
+    {
+      "name": "Upgrade registration reports the new version",
+      "ok": true,
+      "detail": "registry says 1.0.0, installer filename says 1.0.0"
+    },
+    {
+      "name": "Application installed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Frozen engine sidecar installed",
+      "ok": true,
+      "detail": "14.9 MB"
+    },
+    {
+      "name": "Uninstaller installed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Application launches",
+      "ok": true,
+      "detail": "pid 35800"
+    },
+    {
+      "name": "Window title",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Sidecar boots from the install directory",
+      "ok": true,
+      "detail": "2 process(es)"
+    },
+    {
+      "name": "CDP reachable on the installed webview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Startup checks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Engine routes answer from the installed sidecar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Model passed on the command line is open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Project opens and its findings render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Prepare, fidelity, ledger and best-tool render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Colour plan renders on its own page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Post-Slice Doctor reads a sliced job in the installed app",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "One surface shows the whole job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Studio explains how sure it is about a job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "First-evening mistakes are answered, not ignored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Sliced job is byte-identical afterwards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Original file is byte-identical afterwards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Painted colour is shown in the installed build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Probe servers survived the app restarts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Both provider wire shapes work in the installed build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "No provider configured means no provider request",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Provider addresses are validated in the installed build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "A redirect off the local network is refused in the installed build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Closing the real window exits the app and its sidecar (not just a kill)",
+      "ok": true,
+      "detail": "app exited=True, sidecar PID(s) still alive="
+    },
+    {
+      "name": "No orphan sidecar after close",
+      "ok": true,
+      "detail": "0 left running"
+    },
+    {
+      "name": "Reopens cleanly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Uninstall completes",
+      "ok": true,
+      "detail": "exit code 0"
+    },
+    {
+      "name": "Install directory removed",
+      "ok": true,
+      "detail": "0 file(s) left"
+    },
+    {
+      "name": "No sidecar survives uninstall",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Pre-existing install registration restored",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "passed": 39,
+  "total": 39,
+  "evidence": "<workdir>\\evidence"
+}

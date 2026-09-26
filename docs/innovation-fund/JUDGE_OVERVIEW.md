@@ -29,9 +29,9 @@ codebase, not a roadmap item.
 
 ## Watch it work
 
-[![Snapmaker Studio demo](../media/demo-poster.jpg)](https://github.com/DeadlyVirusIn/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
+[![Snapmaker Studio demo](../media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
-[66 seconds, recorded from the installed application](https://github.com/DeadlyVirusIn/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4).
+[66 seconds, recorded from the installed application](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4).
 Nothing staged, nothing re-created. No printer is connected in the recording, so
 it also shows what Studio says when it cannot reach one — which is the more
 interesting half. The beat-by-beat script is
@@ -86,17 +86,18 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **published v0.9.0 installer** — installed,
+Everything below ran against the **published v1.0.0 installer** — installed,
 launched, driven through the real window, then uninstalled. Not a development
 server, not the source tree.
 
 | What | Result | How to reproduce |
 |---|---|---|
-| Installed-application acceptance | **47/47** | `pwsh -File tools/acceptance/run.ps1` |
-| Read-only verification against a real Snapmaker U1 | **57/57** | `pwsh -File tools/hardware/verify.ps1 -PrinterHost <ip>` |
+| Installed-application acceptance (incl. the v0.9.0→v1.0.0 upgrade) | **39/39** | `pwsh -File tools/acceptance/run.ps1` |
+| Linux clean-image validation, Ubuntu 22.04 + 24.04 | **35/35** each | see [../linux-install.md](../linux-install.md) |
+| Read-only verification against a real Snapmaker U1 | **39/39** | `pwsh -File tools/hardware/verify.ps1 -PrinterHost <ip>` |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 1813 passed, 4 skipped | `pytest` |
+| Backend | 1833 passed, 7 skipped | `pytest` |
 | Desktop | 340 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
@@ -156,4 +157,4 @@ SHA256 before running it. Why, and what is being done:
 | Technical depth | [TECHNICAL_DEPTH.md](TECHNICAL_DEPTH.md) |
 | Where Studio sits in the field | [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md) · [DIFFERENTIATION_STRATEGY.md](DIFFERENTIATION_STRATEGY.md) |
 | The ecosystem story | [OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md) |
-| Download | [Releases](https://github.com/DeadlyVirusIn/snapmaker-studio/releases/tag/v0.9.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
+| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.0.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
