@@ -11,6 +11,18 @@ This does a single streaming pass and builds a timeline of the events that are
 filament changes, temperature targets, and object boundaries. It never simulates
 motion, never estimates, and never invents an event the file does not contain.
 
+**What an unsliced project cannot know.** `color_plan` answers, from a project's
+own painted/assigned colours, whether two colours *can* land on the same printed
+layer — proven only when their height ranges cannot overlap; everywhere else it
+reserves a toolhead rather than guess. That is the honest limit of reading a
+project: heights overlapping shows two colours *can* meet on a layer, not that
+they do. This module is what closes that gap once the job is sliced: it already
+walks every tool-change line in order, so it also knows exactly which layers each
+tool is actually used on — not just the range between its first and last use.
+Two tools that are only ever used on disjoint layers provably never share one;
+two seen on the very same layer number provably do. Both are read directly off
+the G-code the slicer wrote, never inferred from geometry.
+
 **Cost.** A pass over a 330 MB job takes a few seconds, so this is deliberately
 separate from the cheap facts: the Post-Slice Doctor answers immediately, and the
 timeline is asked for. Memory stays flat regardless of file size — the file is
@@ -188,6 +200,7 @@ def scan(path: str | Path) -> dict:
 
     first_tool = next((e["tool"] for e in events if e["kind"] == "tool"), None)
     last_tool = next((e["tool"] for e in reversed(events) if e["kind"] == "tool"), None)
+    coexistence = _tool_coexistence(tool_layers)
 
     out.update({
         "available": True,
@@ -201,6 +214,8 @@ def scan(path: str | Path) -> dict:
         "tools_seen": sorted(tool_layers),
         "tool_first_layer": {str(t): min(ls) for t, ls in tool_layers.items() if ls},
         "tool_last_layer": {str(t): max(ls) for t, ls in tool_layers.items() if ls},
+        "tool_coexistence": coexistence,
+        "tools_provably_disjoint": _provably_disjoint(tool_layers, coexistence),
         "pauses": pauses,
         "objects_started": objects,
         "bed_target_c": bed_target,
@@ -208,6 +223,56 @@ def scan(path: str | Path) -> dict:
         "z_by_layer": {str(k): v for k, v in list(z_by_layer.items())[:2000]},
     })
     return out
+
+
+# --- post-slice tool coexistence --------------------------------------------
+#
+# color_plan proves separation from *heights*: a colour used only between two
+# heights with nothing else in that band can be a planned swap, and everything
+# else reserves a toolhead because an overlapping height range only shows two
+# colours *can* land on the same layer. Once the job is sliced, "can" is
+# answerable as "does": tool_layers (built during the scan above) already
+# holds, for every tool, the exact layer number of every line that selects it —
+# so whether two tools were ever active on the very same layer is a plain set
+# question, not an inference.
+
+def _tool_coexistence(tool_layers: dict[int, list[int]]) -> list[dict]:
+    """For every pair of tools this job actually used, did they ever share a
+    printed layer? Proven from the G-code, not estimated from a height range."""
+    sets = {tool: set(layers) for tool, layers in tool_layers.items() if layers}
+    tools = sorted(sets)
+    out = []
+    for i, a in enumerate(tools):
+        for b in tools[i + 1:]:
+            shared = sorted(sets[a] & sets[b])
+            out.append({
+                "tools": [a, b],
+                "shares_a_layer": bool(shared),
+                "shared_layer_count": len(shared),
+                "first_shared_layer": shared[0] if shared else None,
+            })
+    return out
+
+
+def _provably_disjoint(tool_layers: dict[int, list[int]], coexistence: list[dict]) -> list[int]:
+    """Tools that never shared a layer with any other tool this job used.
+
+    Not the same claim as color_plan's "possible without repainting": that one
+    is a plan for a project that has not been sliced yet. This one is proof,
+    from the slice that already happened, that a manual swap for this tool
+    would have worked — the toolhead it would have freed up was never needed
+    on the same layer as anything else.
+    """
+    tools = sorted(t for t, ls in tool_layers.items() if ls)
+    if len(tools) < 2:
+        return tools
+    conflicts: dict[int, bool] = {t: False for t in tools}
+    for pair in coexistence:
+        if pair["shares_a_layer"]:
+            a, b = pair["tools"]
+            conflicts[a] = True
+            conflicts[b] = True
+    return [t for t in tools if not conflicts[t]]
 
 
 # --- plain language ---------------------------------------------------------
@@ -283,6 +348,19 @@ def narrate(plan: dict, facts: dict | None = None,
                 "at": f"Layer {layer}",
                 "text": f"Slot {tool + 1} is finished with",
                 "evidence": f"last T{tool} at layer {layer}",
+            })
+
+    # Real, proven coexistence — the answer color_plan cannot give before the
+    # job is sliced. Only worth a line when there is more than one tool to
+    # relate; a single-tool job has nothing to coexist with.
+    for pair in plan.get("tool_coexistence") or []:
+        if pair["shares_a_layer"]:
+            a, b = pair["tools"]
+            layer = pair["first_shared_layer"]
+            lines.append({
+                "at": f"Layer {layer}",
+                "text": f"Slot {a + 1} and slot {b + 1} are both active on the same layer",
+                "evidence": f"T{a} and T{b} both appear at layer {layer}",
             })
 
     for event in plan.get("events", []):

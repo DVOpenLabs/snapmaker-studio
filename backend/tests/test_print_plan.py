@@ -93,6 +93,44 @@ def test_it_records_when_each_tool_arrives_and_leaves(multi):
     assert plan["tool_last_layer"]["0"] == 2
 
 
+# --- post-slice tool coexistence ---------------------------------------------
+
+def test_tools_used_on_disjoint_layers_are_proven_never_to_share_one(multi):
+    """MULTI_BODY changes tool on every layer change — no two tools are ever
+    active on the same layer number, so all three are provably swappable."""
+    plan = print_plan.scan(multi)
+    assert all(not pair["shares_a_layer"] for pair in plan["tool_coexistence"])
+    assert plan["tools_provably_disjoint"] == [0, 1, 3]
+
+
+def test_tools_used_on_the_same_layer_are_proven_to_share_one(tmp_path):
+    body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1 E1\n"
+            "T1\nG1 X2 Y2 E1\nT0\n;LAYER_CHANGE\n;Z:0.4\n")
+    plan = print_plan.scan(build(tmp_path, body, name="shared-layer.gcode"))
+    pair = next(p for p in plan["tool_coexistence"] if p["tools"] == [0, 1])
+    assert pair["shares_a_layer"] is True
+    assert pair["first_shared_layer"] == 1
+    assert pair["shared_layer_count"] == 1
+    assert plan["tools_provably_disjoint"] == []
+
+
+def test_a_single_tool_job_has_no_coexistence_pairs(tmp_path):
+    body = "T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 E1\n"
+    plan = print_plan.scan(build(tmp_path, body, name="single-tool.gcode"))
+    assert plan["tool_coexistence"] == []
+    assert plan["tools_provably_disjoint"] == [0]
+
+
+def test_narration_states_a_proven_shared_layer(tmp_path):
+    body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1 E1\n"
+            "T1\nG1 X2 Y2 E1\nT0\n;LAYER_CHANGE\n;Z:0.4\n")
+    target = build(tmp_path, body, name="shared-layer-2.gcode")
+    plan = print_plan.scan(target)
+    lines = print_plan.narrate(plan, gcode.read_facts(target))
+    text = " | ".join(line["text"] for line in lines)
+    assert "Slot 1 and slot 2 are both active on the same layer" in text
+
+
 def test_it_reads_the_temperature_targets_the_job_sets(multi):
     plan = print_plan.scan(multi)
     assert plan["bed_target_c"] == 65.0
