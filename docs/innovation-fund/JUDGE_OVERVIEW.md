@@ -101,8 +101,11 @@ server, not the source tree.
 | Desktop | 340 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
-Full records, including the raw evidence files:
-[../TRUST_STATUS.md](../TRUST_STATUS.md). Step-by-step:
+The counts above are lower than the previous release's: this release's runs
+skipped the optional materials-provider checks, which need a Spoolman and
+Bambuddy instance seeded and running — 39/39 is the honest count of what
+actually ran, not a partial version of a larger number. Full records, including the raw
+evidence files: [../TRUST_STATUS.md](../TRUST_STATUS.md). Step-by-step:
 [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).
 
 The hardware run was read-only by construction: the allowed routes are asserted

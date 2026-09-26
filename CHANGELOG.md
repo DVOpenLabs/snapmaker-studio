@@ -16,10 +16,13 @@ All notable changes to this project are documented here. The format is based on
 #### Added
 - **Linux, as a `.deb`.** Ubuntu 22.04 / 24.04 x86_64. Self-contained: the engine
   ships as a frozen sidecar; `apt` only needs `libwebkit2gtk-4.1-0` and
-  `libgtk-3-0`. Installed with `apt install ./<file>.deb`, upgraded in place,
-  removed with `apt remove`. Verified on genuinely clean containers by an
-  installed-build acceptance harness that launches the real app under a real
-  display and closes its real window. Guide: [docs/linux-install.md](docs/linux-install.md).
+  `libgtk-3-0`. Installed with `apt install ./<file>.deb`, removed with
+  `apt remove`. Reinstall and package-replacement (`apt install --reinstall`)
+  verified on genuinely clean containers by an installed-build acceptance
+  harness that launches the real app under a real display and closes its
+  real window; a real cross-version upgrade has no prior Linux release to
+  upgrade FROM yet, so it stays unverified until v1.0.1. Guide:
+  [docs/linux-install.md](docs/linux-install.md).
 - **Data lives where Linux expects it.** `$XDG_DATA_HOME/SnapmakerStudio`,
   falling back to `~/.local/share/SnapmakerStudio`, created `0700`;
   `SNAPSTUDIO_DATA_DIR` still overrides. Windows is unchanged
@@ -47,7 +50,9 @@ All notable changes to this project are documented here. The format is based on
 - Snapmaker Orca is not auto-detected on Linux: after Prepare, the handoff
   button always offers Orca's download page — open the prepared `.3mf` in
   Orca yourself.
-- No in-app update notification on either platform; check the Releases page.
+- No automatic update check on either platform — Studio doesn't notify you of
+  a new release on its own. Use Help → Check GitHub now, or watch the
+  Releases page.
 - Not yet verified from Linux: Printer Hub against a real Snapmaker U1; no
   external-user report yet.
 

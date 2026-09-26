@@ -42,9 +42,7 @@ dev toolchain) and driven through 35 checks each: a real virtual display
 (Xvfb), a real window manager (Openbox), a real window close, plus direct
 calls to the local engine. This is the SAME clean-image validation
 `linux-ci.yml` runs continuously, but against this release's own
-release-candidate bytes specifically — see
-[internal/LINUX_BETA_PLAN.md](internal/LINUX_BETA_PLAN.md) for the full
-program record. **Not verified from Linux:** a real GNOME/KDE/Wayland
+release-candidate bytes specifically. **Not verified from Linux:** a real GNOME/KDE/Wayland
 desktop session (only Xvfb+Openbox); real physical hardware or a VM (only
 CI containers); Printer Hub against a real Snapmaker U1; any report from an
 outside user. **Known limitation, not a defect in this release's own

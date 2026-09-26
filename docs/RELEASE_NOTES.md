@@ -66,11 +66,17 @@ before running either one.
 ## Known limitations
 
 - Snapmaker Orca auto-detection is Windows-only for now (see above).
-- No in-app update notification on either platform; check the Releases page.
+- No automatic update check on either platform — Studio doesn't notify you of
+  a new release on its own. Use Help → Check GitHub now, or watch the
+  Releases page.
 - The fitted nozzle cannot be read from stock firmware, and free storage is
   not reported by it either.
 - Remaining filament is known only where something tracks it — Spoolman or
   Bambuddy, read-only, local-network only.
+- A materials provider that requires a sign-in cannot be read; Studio has
+  nowhere safe to keep a credential and says so rather than storing one.
+- An object whose volumes cannot all be represented declines the split and
+  crosses whole, with the audit naming what that costs.
 - Painted colour is read, but whether two colours meet on a layer is decided
   by the slice, so such colours have a toolhead reserved rather than being
   called simultaneous.

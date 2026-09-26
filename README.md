@@ -126,7 +126,7 @@ sliced job back**.
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
 | ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.0.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.0.0/what-to-load.png) |
 
-From the v1.0.0 build's own installed-application run — the problem/prepared/what-to-load views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf), the painted view on the acceptance harness's dedicated multi-colour fixture — reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.0.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -172,6 +172,12 @@ against a development build. Commands, counts and full reports:
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
 | Backend / desktop / TypeScript / Rust | 1833 · 340 · clean · clean |
+
+Both counts above are lower than v0.9.0's (47/47 and 57/57): this release's
+runs did not include the optional materials-provider checks, which need a
+Spoolman and Bambuddy instance seeded and running — 39/39 is the honest count
+of what actually ran, not a partial version of the larger number. Full detail:
+[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 Reproduce any of it yourself:
 [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md).
