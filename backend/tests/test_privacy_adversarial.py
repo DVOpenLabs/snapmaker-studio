@@ -118,6 +118,9 @@ def test_a_watched_folder_path_is_redacted_out_of_anything_shared(tmp_path):
     assert scrubbed["folder"] == "<path>"
 
 
-def test_redaction_keeps_hashes_because_they_are_not_secrets():
+def test_redaction_no_longer_exempts_hash_shaped_values():
+    """Reversed under item E hardening: a hex-format credential is
+    indistinguishable from a hash by shape alone, so nothing in that shape
+    survives redaction any more, regardless of what the field is called."""
     kept = diagnostics.redact({"digest": "a" * 40})
-    assert kept["digest"] == "a" * 40
+    assert kept["digest"] == "<redacted>"
