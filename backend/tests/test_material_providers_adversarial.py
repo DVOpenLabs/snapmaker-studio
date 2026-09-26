@@ -85,11 +85,17 @@ def test_a_colour_disagreement_is_reported_too():
     assert slot["disagreed"]["colour"]["spoolman"] == "#FFFFFF"
 
 
-def test_a_tracker_that_thinks_an_empty_slot_is_loaded_does_not_fill_it():
-    combined = providers.combine(printer_state(present=False),
+def test_a_tracker_that_thinks_a_printer_confirmed_empty_slot_is_loaded_does_not_fill_it():
+    """H1 fix (Opus review of 7848824): the printer here has LOOKED and
+    confirmed the slot empty (confirmed_by=BY_PRINTER) — a tracker's claim
+    that a spool is loaded must never flip that back to present, only be
+    recorded as a disagreement. Fixed after this test's own fixture was
+    caught not actually setting confirmed_by, so it silently exercised the
+    old, overridable path and passed for the wrong reason."""
+    combined = providers.combine(printer_state(present=False, confirmed_by=providers.BY_PRINTER),
                                  tracker_state(material="PLA", spool_id=7, remaining_g=400))
     slot = combined["slots"][0]
-    assert slot["confidence"] == providers.UNKNOWN
+    assert slot["present"] is False
     assert slot["conflicts"]
 
 

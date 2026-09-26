@@ -584,10 +584,17 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
 
     A partial update: any field left as None keeps whatever was already on
     record for this slot, so editing the colour cannot wipe out a remaining
-    weight nobody touched. remaining_g is the one field with a real edge —
+    weight nobody touched. remaining_g is the one field with two real edges —
     only ever stamped USER_CONFIRMED, with a fresh timestamp, when THIS call
     explicitly gives a new figure; otherwise the existing weight, quality and
-    timestamp are carried through untouched. Without that, resending an
+    timestamp are carried through, UNLESS this same call also changes the
+    material or vendor to something different from what was on record. A
+    changed material or vendor means a different physical spool went into
+    this slot, and whatever was known about the OLD spool's remaining weight
+    says nothing about this one — carrying it over would report a made-up
+    material's weight under the new material's name. That case resets the
+    remaining weight to unknown rather than either guessing or blocking the
+    rest of the edit. Without the general carry-through rule, resending an
     old, already-DERIVED figure just to change something else would silently
     turn Studio's own arithmetic back into a claim the person just
     reconfirmed it.
@@ -597,10 +604,18 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
     conn = _conn()
     try:
         existing = library.get_spool(conn, host, slot) or {}
+        material_changed = (material is not None and existing.get("material") is not None
+                            and material != existing.get("material"))
+        vendor_changed = (vendor is not None and existing.get("vendor") is not None
+                          and vendor != existing.get("vendor"))
         if remaining_g is not None:
             merged_remaining_g = remaining_g
             remaining_quality = providers.USER_CONFIRMED
             remaining_as_of = now
+        elif material_changed or vendor_changed:
+            merged_remaining_g = None
+            remaining_quality = None
+            remaining_as_of = None
         else:
             merged_remaining_g = existing.get("remaining_g")
             remaining_quality = existing.get("remaining_quality")
