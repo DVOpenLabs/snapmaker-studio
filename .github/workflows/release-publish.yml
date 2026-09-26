@@ -1,0 +1,333 @@
+name: Publish release
+
+# v1.0.0 release-prep. The ONLY workflow that can create a public GitHub
+# Release. Promotes the EXACT bytes release-candidate.yml already built and
+# verified — it never rebuilds anything. "Never publish if either platform
+# fails" holds because: the release-candidate run this reads from only
+# reaches a green `manifest` job if windows, linux (which itself only
+# completes once its own clean-env-validate job passes — see
+# release-linux.yml), and windows-upgrade-smoke all succeeded; and this
+# workflow re-downloads and re-hashes both artifacts itself before ever
+# creating a draft, so a corrupted or partial artifact fails Gate 3 even if
+# the RC run somehow reported green.
+#
+# Two entry points:
+#  - `push: tags: v*` — the real publish path. The tag must already exist
+#    and be on `main` (Gate 0). This is what actually makes a Release public.
+#  - `workflow_dispatch` — for a pre-tag REHEARSAL only. `dry_run` defaults
+#    to true and MUST stay true unless an existing, already-pushed tag is
+#    being re-run as a recovery (e.g. this workflow itself needed a fix
+#    after the tag was pushed and its first run failed mid-way — never to
+#    mint a NEW tag/release from an arbitrary dispatched ref, which is
+#    exactly the gap Gate 0 + the tag-must-already-exist check below closes).
+#
+# Rehearse this via workflow_dispatch BEFORE tagging, from a throwaway
+# metadata-only commit if needed — catching a bug in THIS workflow after
+# the real U1/acceptance runs have already happened is expensive; catching
+# it before is cheap. See docs/RELEASE_CHECKLIST.md.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (must already exist, e.g. v1.0.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "true = rehearse every gate, create+delete a draft, publish nothing"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the tag, target commit, and dry-run flag for either trigger
+        id: input
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            dry_run="false"
+            # For a tag push, GITHUB_SHA is already the commit the tag
+            # points to (not a tag object SHA), so it IS the target.
+            target_sha="$GITHUB_SHA"
+          else
+            tag="${{ inputs.tag }}"
+            dry_run="${{ inputs.dry_run }}"
+            # The dispatch path must NEVER mint a new tag — only rehearse
+            # (dry_run=true, any tag name — including one that doesn't
+            # exist yet, the normal pre-tag rehearsal case) or recover an
+            # ALREADY-PUSHED tag (dry_run=false only if the tag already
+            # exists on the remote). Either way the target is the commit
+            # that was actually dispatched, never a tag object that might
+            # not exist — Gate 0/Gate 2 below key off this commit, not the
+            # tag ref, so rehearsing against a not-yet-created tag name
+            # works without any special-casing further down.
+            target_sha="$GITHUB_SHA"
+            if [ "$dry_run" = "false" ]; then
+              if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+                echo "dry_run=false was requested via workflow_dispatch for tag '$tag', but that tag does not exist yet in this checkout. The dispatch path is for rehearsal (dry_run=true) or recovering an ALREADY-PUSHED tag only — it must never create a new tag itself." >&2
+                exit 1
+              fi
+              target_sha="$(git rev-parse "refs/tags/$tag^{commit}")"
+            fi
+          fi
+          # Recorded BEFORE `gh release create` ever runs, so the dry-run
+          # cleanup step below can tell "this run's own throwaway tag" (safe
+          # to delete) apart from "a real tag that already existed" (must
+          # NEVER be deleted as a side effect of a rehearsal).
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            tag_preexisted="true"
+          else
+            tag_preexisted="false"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "tag_preexisted=$tag_preexisted" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved: tag=$tag dry_run=$dry_run tag_preexisted=$tag_preexisted target_sha=$target_sha"
+
+      - name: 'Gate 0: the target commit is on main (skipped only for a pure pre-tag rehearsal)'
+        if: steps.input.outputs.dry_run != 'true' || steps.input.outputs.tag_preexisted == 'true'
+        run: |
+          set -euo pipefail
+          target_sha="${{ steps.input.outputs.target_sha }}"
+          if ! git merge-base --is-ancestor "$target_sha" origin/main; then
+            echo "Target commit $target_sha is not an ancestor of origin/main — refusing to publish a release for a commit that is not on main." >&2
+            exit 1
+          fi
+          echo "Gate 0 OK: $target_sha is on main."
+
+      - name: Parse docs/RELEASE_METADATA.md "Current release"
+        id: metadata
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_OUTPUT" <<'PYEOF'
+          import re, sys
+          out_path = sys.argv[1]
+          text = open("docs/RELEASE_METADATA.md", encoding="utf-8").read()
+          start = text.index("## Current release")
+          end = text.find("## Previous release", start)
+          block = text[start:end if end != -1 else len(text)]
+          fields = {}
+          for m in re.finditer(r"^\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$", block, re.M):
+              key, value = m.group(1).strip(), m.group(2).strip()
+              if key.lower() in ("field", "---"):
+                  continue
+              fields[key.lower()] = value.strip("`")
+          required = ["version", "installer", "size (bytes)", "sha256",
+                      "linux installer", "linux size (bytes)", "linux sha256",
+                      "build run"]
+          missing = [k for k in required if k not in fields]
+          if missing:
+              print(f"RELEASE_METADATA.md's Current release table is missing: {missing}", file=sys.stderr)
+              sys.exit(1)
+          with open(out_path, "a", encoding="utf-8") as f:
+              f.write(f"version={fields['version']}\n")
+              f.write(f"win_name={fields['installer']}\n")
+              f.write(f"win_size={fields['size (bytes)'].replace(',', '')}\n")
+              f.write(f"win_sha256={fields['sha256']}\n")
+              f.write(f"linux_name={fields['linux installer']}\n")
+              f.write(f"linux_size={fields['linux size (bytes)'].replace(',', '')}\n")
+              f.write(f"linux_sha256={fields['linux sha256']}\n")
+              f.write(f"build_run={fields['build run']}\n")
+          PYEOF
+
+      - name: 'Gate 1: tag matches metadata, metadata matches the manifests'
+        run: |
+          set -euo pipefail
+          meta_version="${{ steps.metadata.outputs.version }}"
+          meta_version="${meta_version#v}"
+          tag_version="${{ steps.input.outputs.version }}"
+          if [ "$meta_version" != "$tag_version" ]; then
+            echo "Tag says version $tag_version, RELEASE_METADATA.md says $meta_version" >&2
+            exit 1
+          fi
+          for f in desktop/package.json desktop/src-tauri/tauri.conf.json; do
+            v="$(grep -m1 '"version"' "$f" | sed -E 's/.*"version"\s*:\s*"([^"]+)".*/\1/')"
+            if [ "$v" != "$tag_version" ]; then
+              echo "$f says version $v, expected $tag_version" >&2
+              exit 1
+            fi
+          done
+          cargo_v="$(grep -m1 '^version' desktop/src-tauri/Cargo.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')"
+          if [ "$cargo_v" != "$tag_version" ]; then
+            echo "Cargo.toml says version $cargo_v, expected $tag_version" >&2
+            exit 1
+          fi
+          pyproject_v="$(grep -m1 '^version' backend/pyproject.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')"
+          if [ "$pyproject_v" != "$tag_version" ]; then
+            echo "backend/pyproject.toml says version $pyproject_v, expected $tag_version" >&2
+            exit 1
+          fi
+          echo "Gate 1 OK: tag, RELEASE_METADATA.md, and all manifests agree on $tag_version."
+
+      - name: 'Gate 2: provenance — the RC run built this tag''s exact bytes'
+        run: |
+          set -euo pipefail
+          build_run_url="${{ steps.metadata.outputs.build_run }}"
+          run_id="$(basename "$build_run_url")"
+          echo "run_id=$run_id" >> "$GITHUB_ENV"
+
+          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/$run_id")"
+          conclusion="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["conclusion"])')"
+          workflow_path="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["path"])')"
+          head_sha="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head_sha"])')"
+
+          if [ "$conclusion" != "success" ]; then
+            echo "Build run $run_id did not succeed (conclusion=$conclusion)." >&2
+            exit 1
+          fi
+          if [ "$workflow_path" != ".github/workflows/release-candidate.yml" ]; then
+            echo "Build run $run_id is not a release-candidate.yml run (path=$workflow_path)." >&2
+            exit 1
+          fi
+          target_sha="${{ steps.input.outputs.target_sha }}"
+          if ! git merge-base --is-ancestor "$head_sha" "$target_sha"; then
+            echo "RC run's commit $head_sha is not an ancestor of $target_sha — the target does not build on the verified RC." >&2
+            exit 1
+          fi
+          changed="$(git diff --name-only "$head_sha" "$target_sha")"
+          disallowed="$(echo "$changed" | grep -vE '^(README\.md|CHANGELOG\.md|docs/)' || true)"
+          if [ -n "$disallowed" ]; then
+            echo "Files changed between the RC commit and the target that are NOT docs-only:" >&2
+            echo "$disallowed" >&2
+            echo "No code, manifest, workflow, or tooling file may change after the bytes were built." >&2
+            exit 1
+          fi
+          echo "Gate 2 OK: build run $run_id succeeded on release-candidate.yml at $head_sha, an ancestor of the tag, with only a docs-only diff since."
+
+      - name: 'Gate 3: download + re-hash both artifacts against the metadata'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-installer --dir dist/win-raw
+          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-linux-release-candidate --dir dist/linux-raw
+
+          win_src="$(find dist/win-raw -name '*.exe' -print -quit)"
+          cp "$win_src" "dist/${{ steps.metadata.outputs.win_name }}"
+          win_hash="$(sha256sum "dist/${{ steps.metadata.outputs.win_name }}" | awk '{print $1}')"
+          win_size="$(stat -c%s "dist/${{ steps.metadata.outputs.win_name }}")"
+          if [ "$win_hash" != "${{ steps.metadata.outputs.win_sha256 }}" ]; then
+            echo "Windows installer hash mismatch: downloaded $win_hash, metadata says ${{ steps.metadata.outputs.win_sha256 }}" >&2
+            exit 1
+          fi
+          if [ "$win_size" != "${{ steps.metadata.outputs.win_size }}" ]; then
+            echo "Windows installer size mismatch: downloaded $win_size, metadata says ${{ steps.metadata.outputs.win_size }}" >&2
+            exit 1
+          fi
+
+          linux_src="$(find dist/linux-raw -name '*.deb' -print -quit)"
+          cp "$linux_src" "dist/${{ steps.metadata.outputs.linux_name }}"
+          linux_hash="$(sha256sum "dist/${{ steps.metadata.outputs.linux_name }}" | awk '{print $1}')"
+          linux_size="$(stat -c%s "dist/${{ steps.metadata.outputs.linux_name }}")"
+          if [ "$linux_hash" != "${{ steps.metadata.outputs.linux_sha256 }}" ]; then
+            echo "Linux .deb hash mismatch: downloaded $linux_hash, metadata says ${{ steps.metadata.outputs.linux_sha256 }}" >&2
+            exit 1
+          fi
+          if [ "$linux_size" != "${{ steps.metadata.outputs.linux_size }}" ]; then
+            echo "Linux .deb size mismatch: downloaded $linux_size, metadata says ${{ steps.metadata.outputs.linux_size }}" >&2
+            exit 1
+          fi
+
+          upstream_sums="$(find dist/linux-raw -name 'SHA256SUMS' -print -quit)"
+          if [ -n "$upstream_sums" ] && ! grep -q "$linux_hash" "$upstream_sums"; then
+            echo "The .deb's own SHA256SUMS (from the RC run) disagrees with the re-hashed value." >&2
+            exit 1
+          fi
+
+          (cd dist && sha256sum "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" > SHA256SUMS)
+          cat dist/SHA256SUMS
+          echo "Gate 3 OK: both artifacts re-hashed and match RELEASE_METADATA.md exactly."
+
+      - name: Refuse if a release or draft already exists for this tag
+        run: |
+          set -euo pipefail
+          if gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "A release (or draft) already exists for ${{ steps.input.outputs.tag }}." >&2
+            exit 1
+          fi
+
+      - name: Create the release as a DRAFT
+        run: |
+          set -euo pipefail
+          create_args=(--draft --title "Snapmaker Studio ${{ steps.input.outputs.tag }}" --notes-file docs/RELEASE_NOTES.md dist/*)
+          if [ "${{ steps.input.outputs.dry_run }}" = "true" ]; then
+            gh release create "${{ steps.input.outputs.tag }}" --target "$GITHUB_SHA" "${create_args[@]}"
+          else
+            gh release create "${{ steps.input.outputs.tag }}" --verify-tag "${create_args[@]}"
+          fi
+
+      - name: 'Gate 4: the draft has exactly the 3 expected assets'
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
+          expected="$(printf '%s\n' "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" SHA256SUMS | sort)"
+          if [ "$assets" != "$expected" ]; then
+            echo "Draft assets don't match. Got:" >&2
+            echo "$assets" >&2
+            echo "Expected:" >&2
+            echo "$expected" >&2
+            exit 1
+          fi
+          echo "Gate 4 OK: draft has exactly the expected 3 assets."
+
+      - name: Dry run — delete the draft (and its throwaway tag, if this run created one), stop here
+        if: steps.input.outputs.dry_run == 'true'
+        run: |
+          set -euo pipefail
+          # --cleanup-tag ONLY when this run's own `gh release create --target`
+          # is what created the tag (tag_preexisted=false). A rehearsal must
+          # NEVER delete a tag that existed before it ran, for any reason.
+          if [ "${{ steps.input.outputs.tag_preexisted }}" = "true" ]; then
+            gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes
+          else
+            gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes --cleanup-tag
+          fi
+          echo "Dry run complete: every gate passed, a draft was created and verified, nothing was published. Draft deleted (tag cleaned up only if this run created it)."
+
+      - name: Publish — flip the draft to public (the one moment this becomes real)
+        if: steps.input.outputs.dry_run != 'true'
+        run: |
+          gh release edit "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --draft=false --latest
+
+      - name: Post-publish verification (live, not assumed)
+        if: steps.input.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)"
+          if [ "$latest" != "${{ steps.input.outputs.tag }}" ]; then
+            echo "WARNING: /releases/latest is '$latest', not '${{ steps.input.outputs.tag }}'. The release IS public — this needs operator attention, not a rebuild." >&2
+            exit 1
+          fi
+          for url in $(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].url'); do
+            name="$(basename "$url")"
+            gh api "$url" -H "Accept: application/octet-stream" > "/tmp/verify-$name"
+            got="$(sha256sum "/tmp/verify-$name" | awk '{print $1}')"
+            want="$(grep " $name\$" dist/SHA256SUMS | awk '{print $1}')"
+            if [ "$got" != "$want" ]; then
+              echo "WARNING: live asset $name re-hashed to $got, expected $want. The release IS public — this needs operator attention." >&2
+              exit 1
+            fi
+          done
+          echo "Post-publish verification OK: /releases/latest is ${{ steps.input.outputs.tag }}, both live assets re-hash correctly."
