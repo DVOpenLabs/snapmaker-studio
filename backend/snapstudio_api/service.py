@@ -588,31 +588,39 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
     only ever stamped USER_CONFIRMED, with a fresh timestamp, when THIS call
     explicitly gives a new figure; otherwise the existing weight, quality and
     timestamp are carried through, UNLESS this same call also changes the
-    material or vendor to something different from what was on record. A
-    changed material or vendor means a different physical spool went into
-    this slot, and whatever was known about the OLD spool's remaining weight
-    says nothing about this one — carrying it over would report a made-up
-    material's weight under the new material's name. That case resets the
-    remaining weight to unknown rather than either guessing or blocking the
-    rest of the edit. Without the general carry-through rule, resending an
-    old, already-DERIVED figure just to change something else would silently
-    turn Studio's own arithmetic back into a claim the person just
-    reconfirmed it.
+    material, subtype, colour or vendor to something different from what was
+    on record. Any of those four changing means a different physical spool
+    went into this slot — a colour or subtype swap (red PLA to blue PLA) is
+    exactly as physical a change as a material or vendor swap — and whatever
+    was known about the OLD spool's remaining weight says nothing about this
+    one; carrying it over would report a made-up spool's weight under the
+    new one's name. That case resets the remaining weight to unknown rather
+    than either guessing or blocking the rest of the edit. Without the
+    general carry-through rule, resending an old, already-DERIVED figure
+    just to change something else would silently turn Studio's own
+    arithmetic back into a claim the person just reconfirmed it. Comparisons
+    are case-insensitive, matching material_providers.combine()'s own
+    normalization — "PLA" replacing "pla" is not a material change.
     """
     from snapstudio_core import material_providers as providers
+
+    def _changed(new, old) -> bool:
+        return new is not None and old is not None and str(new).upper() != str(old).upper()
+
     now = _now()
     conn = _conn()
     try:
         existing = library.get_spool(conn, host, slot) or {}
-        material_changed = (material is not None and existing.get("material") is not None
-                            and material != existing.get("material"))
-        vendor_changed = (vendor is not None and existing.get("vendor") is not None
-                          and vendor != existing.get("vendor"))
+        spool_changed = (
+            _changed(material, existing.get("material"))
+            or _changed(subtype, existing.get("subtype"))
+            or _changed(color, existing.get("color"))
+            or _changed(vendor, existing.get("vendor")))
         if remaining_g is not None:
             merged_remaining_g = remaining_g
             remaining_quality = providers.USER_CONFIRMED
             remaining_as_of = now
-        elif material_changed or vendor_changed:
+        elif spool_changed:
             merged_remaining_g = None
             remaining_quality = None
             remaining_as_of = None

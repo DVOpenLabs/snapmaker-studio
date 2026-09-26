@@ -91,18 +91,44 @@ def test_saving_with_no_remaining_weight_records_nothing_to_be_confident_about(t
 
 # --- M2 regression: save_local_spool is a genuine partial update -----------
 
-def test_editing_only_the_colour_keeps_the_remaining_weight_untouched(tmp_path, monkeypatch):
+def test_editing_an_unrelated_field_keeps_the_remaining_weight_untouched(tmp_path, monkeypatch):
     """D-delta review of 7848824: before this fix, any save replaced the
-    whole record, so an edit that only changed the colour wiped the
+    whole record, so an edit that only changed the notes wiped the
     remaining weight to None."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=800.0)
-    updated = service.save_local_spool("u1.local", 0, color="#00FF00")
-    assert updated["color"] == "#00FF00"
+    updated = service.save_local_spool("u1.local", 0, notes="a bit warped")
+    assert updated["notes"] == "a bit warped"
     assert updated["material"] == "PLA"
     assert updated["remaining_g"] == 800.0
     assert updated["remaining_quality"] == providers.USER_CONFIRMED
+
+
+def test_changing_the_colour_also_resets_the_remaining_weight(tmp_path, monkeypatch):
+    """D-delta review of 723484b, MEDIUM-A: the most common spool swap is the
+    same material and vendor in a different colour — red PLA with 50 g left
+    swapped for a new 1 kg spool of blue PLA. Colour identifies a physical
+    spool exactly as much as material or vendor does, so it resets the
+    remaining weight the same way a material or vendor change does; without
+    this, the old figure would falsely block (or falsely fail to block) a
+    send under the new colour's name."""
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
+                             starting_g=1000.0, remaining_g=50.0)
+    updated = service.save_local_spool("u1.local", 0, color="#0000FF")
+    assert updated["color"] == "#0000FF"
+    assert updated["remaining_g"] is None
+    assert updated["remaining_quality"] is None
+
+
+def test_changing_the_subtype_also_resets_the_remaining_weight(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    service.save_local_spool("u1.local", 0, material="PLA", subtype="matte",
+                             starting_g=1000.0, remaining_g=700.0)
+    updated = service.save_local_spool("u1.local", 0, subtype="silk")
+    assert updated["subtype"] == "silk"
+    assert updated["remaining_g"] is None
 
 
 def test_editing_an_unrelated_field_never_re_stamps_a_derived_weight_as_confirmed(tmp_path, monkeypatch):
@@ -114,7 +140,7 @@ def test_editing_an_unrelated_field_never_re_stamps_a_derived_weight_as_confirme
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0, remaining_g=800.0)
     service.mark_local_spool_used("u1.local", 0, 50.0)  # -> 750g, DERIVED
-    updated = service.save_local_spool("u1.local", 0, color="#00FF00")
+    updated = service.save_local_spool("u1.local", 0, notes="a bit warped")
     assert updated["remaining_g"] == 750.0
     assert updated["remaining_quality"] == providers.DERIVED
 
@@ -152,6 +178,18 @@ def test_changing_the_vendor_also_resets_the_remaining_weight(tmp_path, monkeypa
     updated = service.save_local_spool("u1.local", 0, vendor="Prusament")
     assert updated["vendor"] == "Prusament"
     assert updated["remaining_g"] is None
+
+
+def test_recasing_the_material_is_not_a_change(tmp_path, monkeypatch):
+    """D-delta review of 723484b, LOW-B: the comparison was case-sensitive,
+    so re-saving "PLA" as "pla" threw away a valid weight — disagreeing with
+    material_providers.combine()'s own case-insensitive matching."""
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    service.save_local_spool("u1.local", 0, material="PLA", vendor="Snapmaker",
+                             starting_g=1000.0, remaining_g=700.0)
+    updated = service.save_local_spool("u1.local", 0, material="pla", vendor="SNAPMAKER")
+    assert updated["remaining_g"] == 700.0
+    assert updated["remaining_quality"] == providers.USER_CONFIRMED
 
 
 def test_a_material_change_with_a_fresh_weight_in_the_same_call_uses_the_fresh_weight(tmp_path, monkeypatch):
