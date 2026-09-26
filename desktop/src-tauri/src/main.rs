@@ -404,10 +404,13 @@ fn is_newer(latest: &str, current: &str) -> bool {
 
 /// Ask GitHub whether there is a newer release.
 ///
-/// This is the only thing in Studio that talks to the internet, it happens only
-/// when a person presses a button, and it sends nothing but the request itself —
-/// no identifiers, no usage, no telemetry. Studio never downloads or installs an
-/// update on its own; the answer is a version number and a link.
+/// This is the only thing in Studio that talks to the internet. It happens
+/// when a person presses the manual "Check GitHub now" button, or — only if
+/// they opted in — at most once a day via `maybe_auto_check_update` below,
+/// which calls this exact function. Either way it sends nothing but the
+/// request itself — no identifiers, no usage, no telemetry. Studio never
+/// downloads or installs an update on its own; the answer is a version
+/// number and a link.
 #[tauri::command]
 fn check_for_update() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();

@@ -1377,9 +1377,10 @@ export function sliceProvenance(projectPath: string, gcodePath: string): Promise
 }
 
 // ---- Update check -----------------------------------------------------------
-// The only thing in Studio that talks to the internet, and only when a person
-// presses the button. It sends nothing but the request: no identifiers, no usage,
-// no telemetry. Studio never downloads or installs an update on its own.
+// The only thing in Studio that talks to the internet: when a person presses
+// the manual button, or — only if they opted in via the checkbox — at most
+// once a day. Either way it sends nothing but the request: no identifiers, no
+// usage, no telemetry. Studio never downloads or installs an update on its own.
 
 export interface UpdateInfo {
   current: string;

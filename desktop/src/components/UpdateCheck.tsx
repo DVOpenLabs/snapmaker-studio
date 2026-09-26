@@ -2,13 +2,9 @@ import { useEffect, useState } from "react";
 import { Download, RefreshCw, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  checkForUpdate,
-  getUpdateCheckPref,
-  maybeAutoCheckUpdate,
-  setAutoCheckUpdates,
-} from "@/api";
+import { checkForUpdate, getUpdateCheckPref, setAutoCheckUpdates } from "@/api";
 import type { UpdateInfo } from "@/api";
+import { useUpdateCheckStore } from "@/store/updateCheck";
 
 /**
  * Checking for a newer release.
@@ -22,24 +18,28 @@ import type { UpdateInfo } from "@/api";
  * anything — off by default, and never more than once a day even when it is on.
  */
 export function UpdateCheck() {
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  // A manual "Check GitHub now" result overrides whatever the automatic
+  // check found, for as long as this page stays open — pressing the button
+  // is the more direct, more recent answer. Read directly at render time
+  // (not synced through an effect into its own state) so a result the
+  // automatic check already found, before this page was ever opened, shows
+  // up immediately rather than only after a render nothing triggers.
+  const [manualInfo, setManualInfo] = useState<UpdateInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoCheck, setAutoCheck] = useState(false);
   const [autoPrefLoaded, setAutoPrefLoaded] = useState(false);
+  // The automatic check runs once per launch, from App's own startup effect
+  // — not from this component — so it genuinely happens whether or not this
+  // page is ever opened. The result lands in this shared store.
+  const autoResult = useUpdateCheckStore((s) => s.autoResult);
+  const info = manualInfo ?? autoResult;
 
   useEffect(() => {
     getUpdateCheckPref()
       .then((pref) => setAutoCheck(pref.auto_check))
       .catch(() => {})
       .finally(() => setAutoPrefLoaded(true));
-    // Once per mount (effectively once per launch): silently a no-op unless
-    // the preference is on AND a day has passed since the last attempt.
-    maybeAutoCheckUpdate()
-      .then((result) => {
-        if (result) setInfo(result);
-      })
-      .catch(() => {});
   }, []);
 
   return (
@@ -93,7 +93,7 @@ export function UpdateCheck() {
             setBusy(true);
             setError(null);
             checkForUpdate()
-              .then(setInfo)
+              .then(setManualInfo)
               .catch((e) => setError(String(e)))
               .finally(() => setBusy(false));
           }}
