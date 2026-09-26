@@ -125,10 +125,13 @@ def validate_provider_url(value: str) -> str:
 STOCK = "stock-u1"
 SPOOLMAN = "spoolman"
 BAMBUDDY = "bambuddy"
+LOCAL = "local"
 
-#: The providers a user can choose, and what to call them on screen. Everything
-#: past the adapter reads `source` as an opaque label — this table exists so the
-#: name appears once, as provenance, rather than being spelled into any decision.
+#: The network providers a user can choose, and what to call them on screen —
+#: the ones reachable through `read()`/`READERS` below. LOCAL is deliberately
+#: not here: it has no address to read, no `READERS` entry, and its own
+#: dedicated functions (`local_spools`, and the library-backed writes in
+#: `snapstudio_api.service`) rather than the network seam this table serves.
 PROVIDER_NAMES = {SPOOLMAN: "Spoolman", BAMBUDDY: "Bambuddy"}
 
 CONFIRMED = "confirmed"
@@ -137,10 +140,11 @@ UNKNOWN = "unknown"
 
 #: How a remaining weight came to be known. Nothing here is ever a measurement:
 #: no spool holder on a U1 weighs filament, so the best available is a figure some
-#: other tool has been keeping track of.
-TRACKED = "tracked"        # the provider states a remaining weight
-DERIVED = "derived"        # computed from a net weight minus what was recorded used
-UNTRACKED = "unknown"      # nothing knows
+#: other tool — or the person themselves — has been keeping track of.
+TRACKED = "tracked"                # an external provider states a remaining weight
+USER_CONFIRMED = "user_confirmed"  # the person weighed or looked and typed a figure just now
+DERIVED = "derived"                # computed from a net/last-confirmed weight minus what was used
+UNTRACKED = "unknown"              # nothing knows
 
 #: More than this on one spool is not filament, it is a units mistake or a typo.
 #: A 5 kg spool is a real product; 25 kg on one U1 slot is not.
@@ -540,6 +544,50 @@ def _text(value) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+# --- local / manual spools ----------------------------------------------------
+#
+# For a printer with no Spoolman and no Bambuddy — or for a slot neither of them
+# tracks — a person's own record of what is on the spool. This is the only
+# provider here that is not a network read: the rows come from Studio's own
+# local library database (`library.spools`), already keyed by slot, so there is
+# no slot_map indirection to resolve the way there is for Spoolman or Bambuddy.
+#
+# Reading it never mutates it. The one thing that changes a remaining weight —
+# subtracting what a job used — is `library.apply_spool_usage`, called only from
+# the one place a person explicitly confirmed "mark this much used". Nothing in
+# this module, and nothing that calls it to build a report, may call that path
+# on its own; an inventory a tool quietly edits behind the numbers on screen is
+# exactly the divergence the module docstring above promises never to cause.
+
+def local_spools(rows: list[dict]) -> dict:
+    """Normalise this printer's local spool rows into the shared provider shape.
+
+    ``rows`` is whatever `library.list_spools` returned for this printer's
+    host — already one row per slot, so unlike Spoolman/Bambuddy there is no
+    separate spool inventory to map onto slots.
+    """
+    out = {"schema_version": SCHEMA_VERSION, "source": LOCAL, "available": bool(rows),
+           "slots": [], "spools": []}
+    for row in rows or []:
+        slot_index = row.get("slot")
+        if slot_index is None:
+            continue
+        remaining_g = row.get("remaining_g")
+        quality = row.get("remaining_quality") or UNTRACKED
+        notes = [n for n in [row.get("notes")] if n]
+        out["slots"].append(_slot(
+            int(slot_index), material=row.get("material"), subtype=row.get("subtype"),
+            color=row.get("color"), vendor=row.get("vendor"), remaining_g=remaining_g,
+            source=LOCAL, remaining_quality=quality if remaining_g is not None else UNTRACKED,
+            remaining_as_of=row.get("remaining_as_of"), notes=notes,
+            # A person telling Studio what is in a slot is the same kind of
+            # statement Spoolman's slot map is — intent, not something the
+            # printer looked at and confirmed.
+            confidence=LIKELY, confirmed_by=BY_PROVIDER))
+    out["remaining_known"] = any(s["remaining_g"] is not None for s in out["slots"])
+    return out
 
 
 # --- choosing one ------------------------------------------------------------

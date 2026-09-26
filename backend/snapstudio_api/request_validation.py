@@ -110,3 +110,23 @@ def require_port(data: dict, key: str = "port", default: int = 7125) -> int:
     if not (1 <= p <= 65535):
         raise ValidationError(f"Invalid {key}")
     return p
+
+
+def optional_non_negative_float(data: dict, key: str, default: float | None) -> float | None:
+    """Zero is a real answer here (a spool tracked down to empty), unlike
+    optional_positive_float — only negative and non-numeric values are refused."""
+    if key not in data or data.get(key) is None:
+        return default
+    f = _as_number(data, key, required=True, default=None)
+    if f < 0:
+        raise ValidationError(f"Invalid {key}")
+    return f
+
+
+def require_slot_index(data: dict, key: str = "slot") -> int:
+    """A printer slot index: a small non-negative integer, never a guess at
+    what the caller meant by a float or a negative number."""
+    n = require_int(data, key)
+    if not (0 <= n <= 31):
+        raise ValidationError(f"Invalid {key}")
+    return n

@@ -496,3 +496,78 @@ def test_server_batch_roundtrip(tmp_path, monkeypatch):
         assert st["result"]["done"] == 1
     finally:
         httpd.shutdown()
+
+
+# ---- local/manual spools (Known Limitations item D) ----
+
+def test_server_local_spools_save_list_delete_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, saved = _request(port, "/local_spools/save", {
+            "host": "u1.local", "slot": 0, "material": "PLA", "color": "#FF0000",
+            "starting_g": 1000.0, "remaining_g": 800.0,
+        }, token)
+        assert status == 200
+        assert saved["remaining_quality"] == "user_confirmed"
+
+        status, listing = _request(port, "/local_spools", {"host": "u1.local"}, token)
+        assert status == 200 and listing["available"] is True
+        assert listing["slots"][0]["material"] == "PLA"
+
+        status, empty = _request(port, "/local_spools", {"host": "other.local"}, token)
+        assert status == 200 and empty["available"] is False
+
+        status, deleted = _request(port, "/local_spools/delete",
+                                   {"host": "u1.local", "slot": 0}, token)
+        assert status == 200 and deleted["deleted"] is True
+
+        status, gone = _request(port, "/local_spools", {"host": "u1.local"}, token)
+        assert status == 200 and gone["available"] is False
+    finally:
+        httpd.shutdown()
+
+
+def test_server_local_spools_mark_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        _request(port, "/local_spools/save", {
+            "host": "u1.local", "slot": 0, "material": "PLA",
+            "starting_g": 1000.0, "remaining_g": 800.0,
+        }, token)
+
+        status, updated = _request(port, "/local_spools/mark_used",
+                                   {"host": "u1.local", "slot": 0, "used_g": 50.0}, token)
+        assert status == 200
+        assert updated["remaining_g"] == 750.0
+        assert updated["remaining_quality"] == "derived"
+
+        # A slot Studio has no remaining weight for is refused, not invented.
+        status, err = _request(port, "/local_spools/mark_used",
+                               {"host": "u1.local", "slot": 1, "used_g": 10.0}, token)
+        assert status == 400 and "no local spool record" in err["error"]
+    finally:
+        httpd.shutdown()
+
+
+def test_server_local_spools_rejects_bad_input(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, _ = _request(port, "/local_spools/save",
+                             {"host": "u1.local", "slot": -1}, token)
+        assert status == 400
+        status, _ = _request(port, "/local_spools/save",
+                             {"host": "u1.local", "slot": 0, "remaining_g": -5}, token)
+        assert status == 400
+        status, _ = _request(port, "/local_spools", {"host": ""}, token)
+        assert status == 400
+    finally:
+        httpd.shutdown()
