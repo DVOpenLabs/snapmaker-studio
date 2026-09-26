@@ -92,50 +92,24 @@ def test_it_records_when_each_tool_arrives_and_leaves(multi):
     assert plan["tool_first_layer"]["3"] == 3
     # Tool 0 is still the selected tool going into layer 3 — T3 does not fire
     # until partway through that layer's G-code — so 3, not 2, is where it was
-    # last credited. (Carry-forward fix: see the coexistence tests below.)
+    # last credited (the carry-forward fix, tested in isolation below).
     assert plan["tool_last_layer"]["0"] == 3
 
 
-# --- post-slice tool coexistence ---------------------------------------------
-
-def test_multi_body_sequential_swaps_are_ordinary_handoffs_not_proven_sharing(multi):
-    """Opus delta review of 8d5cfac (BLOCK, HIGH-1): crediting the outgoing
-    tool up to the boundary layer made EVERY sequential swap look like
-    "proven sharing", because the outgoing and incoming tool always land on
-    that one boundary layer together — which is true of a completely clean
-    handoff too, and made the feature unable to ever report a disjoint pair.
-    MULTI_BODY changes tool exactly once per transition layer (0, 1, 2, 3, 5
-    each see a single switch) — an ordinary sequence of handoffs, with no
-    layer where the active tool changed more than once. None of that is
-    proof of sharing, so every pair here stays unproven and every tool is
-    provably safe to swap."""
-    plan = print_plan.scan(multi)
-    assert all(not pair["shares_a_layer"] for pair in plan["tool_coexistence"])
-    assert plan["tools_provably_disjoint"] == [0, 1, 3]
-
-
-def test_two_switches_on_one_layer_is_proven_sharing(tmp_path):
-    """The case single-switch handoffs must be told apart from: T0 switches
-    to T1 and back to T0 WITHOUT a layer change in between — two switches on
-    the same layer, real evidence something used two tools within one
-    layer's G-code, not just a slicer's choice of which side of a boundary to
-    put one tool-change line on."""
-    body = "T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1 E1\nT1\nG1 X2 Y2 E1\nT0\n;LAYER_CHANGE\n;Z:0.4\n"
-    plan = print_plan.scan(build(tmp_path, body, name="two-switches.gcode"))
-    pair = next(p for p in plan["tool_coexistence"] if p["tools"] == [0, 1])
-    assert pair["shares_a_layer"] is True
-    assert pair["first_shared_layer"] == 1
-    assert plan["tools_provably_disjoint"] == []
-
+# --- carrying a tool forward through layers with no repeated T-command -----
+#
+# What survives from the three-round tool-coexistence attempt (see git log
+# and the module docstring): tool_first_layer/tool_last_layer must reflect
+# every layer a tool was actually selected on, not only the layer its own
+# T-line happens to sit on. Whether two tools ever shared a layer is a
+# separate question this module does not attempt to answer — three attempts
+# each found a different way the file alone cannot prove it either way.
 
 def test_a_tool_carried_across_many_layers_has_its_last_layer_extended(tmp_path):
-    """The carry-forward fix in isolation, apart from the coexistence
-    question: a real slicer issues T<n> once and keeps using it for many
-    layers without repeating the line, so tool_last_layer must reflect every
-    layer it was carried through — not stay stuck at wherever its one T-line
-    happened to be. A single switch away from it later is still an ordinary
-    handoff (see test_two_switches_on_one_layer_is_proven_sharing for what
-    is NOT ordinary), so no coexistence is claimed from this alone."""
+    """A real slicer issues T<n> once and keeps using it for many layers
+    without repeating the line, so tool_last_layer must reflect every layer
+    it was carried through — not stay stuck at wherever its one T-line
+    happened to be."""
     body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 E1\n"
             ";LAYER_CHANGE\n;Z:0.4\nG1 X1 E1\n"
             ";LAYER_CHANGE\n;Z:0.6\nG1 X1 E1\n"
@@ -144,70 +118,7 @@ def test_a_tool_carried_across_many_layers_has_its_last_layer_extended(tmp_path)
     plan = print_plan.scan(build(tmp_path, body, name="carryover.gcode"))
     assert plan["tool_first_layer"]["0"] == 0
     assert plan["tool_last_layer"]["0"] == 4
-    pair = next(p for p in plan["tool_coexistence"] if p["tools"] == [0, 1])
-    assert pair["shares_a_layer"] is False
-    assert plan["tools_provably_disjoint"] == [0, 1]
-
-
-def test_a_single_tool_job_has_no_coexistence_pairs(tmp_path):
-    body = "T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 E1\n"
-    plan = print_plan.scan(build(tmp_path, body, name="single-tool.gcode"))
-    assert plan["tool_coexistence"] == []
-    assert plan["tools_provably_disjoint"] == [0]
-
-
-def test_coexistence_makes_no_claim_when_the_scan_was_truncated(tmp_path, monkeypatch):
-    """A tool introduced after the event cap would look disjoint from
-    everything only because the scan never saw where it actually went — that
-    is not proof of anything, so nothing is claimed on a truncated scan. The
-    cap has to land AFTER real tool events are recorded, or this would pass
-    against unfixed code too — asserted explicitly below."""
-    monkeypatch.setattr(print_plan, "MAX_EVENTS", 8)
-    body = "".join(f"T{i % 2}\n;LAYER_CHANGE\n;Z:{i / 10}\n" for i in range(50))
-    plan = print_plan.scan(build(tmp_path, body, name="truncated.gcode"))
-    assert plan["truncated"] is True
-    assert len(plan["tools_seen"]) >= 2, "the cap hit before any tool event was recorded"
-    assert plan["tool_coexistence"] == []
-    assert plan["tools_provably_disjoint"] == []
-
-
-def test_narration_orders_shared_layer_lines_by_layer_not_by_tool_index():
-    plan = {
-        "available": True,
-        "tool_coexistence": [
-            {"tools": [0, 2], "shares_a_layer": True, "shared_layer_count": 1, "first_shared_layer": 9},
-            {"tools": [0, 1], "shares_a_layer": True, "shared_layer_count": 1, "first_shared_layer": 2},
-        ],
-        "tool_first_layer": {}, "tool_last_layer": {}, "layers_seen": 0, "events": [],
-    }
-    lines = print_plan.narrate(plan)
-    shared = [l for l in lines if "selected on the same layer" in l["text"]]
-    assert len(shared) == 2
-    assert shared[0]["text"].startswith("Slot 1 and slot 2")   # layer 2, first
-    assert shared[1]["text"].startswith("Slot 1 and slot 3")   # layer 9, second
-
-
-def test_a_shared_layer_at_layer_zero_is_labelled_before_the_first_layer():
-    plan = {
-        "available": True,
-        "tool_coexistence": [
-            {"tools": [0, 1], "shares_a_layer": True, "shared_layer_count": 1, "first_shared_layer": 0},
-        ],
-        "tool_first_layer": {}, "tool_last_layer": {}, "layers_seen": 0, "events": [],
-    }
-    lines = print_plan.narrate(plan)
-    line = next(l for l in lines if "selected on the same layer" in l["text"])
-    assert line["at"] == "Before the first layer"
-
-
-def test_narration_states_a_shared_layer_selection(tmp_path):
-    body = ("T0\n;LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1 E1\n"
-            "T1\nG1 X2 Y2 E1\nT0\n;LAYER_CHANGE\n;Z:0.4\n")
-    target = build(tmp_path, body, name="shared-layer-2.gcode")
-    plan = print_plan.scan(target)
-    lines = print_plan.narrate(plan, gcode.read_facts(target))
-    text = " | ".join(line["text"] for line in lines)
-    assert "Slot 1 and slot 2 are both selected on the same layer" in text
+    assert plan["tool_first_layer"]["1"] == 4
 
 
 def test_it_reads_the_temperature_targets_the_job_sets(multi):
