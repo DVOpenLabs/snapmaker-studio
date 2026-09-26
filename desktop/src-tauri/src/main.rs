@@ -158,6 +158,7 @@ fn orca_candidates() -> Vec<PathBuf> {
 fn orca_candidates() -> Vec<PathBuf> {
     let mut v = linux_desktop_entry_candidates(&["snapmaker orca", "snapmaker_orca"]);
     v.extend(linux_dir_candidates(&["snapmaker_orca", "snorca"]));
+    v.sort();
     v
 }
 
@@ -227,7 +228,10 @@ fn linux_known_dirs() -> Vec<PathBuf> {
 /// Single-level (non-recursive) directory listing, filtered by filename
 /// PREFIX match (case-insensitive) against `name_patterns`. Bounded cost,
 /// bounded scope — never descends into subdirectories, never reads a
-/// directory outside the given list.
+/// directory outside the given list. Sorted before returning: `read_dir`'s
+/// order is filesystem-defined, not stable, and `first_existing` picks
+/// whichever candidate comes first — a non-deterministic sort order means a
+/// non-deterministic choice of which install gets launched.
 #[cfg(target_os = "linux")]
 fn dir_candidates_in(dirs: &[PathBuf], name_patterns: &[&str]) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -243,6 +247,7 @@ fn dir_candidates_in(dirs: &[PathBuf], name_patterns: &[&str]) -> Vec<PathBuf> {
             }
         }
     }
+    out.sort();
     out
 }
 
@@ -252,10 +257,9 @@ fn linux_dir_candidates(name_patterns: &[&str]) -> Vec<PathBuf> {
 }
 
 /// Parse XDG .desktop files (freedesktop spec) in the standard application
-/// directories for an entry whose file content mentions one of
-/// `name_hints` (case-insensitive substring — matches against Name= and
-/// Exec= alike, deliberately loose since desktop-entry authors are not
-/// standardized), and return the executable path from its `Exec=` line.
+/// directories for an entry whose `Name=` (in `[Desktop Entry]` only — never
+/// an `[Desktop Action ...]` block) identifies one of `name_hints`, and
+/// return the executable path from its `Exec=` line.
 #[cfg(target_os = "linux")]
 fn linux_desktop_application_dirs() -> Vec<PathBuf> {
     let home = std::env::var("HOME").map(PathBuf::from).ok();
@@ -271,8 +275,19 @@ fn linux_desktop_application_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Letters and digits only, lowercased. The comparison alphabet for matching
+/// a tool identity against free text: "FOrcaSlicer", "F-Orca-Slicer" and
+/// "forca_slicer" all become "forcaslicer", and — the point of doing this
+/// instead of a raw substring search — "forcaslicer" and "orcaslicer" now
+/// compare unequal instead of one containing the other.
+#[cfg(target_os = "linux")]
+fn normalize_ident(text: &str) -> String {
+    text.chars().filter(|c| c.is_ascii_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+}
+
 #[cfg(target_os = "linux")]
 fn desktop_entry_candidates_in(dirs: &[PathBuf], name_hints: &[&str]) -> Vec<PathBuf> {
+    let targets: Vec<String> = name_hints.iter().map(|h| normalize_ident(h)).collect();
     let mut out = Vec::new();
     for dir in dirs {
         let entries = match std::fs::read_dir(dir) {
@@ -285,15 +300,32 @@ fn desktop_entry_candidates_in(dirs: &[PathBuf], name_hints: &[&str]) -> Vec<Pat
                 continue;
             }
             let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let text_lc = text.to_ascii_lowercase();
-            if !name_hints.iter().any(|h| text_lc.contains(h)) {
+            let Some(name) = desktop_entry_name(&text) else { continue };
+            let name_norm = normalize_ident(&name);
+            // Exact identity match, not "contains": a substring check is what
+            // let a FOrcaSlicer entry answer for "orcaslicer" (the tail of
+            // "forcaslicer" is literally "orcaslicer") and an OrcaSlicer-
+            // ImageMap entry answer for plain "orcaslicer" the same way.
+            if !targets.iter().any(|t| *t == name_norm) {
                 continue;
             }
-            if let Some(exec_path) = desktop_entry_exec_path(&text) {
-                out.push(exec_path);
+            let Some(exec_path) = desktop_entry_exec_path(&text) else { continue };
+            // The executable this Exec= line names has to plausibly BE the
+            // tool the Name= line just matched — not a launcher that then
+            // decides what to run. A Flatpak-exported entry's Exec= starts
+            // with `/usr/bin/flatpak run <app-id> ...`: the first token is a
+            // real, executable, existing binary, and without this check it
+            // would be reported and launched as the slicer itself while
+            // Flatpak's own argument convention (an app id, not a file path)
+            // means nothing would actually open.
+            let basename = exec_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !exec_path.is_absolute() || !normalize_ident(basename).contains(&name_norm) {
+                continue;
             }
+            out.push(exec_path);
         }
     }
+    out.sort();
     out
 }
 
@@ -302,25 +334,85 @@ fn linux_desktop_entry_candidates(name_hints: &[&str]) -> Vec<PathBuf> {
     desktop_entry_candidates_in(&linux_desktop_application_dirs(), name_hints)
 }
 
-/// Extract the real executable path from a .desktop file's `Exec=` line.
-/// The XDG spec allows %-codes (%f, %F, %u, %U, ...) as trailing field
-/// codes and permits the command to be quoted; this takes only the first
-/// whitespace-separated token (the binary itself), stripped of surrounding
-/// quotes — never the whole line, so a %-placeholder or a trailing argument
-/// is never mistaken for the executable path.
+/// The `Name=` value from a .desktop file's `[Desktop Entry]` section only —
+/// never from a later `[Desktop Action ...]` block, which names a secondary
+/// action ("Open a New Window") rather than the application itself.
 #[cfg(target_os = "linux")]
-fn desktop_entry_exec_path(desktop_file_text: &str) -> Option<PathBuf> {
+fn desktop_entry_name(desktop_file_text: &str) -> Option<String> {
+    let mut in_desktop_entry = false;
     for line in desktop_file_text.lines() {
         let line = line.trim();
-        if let Some(rest) = line.strip_prefix("Exec=") {
-            let first_token = rest.split_whitespace().next()?;
-            let cleaned = first_token.trim_matches('"');
-            if !cleaned.is_empty() {
-                return Some(PathBuf::from(cleaned));
+        if line.starts_with('[') && line.ends_with(']') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("Name=") {
+            let name = name.trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
             }
         }
     }
     None
+}
+
+/// Extract the real executable path from a .desktop file's `Exec=` line, in
+/// `[Desktop Entry]` only. The XDG spec permits the command to be quoted
+/// (spaces allowed inside `"…"`, `\` escapes the next character) and allows
+/// trailing %-codes (`%f`, `%F`, `%u`, `%U`, ...); this returns only the
+/// first field — the binary itself — never the whole line, so a placeholder
+/// or a trailing argument is never mistaken for the executable path.
+#[cfg(target_os = "linux")]
+fn desktop_entry_exec_path(desktop_file_text: &str) -> Option<PathBuf> {
+    let mut in_desktop_entry = false;
+    for line in desktop_file_text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Exec=") {
+            return exec_first_token(rest).map(PathBuf::from);
+        }
+    }
+    None
+}
+
+/// The first field of an `Exec=` value, honoring the XDG quoting rule: a
+/// field wrapped in `"…"` may contain spaces, and `\` inside quotes escapes
+/// the next character. Unquoted, the field ends at the first whitespace.
+#[cfg(target_os = "linux")]
+fn exec_first_token(value: &str) -> Option<String> {
+    let mut chars = value.trim_start().chars().peekable();
+    let mut token = String::new();
+    if chars.peek() == Some(&'"') {
+        chars.next();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' => break,
+                '\\' => {
+                    if let Some(escaped) = chars.next() {
+                        token.push(escaped);
+                    }
+                }
+                _ => token.push(c),
+            }
+        }
+    } else {
+        for c in chars {
+            if c.is_whitespace() {
+                break;
+            }
+            token.push(c);
+        }
+    }
+    if token.is_empty() { None } else { Some(token) }
 }
 
 // ---- Ecosystem tool detection ----------------------------------------------
@@ -387,6 +479,21 @@ fn tool_candidates(id: &str) -> Vec<PathBuf> {
 // undetected here rather than forcing a mismatched mechanism onto it.
 // orcaslicer-imagemap's real-world distribution was not confirmed, so it
 // stays undetected too: under-claiming is the correct failure direction.
+/// Drop any candidate whose filename, reduced to letters+digits, contains
+/// `fragment` — the tool for excluding a fork's AppImage from a broader
+/// sibling's prefix match (e.g. keeping OrcaSlicer-ImageMap out of plain
+/// OrcaSlicer's results). A small pure function on purpose: easy to prove
+/// correct on its own, apart from real directory scanning.
+#[cfg(target_os = "linux")]
+fn exclude_by_name_fragment(v: Vec<PathBuf>, fragment: &str) -> Vec<PathBuf> {
+    v.into_iter()
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            !normalize_ident(name).contains(fragment)
+        })
+        .collect()
+}
+
 #[cfg(target_os = "linux")]
 fn tool_candidates(id: &str) -> Vec<PathBuf> {
     let (desktop_hints, dir_patterns): (&[&str], &[&str]) = match id {
@@ -400,6 +507,14 @@ fn tool_candidates(id: &str) -> Vec<PathBuf> {
     }
     let mut v = linux_desktop_entry_candidates(desktop_hints);
     v.extend(linux_dir_candidates(dir_patterns));
+    if id == "orcaslicer" {
+        // "orcaslicer" as a filename PREFIX also matches OrcaSlicer-ImageMap's
+        // own AppImage naming convention. ImageMap is a different tool this
+        // table does not (yet) detect; under-claiming is the correct failure
+        // direction, never reporting one fork as though it were another.
+        v = exclude_by_name_fragment(v, "imagemap");
+    }
+    v.sort();
     v
 }
 
@@ -796,8 +911,8 @@ mod tests {
         }
 
         #[test]
-        fn desktop_entry_exec_path_strips_quotes() {
-            let text = "Exec=\"/home/u/My Apps/orca-slicer.AppImage\" %U\n";
+        fn desktop_entry_exec_path_strips_quotes_and_keeps_the_space() {
+            let text = "[Desktop Entry]\nName=OrcaSlicer\nExec=\"/home/u/My Apps/orca-slicer.AppImage\" %U\n";
             assert_eq!(
                 desktop_entry_exec_path(text),
                 Some(PathBuf::from("/home/u/My Apps/orca-slicer.AppImage"))
@@ -805,8 +920,37 @@ mod tests {
         }
 
         #[test]
+        fn desktop_entry_exec_path_unquoted_stops_at_first_space() {
+            let text = "[Desktop Entry]\nName=OrcaSlicer\nExec=/opt/orcaslicer.AppImage %f\n";
+            assert_eq!(desktop_entry_exec_path(text), Some(PathBuf::from("/opt/orcaslicer.AppImage")));
+        }
+
+        #[test]
+        fn desktop_entry_exec_path_honours_a_backslash_escape_inside_quotes() {
+            let text = "[Desktop Entry]\nName=X\nExec=\"/opt/weird\\\"name.AppImage\" %f\n";
+            assert_eq!(desktop_entry_exec_path(text), Some(PathBuf::from("/opt/weird\"name.AppImage")));
+        }
+
+        #[test]
         fn desktop_entry_exec_path_none_when_missing() {
             assert_eq!(desktop_entry_exec_path("[Desktop Entry]\nName=Something\n"), None);
+        }
+
+        #[test]
+        fn desktop_entry_exec_path_ignores_a_line_before_any_section_header() {
+            // Regression: a bare `?` on a non-matching line used to abort the
+            // whole scan at the first line that was not "Exec=", instead of
+            // moving on to the next one.
+            assert_eq!(desktop_entry_exec_path("Exec=/opt/evil\n"), None);
+        }
+
+        #[test]
+        fn desktop_entry_exec_path_ignores_an_action_sections_exec() {
+            // A [Desktop Action …] block names a secondary action ("open a
+            // new window"), not the application — using its Exec= would
+            // launch the wrong thing.
+            let text = "[Desktop Entry]\nName=X\n[Desktop Action NewWindow]\nExec=/opt/orcaslicer.AppImage --new-window\n";
+            assert_eq!(desktop_entry_exec_path(text), None);
         }
 
         #[test]
@@ -853,6 +997,113 @@ mod tests {
                 assert!(dirs.iter().any(|d| d.ends_with("Downloads")));
                 assert!(dirs.iter().any(|d| d.ends_with(".local/bin")));
             }
+        }
+
+        // --- name collisions (Opus review of b4dc65d: BLOCK, CRITICAL) ------
+
+        #[test]
+        fn forcaslicer_desktop_entry_is_not_matched_as_plain_orcaslicer() {
+            // "forcaslicer" contains "orcaslicer" as a literal substring
+            // (forCASLICER) — a .contains() match on raw file text answered
+            // for the wrong tool. Matching now requires the Name= value to
+            // equal a hint exactly, after both are reduced to letters+digits.
+            let dir = scratch_dir("collision-forca");
+            std::fs::write(
+                dir.join("forcaslicer.desktop"),
+                "[Desktop Entry]\nName=FOrcaSlicer\nExec=/opt/forcaslicer.AppImage %f\n",
+            )
+            .unwrap();
+            let found = desktop_entry_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            assert!(found.is_empty(), "FOrcaSlicer must not answer for plain orcaslicer: {found:?}");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn imagemap_desktop_entry_is_not_matched_as_plain_orcaslicer() {
+            let dir = scratch_dir("collision-imagemap");
+            std::fs::write(
+                dir.join("imagemap.desktop"),
+                "[Desktop Entry]\nName=OrcaSlicer-ImageMap\nExec=/opt/orcaslicer-imagemap.AppImage %f\n",
+            )
+            .unwrap();
+            let found = desktop_entry_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            assert!(found.is_empty(), "ImageMap must not answer for plain orcaslicer: {found:?}");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn exclude_by_name_fragment_drops_only_the_matching_filename() {
+            let v = vec![
+                PathBuf::from("/opt/OrcaSlicer-ImageMap-2.0.0.AppImage"),
+                PathBuf::from("/opt/OrcaSlicer-2.4.2.AppImage"),
+            ];
+            assert_eq!(
+                exclude_by_name_fragment(v, "imagemap"),
+                vec![PathBuf::from("/opt/OrcaSlicer-2.4.2.AppImage")]
+            );
+        }
+
+        #[test]
+        fn imagemap_appimage_filename_is_excluded_from_the_plain_orcaslicer_dir_scan() {
+            let dir = scratch_dir("collision-imagemap-dir");
+            std::fs::write(dir.join("orcaslicer-imagemap-2.0.0.AppImage"), b"").unwrap();
+            std::fs::write(dir.join("orcaslicer-2.4.2.AppImage"), b"").unwrap();
+            let raw = dir_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            assert_eq!(raw.len(), 2, "both files should match the bare prefix: {raw:?}");
+            let filtered = exclude_by_name_fragment(raw, "imagemap");
+            assert_eq!(filtered, vec![dir.join("orcaslicer-2.4.2.AppImage")]);
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        // --- wrapper/launcher programs (Opus review: BLOCK, CRITICAL) -------
+
+        #[test]
+        fn a_flatpak_wrapper_exec_line_is_never_reported_as_the_slicer_itself() {
+            let dir = scratch_dir("flatpak-wrapper");
+            std::fs::write(
+                dir.join("com.github.softfever.orcaslicer.desktop"),
+                "[Desktop Entry]\nName=OrcaSlicer\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 com.github.SoftFever.OrcaSlicer @@u %u @@\n",
+            )
+            .unwrap();
+            let found = desktop_entry_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            assert!(found.is_empty(),
+                "a flatpak-wrapped entry must not be reported as a directly-launchable OrcaSlicer: {found:?}");
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn a_relative_exec_path_is_refused() {
+            let dir = scratch_dir("relative-exec");
+            std::fs::write(
+                dir.join("x.desktop"),
+                "[Desktop Entry]\nName=OrcaSlicer\nExec=orcaslicer.AppImage %f\n",
+            )
+            .unwrap();
+            let found = desktop_entry_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            assert!(found.is_empty());
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        // --- deterministic ordering (Opus review: MEDIUM) --------------------
+
+        #[test]
+        fn dir_candidates_are_sorted_not_filesystem_order() {
+            let dir = scratch_dir("sort-order");
+            std::fs::write(dir.join("orcaslicer-zzz.AppImage"), b"").unwrap();
+            std::fs::write(dir.join("orcaslicer-aaa.AppImage"), b"").unwrap();
+            std::fs::write(dir.join("orcaslicer-mmm.AppImage"), b"").unwrap();
+            let found = dir_candidates_in(&[dir.clone()], &["orcaslicer"]);
+            let names: Vec<_> = found.iter().map(|p| p.file_name().unwrap().to_str().unwrap()).collect();
+            assert_eq!(names, vec!["orcaslicer-aaa.AppImage", "orcaslicer-mmm.AppImage", "orcaslicer-zzz.AppImage"]);
+            std::fs::remove_dir_all(&dir).ok();
+        }
+
+        #[test]
+        fn normalize_ident_collapses_case_and_punctuation() {
+            assert_eq!(normalize_ident("Snapmaker Orca"), "snapmakerorca");
+            assert_eq!(normalize_ident("snapmaker_orca"), "snapmakerorca");
+            assert_eq!(normalize_ident("FOrcaSlicer"), "forcaslicer");
+            assert_ne!(normalize_ident("FOrcaSlicer"), normalize_ident("OrcaSlicer"));
         }
     }
 }
