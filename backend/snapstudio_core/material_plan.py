@@ -336,7 +336,12 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
 
     from . import freshness as fr
 
-    known = "tracked" if quality in ("tracked", "derived") else "unknown"
+    # A local note's fresh, person-confirmed figure ("user_confirmed") is
+    # neither of these origin-labelled tiers on its own: it did not come from
+    # a bookkeeping tool ("tracked"/"derived"), but it is not unstated either
+    # — someone looked at the spool and said so. It counts as known here, and
+    # as trustworthy exactly as long as it stays fresh, same as a tracked one.
+    known = "tracked" if quality in ("tracked", "derived", "user_confirmed") else "unknown"
     age = fr.assess(as_of)
 
     # Only a figure that is *both* something a tool has been keeping and recent
@@ -351,10 +356,12 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
     # Both now warn. A warning that turns out to be right costs someone a glance
     # at the spool; a blocker that turns out to be wrong costs them the print they
     # were told not to start.
-    trusted = quality == "tracked" and age["state"] in (fr.FRESH, fr.AGEING)
+    trusted = quality in ("tracked", "user_confirmed") and age["state"] in (fr.FRESH, fr.AGEING)
     where = ("tracked spool weight" if quality == "tracked" else
              "spool weight worked out from what the spool held and what has been used"
-             if quality == "derived" else "a remaining weight of unstated origin")
+             if quality == "derived" else
+             "a remaining weight you confirmed yourself" if quality == "user_confirmed" else
+             "a remaining weight of unstated origin")
     since = ""
     if age["state"] not in (fr.UNKNOWN,):
         since = " " + age["detail"]
@@ -381,6 +388,8 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
                "a figure nothing has updated recently" if age["state"] == fr.STALE else
                "a figure worked out from what the spool held rather than one anything "
                "has been keeping" if quality == "derived" else
+               "the figure you confirmed yourself, with little margin to spare"
+               if quality == "user_confirmed" else
                "a figure of unstated origin")
         return {"verdict": "probably_short",
                 "detail": (f"{remaining:g} g recorded and the job needs {needed:g} g — "

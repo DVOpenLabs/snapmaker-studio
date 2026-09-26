@@ -10,6 +10,14 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 
+# Bumping this is a ONE-WAY upgrade for whoever's local DB was already at a
+# lower version: `_migrate` refuses (LibraryVersionError, never silently
+# downgrades or drops data) to open a DB whose recorded `user_version` is
+# HIGHER than what the running app understands. A person who upgrades
+# Studio, opens it once (migrating their local library.db to this version),
+# and then reinstalls an older release will see that refusal on their own
+# library until they upgrade again. There is no reverse migration — schema
+# changes here are additive only, and going backwards is not supported.
 SCHEMA_VERSION = 2
 
 _SCHEMA = """

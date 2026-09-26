@@ -814,12 +814,24 @@ def combine(*states: dict) -> dict:
                 existing["confirmed_by"] = BY_PRINTER
 
             if slot.get("present") and not existing.get("present"):
-                # One source says empty, another says a spool is there. That is a
-                # disagreement, not a fact, and it is reported as one.
-                existing["present"] = True
-                existing["confidence"] = UNKNOWN
-                existing.setdefault("conflicts", []).append(
-                    f"{existing['source']} reports this slot empty, {slot['source']} does not")
+                # One source says empty, another says a spool is there. When
+                # the PRINTER is the one that looked and found nothing, that
+                # stands: a provider's "present" is someone's record of what
+                # they believe is loaded, never a second look at the slot —
+                # letting it override a printer's own observation is how a
+                # stale note turns a real BLOCKER (this slot is empty) into a
+                # job that goes ahead believing a spool is there. Anything
+                # other than a printer-confirmed empty is still a genuine
+                # disagreement between two guesses, and reported as one.
+                if existing.get("confirmed_by") == BY_PRINTER:
+                    existing.setdefault("conflicts", []).append(
+                        f"{slot['source']} says this slot has material in it, but the printer "
+                        "looked and found it empty — Studio is using what the printer can see")
+                else:
+                    existing["present"] = True
+                    existing["confidence"] = UNKNOWN
+                    existing.setdefault("conflicts", []).append(
+                        f"{existing['source']} reports this slot empty, {slot['source']} does not")
 
     return {
         "schema_version": SCHEMA_VERSION,

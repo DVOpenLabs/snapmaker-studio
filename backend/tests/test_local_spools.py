@@ -115,9 +115,40 @@ def test_mark_used_never_fires_as_a_side_effect_of_reading(tmp_path, monkeypatch
 
 # --- the wiring into the provider seam: the fallback with no Spoolman/Bambuddy
 
-def test_with_providers_folds_local_spool_when_no_provider_is_configured(tmp_path, monkeypatch):
-    """The core claim of this feature: a local spool note fills the gap the
-    printer cannot answer even when no Spoolman or Bambuddy is set up."""
+def test_with_providers_folds_local_spool_remaining_weight_when_no_provider_is_configured(tmp_path, monkeypatch):
+    """The core claim of this feature: a local note fills in the one thing a
+    stock U1 cannot know — how much is left on a spool it has confirmed is
+    loaded — even when no Spoolman or Bambuddy is configured. This must never
+    be confused with a provider claiming a slot is OCCUPIED when the printer
+    itself says otherwise — see the H1 regression tests below for that."""
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+
+    def fake_stock_u1(host, port):
+        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
+                "available": True, "remaining_known": False,
+                "slots": [providers._slot(0, material="PLA", color="#FF0000",
+                                          confirmed_by=providers.BY_PRINTER)]}
+
+    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
+    service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
+                             starting_g=1000.0, remaining_g=750.0)
+
+    printer = service._with_providers({"reachable": True}, "u1.local", 7125,
+                                      provider_url=None, slot_map=None)
+    loaded = printer["loaded_filaments"]
+    assert loaded[0]["material"] == "PLA"                          # confirmed by the printer
+    assert loaded[0]["confirmed_by"] == providers.BY_PRINTER
+    assert loaded[0]["remaining_g"] == 750.0                        # the gap only the note could fill
+    assert loaded[0]["remaining_quality"] == providers.USER_CONFIRMED
+
+
+# --- H1 regression: a local note must never override a printer-confirmed-empty slot
+
+def test_a_local_note_never_overrides_a_printer_confirmed_empty_slot(tmp_path, monkeypatch):
+    """A stale local note must never turn a slot the printer has physically
+    looked at and found empty into one that reads as loaded — that is
+    exactly how a real BLOCKER (this slot is empty) would silently
+    disappear. Opus review of 7848824, finding H1."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
     def fake_stock_u1(host, port):
@@ -127,14 +158,44 @@ def test_with_providers_folds_local_spool_when_no_provider_is_configured(tmp_pat
 
     monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
-                             starting_g=1000.0, remaining_g=750.0)
+                             starting_g=1000.0, remaining_g=800.0)
 
     printer = service._with_providers({"reachable": True}, "u1.local", 7125,
                                       provider_url=None, slot_map=None)
     loaded = printer["loaded_filaments"]
-    assert loaded[0]["material"] == "PLA"
-    assert loaded[0]["remaining_g"] == 750.0
-    assert loaded[0]["remaining_quality"] == providers.USER_CONFIRMED
+    assert loaded[0] is None    # still reads as empty — the printer looked and saw nothing
+    slot_facts = printer["slot_facts"][0]
+    assert slot_facts["present"] is False
+    assert any("printer looked and found it empty" in c for c in slot_facts.get("conflicts", []))
+
+
+def test_send_check_still_blocks_on_a_printer_confirmed_empty_slot_despite_a_local_note(tmp_path, monkeypatch):
+    """End-to-end proof: the local-spool fallback must never be able to
+    silently remove the one BLOCKER that exists to stop a job printing into
+    an empty slot."""
+    from snapstudio_core import send_check
+
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+
+    def fake_stock_u1(host, port):
+        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
+                "available": True, "remaining_known": False,
+                "slots": [providers._slot(0, present=False, confirmed_by=providers.BY_PRINTER)]}
+
+    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
+    service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
+                             starting_g=1000.0, remaining_g=800.0)
+
+    printer = service._with_providers(
+        {"reachable": True, "toolhead_count": 4, "bed_mm": {"x": 271, "y": 335},
+         "print_state": "standby", "klipper_objects": ["gcode", "print_stats", "exclude_object"]},
+        "u1.local", 7125, provider_url=None, slot_map=None)
+
+    facts = {"available": True, "tools_used": [0],
+            "slots": [{"tool": 0, "used": True, "grams": 20.0, "type": "PLA"}]}
+    report = send_check.evaluate(facts, printer)
+    assert report["verdict"] == send_check.BLOCKER
+    assert any("empty" in i["title"].lower() for i in report["items"] if i["kind"] == send_check.BLOCKER)
 
 
 def test_with_providers_never_overrides_what_the_printer_itself_saw(tmp_path, monkeypatch):

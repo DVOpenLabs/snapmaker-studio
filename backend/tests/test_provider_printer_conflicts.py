@@ -100,14 +100,22 @@ def test_a_vendor_the_printer_did_not_state_is_filled_not_contested():
     assert slot["added_by"]["vendor"] == providers.SPOOLMAN
 
 
-def test_an_empty_printer_slot_against_a_mapped_spool_is_a_disagreement():
-    """Nothing loaded, but the user says a spool is there. Neither is assumed."""
+def test_an_empty_printer_slot_against_a_mapped_spool_stays_empty():
+    """Nothing loaded — and the printer LOOKED. A provider's mapping is
+    somebody's note about what they believe is in a slot, never a second
+    look at it, so it cannot turn a printer-confirmed empty slot into a
+    "maybe" the way two provider-supplied facts can disagree with each
+    other. This changed from an earlier "neither is assumed" (present=True,
+    confidence=unknown) design once that turned out to mean the real
+    send-check BLOCKER for an empty slot a job prints from could be made to
+    disappear by nothing more than a stale mapping — see
+    test_local_spools.py's H1 regression tests for the reproduction."""
     merged = providers.combine(
         printer_slot(present=False),
         provider_slot(material="PLA", spool_id=7, remaining_g=400.0))
     slot = merged["slots"][0]
-    assert slot["confidence"] == providers.UNKNOWN
-    assert any("reports this slot empty" in note for note in slot["conflicts"])
+    assert slot["present"] is False
+    assert any("printer looked and found it empty" in note for note in slot["conflicts"])
 
 
 def test_a_loaded_printer_slot_with_no_mapping_is_unchanged():

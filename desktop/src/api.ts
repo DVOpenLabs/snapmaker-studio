@@ -1434,7 +1434,7 @@ export interface MaterialSlot {
   action: string | null;
   needs_grams?: number | null;
   remaining_g?: number | null;
-  remaining_quality?: "tracked" | "derived" | "unknown";
+  remaining_quality?: "tracked" | "derived" | "user_confirmed" | "unknown";
   sufficiency?: {
     verdict: "enough" | "probably_enough" | "probably_short" | "insufficient" | "unknown";
     detail: string;

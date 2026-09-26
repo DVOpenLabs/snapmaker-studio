@@ -582,20 +582,40 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
                      remaining_g: float | None = None, notes: str | None = None) -> dict:
     """Record what a person says is on a spool, in their own words, right now.
 
-    Stamped USER_CONFIRMED whenever a remaining weight is given: the person is
-    telling Studio this figure as of this moment, which is the freshest
-    evidence Studio has for a remaining weight absent a tracked provider.
+    A partial update: any field left as None keeps whatever was already on
+    record for this slot, so editing the colour cannot wipe out a remaining
+    weight nobody touched. remaining_g is the one field with a real edge —
+    only ever stamped USER_CONFIRMED, with a fresh timestamp, when THIS call
+    explicitly gives a new figure; otherwise the existing weight, quality and
+    timestamp are carried through untouched. Without that, resending an
+    old, already-DERIVED figure just to change something else would silently
+    turn Studio's own arithmetic back into a claim the person just
+    reconfirmed it.
     """
     from snapstudio_core import material_providers as providers
     now = _now()
     conn = _conn()
     try:
+        existing = library.get_spool(conn, host, slot) or {}
+        if remaining_g is not None:
+            merged_remaining_g = remaining_g
+            remaining_quality = providers.USER_CONFIRMED
+            remaining_as_of = now
+        else:
+            merged_remaining_g = existing.get("remaining_g")
+            remaining_quality = existing.get("remaining_quality")
+            remaining_as_of = existing.get("remaining_as_of")
         library.upsert_spool(
-            conn, host=host, slot=slot, material=material, subtype=subtype,
-            color=color, vendor=vendor, starting_g=starting_g, remaining_g=remaining_g,
-            remaining_quality=(providers.USER_CONFIRMED if remaining_g is not None else None),
-            remaining_as_of=(now if remaining_g is not None else None),
-            notes=notes, updated_at=now)
+            conn, host=host, slot=slot,
+            material=material if material is not None else existing.get("material"),
+            subtype=subtype if subtype is not None else existing.get("subtype"),
+            color=color if color is not None else existing.get("color"),
+            vendor=vendor if vendor is not None else existing.get("vendor"),
+            starting_g=starting_g if starting_g is not None else existing.get("starting_g"),
+            remaining_g=merged_remaining_g, remaining_quality=remaining_quality,
+            remaining_as_of=remaining_as_of,
+            notes=notes if notes is not None else existing.get("notes"),
+            updated_at=now)
         row = library.get_spool(conn, host, slot)
     finally:
         conn.close()
