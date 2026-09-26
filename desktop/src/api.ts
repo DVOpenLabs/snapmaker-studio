@@ -1377,9 +1377,10 @@ export function sliceProvenance(projectPath: string, gcodePath: string): Promise
 }
 
 // ---- Update check -----------------------------------------------------------
-// The only thing in Studio that talks to the internet, and only when a person
-// presses the button. It sends nothing but the request: no identifiers, no usage,
-// no telemetry. Studio never downloads or installs an update on its own.
+// The only thing in Studio that talks to the internet: when a person presses
+// the manual button, or — only if they opted in via the checkbox — at most
+// once a day. Either way it sends nothing but the request: no identifiers, no
+// usage, no telemetry. Studio never downloads or installs an update on its own.
 
 export interface UpdateInfo {
   current: string;
@@ -1392,6 +1393,32 @@ export interface UpdateInfo {
 export async function checkForUpdate(): Promise<UpdateInfo> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<UpdateInfo>("check_for_update");
+}
+
+/** The opt-in automatic-check preference, persisted locally by the app shell. */
+export interface UpdateCheckPref {
+  auto_check: boolean;
+  last_checked_at_unix: number | null;
+}
+
+export async function getUpdateCheckPref(): Promise<UpdateCheckPref> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<UpdateCheckPref>("get_update_check_pref");
+}
+
+export async function setAutoCheckUpdates(enabled: boolean): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_auto_check_updates", { enabled });
+}
+
+/**
+ * Called once per app launch. Returns null whenever the preference is off, a
+ * check already happened within the last day, or the request failed — all
+ * silently, by design: this is never allowed to interrupt anyone.
+ */
+export async function maybeAutoCheckUpdate(): Promise<UpdateInfo | null> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<UpdateInfo | null>("maybe_auto_check_update");
 }
 
 // ---- Print plan, materials, and the send confirmation ------------------------

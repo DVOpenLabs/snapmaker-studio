@@ -701,12 +701,27 @@ fn is_newer(latest: &str, current: &str) -> bool {
 
 /// Ask GitHub whether there is a newer release.
 ///
-/// This is the only thing in Studio that talks to the internet, it happens only
-/// when a person presses a button, and it sends nothing but the request itself —
-/// no identifiers, no usage, no telemetry. Studio never downloads or installs an
-/// update on its own; the answer is a version number and a link.
+/// This is the only thing in Studio that talks to the internet. It happens
+/// when a person presses the manual "Check GitHub now" button, or — only if
+/// they opted in — at most once a day via `maybe_auto_check_update` below,
+/// which calls this exact function. Either way it sends nothing but the
+/// request itself — no identifiers, no usage, no telemetry. Studio never
+/// downloads or installs an update on its own; the answer is a version
+/// number and a link.
+/// `async` here does not change what this does — only where it runs. `ureq`
+/// blocks the thread it's called on for up to the 10s timeout below; wrapping
+/// it in `spawn_blocking` keeps that off the async runtime's own worker
+/// threads (shared with the rest of the app) instead of just moving the
+/// problem, per Tauri's documented pattern for a blocking call inside a
+/// command.
 #[tauri::command]
-fn check_for_update() -> Result<UpdateInfo, String> {
+async fn check_for_update() -> Result<UpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_for_update_blocking)
+        .await
+        .map_err(|e| format!("the update check task panicked: {e}"))?
+}
+
+fn check_for_update_blocking() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let response = ureq::get(
         "https://api.github.com/repos/DVOpenLabs/snapmaker-studio/releases/latest",
@@ -748,6 +763,111 @@ fn check_for_update() -> Result<UpdateInfo, String> {
     })
 }
 
+// ---- Opt-in automatic update check ------------------------------------------
+//
+// Studio never asks on its own by default: the manual "Check GitHub now" button
+// above is what a person presses when they want an answer. That stays the
+// default — but a person who wants to know without remembering to press a
+// button should be able to say so, once, rather than being asked every session.
+// This adds exactly that: a persisted, opt-in preference, checked no more than
+// once a day, using the identical no-telemetry GET request `check_for_update`
+// already makes.
+//
+// What this does NOT add: a background timer, a silent retry loop, or anything
+// that runs while the app is not open. The check only ever happens because the
+// frontend asked, once per launch — so "at most once a day" is enforced by the
+// timestamp on disk, not by trusting a thread to behave.
+
+/// The one thing this preference remembers, on disk, in the app's own local
+/// config directory — never synced, never read by anything but this app.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
+struct UpdateCheckPref {
+    auto_check: bool,
+    /// Unix seconds of the last attempt, successful or not. Recording a failed
+    /// attempt too is what keeps a GitHub outage from being retried on every
+    /// single launch inside the same day.
+    last_checked_at_unix: Option<u64>,
+}
+
+const AUTO_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
+
+fn update_pref_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("update_check.json"))
+}
+
+fn read_update_pref(app: &tauri::AppHandle) -> UpdateCheckPref {
+    update_pref_path(app)
+        .and_then(|p| std::fs::read(p).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write_update_pref(app: &tauri::AppHandle, pref: &UpdateCheckPref) {
+    let Some(path) = update_pref_path(app) else { return };
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+    if let Ok(text) = serde_json::to_vec(pref) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// The current preference, for the settings checkbox to reflect. Reading this
+/// never makes a network request.
+#[tauri::command]
+fn get_update_check_pref(app: tauri::AppHandle) -> UpdateCheckPref {
+    read_update_pref(&app)
+}
+
+/// Turn the opt-in automatic check on or off. Turning it off does not clear the
+/// last-checked timestamp — turning it back on later should not immediately
+/// re-check just because it was off in between.
+#[tauri::command]
+fn set_auto_check_updates(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut pref = read_update_pref(&app);
+    pref.auto_check = enabled;
+    write_update_pref(&app, &pref);
+    Ok(())
+}
+
+/// Pure throttle decision, kept separate from the file/network I/O around it so
+/// it can be tested directly: off is never due; never checked is due now; a
+/// checked-recently timestamp is due once a full day has passed.
+fn should_check_now(pref: &UpdateCheckPref, now: u64) -> bool {
+    if !pref.auto_check {
+        return false;
+    }
+    match pref.last_checked_at_unix {
+        Some(last) => now.saturating_sub(last) >= AUTO_CHECK_INTERVAL_SECS,
+        None => true,
+    }
+}
+
+/// Called once per launch by the frontend. Returns `None` — silently, not as an
+/// error — whenever the preference is off, a check happened within the last day,
+/// or the request itself failed; the manual button remains for someone who wants
+/// an answer right now regardless.
+#[tauri::command]
+async fn maybe_auto_check_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
+    let mut pref = read_update_pref(&app);
+    let now = now_unix();
+    if !should_check_now(&pref, now) {
+        return None;
+    }
+    pref.last_checked_at_unix = Some(now);
+    write_update_pref(&app, &pref);
+    check_for_update().await.ok()
+}
+
 /// The model this launch was asked to open, if any. The frontend calls this once
 /// at startup; returning null is the ordinary case.
 #[tauri::command]
@@ -778,7 +898,10 @@ fn main() {
             detect_tools,
             open_with_tool,
             get_launch_file,
-            check_for_update
+            check_for_update,
+            get_update_check_pref,
+            set_auto_check_updates,
+            maybe_auto_check_update
         ])
         .setup(|app| {
             let (info, child) = spawn_sidecar(app.handle());
@@ -865,6 +988,90 @@ mod tests {
     #[test]
     fn non_windows_non_linux_has_no_candidates() {
         assert!(orca_candidates().is_empty());
+    }
+
+    // --- opt-in automatic update check --------------------------------------
+
+    #[test]
+    fn a_fresh_default_preference_is_off_and_never_checks() {
+        let pref = UpdateCheckPref::default();
+        assert!(!pref.auto_check);
+        assert!(!should_check_now(&pref, now_unix()));
+    }
+
+    #[test]
+    fn turned_off_is_never_due_no_matter_how_stale() {
+        let pref = UpdateCheckPref { auto_check: false, last_checked_at_unix: Some(0) };
+        assert!(!should_check_now(&pref, now_unix()));
+    }
+
+    #[test]
+    fn turned_on_and_never_checked_is_due_immediately() {
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: None };
+        assert!(should_check_now(&pref, now_unix()));
+    }
+
+    #[test]
+    fn turned_on_and_checked_moments_ago_is_not_due() {
+        let now = 1_800_000_000u64;
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: Some(now - 60) };
+        assert!(!should_check_now(&pref, now));
+    }
+
+    #[test]
+    fn turned_on_and_checked_23_hours_ago_is_not_yet_due() {
+        let now = 1_800_000_000u64;
+        let almost_a_day = AUTO_CHECK_INTERVAL_SECS - 3600;
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: Some(now - almost_a_day) };
+        assert!(!should_check_now(&pref, now));
+    }
+
+    #[test]
+    fn turned_on_and_checked_exactly_a_day_ago_is_due() {
+        let now = 1_800_000_000u64;
+        let pref = UpdateCheckPref {
+            auto_check: true,
+            last_checked_at_unix: Some(now - AUTO_CHECK_INTERVAL_SECS),
+        };
+        assert!(should_check_now(&pref, now));
+    }
+
+    #[test]
+    fn turned_on_and_checked_days_ago_is_due() {
+        let now = 1_800_000_000u64;
+        let pref = UpdateCheckPref {
+            auto_check: true,
+            last_checked_at_unix: Some(now - AUTO_CHECK_INTERVAL_SECS * 5),
+        };
+        assert!(should_check_now(&pref, now));
+    }
+
+    #[test]
+    fn a_clock_that_moved_backwards_never_underflows_or_wrongly_fires() {
+        // now < last_checked_at_unix should not happen, but saturating_sub must
+        // not panic or wrap if it ever does (a corrected system clock, e.g.).
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: Some(1_000_000) };
+        assert!(!should_check_now(&pref, 500_000));
+    }
+
+    #[test]
+    fn the_preference_round_trips_through_json_exactly_as_stored_on_disk() {
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: Some(1_800_000_000) };
+        let text = serde_json::to_vec(&pref).unwrap();
+        let back: UpdateCheckPref = serde_json::from_slice(&text).unwrap();
+        assert_eq!(back.auto_check, true);
+        assert_eq!(back.last_checked_at_unix, Some(1_800_000_000));
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_preference_file_defaults_to_off_not_a_crash() {
+        // Mirrors what read_update_pref does on a read/parse failure — proven
+        // directly on the fallback path, since read_update_pref itself needs a
+        // real AppHandle this test suite does not construct.
+        let corrupt = b"not json";
+        let parsed: Option<UpdateCheckPref> = serde_json::from_slice(corrupt).ok();
+        assert!(parsed.is_none());
+        assert_eq!(parsed.unwrap_or_default().auto_check, false);
     }
 
     #[cfg(unix)]

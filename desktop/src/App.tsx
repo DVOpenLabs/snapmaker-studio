@@ -25,8 +25,10 @@ import Help from "@/routes/Help";
 import NotFound from "@/routes/NotFound";
 import { useTheme } from "@/store/theme";
 import { useSession } from "@/store/session";
-import { launchFile } from "@/api";
+import { launchFile, maybeAutoCheckUpdate } from "@/api";
 import { useSliced } from "@/store/sliced";
+import { useUpdateCheckStore } from "@/store/updateCheck";
+import { useToast } from "@/store/toast";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +60,28 @@ export default function App() {
       alive = false;
     };
   }, [setFile]);
+
+  // The opt-in automatic update check (Settings/Help → "Automatically check
+  // for updates") — once per launch, here rather than on the Help page
+  // itself, so it genuinely runs regardless of which page someone opens
+  // first. `maybeAutoCheckUpdate` is itself the gate: it silently does
+  // nothing unless the preference is on AND at least a day has passed since
+  // the last attempt, so calling it unconditionally on every launch is safe.
+  useEffect(() => {
+    let alive = true;
+    maybeAutoCheckUpdate()
+      .then((info) => {
+        if (!alive || !info) return;
+        useUpdateCheckStore.getState().setAutoResult(info);
+        if (info.newer) {
+          useToast.getState().show(`Snapmaker Studio ${info.latest} is available — see Help.`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

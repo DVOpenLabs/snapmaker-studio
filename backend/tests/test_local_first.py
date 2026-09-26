@@ -36,19 +36,51 @@ def test_the_shell_requests_exactly_one_host():
         f"the shell requests hosts it should not: {sorted(requested - ALLOWED_SHELL_HOSTS)}")
 
 
-def test_the_update_check_is_never_automatic():
-    """It runs when a person presses a button. Nothing may call it on startup."""
+def test_the_manual_update_check_is_never_automatic():
+    """The manual check runs only when a person presses the button — nothing
+    may call it unconditionally. A separate, opt-in automatic path exists
+    (test_the_automatic_update_check_gates_itself_before_any_request below);
+    this test is only about the one that always fires a request."""
     shell = SHELL.read_text(encoding="utf-8")
     assert "fn check_for_update" in shell
     # The command is registered for the frontend to invoke; the shell itself must
-    # not call it during setup.
+    # not call it unconditionally during setup.
     setup = shell[shell.index(".setup("):] if ".setup(" in shell else ""
     assert "check_for_update(" not in setup, (
-        "the shell calls the update check during startup — it must be user-initiated")
+        "the shell calls the update check during startup — it must be user-initiated "
+        "or gated behind the opt-in automatic path's own throttle")
 
     app = (ROOT / "desktop" / "src" / "App.tsx").read_text(encoding="utf-8")
     assert "checkForUpdate" not in app, (
-        "App.tsx calls the update check on mount — it must be user-initiated")
+        "App.tsx calls the unconditional manual update check on mount — it must "
+        "be user-initiated (see maybeAutoCheckUpdate for the opt-in automatic path)")
+
+
+def test_the_automatic_update_check_gates_itself_before_any_request():
+    """The opt-in automatic path may run once per launch — see App.tsx's own
+    startup effect — but only because the Rust side refuses to make the
+    request at all unless the persisted preference is on and a day has
+    passed. Checked here by requiring that gate to actually run inside the
+    function, not merely trusted by name — and that it reuses the exact same
+    request function the manual button uses, not a second implementation
+    that could drift from the manual path's own privacy guarantees."""
+    shell = SHELL.read_text(encoding="utf-8")
+    assert "fn maybe_auto_check_update" in shell
+    start = shell.index("fn maybe_auto_check_update")
+    end = shell.index("\n}\n", start)
+    auto_fn = shell[start:end]
+    assert "should_check_now" in auto_fn, (
+        "maybe_auto_check_update must consult the throttle/opt-in gate before "
+        "ever making a request")
+    assert "check_for_update()" in auto_fn, (
+        "maybe_auto_check_update must reuse check_for_update's own request, "
+        "not a second implementation of the same GET")
+
+    app = (ROOT / "desktop" / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert "maybeAutoCheckUpdate" in app, (
+        "the opt-in automatic check must run once per launch from App's own "
+        "startup effect — calling it only from the Help page would mean it "
+        "never runs unless someone happens to open Help")
 
 
 def test_the_engine_never_requests_a_remote_host():
@@ -67,9 +99,15 @@ def test_the_printer_address_is_always_supplied_not_baked_in():
 
 
 def test_the_update_check_sends_nothing_about_the_user():
-    """One GET, a User-Agent, and no body. No identifier, no usage, no file names."""
+    """One GET, a User-Agent, and no body. No identifier, no usage, no file names.
+
+    `check_for_update` itself is now only an async wrapper around
+    `check_for_update_blocking` (M1: it hands the blocking ureq call to
+    `spawn_blocking` so it never runs on the async runtime's own worker
+    threads) — the request itself lives in the blocking function, so that
+    is what this scans."""
     shell = SHELL.read_text(encoding="utf-8")
-    block = shell[shell.index("fn check_for_update"):]
+    block = shell[shell.index("fn check_for_update_blocking"):]
     block = block[:block.index("\n}\n")]
     for leak in ("hostname", "username", "machine_id", "uuid", "send_json",
                  ".send(", "os_info", "telemetry"):
