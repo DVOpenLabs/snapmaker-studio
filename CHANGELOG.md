@@ -6,6 +6,47 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Your spool notes, in the desktop app.** The Materials provider card in
+  Settings now has a
+  "Your spool notes" section: record what is loaded in each slot — material,
+  colour, vendor, starting and remaining weight — edit it, clear a field, or
+  remove the note. "Record filament used" subtracts a job's grams only when you
+  confirm it, and the result is labelled as an estimate. The remaining weight
+  says where it came from: entered by you, estimated from what you recorded,
+  tracked by your provider, or not recorded.
+- **Nozzle sizes you confirm, per printer and per toolhead.** Settings now has a
+  "Nozzles" card under Printer. When the printer reports its fitted nozzles, they
+  are shown as the printer's reading and used. When it does not — or it is
+  offline — you can confirm each toolhead yourself, including mixed sizes; a
+  toolhead left as "Not sure" stays unknown. Your confirmation is dated, kept per
+  printer, and editable or removable, and saving it does not wait on the
+  printer — the live reading follows in the background. If your note and a live reading disagree, both are shown and
+  Studio uses the printer's reading.
+- Preflight, the after-slicing check and the send check now use a nozzle size
+  you confirmed when the printer reports none, and flag separately when a
+  confirmation disagrees with a live reading.
+
+### Changed
+- The nozzle comparison is stricter: a job's nozzle sizes are compared toolhead
+  by toolhead. A proven wrong size or swap is flagged; anything that cannot be
+  proven — for example two sizes with no toolhead order — is reported as
+  unknown rather than as a match.
+- A printer address is now matched however it is written (upper or lower case,
+  a trailing dot, IPv6 forms), so your notes follow the printer. If two notes end
+  up stored for the same slot this way, neither is used — the slot reads unknown
+  until you remove one.
+- For anything talking to Studio's local interface: the spool-note routes now
+  return the full list of notes; clearing a field no longer resets the recorded
+  weight (only a different spool does); recording filament used against a slot
+  with no note returns "not found"; and reading a material provider no longer
+  reads the printer a second time.
+
+### Fixed
+- A conflict between a material provider and your own spool note is now worded
+  with the real source ("your provider says…", "your note says…") instead of
+  attributing it to the printer.
+
 ## [1.1.0] - 2026-09-26
 
 ### Correction (2026-09-26)

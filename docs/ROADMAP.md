@@ -52,8 +52,8 @@ Printer profiles are data; the Snapmaker U1 is hardware-verified and a VORON
 
 **Materials.** Spoolman and Bambuddy as read-only material providers, with
 freshness rules for remaining weight. The engine can also keep local spool
-notes and a nozzle size you confirm yourself; the desktop app has no screen for
-either yet (see Near-term).
+notes and a nozzle size you confirm yourself; the desktop screens for both are
+built for the next release (see Near-term).
 
 **Handing off and reading back.** Open the prepared copy in Snapmaker Orca,
 detected on Windows and Linux. After slicing, the G-code is read back and
@@ -77,9 +77,12 @@ SHA256 for every installer.
 
 Only work that is genuinely not shipped yet.
 
-- **Desktop screens for local spool notes and nozzle confirmation.** The engine
-  and its local interface support both since v1.1.0; the desktop app has no
-  screen for them yet.
+- **Next release (built): desktop screens for your spool notes and
+  per-toolhead nozzle confirmation** — "Your spool notes" in the Materials
+  provider card and a "Nozzles" card under Printer, both in Settings, with each nozzle size and each
+  remaining weight labelled by where it came from, and the printer's own reading
+  always winning. See
+  [CHANGELOG.md](../CHANGELOG.md) under Unreleased.
 - **Signed-in material providers.** A provider that requires a sign-in cannot
   be read today, because Studio has nowhere safe to keep a credential. This
   needs a credential store Studio can rely on across Windows and Linux.

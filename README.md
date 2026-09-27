@@ -530,8 +530,9 @@ Linux, an opt-in update check, the engine and CLI (including
 bundled, and a self-contained Linux `.deb`.
 
 **Next:**
-- Desktop screens for local spool notes and nozzle confirmation (the engine
-  supports both since v1.1.0; the app has no screen for them yet)
+- Desktop screens for your own spool notes and per-toolhead nozzle
+  confirmation — built, and arriving in the next release (see
+  [CHANGELOG.md](CHANGELOG.md) under Unreleased)
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input
 - More printer targets beyond the U1
