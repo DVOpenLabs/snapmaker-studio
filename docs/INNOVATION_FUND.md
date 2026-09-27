@@ -189,7 +189,7 @@ Situations a novice actually hits, and what Studio does:
 | A project made in another slicer for another printer | Reads it, states the source, prepares a U1 copy for review in Orca |
 | An object hangs off the plate | Names the object, the edge and the millimetres, and offers to move it in a copy |
 | Six colours, four toolheads | Separates colours that need a toolhead from colours that can be swaps, and says which it cannot classify |
-| The fitted nozzle is unknown | Says "check this yourself", explains the consequence, and never calls it unsupported |
+| The fitted nozzle cannot be read (no printer, or firmware silent) | Says "check this yourself", explains the consequence, and never calls it unsupported |
 | The printer is busy, or missing materials | Compares against what the machine reports right now, including which spools are loaded |
 | Something could not be carried over | Lists it, with the reason, separately from what merely changed |
 | The file needs a tool the beginner has never heard of | Names it, says why, and links it |

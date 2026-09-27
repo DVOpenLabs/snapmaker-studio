@@ -3,6 +3,14 @@
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
+> **Correction, 2026-09-26:** two items below describe what Studio's engine
+> can do, not what the desktop app shows. Recording your own spool notes, and
+> confirming a nozzle size yourself when firmware does not answer, are both
+> supported by the engine, but the v1.1.0 desktop app has no screen for either
+> yet. Reading the fitted nozzle live from your printer works in the app as
+> described. Screens for both are next on the
+> [roadmap](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/ROADMAP.md).
+
 Everything you already know about Studio — read a project, check it against
 your printer, prepare a copy, hand it to Snapmaker Orca, read the sliced job
 back — is unchanged and still local-first. This release closes several
@@ -77,10 +85,10 @@ a copy. Advice is advisory: Studio reports what it can establish and says
 Neither installer is code-signed yet — verify the SHA256 on the release page
 before running either one.
 
-## Known limitations
+## Current limitations
 
-- Remaining filament is known only where something tracks it — a network
-  provider, or your own note. Studio never estimates one on its own.
+Things Studio does not do yet.
+
 - A materials provider that requires a sign-in cannot be read; Studio has
   nowhere safe to keep a credential and says so rather than storing one.
 - An object whose volumes cannot all be represented declines the split and
@@ -90,6 +98,20 @@ before running either one.
   called simultaneous. Several attempts to prove this from tool-change data
   alone were tried and found unreliable; the honest "reserve a toolhead"
   answer stands until Studio reads the actual extrusion moves.
+
+## Data boundaries
+
+Information your printer, provider or file does not supply, which Studio
+refuses to invent.
+
+- Remaining filament is known only where something tracks it — a network
+  provider, or your own note. Studio never estimates one on its own.
+
+## Verification scope
+
+Implemented and tested, with limited real-hardware or outside-user coverage
+so far.
+
 - One machine, one firmware version verified on real hardware. The
   read-only verification generalises; the sample does not.
 - The nozzle-size comparison's toolhead-by-toolhead check was verified live

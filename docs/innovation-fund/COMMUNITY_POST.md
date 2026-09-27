@@ -1,5 +1,9 @@
 # Community post — prepared, not posted
 
+> **Superseded in part (v1.1.0):** the draft below says stock firmware does not
+> report the fitted nozzle. That is wrong — it does, and Studio reads it since
+> v1.1.0. Correct that paragraph before posting anything from this draft.
+
 ## What already exists, checked before writing anything
 
 Searched the Snapmaker Discourse forum (`forum.snapmaker.com`) via its search API

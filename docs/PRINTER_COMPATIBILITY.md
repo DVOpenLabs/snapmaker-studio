@@ -1,7 +1,7 @@
 # Which printers Studio understands, and how well
 
-> **State:** this describes `main` after v0.7.2. The published installer,
-> v0.7.2, does not contain it. Nothing here is a release announcement.
+> **State:** describes v1.1.0, the current release. Printer profiles as data
+> first shipped in v0.8.0.
 
 Studio's printer intelligence talks to Moonraker, the API server that sits in
 front of Klipper. That is an open stack, and the checks Studio runs — how many

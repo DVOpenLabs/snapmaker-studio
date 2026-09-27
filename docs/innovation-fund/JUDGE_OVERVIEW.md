@@ -74,10 +74,13 @@ An unmeasured trait is unknown, never false. **"Not detected" is never rendered 
 "not supported"**, and that wording is asserted by tests over every unknown the
 code can produce.
 
-The clearest example: stock U1 firmware does not report which nozzle is fitted.
-Studio says *"Nozzle size — check this yourself"*, explains what a mismatch would
-do, and stops. Verified against real hardware in beta.24 — the firmware genuinely
-does not expose it.
+The clearest example is the fitted nozzle. For releases up to v1.0.0, Studio said
+*"Nozzle size — check this yourself"* because it had concluded the firmware did not
+report it. That conclusion was wrong: stock U1 firmware publishes the fitted nozzle
+diameter, and Studio was not asking for it. Since v1.1.0 Studio reads it live and
+labels it as the printer's reading — confirmed against a real U1, 0.4 mm on all four
+toolheads. "Check this yourself" remains the answer when no reading is available,
+never "unsupported".
 
 The second clearest: multi-plate repositioning was built, reviewed, and
 **withdrawn**. Plate spacing is not recorded in a project file; a review reproduced

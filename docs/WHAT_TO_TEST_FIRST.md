@@ -1,15 +1,15 @@
-# What to Test First (current beta)
+# What to Test First
 
-> Written against beta.15; the paths below still exist in the current release. Current release + checksums: [`RELEASE_METADATA.md`](RELEASE_METADATA.md).
+> First written during the beta; every screen named below still exists in v1.1.0, the current release. For what is new in v1.1.0 see the [README](../README.md#whats-new-in-v110). Current release + checksums: [`RELEASE_METADATA.md`](RELEASE_METADATA.md).
 
-**New since beta.12 — try these first:**
-1. **Source Check** (sidebar) → pick any STL/3MF → see the detected slicer, what Studio
+**Quick tour — try these first:**
+1. **Compatibility** (sidebar) → **Source Check** tab → pick any STL/3MF → see the detected slicer, what Studio
    can read, and the safe next step.
 2. **Find Models** → click an approved site → it opens in the locked Studio Model Browser;
    download a file, then **Open downloaded file** → Project Doctor.
-3. **Plate Color Remap** → a multicolor 3MF → pick a plate + a from/to colour → the **2D
+3. **Colors & Materials** (sidebar) → **Plate Color Remap** → a multicolor 3MF → pick a plate + a from/to colour → the **2D
    plate preview** shows what changes and what stays protected.
-4. **Print Quality Doctor** → pick a symptom → **Add your file** → the "What Studio found
+4. **Print Quality** (sidebar) → pick a symptom → **Add your file** → the "What Studio found
    in your file" evidence panel.
 5. **Printer Hub** → connect a U1 (or see the clear offline state) → monitor, then the
    confirmed control card (pause/cancel/start, upload gcode, emergency stop).

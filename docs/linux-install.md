@@ -25,10 +25,11 @@ Linux desktops, or installed automatically by `apt` if missing.
 handoff in the live UI (the automated checks above cover the backend logic
 behind those screens, not mouse-driven interaction with them); a real GNOME,
 KDE, or other desktop session; a real physical machine or VM (as opposed to a
-container); any distro other than Ubuntu 22.04/24.04; upgrading from a
-previously published Linux package (none exists yet to upgrade from);
-Printer Hub against a real Snapmaker U1 from Linux; and any report from an
-external user. This page will be updated as each of those is genuinely
+container); any distro other than Ubuntu 22.04/24.04; upgrading from the
+v1.0.0 `.deb` to a later one; the Printer Hub screen against a real
+Snapmaker U1 from Linux (the engine, and the packaged app's own engine,
+have been checked read-only against a real U1 from Linux — see
+[TRUST_STATUS.md](TRUST_STATUS.md)); and any report from an external user. This page will be updated as each of those is genuinely
 verified.
 
 ## Download
@@ -128,20 +129,45 @@ no cloud, no account, no telemetry.
 
 ## Handing off to Snapmaker Orca
 
-Studio never slices — Snapmaker Orca does. On Windows, Studio can detect an
-installed Snapmaker Orca and offer to open your prepared file in it directly.
-**That detection is not yet implemented on Linux.** After Prepare, Studio's
-handoff button will always say "Install Snapmaker Orca" — even if you already
-have it installed — and link to Orca's own download page instead of launching
-it for you. Install or locate Snapmaker Orca yourself, then open your
-prepared `.3mf` in it manually. The same applies to Studio's other ecosystem
-tool suggestions (OrcaSlicer, FOrcaSlicer, PrusaSlicer, and so on): Studio can
-still tell you *which* tool fits your project, it just can't yet detect
-whether you already have it on Linux.
+Studio never slices — Snapmaker Orca does. Since v1.1.0, Studio detects an
+installed Snapmaker Orca on Linux as well as Windows, and offers to open your
+prepared file in it directly. It also detects OrcaSlicer and FOrcaSlicer the
+same way. On Linux it looks in two places, and only there:
 
-## Known limitations
+- **Desktop entries** in `~/.local/share/applications`,
+  `/usr/share/applications`, `/usr/local/share/applications` and the Flatpak
+  export directories — an entry counts only when its `Name=` is the tool
+  itself and its `Exec=` points straight at an executable file for that tool.
+  This is what AppImageLauncher and similar integration tools create.
+- **Common AppImage folders**: `~/Applications`, `~/AppImages`,
+  `~/.local/bin`, `~/Downloads`, your home folder and `/opt` — top level
+  only. The file name must start with one of the names Studio knows for the
+  tool — `Snapmaker_Orca…` or `snorca…`; `OrcaSlicer…`, `Orca_Slicer…` or
+  `Orca-Slicer…`; `FOrcaSlicer…`, `FOrca_Slicer…` or `FOrca-Slicer…` (upper or
+  lower case both work; a name such as `Snapmaker-Orca…` is not recognised) —
+  and the file must be marked executable (`chmod +x`).
 
-- **Orca auto-detection**: see above — not implemented on Linux yet.
+If none of those finds it, the handoff button says "Install Snapmaker Orca"
+and links to Orca's own download page. Studio has not found your install;
+open your prepared `.3mf` in Orca yourself.
+
+## Current limitations
+
+- **Orca detection has limits.** An app installed only through Flatpak is
+  not detected, because its desktop entry launches `flatpak`, not the slicer.
+  An AppImage in a subfolder, one renamed so it no longer starts with the
+  tool's name, or one not marked executable, is not found.
+  PrusaSlicer and OrcaSlicer ImageMap are not detected on Linux at all;
+  Studio can still tell you *which* tool fits your project.
+
+## Verification scope
+
+- **Orca detection** is covered by automated tests on Linux; no user has
+  reported it from a real desktop yet. The rest of what has and has not been
+  tested on Linux is listed under [Tested on](#tested-on) above.
+
+## Worth knowing
+
 - **Update checks are opt-in**: by default Studio doesn't notify you of a new
   release on its own — use Help → Check GitHub now, or watch the Releases
   page. Help also has an "Automatically check for updates" checkbox, off
