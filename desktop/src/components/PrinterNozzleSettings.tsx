@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { usePrinter } from "@/store/printer";
 import { displayHost } from "@/lib/host";
 import {
-  countMismatchNote, nozzleRows, rowCountLabel, showsNothingReportedBanner, type NozzleRow,
+  countMismatchNote, nozzleActionsVisible, nozzleRows, rowCountLabel, showsNothingReportedBanner,
+  type NozzleRow,
 } from "@/lib/nozzleRows";
 import { createNozzleSettingsController } from "@/lib/nozzleSettingsController";
 import { settingsNozzleFetchTrigger } from "@/lib/nozzleFetchTriggers";
@@ -121,7 +122,7 @@ export default function PrinterNozzleSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, settingsNozzleFetchTrigger(host));
 
-  const { status, checkingLive, loadError, errorMessage, busy } = state;
+  const { status, checkingLive, loadError, errorMessage, busy, draft, liveCheckFailed } = state;
   const rows = nozzleRows(status);
   const rowCount = rowCountLabel(status);
   const mismatch = countMismatchNote(status);
@@ -129,6 +130,10 @@ export default function PrinterNozzleSettings() {
   // printer offline (profile count). The banner is informational and sits
   // above the table — it never replaces the editable rows (D4).
   const showNothingReportedBanner = showsNothingReportedBanner(status);
+  // v1.2.0 release polish: Save/Remove all have nothing to do when every row
+  // is a plain printer reading with nothing stored underneath it and nothing
+  // drafted — hide them rather than offer actions that would be a no-op.
+  const showActions = nozzleActionsVisible(status, Object.keys(draft).length > 0);
 
   return (
     <Card>
@@ -160,7 +165,16 @@ export default function PrinterNozzleSettings() {
           </p>
         )}
 
-        {showNothingReportedBanner && (
+        {liveCheckFailed ? (
+          // Opus follow-up (honesty fix): the live-only request itself
+          // failed (local service down / network) — the printer was never
+          // actually asked, so this must never read as "nothing reported by
+          // this printer". The rows still show the save that just succeeded.
+          <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Couldn't check the printer just now — these rows show what you have saved, not a live reading.
+          </p>
+        ) : showNothingReportedBanner && (
           <p className="text-[11px] text-muted-foreground">
             No nozzle size reported by this printer. You can confirm the fitted size yourself.
           </p>
@@ -193,10 +207,12 @@ export default function PrinterNozzleSettings() {
               busy={busy}
             />
 
-            <div className="flex items-center gap-2 pt-1">
-              <Button size="sm" disabled={busy} onClick={() => void controller.saveAll()}>Save</Button>
-              <Button size="sm" variant="secondary" disabled={busy} onClick={() => void controller.removeAll()}>Remove all</Button>
-            </div>
+            {showActions && (
+              <div className="flex items-center gap-2 pt-1">
+                <Button size="sm" disabled={busy} onClick={() => void controller.saveAll()}>Save</Button>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => void controller.removeAll()}>Remove all</Button>
+              </div>
+            )}
           </>
         )}
       </CardContent>

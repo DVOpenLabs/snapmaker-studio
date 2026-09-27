@@ -4,6 +4,7 @@ import { ApiError } from "@/api";
 import type { NozzleStatus } from "@/api";
 import type { NozzleFetchApi } from "./nozzleFetch";
 import type { NozzleMutationResult } from "./nozzleMutations";
+import { showsNothingReportedBanner } from "./nozzleRows";
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -76,7 +77,52 @@ describe("createNozzleSettingsController (F4)", () => {
     expect(controller.getState().checkingLive).toBe(false);
   });
 
-  it("N12: a failed post-mutation live fetch just clears checkingLive, keeping the mutation's own data", async () => {
+  it("(a) offline-printer path: the post-mutation live fetch answers 200 reachable:false/unreachable — a real, honest 'nothing reported' (lock this in)", async () => {
+    // /nozzles/status?probe=true never REJECTS for an offline printer — it
+    // answers 200 with reachable:false, live_error:"unreachable". That is a
+    // real answer about the printer, applied exactly like any other live
+    // result, and the banner is allowed to show immediately.
+    const nozzleStatus = vi.fn().mockResolvedValue(status());
+    const mutationSnapshot = status({ revision: 2, reachable: false, live_error: "not_checked" });
+    const confirmNozzles = vi.fn<(host: string, port: number, diameters: (number | null)[], expectedRevision: number) => Promise<NozzleMutationResult>>().mockResolvedValue({ ok: true, status: mutationSnapshot });
+    const controller = createNozzleSettingsController({ nozzleStatus, confirmNozzles, clearNozzles: vi.fn(), wait: async () => {} });
+
+    controller.start("u1.local", 7125);
+    await settle();
+    nozzleStatus.mockResolvedValueOnce(status({ revision: 2, reachable: false, live_error: "unreachable" }));
+    await controller.saveAll();
+    await settle();
+
+    expect(controller.getState().checkingLive).toBe(false);
+    expect(controller.getState().liveCheckFailed).toBe(false);
+    expect(controller.getState().status?.live_error).toBe("unreachable");
+    expect(showsNothingReportedBanner(controller.getState().status)).toBe(true);
+  });
+
+  it("(b) request-failure path: the live-only REQUEST itself fails — status (and 'not_checked') is untouched, liveCheckFailed is set, no banner, no 'unreachable' claim", async () => {
+    // This branch is reached only when the request never got an answer at
+    // all (local service down / network error / 500) — the printer was
+    // never actually asked, so nothing here may claim "unreachable" or
+    // "nothing reported by this printer" about it.
+    const nozzleStatus = vi.fn().mockResolvedValue(status());
+    const mutationSnapshot = status({ revision: 2, reachable: false, live_error: "not_checked" });
+    const confirmNozzles = vi.fn<(host: string, port: number, diameters: (number | null)[], expectedRevision: number) => Promise<NozzleMutationResult>>().mockResolvedValue({ ok: true, status: mutationSnapshot });
+    const controller = createNozzleSettingsController({ nozzleStatus, confirmNozzles, clearNozzles: vi.fn(), wait: async () => {} });
+
+    controller.start("u1.local", 7125);
+    await settle();
+    nozzleStatus.mockRejectedValueOnce(new Error("Studio's local service is unavailable"));
+    await controller.saveAll();
+    await settle();
+
+    expect(controller.getState().status).toEqual(mutationSnapshot); // completely untouched
+    expect(controller.getState().status?.live_error).toBe("not_checked"); // never claims "unreachable"
+    expect(controller.getState().checkingLive).toBe(false);
+    expect(controller.getState().liveCheckFailed).toBe(true);
+    expect(showsNothingReportedBanner(controller.getState().status)).toBe(false); // no "nothing reported" claim
+  });
+
+  it("liveCheckFailed clears on the next fetch start (host change)", async () => {
     const nozzleStatus = vi.fn().mockResolvedValue(status());
     const mutationSnapshot = status({ revision: 2, reachable: false, live_error: "not_checked" });
     const confirmNozzles = vi.fn<(host: string, port: number, diameters: (number | null)[], expectedRevision: number) => Promise<NozzleMutationResult>>().mockResolvedValue({ ok: true, status: mutationSnapshot });
@@ -87,9 +133,49 @@ describe("createNozzleSettingsController (F4)", () => {
     nozzleStatus.mockRejectedValueOnce(new Error("network"));
     await controller.saveAll();
     await settle();
+    expect(controller.getState().liveCheckFailed).toBe(true);
 
-    expect(controller.getState().status).toEqual(mutationSnapshot);
-    expect(controller.getState().checkingLive).toBe(false);
+    controller.start("other.local", 7125);
+    expect(controller.getState().liveCheckFailed).toBe(false);
+  });
+
+  it("liveCheckFailed clears on the next successful live check", async () => {
+    const nozzleStatus = vi.fn().mockResolvedValue(status());
+    const mutationSnapshot = status({ revision: 2, reachable: false, live_error: "not_checked" });
+    const confirmNozzles = vi.fn<(host: string, port: number, diameters: (number | null)[], expectedRevision: number) => Promise<NozzleMutationResult>>().mockResolvedValue({ ok: true, status: mutationSnapshot });
+    const controller = createNozzleSettingsController({ nozzleStatus, confirmNozzles, clearNozzles: vi.fn(), wait: async () => {} });
+
+    controller.start("u1.local", 7125);
+    await settle();
+    nozzleStatus.mockRejectedValueOnce(new Error("network"));
+    await controller.saveAll();
+    await settle();
+    expect(controller.getState().liveCheckFailed).toBe(true);
+
+    nozzleStatus.mockResolvedValueOnce(status({ revision: 3, reachable: true, live_error: null }));
+    await controller.saveAll();
+    await settle();
+    expect(controller.getState().liveCheckFailed).toBe(false);
+  });
+
+  it("v1.2.0 release polish: no banner flash while checkingLive is still true (existing guarantee preserved)", async () => {
+    const liveAfterSave = deferred<NozzleStatus>();
+    const nozzleStatus = vi.fn()
+      .mockResolvedValueOnce(status()) // start(): phase-1
+      .mockResolvedValueOnce(status()) // start(): phase-2
+      .mockReturnValueOnce(liveAfterSave.promise); // the post-mutation live fetch, held pending
+    const mutationSnapshot = status({ revision: 2, reachable: false, live_error: "not_checked" });
+    const confirmNozzles = vi.fn<(host: string, port: number, diameters: (number | null)[], expectedRevision: number) => Promise<NozzleMutationResult>>().mockResolvedValue({ ok: true, status: mutationSnapshot });
+    const controller = createNozzleSettingsController({ nozzleStatus, confirmNozzles, clearNozzles: vi.fn(), wait: async () => {} });
+
+    controller.start("u1.local", 7125);
+    await settle();
+    await controller.saveAll(); // fires the post-mutation live fetch, held pending
+
+    expect(controller.getState().checkingLive).toBe(true);
+    expect(showsNothingReportedBanner(controller.getState().status)).toBe(false);
+    liveAfterSave.resolve(status({ revision: 2, reachable: true, live_error: null })); // clean up
+    await settle();
   });
 
   it("N12: a host change during the post-mutation live fetch applies nothing from it", async () => {

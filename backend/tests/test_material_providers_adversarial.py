@@ -74,7 +74,11 @@ def test_a_material_disagreement_is_reported_not_resolved_silently():
     assert slot["material"] == "PLA"                     # the machine is looking at it
     assert slot["confidence"] == providers.UNKNOWN
     assert any("PETG" in note for note in slot["conflicts"])
-    assert slot["disagreed"]["material"]["spoolman"] == "PETG"
+    # `disagreed` names the real source on both sides (the merged row's own
+    # value is STOCK's here, not a hardcoded "printer") — not a literal
+    # "printer" key regardless of provenance.
+    assert slot["disagreed"]["material"][providers.STOCK] == "PLA"
+    assert slot["disagreed"]["material"][providers.SPOOLMAN] == "PETG"
 
 
 def test_a_colour_disagreement_is_reported_too():
@@ -82,7 +86,8 @@ def test_a_colour_disagreement_is_reported_too():
                                  tracker_state(material="PLA", color="#FFFFFF", spool_id=7))
     slot = combined["slots"][0]
     assert slot["color"] == "#000000"
-    assert slot["disagreed"]["colour"]["spoolman"] == "#FFFFFF"
+    assert slot["disagreed"]["colour"][providers.STOCK] == "#000000"
+    assert slot["disagreed"]["colour"][providers.SPOOLMAN] == "#FFFFFF"
 
 
 def test_a_tracker_that_thinks_a_printer_confirmed_empty_slot_is_loaded_does_not_fill_it():

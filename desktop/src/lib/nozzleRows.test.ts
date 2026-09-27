@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   countMismatchNote, diametersForRemove, diametersForSaveAll, diametersForUpdate,
-  diametersFromStatus, hasAnyConflict, nozzleRows, nozzleSummaryLine, rowCountLabel,
-  showsNothingReportedBanner,
+  diametersFromStatus, hasAnyConflict, nozzleActionsVisible, nozzleRows, nozzleSummaryLine,
+  rowCountLabel, showsNothingReportedBanner,
 } from "./nozzleRows";
 import type { NozzleStatus, NozzleToolhead } from "@/api";
 
@@ -361,5 +361,66 @@ describe("nozzleSummaryLine (CodeRabbit PR #41 #4: honest source attribution)", 
       toolhead({ toolhead: 1, confirmed: 0.4, out_of_range: true }),
     ]);
     expect(nozzleSummaryLine(s)).toBe("Nozzle sizes: not reported");
+  });
+});
+
+describe("nozzleActionsVisible (v1.2.0 release polish: hide Save/Remove-all when there's nothing to do)", () => {
+  it("keeps the actions visible when printer data is unavailable (status null)", () => {
+    expect(nozzleActionsVisible(null, false)).toBe(true);
+  });
+
+  it("hides them when every row is reported_live, no confirmation/conflict/out-of-range exists, and no draft is pending", () => {
+    const s = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer" }),
+      toolhead({ toolhead: 1, diameter: 0.6, source: "printer" }),
+    ]);
+    expect(nozzleActionsVisible(s, false)).toBe(false);
+  });
+
+  it("keeps them visible when a row is reported_live but still carries a stored confirmation that happens to agree (no conflict flagged)", () => {
+    // deriveRow classifies this as "reported_live" (source === "printer" wins
+    // the display), but a stored confirmation still exists underneath — if
+    // the printer goes offline later that confirmation becomes meaningful
+    // again, so Remove-all must still be reachable.
+    const s = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer", confirmed: 0.4 }),
+    ]);
+    expect(nozzleActionsVisible(s, false)).toBe(true);
+  });
+
+  it("keeps them visible when any row is a conflict", () => {
+    const s = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer" }),
+      toolhead({ toolhead: 1, diameter: 0.4, confirmed: 0.6, source: "printer", conflict: true }),
+    ]);
+    expect(nozzleActionsVisible(s, false)).toBe(true);
+  });
+
+  it("keeps them visible when any row is out-of-range", () => {
+    const s = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer" }),
+      toolhead({ toolhead: 1, confirmed: 0.3, source: "user", out_of_range: true }),
+    ]);
+    expect(nozzleActionsVisible(s, false)).toBe(true);
+  });
+
+  it("keeps them visible when any row is editable (not reported_live) — e.g. unknown or user-confirmed", () => {
+    const unknownRow = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer" }),
+      toolhead({ toolhead: 1 }), // unknown
+    ]);
+    expect(nozzleActionsVisible(unknownRow, false)).toBe(true);
+
+    const confirmedRow = status([
+      toolhead({ toolhead: 0, diameter: 0.6, source: "user", confirmed: 0.6 }),
+    ]);
+    expect(nozzleActionsVisible(confirmedRow, false)).toBe(true);
+  });
+
+  it("keeps them visible whenever a draft is pending, even if the status alone would hide them", () => {
+    const s = status([
+      toolhead({ toolhead: 0, diameter: 0.4, source: "printer" }),
+    ]);
+    expect(nozzleActionsVisible(s, true)).toBe(true);
   });
 });

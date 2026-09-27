@@ -115,6 +115,25 @@ export function hasAnyConflict(status: NozzleStatus | null): boolean {
   return !!status?.toolheads.some((t) => t.conflict);
 }
 
+/** Whether "Save"/"Remove all" have anything to act on (v1.2.0 release
+ *  polish). Hidden only when EVERY toolhead is a plain printer reading with
+ *  nothing stored underneath it — no manual confirmation (even one that
+ *  currently agrees with the printer and so isn't flagged as a conflict; if
+ *  the printer later goes offline that confirmation becomes meaningful
+ *  again), no conflict, no out-of-range leftover — AND there is no pending,
+ *  unsaved draft. Kept whenever printer data isn't available yet (`status`
+ *  null — nothing to decide from, so don't hide), any row is editable (not
+ *  `reported_live`), or a draft is pending. Checked against the raw
+ *  toolheads, not the derived rows, because `deriveRow` reports
+ *  "reported_live" purely from `source === "printer"` and would otherwise
+ *  hide a stored confirmation that happens not to be in conflict. */
+export function nozzleActionsVisible(status: NozzleStatus | null, hasPendingDraft: boolean): boolean {
+  if (!status) return true;
+  if (hasPendingDraft) return true;
+  return status.toolheads.some((t) =>
+    t.confirmed != null || t.conflict || t.out_of_range || t.source !== "printer");
+}
+
 /** Whether to show the "No nozzle size reported…" banner — informational
  *  only, shown ABOVE the editable rows, never instead of them (D4). The
  *  backend now always returns a row per known toolhead (profile count when

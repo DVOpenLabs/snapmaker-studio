@@ -287,7 +287,9 @@ def test_a_printer_provider_conflict_behaves_the_same_on_either(monkeypatch):
         assert slot["confidence"] == providers.UNKNOWN
         assert slot["confirmed_by"] == providers.BY_PRINTER
         assert slot["remaining_g"] == 900.0             # the weight still survives
-        assert slot["disagreed"]["material"]["printer"] == "PLA"
+        # `disagreed` names the real source — the merged row's value is
+        # STOCK's here, not a hardcoded "printer" key.
+        assert slot["disagreed"]["material"][providers.STOCK] == "PLA"
         results[kind] = scrub(out)
     assert results[providers.SPOOLMAN] == results[providers.BAMBUDDY]
 

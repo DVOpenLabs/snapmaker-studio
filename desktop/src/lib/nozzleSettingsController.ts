@@ -22,8 +22,16 @@
 // never waits on it), but is then followed by exactly one live-only
 // (probe:true, no debounce) fetch bound to the same epoch/token, so a save on
 // a reachable printer doesn't sit showing "Unknown"/no conflict/"nothing
-// reported" until a manual Refresh. `checkingLive` is true for that window;
-// a failure just clears it and keeps the mutation's own snapshot.
+// reported" until a manual Refresh. `checkingLive` is true for that window.
+// This live-only fetch's outcomes are NOT symmetric (Opus follow-up): an
+// offline printer is a 200 response (reachable:false, live_error:
+// "unreachable"), which the success branch applies as real data — that IS
+// the honest "nothing reported" case. Only the REQUEST itself failing (local
+// service down, network error, 500 — the printer was never actually asked)
+// hits the rejection branch; that leaves `status` untouched (still
+// "not_checked") and sets `liveCheckFailed` instead, so the UI can show a
+// neutral "couldn't check" note rather than claim anything about the
+// printer.
 //
 // Deliberately not a React hook: it is plain TS holding a tiny pub/sub
 // (compatible with zustand's own store shape, so a component can use it via
@@ -44,10 +52,22 @@ export interface NozzleSettingsState {
   errorMessage: string | null;
   busy: boolean;
   draft: Record<number, string>;
+  /** Opus follow-up (honesty fix): true only when the post-mutation live-only
+   *  REQUEST itself failed (local service down / network / 500) — never set
+   *  for a printer that genuinely answered "unreachable"/offline, which is a
+   *  200 response the success branch already applies as real data. `status`
+   *  (and its `live_error: "not_checked"`) is left untouched in this case —
+   *  the printer was never actually asked, so nothing here may claim
+   *  "nothing reported by this printer". Cleared on the next fetch start
+   *  (host change or Refresh) and on any subsequent success. */
+  liveCheckFailed: boolean;
 }
 
 function initialState(): NozzleSettingsState {
-  return { status: null, checkingLive: false, loadError: false, errorMessage: null, busy: false, draft: {} };
+  return {
+    status: null, checkingLive: false, loadError: false, errorMessage: null, busy: false, draft: {},
+    liveCheckFailed: false,
+  };
 }
 
 /** R4-D6: how long the host must be unchanged before the live probe fires. */
@@ -108,7 +128,7 @@ export function createNozzleSettingsController(
 
   function beginFetch(opts: { immediateLive?: boolean } = {}): void {
     const myToken = ++token;
-    store.setState({ status: null, loadError: false, checkingLive: false });
+    store.setState({ status: null, loadError: false, checkingLive: false, liveCheckFailed: false });
     void runNozzleFetch({
       host, port,
       isCurrent: () => isCurrent(myToken),
@@ -187,25 +207,36 @@ export function createNozzleSettingsController(
       // phase-2 read can never overwrite it, then apply directly.
       token += 1;
       const myToken = token;
-      store.setState({ status: result.status, draft: {}, busy: false, checkingLive: true });
+      store.setState({ status: result.status, draft: {}, busy: false, checkingLive: true, liveCheckFailed: false });
       // N12: confirm/clear now return a probe:false snapshot (backend R4-B1)
       // — reachable:false, live_error:"not_checked" — not a live reading. Left
       // there, a save on a perfectly reachable printer would show "Unknown",
       // no conflict row, and the "nothing reported" banner until a manual
       // Refresh. Immediately follow up with the live phase ALONE (no
       // debounce — the host didn't just change, a value was just written),
-      // bound to the same epoch/token as everything else; a failure just
-      // clears checkingLive and keeps the mutation's own snapshot.
+      // bound to the same epoch/token as everything else.
+      //
+      // Opus follow-up (honesty fix): /nozzles/status?probe=true never
+      // REJECTS for an offline printer — it answers 200 with
+      // reachable:false, live_error:"unreachable", which the success branch
+      // below already applies as real data (that's the correct, honest
+      // "nothing reported" case). The `.then()` rejection path is reached
+      // only when the REQUEST itself failed (local service down, network
+      // error, 500) — the printer was never actually asked, so nothing may
+      // claim "unreachable" or "nothing reported" about it. `status` (and
+      // its `live_error: "not_checked"`) is left completely untouched;
+      // `liveCheckFailed` records the request failure separately so the UI
+      // can show a neutral "couldn't check" note instead.
       deps.nozzleStatus(host, port, true).then(
         (live) => {
           if (myEpoch !== epoch) return;
           if (!isCurrent(myToken)) return;
-          store.setState({ status: live, checkingLive: false });
+          store.setState({ status: live, checkingLive: false, liveCheckFailed: false });
         },
         () => {
           if (myEpoch !== epoch) return;
           if (!isCurrent(myToken)) return;
-          store.setState({ checkingLive: false });
+          store.setState({ checkingLive: false, liveCheckFailed: true });
         },
       );
       return;
