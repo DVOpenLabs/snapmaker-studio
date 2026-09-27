@@ -6,6 +6,51 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-26
+
+### Added
+- **Linux Orca detection.** Studio finds Snapmaker Orca and related ecosystem
+  tools on Linux by reading `.desktop` files correctly — quote-aware, scoped to
+  the right section, and never confused by a similarly-named tool or a Flatpak
+  wrapper.
+- **Optional automatic update check.** Off by default. When turned on, Studio
+  checks GitHub for a newer release once a day, using the same request the
+  existing manual "Check GitHub now" button already made — nothing new is
+  sent.
+- **Local spool tracking.** When no Spoolman or Bambuddy is configured, a
+  person can record what's on a spool by hand — material, colour, vendor,
+  remaining weight — and Studio treats it with the same trust rules as any
+  other material source.
+- **Community hardware verification.** `u1convert verify-printer` produces a
+  read-only, redacted evidence bundle anyone can attach to a GitHub issue,
+  without exposing their address or network.
+
+### Changed
+- **The fitted nozzle is no longer always unknowable.** Stock Snapmaker U1
+  firmware does publish it — Studio now reads it live, or accepts an explicit
+  confirmation when firmware doesn't answer, and always labels which source a
+  reading came from.
+- **Nozzle comparisons are now toolhead-aware.** Where the data genuinely
+  carries per-toolhead order, a comparison lines up toolhead by toolhead
+  instead of just checking whether the same sizes exist somewhere.
+
+### Fixed
+- A stale local material note could no longer accidentally override a slot
+  the printer itself had physically confirmed empty.
+- A material provider (Spoolman/Bambuddy) is now reached even when no
+  printer address is configured — a provider has its own address, unrelated
+  to the printer's; caught by the installed-build acceptance harness before
+  release.
+- The post-slice tool-coexistence check was found to be unprovable from
+  tool-change data alone in every case tried; the claim was removed rather
+  than shipped wrong. The per-tool first/last-layer timeline it was built on
+  stays, and is more accurate than before.
+- Verify-printer no longer crashes when Klipper is disconnected from
+  Moonraker, and no longer reports a dropped connection as a firmware
+  limitation.
+- Two credential-adjacent hardening gaps closed in diagnostics redaction and
+  provider address handling.
+
 ## [1.0.0] - 2026-09-26
 
 **Two platforms, one release.**

@@ -1,7 +1,7 @@
 {
   "name": "snapmaker-studio-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Snapmaker Studio — the local-first workflow platform for modern 3D printing. Understand any design, check if it will print, get it ready, and monitor your Snapmaker U1.",
   "type": "module",
   "scripts": {

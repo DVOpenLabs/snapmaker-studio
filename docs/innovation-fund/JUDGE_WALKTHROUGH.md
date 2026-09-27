@@ -141,9 +141,9 @@ builds real decompression bombs and asserts the reader refuses them.
 ## Run the tests
 
 ```bash
-cd backend  && pytest          # 1833 passed, 7 skipped
+cd backend  && pytest          # 1942 passed, 7 skipped
 cd backend  && u1convert selfcheck   # 27/27 over production code paths
-cd desktop  && npm run test    # 340 passed
+cd desktop  && npm run test    # 344 passed
 cd desktop  && npm run build   # tsc + vite
 ```
 
@@ -171,10 +171,13 @@ pwsh -File tools/acceptance/run.ps1
 
 It installs into an isolated directory with its own WebView2 profile and engine
 data directory, drives the real application window over the Chrome DevTools
-Protocol, and uninstalls. 39 checks, including that the input file is byte-identical
+Protocol, and uninstalls. 34 checks, including that the input file is byte-identical
 afterwards and that uninstalling leaves nothing behind. It stops only processes it
 started, and restores any pre-existing installation's registry entry. Last result:
-**39/39** — [../internal/acceptance-1.0.0.json](../internal/acceptance-1.0.0.json).
+**34/34** — [../internal/acceptance-1.1.0.json](../internal/acceptance-1.1.0.json).
+An earlier release-candidate build of this same version scored one check lower
+here — a real regression this harness caught before release, fixed and
+reverified (see [../TRUST_STATUS.md](../TRUST_STATUS.md)).
 
 **A real printer.** With a Snapmaker U1 on the same network:
 
@@ -186,8 +189,9 @@ Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no
 temperature, motion, homing, pause, resume, cancel, emergency-stop or configuration
 call is made. The printer's address is replaced with a placeholder before anything
-reaches the evidence file. Last result: **39/39** —
-[../internal/hardware-1.0.0.json](../internal/hardware-1.0.0.json).
+reaches the evidence file. This release's own real-U1 check was narrower and run
+from Linux instead — last result: **11/11** —
+[../internal/hardware-1.1.0.json](../internal/hardware-1.1.0.json).
 
 That run is worth reading rather than just counting. It proved the four loaded
 filaments are read correctly, that the printer's own 271 × 335 × 281 mm bed is what

@@ -20,11 +20,19 @@
     "report": "hardware-1.1.0.json",
     "total": 11
   },
-  "schema_version": "evidence/1",
+  "installer": {
+    "name": "Snapmaker.Studio_1.1.0_x64-setup.exe",
+    "sha256": "b41931774eac5586bc31746599d4a637e89eda195c620067dc1c756281b217ee",
+    "size_bytes": 18150932,
+    "url": "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.1.0"
+  },
+  "released": "2026-09-26",
+  "schema_version": "evidence-snapshot/1",
   "screenshots_dir": "docs/screenshots/v1.1.0",
   "selfcheck": {
     "passed": 27,
     "total": 27
   },
+  "source": "recorded when this release was published",
   "version": "1.1.0"
 }

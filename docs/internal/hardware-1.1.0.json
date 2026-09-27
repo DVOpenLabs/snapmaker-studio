@@ -1,0 +1,73 @@
+{
+  "schema_version": "hardware/1",
+  "printer": "<printer-on-lan>",
+  "environment": "Linux (WSL2, Ubuntu 24.04), the raw Python engine and the packaged Linux sidecar binary extracted from this release's own .deb",
+  "read_only_routes": [
+    "u1convert verify-printer (moonraker.probe, moonraker.capabilities, moonraker.loaded_filaments, printer_profiles.identify)",
+    "/preflight (via the packaged sidecar's own loopback HTTP API, against a real 3MF project)"
+  ],
+  "not_run_this_release": [
+    "the Spoolman/Bambuddy-seeded provider-on-hardware checks from the full hardware harness (tools/hardware/verify.ps1) — no provider containers were configured this run",
+    "/post_slice and /send_check against the real printer",
+    "the Windows-installed app against the real printer"
+  ],
+  "checks": [
+    {
+      "name": "Printer answers on the network",
+      "ok": true,
+      "detail": "Moonraker 2.0.0"
+    },
+    {
+      "name": "Moonraker reports a version",
+      "ok": true,
+      "detail": "2.0.0"
+    },
+    {
+      "name": "Klipper is connected to Moonraker",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "name": "Toolhead count reported",
+      "ok": true,
+      "detail": "4 toolhead(s)"
+    },
+    {
+      "name": "Bed size reported",
+      "ok": true,
+      "detail": "271.0 x 335.0 x 281.0 mm"
+    },
+    {
+      "name": "Firmware object list enumerated",
+      "ok": true,
+      "detail": "205 object(s)"
+    },
+    {
+      "name": "Loaded filament reported by firmware",
+      "ok": true,
+      "detail": "4 slot(s) reported"
+    },
+    {
+      "name": "Studio recognises this printer model",
+      "ok": true,
+      "detail": "matched: snapmaker_u1"
+    },
+    {
+      "name": "Fitted nozzle read live from firmware",
+      "ok": true,
+      "detail": "0.4 mm on all 4 toolheads, confirmed_by=printer"
+    },
+    {
+      "name": "Free storage reading",
+      "ok": true,
+      "detail": "not reported by this firmware (storage_bytes: None) — matches the documented known-unknown, not a new gap"
+    },
+    {
+      "name": "Full preflight run against a real project, through the packaged Linux sidecar",
+      "ok": true,
+      "detail": "7 checks returned (bed.fit, materials.toolheads, materials.loaded, printer.busy, printer.reachable, nozzle.match, project.sliced); printer.busy correctly reported the printer as mid-print, and every result was read-only"
+    }
+  ],
+  "passed": 11,
+  "total": 11
+}

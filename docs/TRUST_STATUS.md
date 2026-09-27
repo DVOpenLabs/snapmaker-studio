@@ -5,6 +5,76 @@ Honest, current verification state for the current release. A release is only ma
 published installer, and — from beta.24 onward — read-only verification against a
 real Snapmaker U1 have all passed and are recorded here.
 
+## v1.1.0 — ACCEPTED
+
+**Linux Orca detection, the nozzle stops being a mystery, and a real
+regression caught before release.** Everything in the table below ran
+against *these exact artifacts* — the Windows installer and the Linux
+`.deb` on the release page, both verified by SHA256, both built in the same
+CI run (`release-candidate.yml`) and never rebuilt afterward except once,
+deliberately: a real regression found by this release's own acceptance
+harness (see below) was fixed and the candidate rebuilt before anything
+shipped. Canonical values: [RELEASE_METADATA.md](RELEASE_METADATA.md). This
+release's own immutable snapshot:
+[internal/evidence/1.1.0.json](internal/evidence/1.1.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **1942 passed / 7 skipped**, desktop **344** |
+| `u1convert selfcheck` | **27/27** |
+| Windows installed-application acceptance | **34/34** on the rebuilt candidate |
+| Windows default-path upgrade smoke (CI, silent install) | **pass** — one registration, version updated, same install location, legacy publisher key intact, clean uninstall |
+| Linux installed-build acceptance, clean `ubuntu:22.04` | **35/35** |
+| Linux installed-build acceptance, clean `ubuntu:24.04` | **35/35** |
+| Real Snapmaker U1, read-only, from Linux | **11/11** — see below, a narrower check than v1.0.0's |
+| `tsc`, `cargo check`, production build (both platforms) | clean |
+
+### What is verified, and what is not
+
+**Windows — a real regression caught, fixed, and reverified.** The first
+release-candidate build gave 33/34 on the installed-application acceptance
+harness: "A configured provider is actually contacted" failed, where the
+identical harness gave 34/34 against the published v1.0.0 installer. Traced
+to a line added earlier in this release's own work that skipped reaching a
+configured Spoolman/Bambuddy provider whenever no printer address was set —
+a provider is reached through its own address, unrelated to the printer's.
+Fixed, independently reviewed twice (both APPROVE), and the candidate was
+rebuilt from scratch and reverified 34/34 before anything below was
+recorded. This is exactly what this harness exists to catch.
+
+**Linux — clean-image verified, DESKTOP WORKFLOW VERIFIED, not yet EXTERNAL
+USER VERIFIED.** Unchanged in kind from v1.0.0: the published `.deb`
+installed on genuinely clean `ubuntu:22.04` and `ubuntu:24.04` containers,
+driven through 35 checks each. Snapmaker Orca is now auto-detected on Linux
+(the v1.0.0 known limitation), verified by the same automated tests that
+cover Windows detection, adapted for Linux's `.desktop`-file mechanism —
+not yet by a real GNOME/KDE/Wayland desktop session or an outside user's
+report.
+
+**Snapmaker U1 — read-only, from Linux, narrower than a full hardware run.**
+This release's engine — the raw Python package and the actual packaged
+Linux sidecar binary extracted from this release's own `.deb` — was run
+directly against a physical Snapmaker U1 on its local network: reachability,
+firmware version, Klipper connectivity, toolhead count, bed envelope, 205
+firmware objects, all four loaded filament slots, the fitted nozzle read
+live from firmware (confirming this release's own new capability against
+real hardware), and a full project-versus-printer preflight comparison
+through the packaged sidecar's own HTTP API. Full report:
+[internal/hardware-1.1.0.json](internal/hardware-1.1.0.json). **Not run
+this release:** the Spoolman/Bambuddy-seeded provider-on-hardware checks
+(no provider containers were configured); `/post_slice` and `/send_check`
+against the real printer; the Windows-installed app against the real
+printer; a genuinely mixed-nozzle setup (this printer's four toolheads all
+carry the same 0.4 mm nozzle, so the new toolhead-by-toolhead mismatch logic
+was proven live only for the uniform case — the mismatch case is covered by
+automated tests, not real hardware).
+
+The read-only discipline is unchanged: every call made was a GET-equivalent
+read (probe, capabilities, loaded-filament, and the preflight comparison
+route). Nothing was uploaded, started, paused, resumed, cancelled, heated,
+homed, moved or configured. The printer was mid-print throughout, which is
+irrelevant to a read-only check but is noted for the record.
+
 ## v1.0.0 — ACCEPTED
 
 **Two platforms, one release.** Everything below ran against *these exact

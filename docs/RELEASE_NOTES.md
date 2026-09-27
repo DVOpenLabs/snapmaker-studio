@@ -1,54 +1,68 @@
-# Snapmaker Studio v1.0.0 — two platforms, one release
+# Snapmaker Studio v1.1.0 — Linux detects Orca, the nozzle stops being a mystery
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-Snapmaker Studio now runs on Linux, and a long-standing Windows bug is fixed.
-Everything else you already know about Studio — read a project, check it
-against your printer, prepare a copy, hand it to Snapmaker Orca, read the
-sliced job back — is unchanged and still local-first.
+Everything you already know about Studio — read a project, check it against
+your printer, prepare a copy, hand it to Snapmaker Orca, read the sliced job
+back — is unchanged and still local-first. This release closes several
+long-standing gaps between what Studio could tell you and what your printer
+and your slicer actually know.
 
-## Linux, as a self-contained package
+## Snapmaker Orca is now found automatically on Linux
 
-A `.deb` for Ubuntu 22.04 and 24.04 (x86_64). No Python, no Node.js, no Rust
-— the engine ships as a frozen binary sidecar, and `apt` only needs
-`libwebkit2gtk-4.1-0` and `libgtk-3-0`, both standard GTK/WebKitGTK runtime
-libraries.
+The Windows-only limitation from v1.0.0 is gone. Studio finds Snapmaker Orca
+and related tools on Linux by reading their `.desktop` files correctly, and
+no longer confuses a similarly-named tool for the one you actually have
+installed.
 
-Install with `sudo apt install ./<file>.deb`, upgrade the same way, remove
-with `sudo apt remove`. Your project data lives at
-`~/.local/share/SnapmakerStudio` (or `$XDG_DATA_HOME`), created with
-permissions readable only by you, and removing the package does not delete
-it. Full guide, including known limitations and troubleshooting:
-[docs/linux-install.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.0.0/docs/linux-install.md).
+## The fitted nozzle is no longer unknowable
 
-Verified: installing on genuinely clean Ubuntu 22.04 and 24.04 containers
-(no prior checkout, no development tools), launching the real app under a
-real display and window manager, and closing its real window — 35 checks
-passing on each.
+Stock Snapmaker U1 firmware does publish the fitted nozzle diameter — Studio
+just wasn't asking for it. Now it reads the live reading from your printer,
+or accepts your own confirmation when firmware doesn't answer, and always
+tells you which of the two it used. A size comparison against your project
+now lines up toolhead by toolhead where the data supports it, instead of
+only checking whether the same sizes exist somewhere.
 
-**Known limitation:** Snapmaker Orca is not auto-detected on Linux yet.
-After Prepare, the handoff button will offer Orca's download page even if
-you already have it installed — open your prepared file in Orca yourself.
+## An optional daily update check
 
-## Fixed: closing the window now actually quits Studio
+Off by default. Turn it on in Help, and Studio checks GitHub for a newer
+release once a day — the same request the manual "Check GitHub now" button
+already made, so nothing new leaves your machine either way.
 
-Since beta.13, closing Studio's main window silently left the process and
-its engine running in the background on Windows — confirmed against a real
-built release binary, not inferred from code alone. Every earlier
-"zero-orphan" proof only covered a process being killed outright, never the
-ordinary act of closing the window. Closing the window now reliably exits
-Studio and its engine, on both platforms.
+## Local spool tracking, with no Spoolman or Bambuddy required
+
+When you haven't set up a network material provider, you can now record
+what's on a spool yourself — material, colour, vendor, remaining weight —
+and Studio treats your own note with the same care as a network provider: a
+printer that has physically confirmed a slot is empty can never be
+overridden by a stale note.
+
+## Community hardware verification
+
+`u1convert verify-printer` produces a read-only, redacted evidence bundle
+anyone can attach to a GitHub issue to help verify a printer or a bug
+report, without exposing their network address.
+
+## Read on Linux, against a real Snapmaker U1
+
+Beyond the automated suites, this release's engine was also run directly on
+Linux against a physical Snapmaker U1 on the local network — reachability,
+identification, firmware capabilities, loaded filament, and the full
+project-versus-printer comparison, all read-only. See
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.1.0/docs/TRUST_STATUS.md)
+for exactly what that covered.
 
 ## Upgrading
 
-**Windows:** installing v1.0.0 over an existing v0.9.0 install works exactly
-as before — verified with an in-place upgrade test that confirms the
-installation ends up reporting version 1.0.0, at the same location, with
-your data kept, and nothing left duplicated.
+**Windows:** installing v1.1.0 over an existing install works exactly as
+before — verified with an in-place upgrade test that confirms the
+installation ends up reporting the new version, at the same location, with
+your data kept and nothing left duplicated.
 
-**Linux:** this is the first Linux release, so there is nothing to upgrade
-from yet.
+**Linux:** install with `sudo apt install ./<file>.deb` over the existing
+package, the same as any `.deb` upgrade.
 
 ## Still true
 
@@ -65,31 +79,27 @@ before running either one.
 
 ## Known limitations
 
-- Snapmaker Orca auto-detection is Windows-only for now (see above).
-- No automatic update check on either platform — Studio doesn't notify you of
-  a new release on its own. Use Help → Check GitHub now, or watch the
-  Releases page.
-- The fitted nozzle cannot be read from stock firmware, and free storage is
-  not reported by it either.
-- Remaining filament is known only where something tracks it — Spoolman or
-  Bambuddy, read-only, local-network only.
+- Remaining filament is known only where something tracks it — a network
+  provider, or your own note. Studio never estimates one on its own.
 - A materials provider that requires a sign-in cannot be read; Studio has
   nowhere safe to keep a credential and says so rather than storing one.
 - An object whose volumes cannot all be represented declines the split and
   crosses whole, with the audit naming what that costs.
 - Painted colour is read, but whether two colours meet on a layer is decided
   by the slice, so such colours have a toolhead reserved rather than being
-  called simultaneous.
+  called simultaneous. Several attempts to prove this from tool-change data
+  alone were tried and found unreliable; the honest "reserve a toolhead"
+  answer stands until Studio reads the actual extrusion moves.
 - One machine, one firmware version verified on real hardware. The
   read-only verification generalises; the sample does not.
-- Linux has not yet been run against a real Snapmaker U1, and has not yet
+- The nozzle-size comparison's toolhead-by-toolhead check was verified live
+  on a printer with the same size fitted on every toolhead; a genuinely
+  mismatched multi-nozzle setup was exercised only in automated tests, not
+  against real hardware.
+- Linux has been run against a real Snapmaker U1's engine directly, but not
+  yet through the full provider-backed hardware harness, and has not yet
   had an external user report.
 
 Verification for this release — every count, and what was run against the
 real printer — is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.0.0/docs/TRUST_STATUS.md).
-Installing and verifying the download:
-[windows-install.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.0.0/docs/windows-install.md) ·
-[linux-install.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.0.0/docs/linux-install.md).
-Materials providers in detail:
-[MATERIAL_PROVIDERS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.0.0/docs/MATERIAL_PROVIDERS.md).
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.1.0/docs/TRUST_STATUS.md).
