@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { providerTest, type ProviderSpool, type ProviderTest } from "@/api";
 import { useProvider, PROVIDERS, type ProviderKind } from "@/store/provider";
+import LocalSpoolSettings from "@/components/LocalSpoolSettings";
 
 // Where a person tells Studio what is keeping track of their filament.
 //
@@ -195,6 +196,8 @@ export default function MaterialProviderSettings() {
             </div>
           </div>
         )}
+
+        <LocalSpoolSettings />
       </CardContent>
     </Card>
   );

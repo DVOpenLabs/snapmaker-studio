@@ -530,7 +530,16 @@ def test_server_batch_roundtrip(tmp_path, monkeypatch):
 
 # ---- local/manual spools (Known Limitations item D) ----
 
+def _row(rows: list[dict], slot: int = 0) -> dict:
+    matches = [r for r in rows if r["slot"] == slot]
+    assert len(matches) == 1, f"expected exactly one row for slot {slot}, got {matches}"
+    return matches[0]
+
+
 def test_server_local_spools_save_list_delete_roundtrip(tmp_path, monkeypatch):
+    """v1.2: save/delete/mark_used now return the frozen `rows` list body
+    (A1.3/A2.5/A2.8), not the single-row dict / {"deleted": true} this test
+    asserted before v1.2 — updated deliberately, named here."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     httpd, token = build_server(port=0)
     _run(httpd)
@@ -541,18 +550,22 @@ def test_server_local_spools_save_list_delete_roundtrip(tmp_path, monkeypatch):
             "starting_g": 1000.0, "remaining_g": 800.0,
         }, token)
         assert status == 200
-        assert saved["remaining_quality"] == "user_confirmed"
+        row = _row(saved["rows"])
+        assert row["remaining_quality"] == "user_confirmed"
+        assert row["host_as_stored"] == "u1.local" and row["alias_conflict"] is False
 
         status, listing = _request(port, "/local_spools", {"host": "u1.local"}, token)
         assert status == 200 and listing["available"] is True
         assert listing["slots"][0]["material"] == "PLA"
+        assert _row(listing["rows"])["material"] == "PLA"
 
         status, empty = _request(port, "/local_spools", {"host": "other.local"}, token)
         assert status == 200 and empty["available"] is False
+        assert empty["rows"] == []
 
         status, deleted = _request(port, "/local_spools/delete",
                                    {"host": "u1.local", "slot": 0}, token)
-        assert status == 200 and deleted["deleted"] is True
+        assert status == 200 and deleted == {"rows": []}
 
         status, gone = _request(port, "/local_spools", {"host": "u1.local"}, token)
         assert status == 200 and gone["available"] is False
@@ -574,13 +587,16 @@ def test_server_local_spools_mark_used(tmp_path, monkeypatch):
         status, updated = _request(port, "/local_spools/mark_used",
                                    {"host": "u1.local", "slot": 0, "used_g": 50.0}, token)
         assert status == 200
-        assert updated["remaining_g"] == 750.0
-        assert updated["remaining_quality"] == "derived"
+        row = _row(updated["rows"])
+        assert row["remaining_g"] == 750.0
+        assert row["remaining_quality"] == "derived"
 
         # A slot Studio has no remaining weight for is refused, not invented.
+        # A4.3: this is now a 404 `no_spool_note` with a fixed message — never
+        # a 400 echoing the service's own exception text.
         status, err = _request(port, "/local_spools/mark_used",
                                {"host": "u1.local", "slot": 1, "used_g": 10.0}, token)
-        assert status == 400 and "no local spool record" in err["error"]
+        assert status == 404 and err["error"] == "no_spool_note"
     finally:
         httpd.shutdown()
 

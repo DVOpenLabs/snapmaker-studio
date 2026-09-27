@@ -199,6 +199,102 @@ def _family_and_subtype(value: str | None) -> tuple[str | None, str | None]:
 
 # --- stock U1 ----------------------------------------------------------------
 
+def _source_phrase(source_id: str) -> str:
+    """A plain-language name for a provenance source id — B4 (Opus M5/Sol 5):
+    a conflict sentence must never echo a raw internal id ("local",
+    "spoolman", "stock-u1") to a person reading it."""
+    if source_id == STOCK:
+        return "the printer"
+    name = PROVIDER_NAMES.get(source_id)
+    if name:
+        return f"your provider ({name})"
+    if source_id == LOCAL:
+        return "your note"
+    return "another source"
+
+
+def _says(source_id: str) -> str:
+    """"the printer reports" / "your provider (Spoolman) says" / "your note
+    says" — the verb the printer gets is "reports" (it looked); everything
+    else "says" (someone's record of what they believe)."""
+    phrase = _source_phrase(source_id)
+    return f"{phrase} reports" if source_id == STOCK else f"{phrase} says"
+
+
+def _describe_disagreement(mine_source: str, mine_value, theirs_source: str, theirs_value) -> str:
+    """B4: names the real source on BOTH sides, and only credits the printer
+    with 'Studio is using what the printer can see' when the value Studio
+    actually kept came from the printer — never for a provider/note value
+    that merely happened to arrive first."""
+    mine_txt = f"{_says(mine_source)} {mine_value}"
+    theirs_txt = f"{_says(theirs_source)} {theirs_value}"
+    if mine_source == STOCK:
+        return f"{mine_txt} in this slot and {theirs_txt} — Studio is using what the printer can see"
+    return f"{mine_txt} in this slot and {theirs_txt} — Studio kept {mine_value}"
+
+
+def add_note_conflicts(state: dict, conflicts: list[dict]) -> dict:
+    """A3.4/A2.8: fold a local-spool alias collision into the LOCAL provider
+    state — a ``note_conflicts`` field for the UI, plus a synthetic slot entry
+    per collided slot that carries NO material/colour/weight facts at all,
+    only the conflict note. It is deliberately ``present=True`` with no
+    material: `material_plan.plan()` reads an index with a `have` dict but no
+    family on either side as state ``unknown`` (never the ``have is None``
+    branch that produces ``empty``) — A4.1's regression is exactly this: two
+    colliding notes and no printer reading must never read as a BLOCKER.
+    """
+    if not conflicts:
+        return state
+    out = dict(state)
+    out["note_conflicts"] = list(conflicts)
+    out["available"] = True
+    slots = list(out.get("slots") or [])
+    covered = {s["slot"] for s in slots}
+    for c in conflicts:
+        if c["slot"] in covered:
+            continue
+        slots.append(_slot(
+            c["slot"], present=True, material=None, subtype=None, color=None, vendor=None,
+            remaining_g=None, source=LOCAL, confidence=UNKNOWN, confirmed_by=None,
+            notes=[f"two notes exist for slot {c['slot'] + 1} — remove one in Settings"]))
+    out["slots"] = slots
+    return out
+
+
+def stock_from_facts(printer: dict) -> dict:
+    """The STOCK provider shape, built from a printer read `service.py`
+    already did (``printer["loaded_filaments"]``) rather than a second,
+    independent read of the printer.
+
+    A1.11 (Opus D-10): the previous version of `service._with_providers`
+    called `stock_u1(host, port)` itself — a SECOND live read, after
+    `printer_facts()` had already read the same thing once. If that second
+    read failed or answered differently (a printer that changed state between
+    the two calls, or simply flaked once), `combine()` would treat the STOCK
+    source as entirely unavailable and let a local note or provider fill in
+    material the printer had, moments earlier, already confirmed — silently
+    replacing live evidence with a guess. Building STOCK from the facts
+    already in hand makes that impossible: there is only ever one printer
+    read per request, and this is a pure reshaping of it.
+    """
+    loaded = printer.get("loaded_filaments") if printer else None
+    out = {"schema_version": SCHEMA_VERSION, "source": STOCK, "available": False,
+          "slots": [], "remaining_known": False}
+    if loaded is None:
+        return out
+    out["available"] = True
+    for index, entry in enumerate(loaded):
+        if not entry:
+            out["slots"].append(_slot(index, present=False, confirmed_by=BY_PRINTER))
+            continue
+        family, subtype = _family_and_subtype(entry.get("material"))
+        out["slots"].append(_slot(
+            index, material=family, subtype=subtype, color=entry.get("color"),
+            vendor=entry.get("vendor"), source=STOCK, confidence=CONFIRMED,
+            confirmed_by=BY_PRINTER))
+    return out
+
+
 def stock_u1(host: str, port: int = 7125) -> dict:
     """What the printer itself reports. The default, and the only one always available."""
     from . import moonraker
@@ -788,12 +884,14 @@ def combine(*states: dict) -> dict:
     merged: dict[int, dict] = {}
     sources = []
     remaining_known = False
+    note_conflicts: list[dict] = []
 
     for state in states:
         if not state or not state.get("available"):
             continue
         sources.append(state["source"])
         remaining_known = remaining_known or bool(state.get("remaining_known"))
+        note_conflicts.extend(state.get("note_conflicts") or [])
         for slot in state.get("slots", []):
             index = slot["slot"]
             existing = merged.get(index)
@@ -817,10 +915,19 @@ def combine(*states: dict) -> dict:
             for key, what in (("material", "material"), ("color", "colour")):
                 mine, theirs = existing.get(key), slot.get(key)
                 if mine and theirs and str(mine).upper() != str(theirs).upper():
+                    # `mine`'s real source: whichever source's gap-fill actually
+                    # supplied this field, or the merged row's own original
+                    # source if nothing filled it — never assumed to be the
+                    # printer just because STOCK is read first.
+                    mine_source = existing.get("added_by", {}).get(key, existing.get("source"))
+                    theirs_source = slot["source"]
                     existing.setdefault("conflicts", []).append(
-                        f"the printer reports {mine} in this slot and {slot['source']} "
-                        f"has {theirs} — Studio is using what the printer can see")
+                        _describe_disagreement(mine_source, mine, theirs_source, theirs))
                     existing["confidence"] = UNKNOWN
+                    # `disagreed`'s own shape (a stable "printer" key for the
+                    # merged row's value) is unchanged — only the human-
+                    # readable `conflicts` sentence above gained real
+                    # provenance; existing consumers of `disagreed` are unaffected.
                     existing.setdefault("disagreed", {})[what] = {
                         "printer": mine, slot["source"]: theirs}
 
@@ -842,13 +949,14 @@ def combine(*states: dict) -> dict:
                 # disagreement between two guesses, and reported as one.
                 if existing.get("confirmed_by") == BY_PRINTER:
                     existing.setdefault("conflicts", []).append(
-                        f"{slot['source']} says this slot has material in it, but the printer "
+                        f"{_says(slot['source'])} this slot has material in it, but the printer "
                         "looked and found it empty — Studio is using what the printer can see")
                 else:
                     existing["present"] = True
                     existing["confidence"] = UNKNOWN
                     existing.setdefault("conflicts", []).append(
-                        f"{existing['source']} reports this slot empty, {slot['source']} does not")
+                        f"{_says(existing['source'])} this slot is empty, but "
+                        f"{_says(slot['source'])} it is not")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -856,6 +964,7 @@ def combine(*states: dict) -> dict:
         "sources": sources,
         "remaining_known": remaining_known,
         "slots": [merged[i] for i in sorted(merged)],
+        "note_conflicts": note_conflicts,
     }
 
 

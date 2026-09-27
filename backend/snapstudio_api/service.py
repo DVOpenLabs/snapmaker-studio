@@ -46,6 +46,36 @@ def _conn():
     return library.connect(_db_path())
 
 
+def _resolve_nozzle_safe(host: str | None, port: int | None, live: list | None,
+                         request_diameters: list | None = None) -> dict:
+    """B3 (Opus M1): the shared precedence resolver, but never raising. A
+    storage failure (a locked DB, a `LibraryVersionError`, disk I/O) must
+    never break preflight/post_slice/send_check/material_plan — it degrades
+    to 'no stored confirmation' (live/request value still used if there is
+    one) with `storage_error` recorded, exactly like every other read-only
+    fact in this module."""
+    from snapstudio_core import nozzle_confirm
+
+    def _degraded() -> dict:
+        diameters = live or request_diameters
+        confirmed_by = "printer" if live else ("user" if request_diameters else None)
+        return {"diameters": diameters, "confirmed_by": confirmed_by, "confirmed_at": None,
+                "revision": 0, "conflicts": [], "stored": {}, "storage_error": "storage_unavailable"}
+
+    try:
+        conn = _conn()
+    except Exception:
+        return _degraded()
+    try:
+        result = nozzle_confirm.resolve(conn, host, port, live, request_diameters)
+        result["storage_error"] = None
+        return result
+    except Exception:
+        return _degraded()
+    finally:
+        conn.close()
+
+
 def _record_fix(operation: str, source: str, output: str, *, changes=None,
                 findings=None, validated=None, notes=None) -> None:
     """Write one ledger entry for a file Studio just produced.
@@ -311,6 +341,20 @@ def printer_facts(host: str | None = None, port: int = 7125) -> dict:
         facts["error"] = probe.get("error")
         # The address came from the user, so Studio does not know what is at it.
         facts["hint"] = moonraker.not_found_hint(host)
+        # B2 (Opus H5/Sol 4): a person's own stored nozzle confirmation must
+        # still be usable while the printer cannot be reached — preflight,
+        # post_slice and send_check all read this same `facts` dict, and none
+        # of them should lose an offline note just because the machine is off
+        # or unreachable right now.
+        resolved = _resolve_nozzle_safe(host, port, None, None)
+        facts["nozzle_diameters"] = resolved["diameters"]
+        facts["nozzle_confirmed_by"] = resolved["confirmed_by"]
+        facts["nozzle_confirmed_at"] = resolved["confirmed_at"]
+        facts["nozzle_revision"] = resolved["revision"]
+        facts["nozzle_conflicts"] = resolved["conflicts"]
+        facts["_stored_nozzle_confirmations"] = resolved["stored"]
+        facts["nozzle_storage_error"] = resolved["storage_error"]
+        facts["_live_nozzle_diameters"] = None
         return facts
     try:
         caps = moonraker.capabilities(host, port)
@@ -359,6 +403,24 @@ def printer_facts(host: str | None = None, port: int = 7125) -> dict:
             dict(entry, confirmed_by="printer") if isinstance(entry, dict) else entry
             for entry in loaded
         ]
+
+    # A live reading always wins; when there is none, a person's own stored
+    # confirmation for this printer fills the gap — the one shared resolver
+    # every route (status/preflight/post_slice/send_check) joins against, so
+    # none of them can silently diverge on which value "the nozzle" means.
+    # `_live_nozzle_diameters` is kept aside (never returned to a caller) so
+    # `preflight()` can re-resolve including its own request-level override
+    # without a second, inconsistent read of what the firmware actually said.
+    live_diameters = facts.get("nozzle_diameters")
+    resolved = _resolve_nozzle_safe(host, port, live_diameters, None)
+    facts["nozzle_diameters"] = resolved["diameters"]
+    facts["nozzle_confirmed_by"] = resolved["confirmed_by"]
+    facts["nozzle_confirmed_at"] = resolved["confirmed_at"]
+    facts["nozzle_revision"] = resolved["revision"]
+    facts["nozzle_conflicts"] = resolved["conflicts"]
+    facts["_stored_nozzle_confirmations"] = resolved["stored"]
+    facts["nozzle_storage_error"] = resolved["storage_error"]
+    facts["_live_nozzle_diameters"] = live_diameters
 
     # Identification is inference from what the machine reported, and it is
     # deliberately the last thing done rather than the first: every check above
@@ -419,10 +481,26 @@ def preflight(path: str, host: str | None = None, port: int = 7125,
 
     project = project_traits.extract(path)
     facts = printer_facts(host, port)
-    if not facts.get("nozzle_diameters") and confirmed_nozzle_diameters:
-        facts["nozzle_diameters"] = confirmed_nozzle_diameters
-        facts["nozzle_confirmed_by"] = "user"
-        facts["nozzle_confirmed_at"] = confirmed_nozzle_at
+    if confirmed_nozzle_diameters:
+        # D-9: /preflight is the one route that still takes a request-level
+        # override (compat) — it REPLACES any stored confirmation for this
+        # call only (never persisted); a live reading still always wins, and
+        # the shared resolver recomputes conflicts against both stored and
+        # request values so nothing here can silently disagree with
+        # /nozzles/status about the same printer.
+        resolved = _resolve_nozzle_safe(
+            host, port, facts.get("_live_nozzle_diameters"), confirmed_nozzle_diameters)
+        facts["nozzle_diameters"] = resolved["diameters"]
+        facts["nozzle_confirmed_by"] = resolved["confirmed_by"]
+        # B7 (Opus LOW): confirmed_at must reflect the source actually used —
+        # when live won, `confirmed_by` is "printer" and there is no user
+        # confirmed_at at all, even though the request supplied one.
+        facts["nozzle_confirmed_at"] = (
+            confirmed_nozzle_at if resolved["confirmed_by"] == "user" else resolved["confirmed_at"])
+        facts["nozzle_conflicts"] = resolved["conflicts"]
+        facts["_stored_nozzle_confirmations"] = resolved["stored"]
+        facts["nozzle_revision"] = resolved["revision"]
+        facts["nozzle_storage_error"] = resolved["storage_error"]
 
     bed = None
     dims = facts.get("bed_mm") or {}
@@ -439,8 +517,156 @@ def preflight(path: str, host: str | None = None, port: int = 7125,
         placement = None
 
     out = pf.evaluate(project, facts, placement=placement)
-    out["printer"] = {k: v for k, v in facts.items() if k != "klipper_objects"}
+    out["printer"] = {k: v for k, v in facts.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
     return out
+
+
+# --- per-printer nozzle confirmation -----------------------------------------
+#
+# The frozen /nozzles/* contract. Read-only status, and two writes — confirm
+# (atomic replace) and clear — both revision-guarded so a stale desktop tab
+# can never silently clobber a newer confirmation. Storage-error and stale
+# codes never carry the submitted host, a DB path or a raw exception.
+
+def nozzle_status(host: str, port: int = 7125, probe: bool = True) -> dict:
+    """``probe=False`` (R2-B6, real installed-build finding): skip every
+    printer read entirely and answer from stored confirmations + the U1
+    profile guess only. On an unreachable printer the live probe/reads were
+    measured blocking this route for 7-9 seconds; a caller that already knows
+    it wants the offline picture (or is about to probe separately) should
+    never have to pay that cost just to read what is stored."""
+    from snapstudio_core import moonraker, nozzle_confirm
+
+    try:
+        canon = nozzle_confirm.canonical_host(host)
+    except nozzle_confirm.InvalidHost:
+        raise
+    live = None
+    live_error = None
+    caps_toolhead_count = None
+    observed_at = _now()
+    if not probe:
+        reachable = False
+        live_error = "not_checked"
+    else:
+        probe_result = moonraker.probe(canon, port)
+        reachable = bool(probe_result.get("reachable"))
+        if reachable:
+            try:
+                minfo = moonraker.machine_info(canon, port)
+                live = minfo.get("nozzle_diameters") or None
+                if not live:
+                    live_error = "not_reported"
+            except Exception:
+                live_error = "unreachable"
+            try:
+                caps = moonraker.capabilities(canon, port)
+                if caps.get("toolhead_count"):
+                    caps_toolhead_count = caps["toolhead_count"]
+            except Exception:
+                pass
+        else:
+            live_error = "unreachable"
+
+    # B2 (Opus H5/Sol 4): the row count must never go empty just because the
+    # printer cannot be reached right now. Priority: what the printer just
+    # reported (its length, if it answered at all) > its own toolhead count
+    # (reachable, but /machine/system_info didn't answer) > the U1 profile's
+    # own tool count (Studio's one supported target — offline or unidentified,
+    # still 4) > whatever a stored confirmation implies (nc._positions's own
+    # fallback, when even the profile guess is unavailable).
+    if live:
+        toolhead_count = len(live)
+        toolhead_count_source = "printer"
+    elif caps_toolhead_count:
+        toolhead_count = caps_toolhead_count
+        toolhead_count_source = "printer"
+    else:
+        toolhead_count = None
+        toolhead_count_source = "unknown"
+        try:
+            from snapstudio_core import printer_profiles
+            profile = printer_profiles.load(printer_profiles.PREPARE_TARGET_ID)
+            if profile.get("tool_count"):
+                toolhead_count = profile["tool_count"]
+                toolhead_count_source = "profile"
+        except Exception:
+            pass
+
+    # B5 (Sol 7): a storage failure on the READ route degrades to a 200 body
+    # with `storage_error` set — never a 500 — since everything else in this
+    # body (live reading, toolhead count) was already established without
+    # touching the DB at all. Writes (/nozzles/confirm, /nozzles/clear) are
+    # not this function and still fail loudly (server.py: 500 storage_unavailable).
+    try:
+        conn = _conn()
+    except Exception:
+        return _degraded_nozzle_status(canon, port, live, live_error, reachable,
+                                       toolhead_count, toolhead_count_source, observed_at)
+    try:
+        return nozzle_confirm.status(
+            conn, canon, port, live=live, live_error=live_error, reachable=reachable,
+            toolhead_count=toolhead_count, toolhead_count_source=toolhead_count_source,
+            observed_at=observed_at)
+    except Exception:
+        return _degraded_nozzle_status(canon, port, live, live_error, reachable,
+                                       toolhead_count, toolhead_count_source, observed_at)
+    finally:
+        conn.close()
+
+
+def _degraded_nozzle_status(canon: str, port: int, live: list | None, live_error: str | None,
+                            reachable: bool, toolhead_count: int | None,
+                            toolhead_count_source: str, observed_at: str) -> dict:
+    """The `/nozzles/status` body when storage could not be read at all — the
+    same shape `nozzle_confirm.status()` returns, minus anything that needed
+    the DB (no stored confirmations, revision 0), with `storage_error` set."""
+    from snapstudio_core import nozzle_confirm as nc
+
+    toolheads = nc._positions({}, toolhead_count)
+    if live:
+        for row in toolheads:
+            if row["toolhead"] < len(live):
+                row["diameter"] = live[row["toolhead"]]
+                row["source"] = "printer"
+    count_mismatch = bool(live) and bool(toolhead_count) and len(live) != toolhead_count
+    return {
+        "host": canon, "port": int(port) if port else nc.DEFAULT_PORT, "reachable": reachable,
+        "live": live, "live_error": live_error, "toolhead_count": toolhead_count,
+        "toolhead_count_source": toolhead_count_source, "revision": 0,
+        "observed_at": observed_at, "count_mismatch": count_mismatch,
+        "storage_error": "storage_unavailable", "toolheads": toolheads,
+    }
+
+
+def nozzle_confirm_save(host: str, port: int, diameters: list, expected_revision: int) -> dict:
+    from snapstudio_core import nozzle_confirm
+
+    conn = _conn()
+    try:
+        nozzle_confirm.confirm(conn, host, port, diameters, expected_revision, _now())
+    finally:
+        conn.close()
+    # R4-B1 (Opus N9 second half): the write already knows what it just
+    # stored — answer instantly from that + the profile guess (probe=false
+    # semantics) rather than re-probing the printer before replying. The
+    # desktop runs its normal live phase straight afterwards; this only
+    # shrinks the window an offline save/clear spends waiting on a printer
+    # that was never going to answer.
+    return nozzle_status(nozzle_confirm.canonical_host(host), port or nozzle_confirm.DEFAULT_PORT,
+                         probe=False)
+
+
+def nozzle_clear(host: str, port: int, expected_revision: int) -> dict:
+    from snapstudio_core import nozzle_confirm
+
+    conn = _conn()
+    try:
+        nozzle_confirm.clear(conn, host, port, expected_revision)
+    finally:
+        conn.close()
+    return nozzle_status(nozzle_confirm.canonical_host(host), port or nozzle_confirm.DEFAULT_PORT,
+                         probe=False)
 
 
 def gcode_facts(path: str) -> dict:
@@ -474,7 +700,7 @@ def post_slice(path: str, host: str | None = None, port: int = 7125,
             project = None
 
     out = ps.analyse(facts, printer, project)
-    out["printer"] = {k: v for k, v in printer.items() if k != "klipper_objects"}
+    out["printer"] = {k: v for k, v in printer.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
     return out
 
 
@@ -526,17 +752,14 @@ def _provider_choice(provider: str | None, provider_url: str | None,
     return kind, url
 
 
-def _local_spool_rows(host: str) -> list[dict]:
-    """This printer's local/manual spool notes, or nothing if the library DB
-    cannot be read. A bookkeeping read must never break a printer report."""
+def _local_spool_rows(host: str) -> tuple[list[dict], list[dict]]:
+    """This printer's local/manual spool notes (alias-aware), plus any slot
+    where 2+ stored aliases collide, or ``([], [])`` if the library DB cannot
+    be read. A bookkeeping read must never break a printer report."""
     try:
-        conn = _conn()
-        try:
-            return library.list_spools(conn, host)
-        finally:
-            conn.close()
+        return _local_material_rows(host)
     except Exception:
-        return []
+        return [], []
 
 
 def _with_providers(printer: dict, host: str | None, port: int,
@@ -557,12 +780,14 @@ def _with_providers(printer: dict, host: str | None, port: int,
     """
     # Only local notes are keyed by the printer's host; a provider has its own
     # address (provider_url) and stock_u1() already tolerates an empty host.
-    local_rows = _local_spool_rows(host) if host else []
-    if not provider_url and not local_rows:
+    local_rows, note_conflicts = _local_spool_rows(host) if host else ([], [])
+    if not provider_url and not local_rows and not note_conflicts:
         return printer
     from snapstudio_core import material_providers as providers
 
-    states = [providers.stock_u1(host, port)]
+    # A1.11: built from the printer read already in `printer` — never a
+    # second, independent read of the machine (see `stock_from_facts`).
+    states = [providers.stock_from_facts(printer)]
     if provider_url:
         # Whether the user counted their slots from 0 or from 1 is a fact only
         # they have. Guessing it puts every spool one slot out and then reports
@@ -570,8 +795,14 @@ def _with_providers(printer: dict, host: str | None, port: int,
         # rather than leaving the engine to infer it from the shape of the map.
         states.append(providers.read(provider or providers.SPOOLMAN, provider_url,
                                      slot_map, slot_base=slot_base))
-    if local_rows:
-        states.append(providers.local_spools(local_rows))
+    if local_rows or note_conflicts:
+        # A3.4/A2.8: a slot with 2+ colliding aliases is excluded from the
+        # normal local-note rows above and reported here instead — a
+        # synthetic entry with no material/colour/weight facts, only the
+        # conflict note, so it can never silently pick one alias or read as
+        # a real spool.
+        states.append(providers.add_note_conflicts(
+            providers.local_spools(local_rows), note_conflicts))
     combined = providers.combine(*states)
     loaded = providers.as_loaded_filaments(combined)
     if loaded is not None:
@@ -584,22 +815,122 @@ def _with_providers(printer: dict, host: str | None, port: int,
         printer["slot_facts"] = combined.get("slots")
         printer["material_sources"] = combined.get("sources")
         printer["remaining_known"] = combined.get("remaining_known", False)
+        if combined.get("note_conflicts"):
+            printer["note_conflicts"] = combined["note_conflicts"]
     return printer
 
 
 # --- local / manual spools (the fallback with no Spoolman or Bambuddy) -------
 
+class DuplicateNotes(RuntimeError):
+    """A1.3/A3.6: 2+ stored aliases collide on the same (canonical host, slot).
+    Save and mark_used refuse rather than guess which one is real."""
+
+    def __init__(self, slot: int):
+        super().__init__("duplicate_notes")
+        self.slot = slot
+
+
+class NoSuchNote(RuntimeError):
+    """A2.5: a delete-by-id whose row does not match the canonical host and
+    slot in the request — the row is gone, or was never this printer's."""
+
+
+def _canonical_spool_groups(conn, canon_host: str) -> dict[int, list[dict]]:
+    """Every stored spool row — under ANY host spelling — that canonicalises
+    to ``canon_host``, grouped by slot. A row whose stored host no longer
+    canonicalises at all (never valid, or a relic of some other format) is
+    excluded rather than guessed into a group."""
+    from snapstudio_core import nozzle_confirm
+
+    by_slot: dict[int, list[dict]] = {}
+    for row in library.list_all_spools(conn):
+        try:
+            if nozzle_confirm.canonical_host(row["host"]) != canon_host:
+                continue
+        except nozzle_confirm.InvalidHost:
+            continue
+        by_slot.setdefault(int(row["slot"]), []).append(row)
+    return by_slot
+
+
+def _spool_rows_response(conn, canon_host: str) -> list[dict]:
+    """The frozen `rows` shape every local-spool route now returns: one entry
+    per stored row (any legacy host spelling) that canonicalises to this
+    printer, `alias_conflict=true` on every row of a slot with 2+ of them."""
+    from snapstudio_core import material_providers as providers
+
+    by_slot = _canonical_spool_groups(conn, canon_host)
+    out: list[dict] = []
+    for slot in sorted(by_slot):
+        group = by_slot[slot]
+        conflict = len(group) > 1
+        for row in group:
+            out.append({
+                "id": row["id"], "host_as_stored": row["host"], "slot": row["slot"],
+                "material": row.get("material"), "subtype": row.get("subtype"),
+                "color": row.get("color"), "vendor": row.get("vendor"),
+                "starting_g": row.get("starting_g"), "remaining_g": row.get("remaining_g"),
+                "remaining_quality": row.get("remaining_quality") or providers.UNTRACKED,
+                "remaining_as_of": row.get("remaining_as_of"), "notes": row.get("notes"),
+                "updated_at": row.get("updated_at"), "alias_conflict": conflict,
+            })
+    return out
+
+
+def _resolve_alias_for_write(conn, canon_host: str, slot: int) -> None:
+    """A1.3: before a save/mark_used touches (canon_host, slot), fold the ONE
+    legacy alias that exists for it (if any) into the canonical spelling, in
+    place, fields kept. 2+ aliases refuse with `DuplicateNotes` rather than
+    picking one — save/mark_used must never silently choose a spool for the
+    person."""
+    group = _canonical_spool_groups(conn, canon_host).get(slot, [])
+    if len(group) >= 2:
+        raise DuplicateNotes(slot)
+    if len(group) == 1 and group[0]["host"] != canon_host:
+        library.rewrite_spool_host(conn, old_host=group[0]["host"], slot=slot, new_host=canon_host)
+
+
+def _local_material_rows(host: str) -> tuple[list[dict], list[dict]]:
+    """The rows `material_providers.local_spools()` should see for this
+    printer's combine() pass, alias-aware: exactly one alias per slot is
+    used; 2+ are excluded here and reported instead as `note_conflicts`
+    (A3.4) — never merged, never picked, never silently dropped."""
+    try:
+        from snapstudio_core import nozzle_confirm
+        canon = nozzle_confirm.canonical_host(host)
+        conn = _conn()
+        try:
+            by_slot = _canonical_spool_groups(conn, canon)
+        finally:
+            conn.close()
+    except Exception:
+        return [], []
+    rows: list[dict] = []
+    conflicts: list[dict] = []
+    for slot, group in by_slot.items():
+        if len(group) > 1:
+            conflicts.append({"slot": slot, "count": len(group)})
+        else:
+            rows.append(group[0])
+    return rows, conflicts
+
+
 def local_spools(host: str) -> dict:
     """This printer's own local spool notes, one per slot the person has told
     Studio about — the fallback for a printer with no Spoolman or Bambuddy, or
     for a slot neither of them tracks."""
-    from snapstudio_core import material_providers as providers
+    from snapstudio_core import material_providers as providers, nozzle_confirm
+
+    canon = nozzle_confirm.canonical_host(host)
     conn = _conn()
     try:
-        rows = library.list_spools(conn, host)
+        rows, _conflicts = _local_material_rows(canon)
+        out = providers.local_spools(rows)
+        out["rows"] = _spool_rows_response(conn, canon)
     finally:
         conn.close()
-    return providers.local_spools(rows)
+    return out
 
 
 def save_local_spool(host: str, slot: int, *, material: str | None = None,
@@ -628,14 +959,27 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
     are case-insensitive, matching material_providers.combine()'s own
     normalization — "PLA" replacing "pla" is not a material change.
     """
-    from snapstudio_core import material_providers as providers
+    from snapstudio_core import material_providers as providers, nozzle_confirm
+
+    host = nozzle_confirm.canonical_host(host)
 
     def _changed(new, old) -> bool:
-        return new is not None and old is not None and str(new).upper() != str(old).upper()
+        # A2.2: clearing a field ("" -> new is not None but falsy) is never an
+        # identity change — only a genuine, different, non-empty value is.
+        return bool(new) and old is not None and str(new).upper() != str(old).upper()
+
+    def _merged(new, old):
+        # None: not sent, preserve. "": explicit clear, store NULL. Else: set.
+        if new is None:
+            return old
+        if new == "":
+            return None
+        return new
 
     now = _now()
     conn = _conn()
     try:
+        _resolve_alias_for_write(conn, host, slot)  # may raise DuplicateNotes
         existing = library.get_spool(conn, host, slot) or {}
         spool_changed = (
             _changed(material, existing.get("material"))
@@ -656,30 +1000,52 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
             remaining_as_of = existing.get("remaining_as_of")
         library.upsert_spool(
             conn, host=host, slot=slot,
-            material=material if material is not None else existing.get("material"),
-            subtype=subtype if subtype is not None else existing.get("subtype"),
-            color=color if color is not None else existing.get("color"),
-            vendor=vendor if vendor is not None else existing.get("vendor"),
+            material=_merged(material, existing.get("material")),
+            subtype=_merged(subtype, existing.get("subtype")),
+            color=_merged(color, existing.get("color")),
+            vendor=_merged(vendor, existing.get("vendor")),
             starting_g=starting_g if starting_g is not None else existing.get("starting_g"),
             remaining_g=merged_remaining_g, remaining_quality=remaining_quality,
             remaining_as_of=remaining_as_of,
-            notes=notes if notes is not None else existing.get("notes"),
+            notes=_merged(notes, existing.get("notes")),
             updated_at=now)
-        row = library.get_spool(conn, host, slot)
+        rows = _spool_rows_response(conn, host)
     finally:
         conn.close()
-    return row or {}
+    return rows
 
 
-def delete_local_spool(host: str, slot: int) -> None:
+def delete_local_spool(host: str, slot: int, id: int | None = None) -> list[dict]:
+    """Remove a local spool note. With no `id`, every alias stored for this
+    (canonical host, slot) is removed (A1.3). With an `id`, only that exact
+    row — and only when its own canonical host and slot match the request
+    (A2.5); otherwise `NoSuchNote` (404), never a silent no-op that could
+    delete the wrong printer's row."""
+    from snapstudio_core import nozzle_confirm
+
+    host = nozzle_confirm.canonical_host(host)
     conn = _conn()
     try:
-        library.delete_spool(conn, host, slot)
+        if id is not None:
+            row = library.get_spool_by_id(conn, id)
+            if not row or int(row["slot"]) != slot:
+                raise NoSuchNote()
+            try:
+                row_canon = nozzle_confirm.canonical_host(row["host"])
+            except nozzle_confirm.InvalidHost:
+                raise NoSuchNote()
+            if row_canon != host:
+                raise NoSuchNote()
+            library.delete_spool_by_id(conn, id)
+        else:
+            for row in _canonical_spool_groups(conn, host).get(slot, []):
+                library.delete_spool_by_id(conn, row["id"])
+        return _spool_rows_response(conn, host)
     finally:
         conn.close()
 
 
-def mark_local_spool_used(host: str, slot: int, used_g: float) -> dict:
+def mark_local_spool_used(host: str, slot: int, used_g: float) -> list[dict]:
     """Subtract a confirmed amount from a local spool's remaining weight.
 
     Only ever reached from an explicit "mark N g as used?" confirmation a
@@ -688,19 +1054,22 @@ def mark_local_spool_used(host: str, slot: int, used_g: float) -> dict:
     Studio did the subtraction, the person did not just weigh the spool and
     tell it a fresh number.
     """
-    from snapstudio_core import material_providers as providers
+    from snapstudio_core import material_providers as providers, nozzle_confirm
+
+    host = nozzle_confirm.canonical_host(host)
     conn = _conn()
     try:
+        _resolve_alias_for_write(conn, host, slot)  # may raise DuplicateNotes
         row = library.apply_spool_usage(
             conn, host=host, slot=slot, used_g=used_g,
             remaining_quality=providers.DERIVED, at=_now())
+        if row is None:
+            raise ValueError(
+                "no local spool record for that slot with a remaining weight to subtract from — "
+                "give it a remaining weight first")
+        return _spool_rows_response(conn, host)
     finally:
         conn.close()
-    if row is None:
-        raise ValueError(
-            "no local spool record for that slot with a remaining weight to subtract from — "
-            "give it a remaining weight first")
-    return row
 
 
 def provider_test(url: str, provider: str | None = None) -> dict:
@@ -818,7 +1187,7 @@ def material_plan(path: str, host: str | None = None, port: int = 7125,
     printer = printer_facts(host, port) if host else {"reachable": False}
     printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind)
     out = mp.from_facts(facts, printer)
-    out["printer"] = {k: v for k, v in printer.items() if k != "klipper_objects"}
+    out["printer"] = {k: v for k, v in printer.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
     return out
 
 
@@ -860,7 +1229,7 @@ def send_check(path: str, host: str | None = None, port: int = 7125,
     # the page was drawn.
     from snapstudio_core import send_state
     out["state"] = send_state.fingerprint(facts, printer, origin, file_stat=_file_stat(path))
-    out["printer"] = {k: v for k, v in printer.items() if k != "klipper_objects"}
+    out["printer"] = {k: v for k, v in printer.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
     return out
 
 

@@ -126,10 +126,100 @@ def optional_non_negative_float(data: dict, key: str, default: float | None) -> 
 def require_slot_index(data: dict, key: str = "slot") -> int:
     """A printer slot index: a small non-negative integer, never a guess at
     what the caller meant by a float or a negative number."""
-    n = require_int(data, key)
+    try:
+        n = require_int(data, key)
+    except ValidationError:
+        raise ValidationError("invalid_slot")
     if not (0 <= n <= 31):
-        raise ValidationError(f"Invalid {key}")
+        raise ValidationError("invalid_slot")
     return n
+
+
+#: A sentinel distinct from ``None``: "the key was not sent at all" vs
+#: "the key was sent, and it was explicitly null". A spool text field needs
+#: both answers, and they mean opposite things (A3.3): MISSING/None preserve
+#: whatever is on record; "" clears it.
+MISSING = object()
+
+
+def optional_nullable_str(data: dict, key: str) -> object:
+    """Presence-aware string: MISSING (key absent) preserves, None (explicit
+    null) preserves, "" clears (caller stores NULL), any other string is
+    stripped and set. Never raises on a missing/null key — only a non-string,
+    non-null value is invalid."""
+    if key not in data:
+        return MISSING
+    v = data[key]
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        raise ValidationError("invalid_request")
+    return v.strip()
+
+
+def optional_bounded_float(data: dict, key: str, lo: float, hi: float,
+                           default: float | None = None) -> float | None:
+    """A number in [lo, hi], or ``default`` if the key is absent/null."""
+    if key not in data or data.get(key) is None:
+        return default
+    f = _as_number(data, key, required=True, default=None)
+    if f < lo or f > hi:
+        raise ValidationError("invalid_weight")
+    return f
+
+
+def optional_color(data: dict, key: str = "color") -> object:
+    """A3.3/A1.4 for the one text field with a format: MISSING/None preserve,
+    "" clears, a non-empty value must be #RRGGBB (normalised upper) or 400
+    `invalid_color`. A legacy free-text colour is never re-validated here —
+    only a value THIS call is trying to set goes through the hex check."""
+    v = optional_nullable_str(data, key)
+    if v is MISSING or v is None or v == "":
+        return v
+    s = v.lstrip("#")
+    if len(s) == 6 and all(c in "0123456789abcdefABCDEF" for c in s):
+        return "#" + s.upper()
+    raise ValidationError("invalid_color")
+
+
+def bounded_weight(data: dict, key: str, default: float | None = None) -> float | None:
+    """A2.6: 0 <= weight <= 10000 g, or ``default`` if absent/null."""
+    if key not in data or data.get(key) is None:
+        return default
+    f = _as_number(data, key, required=True, default=None)
+    if f < 0 or f > 10000:
+        raise ValidationError("invalid_weight")
+    return f
+
+
+def bounded_used_weight(data: dict, key: str = "used_g") -> float:
+    """A2.6: 0 < used_g <= 10000 g, required."""
+    f = require_float(data, key)
+    if f <= 0 or f > 10000:
+        raise ValidationError("invalid_weight")
+    return f
+
+
+def nullable_diameter_list(data: dict, key: str = "diameters", max_len: int = 8) -> list[float | None]:
+    """1..8 entries, each ``None`` ("not sure") or a finite 0 < d <= 2.0 mm —
+    the shape `/nozzles/confirm` takes. Distinct from
+    `optional_positive_float_list`: this one is required, and null entries are
+    a real, meaningful answer rather than a reason to reject the request."""
+    v = data.get(key)
+    if not isinstance(v, list) or not (1 <= len(v) <= max_len):
+        raise ValidationError("invalid_diameters")
+    out: list[float | None] = []
+    for item in v:
+        if item is None:
+            out.append(None)
+            continue
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ValidationError("invalid_diameters")
+        f = float(item)
+        if not math.isfinite(f) or not (0 < f <= 2.0):
+            raise ValidationError("invalid_diameters")
+        out.append(f)
+    return out
 
 
 def optional_positive_float_list(data: dict, key: str, max_len: int = 8) -> list[float] | None:

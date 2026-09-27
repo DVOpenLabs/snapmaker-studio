@@ -211,13 +211,16 @@ def test_matching_toolhead_order_is_ok_with_the_ordered_trait():
 
 def test_without_the_ordered_trait_falls_back_to_todays_set_comparison():
     """A caller that only sets nozzle_diameters (an older trait shape, or any
-    fixture that predates nozzle_diameters_by_toolhead) must keep working
-    exactly as before — this is what every other nozzle test in this file
-    relies on."""
+    fixture that predates nozzle_diameters_by_toolhead) has no per-toolhead
+    mapping at all, so a set match — two DIFFERENT sizes, both present
+    somewhere on the printer — proves the sizes exist, never that they are on
+    the right toolhead. v1.2 (plan A1.8 mixed-size rule, A2.1): this is now
+    UNKNOWN, not OK — the frozen matrix never returns OK for an unproven
+    multi-size assignment. Expectation changed deliberately from v1.1.0."""
     out = pf.evaluate(traits(nozzle_diameters=["0.4", "0.6"]),
                       printer(nozzle_diameters=["0.6", "0.4"], nozzle_confirmed_by="printer"))
     check = by_id(out, "nozzle.match")
-    assert check["result"] == pf.OK
+    assert check["result"] == pf.UNKNOWN
 
 
 # --- the bed ----------------------------------------------------------------

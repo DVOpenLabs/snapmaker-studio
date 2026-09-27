@@ -24,6 +24,27 @@ from .request_validation import ValidationError
 # unauthenticated local caller can make the server allocate.
 MAX_REQUEST_BYTES = 1024 * 1024
 
+# A3.6/A4.3: the frozen error map for the v1.2 nozzle/local-spool routes. Body
+# is always {"error": <code>, "message": <this literal text>[, extra fields]}
+# — never the submitted host, a DB path or raw exception text.
+ERROR_MESSAGES = {
+    "invalid_host": "That printer address isn't valid.",
+    "invalid_slot": "That slot number isn't valid.",
+    "invalid_color": "Colour must be a hex value like #1A2B3C, or empty.",
+    "invalid_weight": "Weight must be between 0 and 10000 grams.",
+    "invalid_diameters": "Nozzle sizes must be between 0 and 2 mm, one per toolhead, up to 8.",
+    "invalid_request": "That request isn't valid.",
+    "no_spool_note": "There is no note with a remaining weight for that slot.",
+    "no_such_note": "That note no longer exists.",
+    "stale": "Nozzle notes changed elsewhere. Reload and try again.",
+    "duplicate_notes": "Two notes exist for this slot. Remove one first.",
+    "storage_unavailable": "Studio couldn't read or save its local data.",
+}
+
+
+def _error_body(code: str, **extra) -> dict:
+    return {"error": code, "message": ERROR_MESSAGES.get(code, "That request isn't valid."), **extra}
+
 
 def _watch_parent_then_exit() -> None:
     """When launched by the desktop shell, exit as soon as the parent process
@@ -287,47 +308,136 @@ def _make_handler(token: str):
                 # A person's own spool notes for a printer with no Spoolman or
                 # Bambuddy configured. Read-only.
                 try:
+                    from snapstudio_core import nozzle_confirm
                     self._send(200, service.local_spools(rv.require_str(data, "host")))
-                except ValidationError as e:
-                    self._send(400, {"error": str(e)})
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except ValidationError:
+                    self._send(400, _error_body("invalid_request"))
                 except Exception:
-                    self._send(500, {"error": "internal error"})
+                    self._send(500, _error_body("storage_unavailable"))
             elif self.path == "/local_spools/save":
                 try:
-                    self._send(200, service.save_local_spool(
+                    from snapstudio_core import nozzle_confirm
+
+                    def _or_none(v):
+                        return None if v is rv.MISSING else v
+
+                    self._send(200, {"rows": service.save_local_spool(
                         rv.require_str(data, "host"),
                         rv.require_slot_index(data),
-                        material=rv.optional_str(data, "material", "") or None,
-                        subtype=rv.optional_str(data, "subtype", "") or None,
-                        color=rv.optional_str(data, "color", "") or None,
-                        vendor=rv.optional_str(data, "vendor", "") or None,
-                        starting_g=rv.optional_non_negative_float(data, "starting_g", None),
-                        remaining_g=rv.optional_non_negative_float(data, "remaining_g", None),
-                        notes=rv.optional_str(data, "notes", "") or None))
+                        material=_or_none(rv.optional_nullable_str(data, "material")),
+                        subtype=_or_none(rv.optional_nullable_str(data, "subtype")),
+                        color=_or_none(rv.optional_color(data, "color")),
+                        vendor=_or_none(rv.optional_nullable_str(data, "vendor")),
+                        starting_g=rv.bounded_weight(data, "starting_g", None),
+                        remaining_g=rv.bounded_weight(data, "remaining_g", None),
+                        notes=_or_none(rv.optional_nullable_str(data, "notes")))})
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
                 except ValidationError as e:
-                    self._send(400, {"error": str(e)})
+                    code = str(e) if str(e) in ERROR_MESSAGES else "invalid_request"
+                    self._send(400, _error_body(code))
+                except service.DuplicateNotes as e:
+                    self._send(409, _error_body("duplicate_notes", slot=e.slot))
                 except Exception:
-                    self._send(500, {"error": "internal error"})
+                    self._send(500, _error_body("storage_unavailable"))
             elif self.path == "/local_spools/delete":
                 try:
-                    service.delete_local_spool(rv.require_str(data, "host"), rv.require_slot_index(data))
-                    self._send(200, {"deleted": True})
+                    from snapstudio_core import nozzle_confirm
+                    self._send(200, {"rows": service.delete_local_spool(
+                        rv.require_str(data, "host"), rv.require_slot_index(data),
+                        id=rv.optional_int(data, "id", 0) or None)})
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except service.NoSuchNote:
+                    self._send(404, _error_body("no_such_note"))
                 except ValidationError as e:
-                    self._send(400, {"error": str(e)})
+                    code = str(e) if str(e) in ERROR_MESSAGES else "invalid_request"
+                    self._send(400, _error_body(code))
                 except Exception:
-                    self._send(500, {"error": "internal error"})
+                    self._send(500, _error_body("storage_unavailable"))
             elif self.path == "/local_spools/mark_used":
                 try:
-                    self._send(200, service.mark_local_spool_used(
+                    from snapstudio_core import nozzle_confirm
+                    self._send(200, {"rows": service.mark_local_spool_used(
                         rv.require_str(data, "host"),
                         rv.require_slot_index(data),
-                        rv.require_positive_float(data, "used_g")))
-                except ValueError as e:
-                    # Covers both a bad request body (ValidationError, a ValueError
-                    # subclass) and "no such local spool record" from the service.
-                    self._send(400, {"error": str(e)})
+                        rv.bounded_used_weight(data, "used_g"))})
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except ValidationError as e:
+                    code = str(e) if str(e) in ERROR_MESSAGES else "invalid_request"
+                    self._send(400, _error_body(code))
+                except service.DuplicateNotes as e:
+                    self._send(409, _error_body("duplicate_notes", slot=e.slot))
+                except ValueError:
+                    # A4.3: "no local spool record ... to subtract from" from the
+                    # service is a 404, not a 400 — and never echoes the service's
+                    # own exception text (which the old code did via str(e)).
+                    self._send(404, _error_body("no_spool_note"))
                 except Exception:
-                    self._send(500, {"error": "internal error"})
+                    self._send(500, _error_body("storage_unavailable"))
+            elif self.path == "/nozzles/status":
+                try:
+                    from snapstudio_core import nozzle_confirm
+                    # R2-B6: an explicit `probe: false` skips every printer
+                    # read (measured 7-9s blocking on an unreachable printer)
+                    # and answers from stored confirmations + the profile
+                    # guess only. Defaults to true — unchanged behaviour for
+                    # every existing caller.
+                    probe = data.get("probe")
+                    self._send(200, service.nozzle_status(
+                        rv.require_str(data, "host"), rv.require_port(data),
+                        probe=True if probe is None else bool(probe)))
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except ValidationError:
+                    # B5 (Sol 7): a bad host is `invalid_host`; anything else
+                    # wrong with the request (a bad port, in practice) is the
+                    # generic `invalid_request` — never mislabelled as a host
+                    # problem just because host validation happens nearby.
+                    self._send(400, _error_body("invalid_request"))
+                except Exception:
+                    self._send(500, _error_body("storage_unavailable"))
+            elif self.path == "/nozzles/confirm":
+                try:
+                    from snapstudio_core import library, nozzle_confirm
+                    diameters = rv.nullable_diameter_list(data, "diameters")
+                    expected_revision = rv.require_int(data, "expected_revision")
+                    self._send(200, service.nozzle_confirm_save(
+                        rv.require_str(data, "host"), rv.require_port(data),
+                        diameters, expected_revision))
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except ValidationError as e:
+                    # B5 (Sol 7): only a diameters problem is `invalid_diameters`
+                    # — a bad/missing expected_revision or port is the generic
+                    # `invalid_request`. `nullable_diameter_list` raises with the
+                    # code itself as the message; every other validator here
+                    # does not, so this distinguishes them without reordering
+                    # the parse (which matters for which field's error wins
+                    # when more than one is bad).
+                    code = "invalid_diameters" if str(e) == "invalid_diameters" else "invalid_request"
+                    self._send(400, _error_body(code))
+                except library.StaleRevision as e:
+                    self._send(409, _error_body("stale", current_revision=e.current_revision))
+                except Exception:
+                    self._send(500, _error_body("storage_unavailable"))
+            elif self.path == "/nozzles/clear":
+                try:
+                    from snapstudio_core import library, nozzle_confirm
+                    expected_revision = rv.require_int(data, "expected_revision")
+                    self._send(200, service.nozzle_clear(
+                        rv.require_str(data, "host"), rv.require_port(data), expected_revision))
+                except nozzle_confirm.InvalidHost:
+                    self._send(400, _error_body("invalid_host"))
+                except ValidationError:
+                    self._send(400, _error_body("invalid_request"))
+                except library.StaleRevision as e:
+                    self._send(409, _error_body("stale", current_revision=e.current_revision))
+                except Exception:
+                    self._send(500, _error_body("storage_unavailable"))
             elif self.path == "/material_plan":
                 try:
                     slot_map = data.get("slot_map")

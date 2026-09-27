@@ -60,7 +60,28 @@ CREATE TABLE IF NOT EXISTS spools (
   updated_at TEXT NOT NULL,
   UNIQUE(host, slot)
 );
+CREATE TABLE IF NOT EXISTS nozzle_confirmations (
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  toolhead INTEGER NOT NULL,
+  diameter REAL,
+  confirmed_at TEXT,
+  PRIMARY KEY (host, port, toolhead)
+);
+CREATE TABLE IF NOT EXISTS nozzle_confirmation_meta (
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  revision INTEGER NOT NULL,
+  PRIMARY KEY (host, port)
+);
 """
+# v1.2 added `nozzle_confirmations` and `nozzle_confirmation_meta` above as
+# CREATE TABLE IF NOT EXISTS statements. This does NOT bump SCHEMA_VERSION: a
+# v1.1.0 install opening a DB that merely carries two extra tables it has
+# never heard of is harmless (it never queries them), so refusing that DB
+# would only break downgrade for no protective gain. Only a change to an
+# EXISTING table's shape, or new data an older version would misinterpret,
+# is worth the one-way refusal SCHEMA_VERSION guards.
 
 
 class LibraryVersionError(RuntimeError):
@@ -249,3 +270,176 @@ def apply_spool_usage(conn: sqlite3.Connection, *, host: str, slot: int,
                  updated_at=? WHERE host=? AND slot=?""",
             (remaining, remaining_quality, at, at, host, slot))
     return get_spool(conn, host, slot)
+
+
+def get_spool_by_id(conn: sqlite3.Connection, spool_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM spools WHERE id=?", (spool_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def delete_spool_by_id(conn: sqlite3.Connection, spool_id: int) -> None:
+    with conn:
+        conn.execute("DELETE FROM spools WHERE id=?", (spool_id,))
+
+
+def rewrite_spool_host(conn: sqlite3.Connection, *, old_host: str, slot: int, new_host: str) -> None:
+    """A2.5/A1.3: fold exactly one legacy alias into its canonical spelling,
+    in place — every field kept, only the host string changes. Only ever
+    called when the caller has already proven there is no OTHER row already
+    at (new_host, slot) (a second alias, or the canonical row itself), so the
+    UNIQUE(host, slot) constraint can never be hit here."""
+    if old_host == new_host:
+        return
+    with conn:
+        conn.execute("UPDATE spools SET host=? WHERE host=? AND slot=?",
+                     (new_host, old_host, slot))
+
+
+def list_all_spools(conn: sqlite3.Connection) -> list[dict]:
+    """Every local spool row, across every host as stored. Used to detect two
+    stored host spellings that canonicalise to the same printer (an alias
+    collision) — the per-host lookups above cannot see that on their own."""
+    rows = conn.execute("SELECT * FROM spools ORDER BY host, slot").fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- per-printer, per-toolhead nozzle confirmations --------------------------
+#
+# A person's own record of which nozzle is fitted, for a printer/firmware that
+# does not report it live. Keyed by (canonical host, port) — never the raw
+# string the user typed, so "U1.local " and "u1.local" share one record. A
+# monotonic `revision` in `nozzle_confirmation_meta` never regresses and is
+# never deleted (clearing leaves the meta row as a tombstone), so a stale
+# desktop write can always be detected and refused (409) rather than silently
+# clobbering a newer one.
+
+class StaleRevision(RuntimeError):
+    """`expected_revision` did not match the stored revision. Carries the
+    current one so the caller can tell the user to reload."""
+
+    def __init__(self, current_revision: int):
+        super().__init__("stale")
+        self.current_revision = current_revision
+
+
+def _ensure_nozzle_meta_row(conn: sqlite3.Connection, host: str, port: int) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO nozzle_confirmation_meta(host, port, revision) VALUES (?, ?, 0)",
+        (host, port))
+
+
+def get_nozzle_confirmations(conn: sqlite3.Connection, host: str,
+                             port: int) -> tuple[dict[int, dict], int]:
+    """Every confirmed toolhead for (host, port), keyed by toolhead index, plus
+    the current revision. B3 (Opus M1): a pure read — never inserts the meta
+    tombstone row itself (a printer nobody has ever confirmed anything for
+    simply has no meta row, and reads revision 0); only `confirm`/`clear`
+    (which need a row to conditionally UPDATE) create it, inside their own
+    write transaction."""
+    rows = conn.execute(
+        "SELECT toolhead, diameter, confirmed_at FROM nozzle_confirmations "
+        "WHERE host=? AND port=? ORDER BY toolhead", (host, port)).fetchall()
+    rev_row = conn.execute(
+        "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+        (host, port)).fetchone()
+    revision = int(rev_row["revision"]) if rev_row else 0
+    confirmed = {int(r["toolhead"]): {"diameter": r["diameter"], "confirmed_at": r["confirmed_at"]}
+                for r in rows}
+    return confirmed, revision
+
+
+def _bump_nozzle_revision(conn: sqlite3.Connection, host: str, port: int,
+                          expected_revision: int) -> int:
+    """One conditional write, checked by rowcount: the whole concurrency guard.
+    Two connections racing the same `expected_revision` can only ever produce
+    one success and one `StaleRevision` — never a lost update."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _ensure_nozzle_meta_row(conn, host, port)
+        cur = conn.execute(
+            "UPDATE nozzle_confirmation_meta SET revision = revision + 1 "
+            "WHERE host=? AND port=? AND revision=?", (host, port, expected_revision))
+        if cur.rowcount == 0:
+            row = conn.execute(
+                "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+                (host, port)).fetchone()
+            conn.rollback()
+            raise StaleRevision(int(row["revision"]) if row else 0)
+        row = conn.execute(
+            "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+            (host, port)).fetchone()
+        new_revision = int(row["revision"])
+        conn.commit()
+        return new_revision
+    except sqlite3.OperationalError:
+        conn.rollback()
+        raise
+
+
+def replace_nozzle_confirmations(conn: sqlite3.Connection, host: str, port: int,
+                                 diameters: list[float | None], at: str,
+                                 expected_revision: int) -> int:
+    """Atomic replace of every toolhead's confirmation for (host, port).
+
+    Bumping the revision and writing the rows happen in the SAME transaction
+    that the revision check guards, so a losing writer never gets to touch a
+    row at all — it raises `StaleRevision` before the DELETE/INSERT below run.
+    ``None`` in `diameters` means "not sure": stored as an explicit row with no
+    diameter and no timestamp, distinct from a toolhead nobody has ever confirmed.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _ensure_nozzle_meta_row(conn, host, port)
+        cur = conn.execute(
+            "UPDATE nozzle_confirmation_meta SET revision = revision + 1 "
+            "WHERE host=? AND port=? AND revision=?", (host, port, expected_revision))
+        if cur.rowcount == 0:
+            row = conn.execute(
+                "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+                (host, port)).fetchone()
+            conn.rollback()
+            raise StaleRevision(int(row["revision"]) if row else 0)
+        conn.execute("DELETE FROM nozzle_confirmations WHERE host=? AND port=?", (host, port))
+        for toolhead, diameter in enumerate(diameters):
+            conn.execute(
+                "INSERT INTO nozzle_confirmations(host, port, toolhead, diameter, confirmed_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (host, port, toolhead, diameter, at if diameter is not None else None))
+        row = conn.execute(
+            "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+            (host, port)).fetchone()
+        new_revision = int(row["revision"])
+        conn.commit()
+        return new_revision
+    except sqlite3.OperationalError:
+        conn.rollback()
+        raise
+
+
+def clear_nozzle_confirmations(conn: sqlite3.Connection, host: str, port: int,
+                               expected_revision: int) -> int:
+    """Remove every stored confirmation for (host, port). The meta row (and its
+    revision, freshly bumped) is kept — a tombstone, so a later confirm/clear
+    can still be revision-guarded against a desktop that never reloaded."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _ensure_nozzle_meta_row(conn, host, port)
+        cur = conn.execute(
+            "UPDATE nozzle_confirmation_meta SET revision = revision + 1 "
+            "WHERE host=? AND port=? AND revision=?", (host, port, expected_revision))
+        if cur.rowcount == 0:
+            row = conn.execute(
+                "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+                (host, port)).fetchone()
+            conn.rollback()
+            raise StaleRevision(int(row["revision"]) if row else 0)
+        conn.execute("DELETE FROM nozzle_confirmations WHERE host=? AND port=?", (host, port))
+        row = conn.execute(
+            "SELECT revision FROM nozzle_confirmation_meta WHERE host=? AND port=?",
+            (host, port)).fetchone()
+        new_revision = int(row["revision"])
+        conn.commit()
+        return new_revision
+    except sqlite3.OperationalError:
+        conn.rollback()
+        raise

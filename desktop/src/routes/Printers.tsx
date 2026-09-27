@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Printer, Loader2, RotateCw, Thermometer, AlertTriangle, CheckCircle2,
@@ -7,11 +7,21 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
-import { printerDiscover, printerStatus, printerHistory, printerDiagnostics, printerFileMetadata, printerFailureInsights, printerHealth, printerFirmware } from "@/api";
+import { Link } from "react-router-dom";
+import {
+  printerDiscover, printerStatus, printerHistory, printerDiagnostics, printerFileMetadata,
+  printerFailureInsights, printerHealth, printerFirmware, nozzleStatus, type NozzleStatus,
+} from "@/api";
 import { usePrinter } from "@/store/printer";
 import { useFilament } from "@/store/filament";
+import { useNozzleNotesVersion } from "@/store/nozzleRevision";
 import { PrinterControls } from "@/components/PrinterControls";
 import { toPrintState } from "@/lib/printerControl";
+import { nozzleRows } from "@/lib/nozzleRows";
+import { createGenerationGuard, runNozzleFetch } from "@/lib/nozzleFetch";
+import { printerHubNozzleFetchTrigger } from "@/lib/nozzleFetchTriggers";
+
+const NOZZLE_PORT = 7125;
 
 function fmtDur(s: number | null | undefined): string {
   if (s == null) return "—";
@@ -19,6 +29,16 @@ function fmtDur(s: number | null | undefined): string {
   return h ? `${h}h ${m}m` : `${m}m`;
 }
 const FAILED = new Set(["error", "cancelled", "klippy_shutdown", "klippy_disconnect", "interrupted"]);
+
+function nozzleLine(status: Parameters<typeof nozzleRows>[0]): string {
+  const rows = nozzleRows(status);
+  if (rows.length === 0) return "Nozzle sizes: not reported";
+  const sizes = rows.map((r) => r.diameterLabel).join(", ");
+  const hasConflict = rows.some((r) => r.status === "conflict");
+  const hasUser = rows.some((r) => r.status === "confirmed");
+  const source = hasConflict ? "conflict" : hasUser ? "you" : "printer";
+  return `Nozzle${rows.length === 1 ? "" : "s"}: ${sizes} · ${source === "conflict" ? "conflict — printer wins" : `from ${source}`}`;
+}
 
 // How each printer Studio ships a profile for may be described, and no more.
 // The U1 is the only machine this project has connected to; every other entry
@@ -87,6 +107,53 @@ export default function Printers() {
     queryFn: () => printerFirmware(connected as string),
     enabled: !!connected, staleTime: 300000, retry: false,
   });
+  // One-line nozzle summary: fetched on mount, host change, and manual refresh
+  // only (v1.2 A1.13 — never polled). Not react-query, deliberately: it uses
+  // the same plain two-phase runner (lib/nozzleFetch.ts) as the Settings
+  // table, guarded by a single monotonic request token — no shared floor, no
+  // self-trigger guard to get wrong (that whole machinery was deleted in the
+  // round-3 re-diagnosis). It DOES subscribe to the global nozzleNotesVersion
+  // counter (F5): unlike the Settings table, this is a read-only view with no
+  // mutations of its own, so it needs something else's mutation to tell it
+  // to refetch.
+  const [nozzleData, setNozzleData] = useState<NozzleStatus | null>(null);
+  const [nozzleChecking, setNozzleChecking] = useState(false);
+  const [nozzleFetching, setNozzleFetching] = useState(false);
+  const nozzleGeneration = useRef(createGenerationGuard()).current;
+  const nozzleNotesVersion = useNozzleNotesVersion((s) => s.version);
+
+  const fetchNozzle = useCallback(() => {
+    if (!connected) {
+      nozzleGeneration.invalidate(); // R4-D2: !connected also stops anything in flight
+      setNozzleData(null);
+      return;
+    }
+    const gen = nozzleGeneration.next();
+    const host = connected;
+    setNozzleFetching(true);
+    void runNozzleFetch({
+      host, port: NOZZLE_PORT,
+      isCurrent: () => nozzleGeneration.isCurrent(gen),
+      api: { nozzleStatus },
+      on: {
+        quick: (s) => { setNozzleData(s); setNozzleChecking(true); },
+        live: (s) => { setNozzleData(s); setNozzleChecking(false); },
+        liveFailed: () => setNozzleChecking(false),
+        allFailed: () => setNozzleChecking(false),
+      },
+    }).finally(() => { if (nozzleGeneration.isCurrent(gen)) setNozzleFetching(false); });
+  }, [connected, nozzleGeneration]);
+
+  useEffect(() => {
+    fetchNozzle();
+    // R4-D2: bump the generation on unmount AND on every trigger change (the
+    // cleanup React runs right before re-invoking this effect for a new
+    // dependency value) — an in-flight phase-1/phase-2 from the previous
+    // trigger must never apply after either.
+    return () => nozzleGeneration.invalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...printerHubNozzleFetchTrigger(connected, nozzleNotesVersion), fetchNozzle, nozzleGeneration]);
+
   const filename = status.data?.filename ?? null;
   const meta = useQuery({
     queryKey: ["printer-meta", connected, filename],
@@ -215,6 +282,20 @@ export default function Printers() {
                 </div>
                 <p className="text-xs text-muted-foreground">Live status — updates automatically.</p>
               </>
+            )}
+            {connected && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {nozzleLine(nozzleData)}
+                {nozzleChecking && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
+                {" · "}
+                <Link to="/settings" className="text-primary underline">Settings</Link>
+                <Button
+                  size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]"
+                  onClick={() => fetchNozzle()} disabled={nozzleFetching}
+                >
+                  <RotateCw className="h-3 w-3" /> Refresh
+                </Button>
+              </p>
             )}
           </CardContent>
         </Card>
