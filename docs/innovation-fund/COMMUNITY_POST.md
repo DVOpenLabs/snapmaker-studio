@@ -35,7 +35,8 @@ thread. Not in a fund thread; the fund is not the audience.
 ## Status
 
 **Not posted.** Posting to a public forum under the maintainer's identity is
-theirs to do — it is their name on it. The text needs no editing to be usable.
+theirs to do — it is their name on it. The nozzle paragraph must be corrected first (see the note at the top); the
+rest of the text is usable as written.
 
 ---
 

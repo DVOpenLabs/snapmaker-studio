@@ -1,7 +1,7 @@
 # Do I have enough filament to finish this print?
 
 > **State:** describes v1.1.0, the current release. Spoolman and Bambuddy both
-> ship in the desktop app. Local spool notes (below) are in the engine only — the
+> ship in the desktop app. Local spool notes (below) are in the engine and its local interface only — the
 > desktop app has no screen for them yet.
 
 A printer knows which spool is in which slot, because it is looking at it. It
@@ -128,7 +128,7 @@ real reason to expect an 87 g job to run out.
 - **Invents a figure.** A provider that cannot say how much is left produces
   unknown, everywhere, all the way to the send button.
 
-## Local spool notes, with no provider (engine only)
+## Local spool notes, with no provider (engine and local interface only)
 
 Since v1.1.0 the engine can also keep your own notes on a spool — material,
 colour, vendor, starting and remaining weight — stored in Studio's local library
