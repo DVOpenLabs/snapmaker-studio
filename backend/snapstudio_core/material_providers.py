@@ -924,12 +924,17 @@ def combine(*states: dict) -> dict:
                     existing.setdefault("conflicts", []).append(
                         _describe_disagreement(mine_source, mine, theirs_source, theirs))
                     existing["confidence"] = UNKNOWN
-                    # `disagreed`'s own shape (a stable "printer" key for the
-                    # merged row's value) is unchanged — only the human-
-                    # readable `conflicts` sentence above gained real
-                    # provenance; existing consumers of `disagreed` are unaffected.
+                    # `disagreed`'s keys now name the REAL source on both
+                    # sides (matching `conflicts`'s sentence above) instead of
+                    # hardcoding "printer" for `mine` regardless of where it
+                    # actually came from. Two DIFFERENT sources always
+                    # produce two distinct keys; the (believed impossible —
+                    # every state passed to combine() has its own distinct
+                    # `source`) case of the two sources being equal is still
+                    # handled without losing either value or raising.
+                    theirs_key = theirs_source if theirs_source != mine_source else f"{theirs_source}_2"
                     existing.setdefault("disagreed", {})[what] = {
-                        "printer": mine, slot["source"]: theirs}
+                        mine_source: mine, theirs_key: theirs}
 
             # A provider filling gaps never changes who saw the slot. If the
             # printer reported it, the printer confirmed it; if only a provider

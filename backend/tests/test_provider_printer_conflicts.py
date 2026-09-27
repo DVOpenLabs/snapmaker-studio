@@ -57,10 +57,31 @@ def test_the_printer_wins_on_material_and_the_disagreement_is_shown():
 
     assert slot["material"] == "PLA"
     assert slot["color"] == "#000000"
-    assert slot["disagreed"]["material"] == {"printer": "PLA", "spoolman": "PETG"}
-    assert slot["disagreed"]["colour"] == {"printer": "#000000", "spoolman": "#FF0000"}
+    # `disagreed` names the real source on both sides — the merged row's
+    # value came from STOCK here, not a hardcoded "printer".
+    assert slot["disagreed"]["material"] == {providers.STOCK: "PLA", providers.SPOOLMAN: "PETG"}
+    assert slot["disagreed"]["colour"] == {providers.STOCK: "#000000", providers.SPOOLMAN: "#FF0000"}
     assert slot["confidence"] == providers.UNKNOWN
     assert any("using what the printer can see" in note for note in slot["conflicts"])
+
+
+def test_disagreed_names_provider_and_note_when_neither_side_is_the_printer():
+    """No STOCK state at all: a provider and a local note disagree about the
+    same slot. `disagreed` must key on the two REAL sources (Spoolman and
+    local) — never a "printer" key, since the printer never spoke here."""
+    spoolman_slot = providers._slot(0, material="PLA", source=providers.SPOOLMAN,
+                                    confirmed_by=providers.BY_PROVIDER)
+    spoolman = {"schema_version": providers.SCHEMA_VERSION, "source": providers.SPOOLMAN,
+               "available": True, "remaining_known": True, "slots": [spoolman_slot]}
+    local_slot = providers._slot(0, material="PETG", source=providers.LOCAL,
+                                 confirmed_by=providers.BY_PROVIDER)
+    local = {"schema_version": providers.SCHEMA_VERSION, "source": providers.LOCAL,
+            "available": True, "remaining_known": False, "slots": [local_slot]}
+
+    merged = providers.combine(spoolman, local)
+    slot = merged["slots"][0]
+    assert slot["disagreed"]["material"] == {providers.SPOOLMAN: "PLA", providers.LOCAL: "PETG"}
+    assert "printer" not in slot["disagreed"]["material"]
 
 
 def test_a_disagreement_does_not_stop_the_remaining_weight_being_useful():
