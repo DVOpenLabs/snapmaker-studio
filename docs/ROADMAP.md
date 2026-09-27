@@ -1,191 +1,134 @@
-# Snapmaker Studio — Roadmap
+# Snapmaker Studio Roadmap
 
-Three-year arc from "make any file print here" → "optimize the print" →
-"run the fleet." Dates are targets, not commitments; each phase ships working,
-testable software on its own. Status reflects the codebase as of 2026-06.
+Where Studio is today, and what comes next. Status reflects v1.1.0, the current
+release (September 2026). Dates are targets, not commitments. Release-by-release
+detail is in [CHANGELOG.md](../CHANGELOG.md); what was verified, and how, is in
+[TRUST_STATUS.md](TRUST_STATUS.md).
 
-Pillars referenced below are defined in [PRODUCT_VISION.md](PRODUCT_VISION.md) §4.
-
-Every phase preserves the core print flow **Input → Diagnose → Transform →
-Validate → Output**; **Validate is mandatory and is never removed** from the
-product or the branding. Brand: [`brand/`](brand/README.md).
-
----
-
-## Shipped (as of v0.4.0-beta.20.x)
-
-- **Scale Doctor — prepare scaled copy (STL) — SHIPPED (beta.17).** Creates a real
-  scaled U1 3MF from an STL (geometry truly scaled; original never modified). 3MF scaled
-  export is next (blocked with a clear message for now).
-- **Compatibility Doctor — Prepare U1 copy — SHIPPED (beta.17).** Wires the existing
-  repair/convert path to a one-click clean-U1-copy action (no more dead end).
-
-- **Business Doctors — editable assumptions — SHIPPED (beta.17.1).** Cost/Pricing/Profit
-  take a user-editable Material & business assumptions panel (filament price, electricity,
-  machine, labour, fees, markup; saved locally) — rough estimates, not financial advice.
-- **First Layer Doctor — file-aware — SHIPPED (beta.17.1).** File pick shows real per-file
-  evidence (contact/footprint/stability); symptom advice is the fallback.
-
-### Next
-- Verified 3MF scaled export (multi-part / multi-plate uniform scaling, Orca-checked).
-- More business inputs (spool weight, material type, packaging, shipping, manual print hours).
-
-## Shipped (as of v0.4.0-beta.15) (historical)
-
-LIVE in the published beta — routes, endpoints, and tests exist (mocked where no
-hardware is in CI). Status is one of **SHIPPED**, **partially shipped**, or **PLANNED**.
-
-- **Printer Hub — monitoring + control + send — SHIPPED.** Discover the U1
-  (`U1.local:7125`), live status, temps, 4 toolheads, history, health, firmware
-  (read-only); plus user-confirmed control: pause / resume / cancel / start, upload
-  sliced gcode, emergency stop. Studio never auto-starts. Real-U1 hardware verification
-  is a manual checklist ([`PRINTER_HUB_VERIFICATION.md`](PRINTER_HUB_VERIFICATION.md)) —
-  there is no U1 in CI.
-- **Close-the-loop send — SHIPPED (no slicing).** Upload already-sliced gcode and start
-  a print from Studio. Studio does **not** slice; you slice in Snapmaker Orca and send
-  the exported gcode.
-- **Plate Color Remap — 2D visual preview SHIPPED; 3D render PLANNED.** The wizard shows
-  a 2D plate map (object colour chips, from→to, protected painted/gold accents, untouched
-  plates). A full rendered 3D plate preview is still future.
-- **Print Quality Doctor — evidence integration SHIPPED.** Symptom advice grounded in the
-  user's own file via the other doctors (overhang/supports, tip/stability, first-layer
-  area, bed fit, materials, colours). Advisory, no guarantees.
-- **Source Check — file/source detection SHIPPED.** Detects STL / generic 3MF /
-  Bambu-family (Orca/Bambu, +U1 flag) / PrusaSlicer / Cura; reports what Studio can read,
-  what it cannot convert yet, and the safe next step. Repair/preset **migration**
-  (actually preparing a non-U1 source) is PLANNED.
-- **Studio Model Browser — SHIPPED.** Approved 3D-model sites in a locked, Studio-owned
-  browser window; manual download → Open in Studio ([`model-browser-direction.md`](model-browser-direction.md)).
-- **Open in Snapmaker Orca — SHIPPED.** One-way handoff of a validated U1 copy to an
-  installed Snapmaker Orca. Studio does not slice or control Orca.
-- **Doctors + workflow — SHIPPED:** Project, Compatibility, Scale, First Layer,
-  Multi-Material, Cost/Pricing/Profit; Batch Prepare; Project Library; Compare/diff.
-
-## Near-term (next)
-
-The U1 firmware is open (stock Klipper/Moonraker/Fluidd, local Moonraker on `:7125`,
-LAN-trusted), so the Printer Hub above is built on solid ground. Next focus is **proof +
-beginner polish** (real screenshots, hardware verification, onboarding), then deeper
-conversion — not new headline features.
-
-### Distribution & trust
-- The current Windows beta installer is **unsigned**, so SmartScreen shows
-  "Unknown publisher" (see [`windows-install.md`](windows-install.md)).
-- **Paid code signing is deferred** — planned after Snapmaker Studio shows adoption
-  or wins Innovation Fund support. It is **not a release blocker**. Until then we use
-  free trust mitigations only: release from the official GitHub repo, publish the
-  installer **SHA256**, and provide a PowerShell verification command. No signing is
-  claimed while the installer is unsigned.
-- Optionally evaluate **Microsoft Store** distribution later as an additional
-  trusted channel.
-
-### Planned / future
-- **Repair / preset migration wizard** — Source Check already *detects* non-U1 sources
-  (PrusaSlicer/Cura/generic); the next step is safely *preparing* a clean U1 copy from
-  them, with clear "what carried over / what didn't" reporting.
-- **Rendered 3D plate preview** — a full geometry render of the plate (the 2D colour-map
-  preview ships today; 3D is the future upgrade).
-- **Deeper Print Quality intelligence** — extend the evidence base with more signals and
-  known-good deltas.
-- **Corpus validator wired into CI**; broader ecosystem adapters.
-- **Embedded slicing is out of scope** — slicing stays in Snapmaker Orca; Studio prepares
-  and (for already-sliced gcode) sends.
+Every release keeps the core print flow **Input → Diagnose → Transform →
+Validate → Output**. **Validate is mandatory and is never removed** from the
+product or the branding. Studio does not slice — Snapmaker Orca does — and it
+never starts a print on its own. Brand: [`brand/`](brand/README.md). Pillars are
+defined in [PRODUCT_VISION.md](PRODUCT_VISION.md) §4.
 
 ---
 
-## Phase 1 — Foundation  ·  **DONE** (2026 H1)
+## Shipped — v1.1.0
 
-The Diagnose → Transform → Validate loop, proven on real files.
+**Platforms.** A one-click Windows 10/11 installer and a self-contained Linux
+`.deb` for Ubuntu 22.04/24.04 x86_64, each with the engine bundled — no Python,
+Node or Rust to install. Local-first throughout: no cloud, no account, no
+telemetry, nothing uploaded off your local network. The one transfer Studio
+makes is a sliced job to your own printer, after you confirm it.
 
-- **Desktop shell** — Tauri + React app: Dashboard, Projects, Workspace,
-  Settings; light/dark; drag-and-drop; local sidecar architecture; one-click
-  Windows installer (NSIS, per-user, bundled engine).
-- **Doctor (Diagnose)** — compatibility scoring (READY/REPAIRABLE/CONVERTIBLE/
-  HIGH_RISK + /100), issue detection, read-only.
-- **Conversion engine (Transform)** — Bambu/Orca → U1, geometry-only/PrusaSlicer
-  3MF wrap, STL wrap, U1 identity normalization, foreign-metadata scrub,
-  filament-array conformance.
-- **Validation** — `is_u1_clean` gate; automated real-world corpus validator.
-  **Result: 112 files, 100% structurally valid in the internal gate — not a print-success measure.**
-- **Sidecar** — frozen Python engine, no system Python required, zero-orphan
-  lifecycle (Job Object + watchdog).
+**Reading a project.** Bambu Studio, OrcaSlicer, Snapmaker Orca and PrusaSlicer
+`.3mf` projects and plain `.stl` files are read from their real contents:
+geometry, objects, parts, plates, filaments, colours and settings. A
+PrusaSlicer project's printer, bed, filaments, layer heights, supports and
+per-object assignments are read from its own config. Cura and other 3MF
+sources are detected and their geometry read; their settings are not
+converted.
 
-**Exit criteria met:** a Bambu/Orca or STL file → one click → U1 project that opens
-in Snapmaker Orca with zero warnings. (PrusaSlicer files are detected/read; full
-Prusa preservation is later-phase, not shipped.)
+**Diagnosing it.** Project and Design Doctors (watertight, holes, manifold and
+normals, overhangs and supports, tip risk, bed fit), Compatibility, Scale,
+First Layer, Multi-Material, Print Quality, and Cost/Pricing/Profit with
+editable assumptions. Painted multi-material projects are read before
+slicing: which filaments the painting uses, how much surface each covers, and
+the height band each occupies, with colours classified as needing a toolhead,
+a possible swap, or not classifiable.
 
----
+**Preparing a copy.** Prepare writes a new Snapmaker U1 copy — the original is
+never modified — followed by a fidelity audit: what stayed byte-identical,
+what changed and why, what could not be carried over, and what Studio could
+not check. Batch Prepare, a Design Library, and Compare (original against
+copy).
 
-## Phase 2 — Production Workflow  ·  Year 1 H2 (2026 H2)
+**Checking against the printer.** Printer-aware preflight compares the project
+with the printer Studio can see on your network: toolheads, bed, loaded
+filament, whether it is busy, and the fitted nozzle — read live from the
+printer, and compared toolhead by toolhead where the data carries that order.
+Printer profiles are data; the Snapmaker U1 is hardware-verified and a VORON
+2.4 250 profile ships as a second, profile-only target.
 
-Move from "one file" to "my work," and broaden ecosystem coverage.
+**Materials.** Spoolman and Bambuddy as read-only material providers, with
+freshness rules for remaining weight. The engine can also keep local spool
+notes and a nozzle size you confirm yourself; the desktop app has no screen for
+either yet (see Near-term).
 
-- **More ecosystems (Transform):** PrusaSlicer projects (with settings), Cura,
-  Creality Print — each as an ecosystem adapter (see plugin architecture).
-- **Repair toolkit:** preset-migration wizard, guided auto-fix surfaced in the
-  Doctor tab, explicit per-issue remediation.
-- **Batch conversion:** drop a folder; convert + validate many files; summary
-  report (the corpus validator, productized for users).
-- **Project library (Manage):** local project database, search, tags,
-  collections, history; the Workspace becomes a real home, not a one-shot view.
-- **Compare (Manage):** ship the `diff` engine in the UI — original vs U1, what
-  changed, geometry-preserved proof.
+**Handing off and reading back.** Open the prepared copy in Snapmaker Orca,
+detected on Windows and Linux. After slicing, the G-code is read back and
+checked against the printer as it is right now, with cost from the figures the
+slicer measured.
 
-**Exit:** a maker manages a library and batch-converts a backlog reliably.
+**Printer Hub.** Live status, temperatures, toolheads, history and health for a
+U1 on your network, plus user-confirmed pause, resume, cancel, upload and
+start. Studio never auto-starts a print.
 
----
+**Ecosystem.** Studio names the community tool that fits the file in front of
+you (FOrcaSlicer, OrcaSlicer ImageMap, U1 Print Hub, MakerWorld converters,
+Snapmaker Orca), from a data registry anyone can correct by pull request.
 
-## Phase 3 — Optimization Studio  ·  Year 2 (2027)
+**Tools and trust.** The `u1convert` CLI, including `u1convert selfcheck` and
+the read-only, redacted `u1convert verify-printer` for community hardware
+reports. An opt-in update check, off by default, at most once a day. Published
+SHA256 for every installer.
 
-From "it loads" to "it prints *well*."
+## Near-term
 
-- **Print intelligence (Optimize):** printability scoring, material
-  recommendations, time + cost estimation.
-- **Optimization engine:** quality/speed/material profiles, automated tuning
-  (purge, supports, seams) as composable transform passes.
-- **Multi-material depth:** purge-matrix optimization, toolhead assignment
-  assistance, color/painting-aware advice — the hardest, highest-value seam.
-- **Profile packs v1:** declarative, documented printer profiles; first
-  community-contributable packs; corpus-as-CI gates them.
+Only work that is genuinely not shipped yet.
 
-**Exit:** Studio improves outcomes, not just compatibility, and the first
-external profile packs land.
+- **Desktop screens for local spool notes and nozzle confirmation.** The engine
+  and its local interface support both since v1.1.0; the desktop app has no
+  screen for them yet.
+- **Signed-in material providers.** A provider that requires a sign-in cannot
+  be read today, because Studio has nowhere safe to keep a credential. This
+  needs a credential store Studio can rely on across Windows and Linux.
+- **Painted colours on the same layer, proven.** Whether two painted colours
+  meet on a printed layer is decided by the slice. Studio reserves a toolhead
+  rather than claiming either way. Proving it needs reading the sliced job's
+  actual extrusion moves; tool-change data alone proved unreliable.
+- **Objects whose parts cannot all be carried over.** Today such an object
+  crosses whole, with the audit naming what that costs. Carrying more of its
+  volumes through preparation.
+- **PrusaSlicer preservation.** Carry per-object extruder assignments through
+  preparation (reading them ships today), and more of what a U1 copy currently
+  names as not carried over.
+- **Scaled 3MF export.** Scale Doctor prepares a scaled copy of an STL today;
+  a 3MF project is blocked with a clear message.
+- **Broader real-hardware verification.** One Snapmaker U1 on one firmware
+  version has been verified. More machines and firmware versions, a genuinely
+  mixed-nozzle setup, and the full provider-backed hardware check run again,
+  including from Linux.
+- **External Linux reports.** Linux has not yet had a report from a user
+  outside the project.
+- **Code signing.** Neither installer is signed yet. The Windows path is
+  described in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md); Linux package
+  signing is not started.
 
----
+## Longer term
 
-## Phase 4 — Manufacturing Platform  ·  Year 2 H2 → Year 3 (2027–2028)
+- **OBJ and GLB input.**
+- **More printer targets beyond the U1**, each hardware-verified before it is
+  called supported.
+- **A stable API for third-party integration**, with a public contract for
+  ecosystem adapters, printer profiles and validators.
+- **More ecosystems prepared, not just read** — Cura projects (detected today,
+  settings not converted) and Creality Print projects (read today as a generic
+  3MF), with the same "what carried over, what didn't" reporting.
+- **Rendered 3D plate preview** — Plate Color Remap shows a 2D plate map today.
+- **Multi-printer management** — several printers through one Studio, still
+  local and user-confirmed.
+- **Deeper print intelligence** — more evidence signals in Print Quality, and
+  toolpath analysis before printing.
 
-From "a file" to "a fleet."
+Out of scope, permanently: embedded slicing, cloud accounts, and any
+autonomous printer control.
 
-- **Multi-printer management:** fleet dashboard, queue management, remote
-  monitoring (Moonraker/Klipper-class first, given U1 lineage).
-- **Simulation:** preview/toolpath analysis, failure prediction before printing.
-- **Plugin SDK (public):** stable contracts for ecosystem adapters, printer
-  profiles, transforms, validators, and views; docs + templates.
+## Cross-cutting (every release)
 
-**Exit:** small shops run several printers through Studio end to end.
-
----
-
-## Phase 5 — Digital Manufacturing OS  ·  Year 3+ (2028+)
-
-- **Plugin marketplace:** community + vendor extensions, premium packs,
-  rev-share; certified vendor profiles.
-- **Ecosystem governance:** move toward a neutral foundation so no single vendor
-  controls the translation layer.
-- **AI-assisted troubleshooting:** corpus-grounded diagnosis and fix suggestions.
-
-**Exit:** a self-sustaining, open platform — the default home for design-to-
-production workflows across vendors.
-
----
-
-## Cross-cutting tracks (every phase)
-
-- **Reliability:** expand the validation corpus; corpus run wired into CI;
-  failure taxonomy kept current. Never regress the success rate.
-- **Trust:** open core, transparent changelog, inspectable transforms.
-- **Polish:** the novice one-click experience stays first-class as power features
-  grow.
-- **Release readiness (near-term):** real icon/branding and Windows code signing
-  before any public GA (current blockers tracked in the pre-release report).
+- **Reliability:** keep the regression tests against genuine OrcaSlicer,
+  BambuStudio and PrusaSlicer projects current; wiring the full real-file
+  corpus run into CI is still to do.
+- **Trust:** every claim is computed, not asserted; unknown stays unknown;
+  what was verified, and how, is published per release.
+- **Polish:** the novice experience stays first-class as power features grow.

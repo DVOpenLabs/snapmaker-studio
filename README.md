@@ -50,8 +50,9 @@ the printer will actually execute against the printer as it is right now.
 Moonraker and publishes what it can do — so Studio can ask the machine itself
 rather than guessing from a model name.
 
-**And when it can't know something, it says so.** Stock firmware doesn't report
-which nozzle is fitted, so Studio says *"check this yourself"* — never
+**And when it can't know something, it says so.** Studio reads the fitted nozzle
+live from the printer; when it cannot get that reading — no printer connected,
+or firmware that does not answer — it says *"check this yourself"*, never
 *"unsupported"*.
 
 ## About the demo
@@ -205,18 +206,22 @@ Limitation from v1.0.0 is closed. Studio reads `.desktop` files correctly
 and no longer confuses a similarly-named tool for the one you have.
 
 **The fitted nozzle is no longer unknowable.** Stock Snapmaker U1 firmware
-does publish it; Studio now reads it live or accepts your own confirmation,
-and always says which. A size comparison lines up toolhead by toolhead
-where the data supports it, instead of only checking whether the same sizes
-exist somewhere.
+does publish it, and Studio now reads it live from the printer and labels
+the reading as the printer's. A size comparison lines up toolhead by
+toolhead where the data supports it, instead of only checking whether the
+same sizes exist somewhere. The engine can also take a nozzle size you
+confirm yourself when firmware does not answer, and labels that as yours —
+the desktop app has no screen for entering it yet.
 
 **An optional daily update check**, off by default, using the same
 no-telemetry request the manual button already made.
 
-**Local spool tracking with no Spoolman or Bambuddy required** — record a
-spool's material, colour, vendor and remaining weight yourself; a printer
-that has physically confirmed a slot is empty can never be overridden by a
-stale note.
+**Groundwork for local spool tracking with no Spoolman or Bambuddy** — the
+engine can now keep your own notes on a spool (material, colour, vendor,
+remaining weight) and treats them with the same trust rules as a network
+provider: a printer that has physically confirmed a slot is empty can never
+be overridden by a stale note. The desktop app has no screen for entering
+those notes yet; that is next on the [roadmap](docs/ROADMAP.md).
 
 **A read-only community hardware-verification command**
 (`u1convert verify-printer`) for anyone to attach to a GitHub issue.
@@ -275,8 +280,8 @@ values in the U1 template that had never reached a print were removed.
 knows which spool is in a slot and nothing about how much is left on it. If you
 run Spoolman on your network, Studio now reads it — Settings → Materials
 provider, an address, a connection test, and a spool mapped to each slot. Read
-only: Studio never creates a spool and never decrements anyone's remaining
-weight.
+only: Studio never creates a spool in your provider and never decrements the
+remaining weight it holds.
 
 How hard it leans on a figure depends on the figure. A short, tracked, recent
 weight stops a send. A stale one, a weight worked out from a spool's declared
@@ -513,16 +518,20 @@ validation is mandatory and never removed. Full detail in
 
 ## Roadmap
 
-**Shipped (stable, v1.0.0):** the whole loop — read a project, diagnose it,
+**Shipped (stable, v1.1.0):** the whole loop — read a project, diagnose it,
 compare it against the printer, prepare a copy, prove what survived, hand it to
 Snapmaker Orca, then read the sliced G-code back and check what the printer will
 actually execute against the printer as it is right now, with cost from the
 figures the slicer measured. Plus Batch, Design Library, Printer Hub (monitor and
-user-confirmed control/send), the engine and CLI, a one-click Windows installer
-with the engine bundled, and a self-contained Linux `.deb`.
+user-confirmed control/send), Spoolman and Bambuddy material providers, the
+fitted nozzle read live from the printer, Snapmaker Orca detection on Windows and
+Linux, an opt-in update check, the engine and CLI (including
+`u1convert verify-printer`), a one-click Windows installer with the engine
+bundled, and a self-contained Linux `.deb`.
 
 **Next:**
-- Snapmaker Orca auto-detection on Linux
+- Desktop screens for local spool notes and nozzle confirmation (the engine
+  supports both since v1.1.0; the app has no screen for them yet)
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input
 - More printer targets beyond the U1

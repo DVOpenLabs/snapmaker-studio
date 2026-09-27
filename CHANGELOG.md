@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [1.1.0] - 2026-09-26
 
+### Correction (2026-09-26)
+- The **Local spool tracking** and **fitted nozzle** entries below describe the
+  engine, not the desktop app. Recording spool notes by hand and confirming a
+  nozzle size yourself are supported by the engine and its local interface,
+  but the v1.1.0 desktop app has no screen for either yet. Reading the fitted
+  nozzle live from the printer works in the app as described.
+
 ### Added
 - **Linux Orca detection.** Studio finds Snapmaker Orca and related ecosystem
   tools on Linux by reading `.desktop` files correctly — quote-aware, scoped to

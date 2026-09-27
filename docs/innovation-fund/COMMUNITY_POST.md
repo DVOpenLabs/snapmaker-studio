@@ -1,5 +1,9 @@
 # Community post — prepared, not posted
 
+> **Superseded in part (v1.1.0):** the draft below says stock firmware does not
+> report the fitted nozzle. That is wrong — it does, and Studio reads it since
+> v1.1.0. Correct that paragraph before posting anything from this draft.
+
 ## What already exists, checked before writing anything
 
 Searched the Snapmaker Discourse forum (`forum.snapmaker.com`) via its search API
@@ -31,7 +35,8 @@ thread. Not in a fund thread; the fund is not the audience.
 ## Status
 
 **Not posted.** Posting to a public forum under the maintainer's identity is
-theirs to do — it is their name on it. The text needs no editing to be usable.
+theirs to do — it is their name on it. The nozzle paragraph must be corrected first (see the note at the top); the
+rest of the text is usable as written.
 
 ---
 

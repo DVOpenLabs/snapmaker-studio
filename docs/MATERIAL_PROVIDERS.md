@@ -1,7 +1,8 @@
 # Do I have enough filament to finish this print?
 
-> **State:** this describes `main` after v0.8.0. The published installer does not
-> contain the Bambuddy support described here. Not a release announcement.
+> **State:** describes v1.1.0, the current release. Spoolman and Bambuddy both
+> ship in the desktop app. Local spool notes (below) are in the engine and its local interface only — the
+> desktop app has no screen for them yet.
 
 A printer knows which spool is in which slot, because it is looking at it. It
 knows nothing at all about how much filament is left on that spool. So the
@@ -114,10 +115,10 @@ real reason to expect an 87 g job to run out.
 
 ## What Studio never does
 
-- **Writes.** Studio does not create spools, does not decrement anyone's remaining
-  weight, and does not mark a spool used after a print. Consumption tracking
-  belongs to the tool that owns the data; two tools writing the same number is how
-  they end up disagreeing.
+- **Writes to a provider.** Studio does not create spools in Spoolman or
+  Bambuddy, does not decrement their remaining weight, and does not mark a spool
+  used after a print. Consumption tracking belongs to the tool that owns the data;
+  two tools writing the same number is how they end up disagreeing.
 - **Requires a provider.** A stock printer with no other software is a first-class
   setup. Without a provider, Studio says it does not know, which is true.
 - **Leaves your network.** The address is checked to be on your own network —
@@ -126,6 +127,25 @@ real reason to expect an 87 g job to run out.
   local address that answers with a redirect to a public one.
 - **Invents a figure.** A provider that cannot say how much is left produces
   unknown, everywhere, all the way to the send button.
+
+## Local spool notes, with no provider (engine and local interface only)
+
+Since v1.1.0 the engine can also keep your own notes on a spool — material,
+colour, vendor, starting and remaining weight — stored in Studio's local library
+on your machine, one note per printer slot. They pass through the same rules as
+a provider:
+
+- A figure you typed is labelled as yours. A figure Studio worked out by
+  subtracting a job's usage from it is labelled differently, and the two never
+  look the same.
+- The printer stays authoritative about what is physically in the slot. A slot
+  the printer reports empty can never be overridden by a note.
+- Studio subtracts from a note's remaining weight only when explicitly asked to
+  record a job's usage — never while reading, planning or sending a job.
+
+**The desktop app has no screen for these notes yet.** The capability is in the
+engine and its local interface; a Settings screen for it is on the
+[roadmap](ROADMAP.md).
 
 ## Other providers
 

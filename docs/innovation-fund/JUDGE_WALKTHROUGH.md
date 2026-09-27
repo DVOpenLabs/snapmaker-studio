@@ -195,9 +195,11 @@ from Linux instead — last result: **11/11** —
 
 That run is worth reading rather than just counting. It proved the four loaded
 filaments are read correctly, that the printer's own 271 × 335 × 281 mm bed is what
-the bed check uses, and — the point of the whole evidence model — that the fitted
-nozzle genuinely is not exposed by stock firmware, so Studio's "check this
-yourself" is honest rather than lazy.
+the bed check uses, and that the fitted nozzle is read live from stock firmware —
+0.4 mm on all four toolheads, labelled as the printer's own reading. Releases up
+to v1.0.0 wrongly concluded the firmware did not expose it; the corrected reading
+was found during development, and this run confirmed it against the machine. When no reading is available, Studio still says
+"check this yourself" rather than guessing.
 
 ---
 
