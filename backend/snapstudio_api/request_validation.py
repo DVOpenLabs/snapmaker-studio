@@ -182,11 +182,26 @@ def optional_color(data: dict, key: str = "color") -> object:
     raise ValidationError("invalid_color")
 
 
-def bounded_weight(data: dict, key: str, default: float | None = None) -> float | None:
-    """A2.6: 0 <= weight <= 10000 g, or ``default`` if absent/null."""
-    if key not in data or data.get(key) is None:
-        return default
-    f = _as_number(data, key, required=True, default=None)
+def bounded_weight(data: dict, key: str) -> object:
+    """A2.6 + tri-state (A3.3 parity, CodeRabbit PR #41): a spool weight
+    field behaves exactly like the text fields — MISSING (key absent)
+    returns the ``MISSING`` sentinel, an explicit ``null`` returns ``None``
+    (both mean "preserve" to the caller); "" (or a whitespace-only string)
+    returns ``""`` (the caller's "clear" marker, same as `optional_nullable_str`);
+    a number in [0, 10000] is returned as a float. Only a value that is
+    genuinely wrong — out of range, or a non-numeric, non-empty string —
+    raises `invalid_weight`; a clear never does."""
+    if key not in data:
+        return MISSING
+    v = data[key]
+    if v is None:
+        return None
+    if isinstance(v, str) and v.strip() == "":
+        return ""
+    try:
+        f = _as_number(data, key, required=True, default=None)
+    except ValidationError:
+        raise ValidationError("invalid_weight")
     if f < 0 or f > 10000:
         raise ValidationError("invalid_weight")
     return f

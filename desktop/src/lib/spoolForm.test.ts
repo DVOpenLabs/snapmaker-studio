@@ -152,4 +152,22 @@ describe("buildSpoolSaveBody", () => {
     const body = buildSpoolSaveBody(draft({ color: "", colorTouched: true }));
     expect(body.color).toBe("");
   });
+
+  it("sends an empty string (not null) when the user touched and then emptied remaining_g (CodeRabbit PR #41 #3)", () => {
+    // Backend contract: "" clears a weight; null/missing preserves it. Before
+    // this fix, an emptied-but-touched field sent `null`, which the backend
+    // treats as "preserve" — the row kept showing the old weight forever.
+    const body = buildSpoolSaveBody(draft({ remainingG: "", remainingGTouched: true }));
+    expect(body.remaining_g).toBe("");
+  });
+
+  it("sends an empty string (not null) when the user touched and then emptied starting_g", () => {
+    const body = buildSpoolSaveBody(draft({ startingG: "", startingGTouched: true }));
+    expect(body.starting_g).toBe("");
+  });
+
+  it("still sends the numeric value when a touched weight has one", () => {
+    const body = buildSpoolSaveBody(draft({ remainingG: "320", remainingGTouched: true }));
+    expect(body.remaining_g).toBe(320);
+  });
 });

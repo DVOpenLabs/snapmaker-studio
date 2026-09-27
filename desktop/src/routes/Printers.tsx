@@ -17,8 +17,8 @@ import { useFilament } from "@/store/filament";
 import { useNozzleNotesVersion } from "@/store/nozzleRevision";
 import { PrinterControls } from "@/components/PrinterControls";
 import { toPrintState } from "@/lib/printerControl";
-import { nozzleRows } from "@/lib/nozzleRows";
-import { createGenerationGuard, runNozzleFetch } from "@/lib/nozzleFetch";
+import { nozzleSummaryLine } from "@/lib/nozzleRows";
+import { createGenerationGuard, nozzleDataStale, runNozzleFetch } from "@/lib/nozzleFetch";
 import { printerHubNozzleFetchTrigger } from "@/lib/nozzleFetchTriggers";
 
 const NOZZLE_PORT = 7125;
@@ -30,15 +30,6 @@ function fmtDur(s: number | null | undefined): string {
 }
 const FAILED = new Set(["error", "cancelled", "klippy_shutdown", "klippy_disconnect", "interrupted"]);
 
-function nozzleLine(status: Parameters<typeof nozzleRows>[0]): string {
-  const rows = nozzleRows(status);
-  if (rows.length === 0) return "Nozzle sizes: not reported";
-  const sizes = rows.map((r) => r.diameterLabel).join(", ");
-  const hasConflict = rows.some((r) => r.status === "conflict");
-  const hasUser = rows.some((r) => r.status === "confirmed");
-  const source = hasConflict ? "conflict" : hasUser ? "you" : "printer";
-  return `Nozzle${rows.length === 1 ? "" : "s"}: ${sizes} · ${source === "conflict" ? "conflict — printer wins" : `from ${source}`}`;
-}
 
 // How each printer Studio ships a profile for may be described, and no more.
 // The U1 is the only machine this project has connected to; every other entry
@@ -120,14 +111,26 @@ export default function Printers() {
   const [nozzleChecking, setNozzleChecking] = useState(false);
   const [nozzleFetching, setNozzleFetching] = useState(false);
   const nozzleGeneration = useRef(createGenerationGuard()).current;
+  // Tracks which host `nozzleData` was actually fetched for, so a fetch that
+  // starts for a different host clears it immediately — otherwise printer
+  // A's sizes stay on screen under printer B's line until B's own fetch
+  // lands (or forever, if both of B's phases then fail) (CodeRabbit PR #41
+  // #5). A same-host manual Refresh does NOT clear first, so it doesn't
+  // flash empty.
+  const nozzleDataHost = useRef<string | null>(null);
   const nozzleNotesVersion = useNozzleNotesVersion((s) => s.version);
 
   const fetchNozzle = useCallback(() => {
     if (!connected) {
       nozzleGeneration.invalidate(); // R4-D2: !connected also stops anything in flight
+      nozzleDataHost.current = null;
       setNozzleData(null);
       return;
     }
+    if (nozzleDataStale(nozzleDataHost.current, connected)) {
+      setNozzleData(null);
+    }
+    nozzleDataHost.current = connected;
     const gen = nozzleGeneration.next();
     const host = connected;
     setNozzleFetching(true);
@@ -139,7 +142,9 @@ export default function Printers() {
         quick: (s) => { setNozzleData(s); setNozzleChecking(true); },
         live: (s) => { setNozzleData(s); setNozzleChecking(false); },
         liveFailed: () => setNozzleChecking(false),
-        allFailed: () => setNozzleChecking(false),
+        // Both phases failed: nothing was confirmed for this host — never
+        // leave a previous (possibly different) host's data on screen.
+        allFailed: () => { setNozzleChecking(false); setNozzleData(null); },
       },
     }).finally(() => { if (nozzleGeneration.isCurrent(gen)) setNozzleFetching(false); });
   }, [connected, nozzleGeneration]);
@@ -285,7 +290,7 @@ export default function Printers() {
             )}
             {connected && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {nozzleLine(nozzleData)}
+                {nozzleSummaryLine(nozzleData)}
                 {nozzleChecking && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
                 {" · "}
                 <Link to="/settings" className="text-primary underline">Settings</Link>

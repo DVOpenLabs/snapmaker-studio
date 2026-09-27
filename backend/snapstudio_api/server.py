@@ -330,8 +330,8 @@ def _make_handler(token: str):
                         subtype=_or_none(rv.optional_nullable_str(data, "subtype")),
                         color=_or_none(rv.optional_color(data, "color")),
                         vendor=_or_none(rv.optional_nullable_str(data, "vendor")),
-                        starting_g=rv.bounded_weight(data, "starting_g", None),
-                        remaining_g=rv.bounded_weight(data, "remaining_g", None),
+                        starting_g=_or_none(rv.bounded_weight(data, "starting_g")),
+                        remaining_g=_or_none(rv.bounded_weight(data, "remaining_g")),
                         notes=_or_none(rv.optional_nullable_str(data, "notes")))})
                 except nozzle_confirm.InvalidHost:
                     self._send(400, _error_body("invalid_host"))

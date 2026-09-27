@@ -4,6 +4,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ por
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { A4_3_MESSAGES, errorCodeMessage, nozzleStatus } from "./api";
+import type { Preflight } from "./api";
 
 // R2-D3: "a test that each A4.3 error code maps to its shown message" — the
 // literal texts here are the frozen error map from the v1.2 plan (A4.3); a
@@ -59,5 +60,25 @@ describe("nozzleStatus probe parameter (R2-D5)", () => {
     await nozzleStatus("u1.local", 7125, true);
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.probe).toBe(true);
+  });
+});
+
+describe("Preflight.printer (CodeRabbit PR #41 #1: matches the backend's nozzle_conflicts list)", () => {
+  it("accepts the backend's actual shape — a LIST of conflict entries, not a singular pair", () => {
+    // The backend's service.preflight() copies nozzle_conflicts (a list) into
+    // out["printer"]; a singular { printer, confirmed } type here can't
+    // represent more than one conflicting toolhead and doesn't match what's
+    // actually sent.
+    const printer: NonNullable<Preflight["printer"]> = {
+      nozzle_conflicts: [
+        { toolhead: 0, printer: 0.4, confirmed: 0.6, source: "stored", confirmed_at: "2026-09-01T00:00:00Z" },
+        { toolhead: 2, printer: 0.6, confirmed: 0.4, source: "request", confirmed_at: null },
+      ],
+    };
+
+    const conflicts = printer.nozzle_conflicts;
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts?.[0].toolhead).toBe(0);
+    expect(conflicts?.[1].source).toBe("request");
   });
 });

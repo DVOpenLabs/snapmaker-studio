@@ -221,13 +221,19 @@ def _positions(confirmed: dict[int, dict], toolhead_count: int | None) -> list[d
     # Stored entries beyond the live/profile count are preserved, never
     # truncated, but flagged so the UI can offer to remove them rather than
     # silently acting on a toolhead this printer does not currently have.
+    # CodeRabbit #2 (Sol root cause): a stored "not sure" (diameter None)
+    # beyond the count carries no information at all — it is not shown as an
+    # out_of_range row (or any row), so nulling it via the atomic
+    # /nozzles/confirm replace ("Remove my note") reliably makes it vanish
+    # instead of leaving a row the desktop's own workaround could never clear.
     for toolhead in sorted(confirmed):
         if toolhead >= count:
             entry = confirmed[toolhead]
+            if entry["diameter"] is None:
+                continue
             rows.append({"toolhead": toolhead, "diameter": entry["diameter"],
-                        "source": "unknown" if entry["diameter"] is None else "user",
-                        "confirmed_at": entry["confirmed_at"], "confirmed": entry["diameter"],
-                        "conflict": False, "out_of_range": True})
+                        "source": "user", "confirmed_at": entry["confirmed_at"],
+                        "confirmed": entry["diameter"], "conflict": False, "out_of_range": True})
     return rows
 
 

@@ -141,13 +141,23 @@ export function showsNothingReportedBanner(status: NozzleStatus | null): boolean
 // current live/profile count, so "Save" never silently drops an out-of-range
 // note (D7) — only an explicit remove does.
 
-/** The stored/confirmed diameter for every known toolhead position, in order —
- *  the baseline every mutation below starts from. */
+/** The stored/confirmed diameter for every known toolhead position, indexed
+ *  by the row's own `toolhead` number — NOT by row position. The backend
+ *  omits an out_of_range row whose stored value is null, so `status.toolheads`
+ *  can have gaps (stored [0.4,0.4,0.4,0.4,null,0.3] with count 4 arrives as
+ *  rows for toolheads 0,1,2,3,5 only, toolhead 4 entirely absent). Mapping
+ *  the N returned rows to sequential array positions would silently shift
+ *  toolhead 5's value into slot 4 on the next save (Opus follow-up). The
+ *  array is padded with `null` up to at least one past the highest toolhead
+ *  number seen, so a gap stays a gap and every value stays at its own index. */
 export function diametersFromStatus(status: NozzleStatus): (number | null)[] {
-  return status.toolheads
-    .slice()
-    .sort((a, b) => a.toolhead - b.toolhead)
-    .map((t) => t.confirmed);
+  const maxToolhead = status.toolheads.reduce((max, t) => Math.max(max, t.toolhead), -1);
+  const length = Math.max(maxToolhead + 1, status.toolheads.length);
+  const arr: (number | null)[] = new Array(length).fill(null);
+  for (const t of status.toolheads) {
+    arr[t.toolhead] = t.confirmed;
+  }
+  return arr;
 }
 
 /** The full array to send for "Save": the stored value everywhere the user
@@ -173,9 +183,58 @@ export function diametersForUpdate(
 }
 
 /** "Remove my note": every other position keeps its stored value; this one
- *  goes back to unknown. */
+ *  goes back to unknown. Array length is never touched — an earlier attempt
+ *  to shorten the array by popping trailing nulls (CodeRabbit PR #41 #2)
+ *  could delete a NEIGHBOURING toolhead's own stored "not sure" (null)
+ *  record just because it was also trailing and null, and still couldn't
+ *  remove a non-trailing out-of-range note at all (Sol follow-up block).
+ *  The backend is instead being changed so an out_of_range position whose
+ *  stored value is null produces no row at all — so simply nulling the
+ *  target position here is sufficient, for any position, trailing or not. */
 export function diametersForRemove(status: NozzleStatus, toolhead1: number): (number | null)[] {
   const arr = diametersFromStatus(status);
   arr[toolhead1 - 1] = null;
   return arr;
+}
+
+// ---- Printer Hub's one-line nozzle summary -----------------------------------
+// The backend now always returns profile rows even offline, so the previous
+// "rows.length === 0 -> not reported" branch almost never fires; an
+// all-unknown offline printer instead produced "—, —, — · from printer",
+// attributing values nobody reported to the printer (CodeRabbit PR #41 #4).
+// The source word is now derived honestly from what each row actually is.
+
+const SOURCE_WORDS = { printer: "from printer", you: "from you", unknown: "not reported" } as const;
+
+function nozzleSourceSummary(rows: NozzleRow[]): string {
+  const present = new Set<keyof typeof SOURCE_WORDS>();
+  for (const r of rows) {
+    if (r.status === "reported_live") present.add("printer");
+    else if (r.status === "confirmed") present.add("you");
+    else present.add("unknown"); // "unknown" only — out_of_range is excluded upstream
+  }
+  if (present.size === 1) return SOURCE_WORDS[[...present][0]];
+  const order: (keyof typeof SOURCE_WORDS)[] = ["printer", "you", "unknown"];
+  // Never "some from unknown" (Opus P1 follow-up) — "not reported" already
+  // reads correctly standing alone, so it does here too.
+  return order.filter((w) => present.has(w)).map((w) => `some ${SOURCE_WORDS[w]}`).join(", ");
+}
+
+/** The Printer Hub's "Nozzle sizes: ..." line. Pure so it's testable without
+ *  a DOM (CodeRabbit PR #41 #4). Out-of-range notes are excluded entirely
+ *  (Opus P2 follow-up) — they're a leftover, removable note about a toolhead
+ *  the printer doesn't currently have, not a "nozzle size" to summarise
+ *  alongside the ones that are; they stay visible (and removable) only in
+ *  the Settings table. */
+export function nozzleSummaryLine(status: NozzleStatus | null): string {
+  const rows = nozzleRows(status).filter((r) => r.status !== "out_of_range");
+  if (rows.length === 0) return "Nozzle sizes: not reported";
+  if (rows.every((r) => r.status === "unknown")) {
+    return "Nozzle sizes: not reported — confirm in Settings";
+  }
+  const sizes = rows.map((r) => r.diameterLabel).join(", ");
+  const label = rows.some((r) => r.status === "conflict")
+    ? "conflict — printer wins"
+    : nozzleSourceSummary(rows);
+  return `Nozzle${rows.length === 1 ? "" : "s"}: ${sizes} · ${label}`;
 }

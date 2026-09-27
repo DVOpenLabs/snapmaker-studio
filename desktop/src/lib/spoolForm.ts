@@ -131,13 +131,18 @@ export interface SpoolSaveBody {
   subtype?: string;
   color?: string;
   vendor?: string;
-  starting_g?: number | null;
-  remaining_g?: number | null;
+  // "" clears; a number sets; omitted (untouched) preserves. Never `null` —
+  // the backend treats an explicit null the same as missing, i.e. preserve,
+  // so a touched-then-emptied field must send "" or the old weight sticks
+  // around forever (CodeRabbit PR #41 #3).
+  starting_g?: number | "";
+  remaining_g?: number | "";
   notes?: string;
 }
 
 /** Pure request-body builder (D2/D10): weight fields are included only when
- *  `*Touched` is true, so an untouched weight is never re-sent. */
+ *  `*Touched` is true, so an untouched weight is never re-sent; a touched
+ *  field that was emptied sends "" (clear), never `null` (preserve). */
 export function buildSpoolSaveBody(draft: SpoolSaveDraft): SpoolSaveBody {
   const body: SpoolSaveBody = {
     material: draft.material.trim(),
@@ -149,11 +154,11 @@ export function buildSpoolSaveBody(draft: SpoolSaveDraft): SpoolSaveBody {
   if (color.ok && color.send !== undefined) body.color = color.send;
   if (draft.startingGTouched) {
     const starting = validateWeight(draft.startingG);
-    if (starting.ok) body.starting_g = starting.value;
+    if (starting.ok) body.starting_g = starting.value === null ? "" : starting.value;
   }
   if (draft.remainingGTouched) {
     const remaining = validateWeight(draft.remainingG);
-    if (remaining.ok) body.remaining_g = remaining.value;
+    if (remaining.ok) body.remaining_g = remaining.value === null ? "" : remaining.value;
   }
   return body;
 }

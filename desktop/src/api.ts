@@ -1300,7 +1300,15 @@ export interface Preflight {
      *  live won, "user" only when a stored/request confirmation was used and
      *  nothing live contradicted it (B7/D9). */
     nozzle_confirmed_by?: "printer" | "user" | null;
-    nozzle_conflict?: { printer: number[]; confirmed: (number | null)[] } | null;
+    /** `service.preflight()` copies the backend's `nozzle_conflicts` — a LIST
+     *  of per-toolhead conflict entries, not a single pair — verbatim. */
+    nozzle_conflicts?: {
+      toolhead: number;
+      printer: number | null;
+      confirmed: number | null;
+      source: "stored" | "request";
+      confirmed_at: string | null;
+    }[];
   } & Record<string, unknown>;
 }
 
@@ -2160,8 +2168,13 @@ export interface LocalSpoolSaveInput {
   subtype?: string | null;
   color?: string | null; // omit/undefined preserves, null/"" clears, else sets
   vendor?: string | null;
-  starting_g?: number | null;
-  remaining_g?: number | null;
+  // omit/undefined preserves; "" clears; a number sets (CodeRabbit PR #41 #3,
+  // Opus P3 follow-up: `null` dropped — buildSpoolSaveBody never produces it
+  // and the backend contract has no meaning for an explicit null here that
+  // differs from omitting the field, so keeping it just invited a caller to
+  // send the wrong "preserve" spelling).
+  starting_g?: number | "";
+  remaining_g?: number | "";
   notes?: string | null;
 }
 

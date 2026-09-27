@@ -935,8 +935,8 @@ def local_spools(host: str) -> dict:
 
 def save_local_spool(host: str, slot: int, *, material: str | None = None,
                      subtype: str | None = None, color: str | None = None,
-                     vendor: str | None = None, starting_g: float | None = None,
-                     remaining_g: float | None = None, notes: str | None = None) -> dict:
+                     vendor: str | None = None, starting_g: float | str | None = None,
+                     remaining_g: float | str | None = None, notes: str | None = None) -> dict:
     """Record what a person says is on a spool, in their own words, right now.
 
     A partial update: any field left as None keeps whatever was already on
@@ -986,10 +986,21 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
             or _changed(subtype, existing.get("subtype"))
             or _changed(color, existing.get("color"))
             or _changed(vendor, existing.get("vendor")))
-        if remaining_g is not None:
+        # CodeRabbit PR #41: starting_g/remaining_g get the SAME tri-state
+        # rule as the text fields (A3.3) — None (missing/null) preserves,
+        # "" explicitly clears (stores NULL), a real number sets it. Before
+        # this fix there was no way to clear a weight at all: the old
+        # validator collapsed "" into None ("preserve"), so emptying the
+        # field in the editor silently kept the old figure.
+        is_real_number = isinstance(remaining_g, (int, float)) and not isinstance(remaining_g, bool)
+        if is_real_number:
             merged_remaining_g = remaining_g
             remaining_quality = providers.USER_CONFIRMED
             remaining_as_of = now
+        elif remaining_g == "":
+            merged_remaining_g = None
+            remaining_quality = None
+            remaining_as_of = None
         elif spool_changed:
             merged_remaining_g = None
             remaining_quality = None
@@ -1004,7 +1015,7 @@ def save_local_spool(host: str, slot: int, *, material: str | None = None,
             subtype=_merged(subtype, existing.get("subtype")),
             color=_merged(color, existing.get("color")),
             vendor=_merged(vendor, existing.get("vendor")),
-            starting_g=starting_g if starting_g is not None else existing.get("starting_g"),
+            starting_g=_merged(starting_g, existing.get("starting_g")),
             remaining_g=merged_remaining_g, remaining_quality=remaining_quality,
             remaining_as_of=remaining_as_of,
             notes=_merged(notes, existing.get("notes")),

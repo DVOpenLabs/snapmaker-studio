@@ -52,6 +52,15 @@ export interface RunNozzleFetchParams {
   wait?: (ms: number) => Promise<void>;
 }
 
+/** Whether whatever nozzle data is currently displayed (fetched for
+ *  `lastHost`) must be cleared before a fetch for `nextHost` can show
+ *  anything — a different host's sizes must never linger under the new
+ *  host's line while its own fetch is still in flight (CodeRabbit PR #41
+ *  #5). False for the same host, so a manual Refresh doesn't flash empty. */
+export function nozzleDataStale(lastHost: string | null, nextHost: string | null): boolean {
+  return lastHost !== nextHost;
+}
+
 export interface GenerationGuard {
   /** Starts a new generation, invalidating every one issued before it.
    *  Returns the new generation's id, to capture in an `isCurrent` closure. */

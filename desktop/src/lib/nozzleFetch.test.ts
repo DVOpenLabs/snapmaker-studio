@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createGenerationGuard, runNozzleFetch } from "./nozzleFetch";
+import { createGenerationGuard, nozzleDataStale, runNozzleFetch } from "./nozzleFetch";
 import type { NozzleStatus } from "@/api";
 
 function deferred<T>() {
@@ -249,5 +249,19 @@ describe("createGenerationGuard (R4-D2: a reusable, testable freshness primitive
     expect(on.quick).not.toHaveBeenCalled();
     expect(on.live).not.toHaveBeenCalled();
     expect(api.nozzleStatus).toHaveBeenCalledTimes(1); // phase-2 never even requested
+  });
+});
+
+describe("nozzleDataStale (CodeRabbit PR #41 #5: never show a stale host's sizes)", () => {
+  it("is true when the host changed, so the old host's data must be cleared", () => {
+    expect(nozzleDataStale("printer-a.local", "printer-b.local")).toBe(true);
+  });
+
+  it("is false for the same host, so a manual Refresh doesn't flash empty", () => {
+    expect(nozzleDataStale("printer-a.local", "printer-a.local")).toBe(false);
+  });
+
+  it("is true from no host connected to a host (first connect)", () => {
+    expect(nozzleDataStale(null, "printer-a.local")).toBe(true);
   });
 });
