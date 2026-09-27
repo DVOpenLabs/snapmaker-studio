@@ -172,7 +172,7 @@ export default function PrinterNozzleSettings() {
           // this printer". The rows still show the save that just succeeded.
           <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            Couldn't check the printer just now — rows show your saved sizes.
+            Couldn't check the printer just now — these rows show what you have saved, not a live reading.
           </p>
         ) : showNothingReportedBanner && (
           <p className="text-[11px] text-muted-foreground">
