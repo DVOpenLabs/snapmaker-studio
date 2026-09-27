@@ -24,6 +24,16 @@
 # $ACCEPT_WORKDIR/evidence/. Anonymized: no real IP/hostname/username in
 # the JSON (the synthetic user this script creates is not a real identity).
 #
+# v1.2: the "API lane" (the standalone sidecar section, below) also proves
+# local spool notes and per-printer nozzle confirmation directly against the
+# installed sidecar's loopback API (L1/L2), and that both persist in
+# library.db after that sidecar process exits (L3, checked with sqlite3 —
+# this harness has no Python/Node by design). L4 is the pre-existing
+# zero-orphan-processes check further down. L5 is a Settings screenshot
+# through the same xdotool/imagemagick mechanism as the dashboard one, or a
+# concrete `skipped` reason when driving that specific route isn't practical
+# in this harness.
+#
 # Designed to be safe to run on a shared/real machine, not just an ephemeral
 # CI container (L8/L10 may run it that way): the test account is unique per
 # invocation, and this run refuses to proceed rather than touch one it
@@ -452,6 +462,26 @@ if [ -n "$window_id" ]; then
   fi
 fi
 
+# L5: a Settings screenshot, through the same xdotool/imagemagick mechanism as
+# the dashboard one above — skipped with this concrete reason rather than
+# guessed at: this harness has no established, reliable way to click a
+# specific in-app nav item through xdotool key/mouse events (only window
+# discovery by title is used elsewhere in this file), so driving the app to
+# the Settings route specifically is not attempted here. The dashboard
+# screenshot above already proves the installed app renders the real UI, not
+# a blank window; the Windows harness (tools/acceptance/checks.mjs, phases
+# spool-nozzle-empty/spool-notes-create/nozzle-confirm) is what actually
+# drives and screenshots the Settings route pixel-for-pixel.
+#
+# L-c (harness-fix round 1, Opus 8): this harness has no separate skip state —
+# add_check only ever records ok=true/false, and the pre-existing "Purge
+# leaves nothing behind" skip (further down, "package pre-existed this run")
+# already uses exactly this same `"true"` + `"skipped: <reason>"` convention.
+# This keeps that same convention rather than inventing a new one here, and
+# says so explicitly: a "skipped: ..." detail on an ok=true check is this
+# harness's only skip state, by design, everywhere it appears.
+add_check "L5: Settings screenshot" "true" "skipped: no reliable in-app route navigation in this harness (see comment above); 01-dashboard.png already proves the app renders"
+
 echo "=== Verifying the launch-file path reached the engine (library.db row) ==="
 db_path="$xdg_data_home/SnapmakerStudio/library.db"
 db_found="false"
@@ -782,6 +812,16 @@ echo "=== Headless API lane: Doctor / Prepare / fidelity / report / painted path
 # (backend/tests/fixtures/painted/PROVENANCE.md: the OrcaSlicer-painted
 # fixture has exactly 5 referenced slots, 8 painted triangles), not GUI
 # coordinate-clicking guesses.
+# L-b (harness-fix round 1): declared here, unconditionally, before any of the
+# API-lane's own conditionals — under `set -u` (line 57), a variable read only
+# ever assigned inside a skipped `if` (e.g. the sidecar started but its
+# handshake never arrived) aborts the WHOLE script the moment something later
+# and unconditional (the L3 sqlite checks) reads it. `spool_host` and
+# `api_db_path` are read unconditionally further down; both are set here so
+# that can never happen.
+spool_host="ci-u1.local"
+api_db_path="$xdg_data_home/SnapmakerStudio/library.db"
+
 api_workdir="$user_home/api-lane"
 runuser -u "$test_user" -- mkdir -p "$api_workdir"
 declare -A api_fixtures=(
@@ -845,10 +885,46 @@ if [ "$api_ok" = "true" ]; then
 
     if [ -n "$api_port" ] && [ -n "$api_token" ]; then
       api_base="http://127.0.0.1:$api_port"
+      # L-d (harness-fix round 2, Sol 1, CRITICAL): every call site below
+      # invokes `api_curl` as `x="$(api_curl ...)"` — that `$(...)` forks a
+      # SUBSHELL to capture stdout, so a plain shell-variable assignment made
+      # INSIDE api_curl (the round-1 `api_curl_last_status="..."` side
+      # channel) never survives past that subshell exiting; the caller's own
+      # copy of the variable was never touched and the "status" every L1/L2
+      # check read was silently whatever it was before (usually empty/stale).
+      # A real file, unlike a shell variable, is an OS-level side effect that
+      # DOES survive the subshell — status is written there instead, and read
+      # back with api_status() after each call.
+      api_curl_status_file="$api_workdir/last_status.txt"
       api_curl() {
-        curl -sS --max-time 15 -H "X-Auth-Token: $api_token" -H "Content-Type: application/json" \
-          -d "$2" "$api_base$1" 2>/dev/null || true
+        local response
+        response="$(curl -sS --max-time 15 -H "X-Auth-Token: $api_token" -H "Content-Type: application/json" \
+          -d "$2" -w $'\n%{http_code}' "$api_base$1" 2>/dev/null || true)"
+        printf '%s' "$response" | tail -n1 > "$api_curl_status_file"
+        printf '%s' "$response" | sed '$d'
       }
+      api_status() { cat "$api_curl_status_file" 2>/dev/null || echo "000"; }
+
+      # F2 (fix-round-3, Sol 1 BLOCKING): the round-2 self-test called a bare
+      # inline `curl` — proving curl's own status reporting, not the actual
+      # mechanism (`api_curl` writing to $api_curl_status_file, `api_status()`
+      # reading it back) that every real L1/L2 check downstream depends on.
+      # Fixed: this now calls the REAL api_curl function, with the real
+      # $api_token temporarily swapped for a wrong one, and reads the result
+      # through the real api_status() — the exact same two functions, the
+      # exact same file, that every check below uses. If this mechanism ever
+      # regresses to the round-1 bug (status silently empty/stale because a
+      # caller wrapped api_curl in `$(...)` and lost an in-memory variable),
+      # THIS check fails first and names the real cause, instead of every
+      # L1/L2 check downstream failing for an unrelated-looking reason.
+      api_token_for_self_test="$api_token"
+      api_token="wrong-token-for-self-test"
+      self_test_out="$(api_curl /local_spools "$(jq -n --arg h "$spool_host" '{host:$h}')")"
+      self_test_status="$(api_status)"
+      api_token="$api_token_for_self_test"
+      add_check "F2 self-test: the REAL api_curl/api_status mechanism is proven (a known-bad token reads back as 401)" \
+        "$([ "$self_test_status" = "401" ] && echo true || echo false)" \
+        "HTTP $self_test_status $(echo "$self_test_out" | jq -c '.' 2>/dev/null)"
 
       doctor_3mf="$(api_curl /doctor "$(jq -n --arg p "$api_workdir/demo_u1_showcase.3mf" '{path:$p}')")"
       add_check "API /doctor on real 3MF" "$(echo "$doctor_3mf" | jq -e '.verdict' >/dev/null 2>&1 && echo true || echo false)" "$(echo "$doctor_3mf" | jq -c '{verdict}' 2>/dev/null)"
@@ -912,6 +988,70 @@ if [ "$api_ok" = "true" ]; then
         add_check "API /fidelity audits the real prepared output" "false" "no output to audit (Prepare failed above)"
         add_check "API /report runs on the real prepared output" "false" "no output to report on (Prepare failed above)"
       fi
+
+      # --- v1.2: local spool notes + nozzle confirmation, directly against ---
+      # --- the installed sidecar's loopback API (L1/L2) ----------------------
+      # L-a (harness-fix round 1): every assertion below requires the expected
+      # HTTP status AND that the response actually has the array key it reads
+      # — `(.rows // [])` on a missing key silently defaults to an empty
+      # array, so "no row matches" and "the response was a 500 error body
+      # with no rows key at all" used to read as the exact same, wrongly
+      # passing, result.
+      save_out="$(api_curl /local_spools/save "$(jq -n --arg h "$spool_host" '{host:$h, slot:0, material:"PLA", color:"#1A2B3C", vendor:"Acme", starting_g:1000, remaining_g:750}')")"
+      save_status="$(api_status)"
+      add_check "L1: /local_spools/save creates a note" \
+        "$([ "$save_status" = "200" ] && echo "$save_out" | jq -e '(has("rows")) and (.rows|type=="array") and (.rows|any(.slot==0 and .material=="PLA"))' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $save_status $(echo "$save_out" | jq -c '.rows[0] // "no rows key"' 2>/dev/null)"
+
+      list_out="$(api_curl /local_spools "$(jq -n --arg h "$spool_host" '{host:$h}')")"
+      list_status="$(api_status)"
+      add_check "L1: /local_spools lists the saved note" \
+        "$([ "$list_status" = "200" ] && echo "$list_out" | jq -e '(has("rows")) and (.rows|type=="array") and (.rows|any(.slot==0))' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $list_status"
+
+      del_out="$(api_curl /local_spools/delete "$(jq -n --arg h "$spool_host" '{host:$h, slot:0, id:null}')")"
+      del_status="$(api_status)"
+      add_check "L1: /local_spools/delete removes the note" \
+        "$([ "$del_status" = "200" ] && echo "$del_out" | jq -e '(has("rows")) and (.rows|type=="array") and ((.rows|any(.slot==0))|not)' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $del_status $(echo "$del_out" | jq -c '.rows // "no rows key"' 2>/dev/null)"
+
+      # L-a: the first status read uses probe:false — nothing has confirmed
+      # anything yet, so this is only ever reading the current revision, and
+      # skipping a live printer probe against an address nothing is listening
+      # on saves real time without proving anything less.
+      nz_status1="$(api_curl /nozzles/status "$(jq -n --arg h "$spool_host" '{host:$h, port:7125, probe:false}')")"
+      nz_status1_status="$(api_status)"
+      rev1="$(echo "$nz_status1" | jq -r '.revision // 0')"
+      nz_confirm="$(api_curl /nozzles/confirm "$(jq -n --arg h "$spool_host" --argjson r "$rev1" '{host:$h, port:7125, diameters:[0.4,0.4,0.6,null], expected_revision:$r}')")"
+      nz_confirm_status="$(api_status)"
+      add_check "L2: /nozzles/status(probe:false) answers before any confirmation" \
+        "$([ "$nz_status1_status" = "200" ] && echo "$nz_status1" | jq -e 'has("revision")' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $nz_status1_status"
+      add_check "L2: /nozzles/confirm accepts the current revision" \
+        "$([ "$nz_confirm_status" = "200" ] && echo "$nz_confirm" | jq -e '(has("toolheads")) and (.toolheads|type=="array") and (.toolheads[0].confirmed==0.4)' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $nz_confirm_status $(echo "$nz_confirm" | jq -c '.toolheads // "no toolheads key"' 2>/dev/null)"
+
+      # L-a: the 409 itself is asserted by STATUS CODE, not only by the error
+      # field a differently-broken response could also happen to carry.
+      stale_confirm="$(api_curl /nozzles/confirm "$(jq -n --arg h "$spool_host" --argjson r "$rev1" '{host:$h, port:7125, diameters:[0.5,0.5,0.5,null], expected_revision:$r}')")"
+      stale_status="$(api_status)"
+      add_check "L2: a stale expected_revision is refused with HTTP 409" \
+        "$([ "$stale_status" = "409" ] && echo "$stale_confirm" | jq -e '.error=="stale"' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $stale_status $(echo "$stale_confirm" | jq -c '.' 2>/dev/null)"
+
+      rev2="$(echo "$nz_confirm" | jq -r '.revision // 0')"
+      nz_clear="$(api_curl /nozzles/clear "$(jq -n --arg h "$spool_host" --argjson r "$rev2" '{host:$h, port:7125, expected_revision:$r}')")"
+      clear_status="$(api_status)"
+      add_check "L2: /nozzles/clear round-trips" \
+        "$([ "$clear_status" = "200" ] && echo "$nz_clear" | jq -e '(has("toolheads")) and (.toolheads|type=="array") and (.toolheads|all(.confirmed==null))' >/dev/null 2>&1 && echo true || echo false)" \
+        "HTTP $clear_status"
+
+      # Left in place deliberately: L3 (below) needs real rows still in
+      # library.db (and readable through a relaunched sidecar's own API) after
+      # THIS sidecar process has fully exited.
+      api_curl /local_spools/save "$(jq -n --arg h "$spool_host" '{host:$h, slot:1, material:"PETG", starting_g:1000, remaining_g:900}')" >/dev/null
+      rev3="$(echo "$nz_clear" | jq -r '.revision // 0')"
+      api_curl /nozzles/confirm "$(jq -n --arg h "$spool_host" --argjson r "$rev3" '{host:$h, port:7125, diameters:[0.4,null,null,null], expected_revision:$r}')" >/dev/null
     fi
 
     # Close our end of the fifo — the sidecar's stdin lifeline blocks on
@@ -925,6 +1065,76 @@ if [ "$api_ok" = "true" ]; then
     done
     add_check "Standalone sidecar exits via the stdin lifeline (non-root)" "$([ "$lifeline_exited" -eq 0 ] && echo true || echo false)" ""
     [ "$lifeline_exited" -ne 0 ] && { kill -9 "$api_sidecar_pid" 2>/dev/null || true; }
+
+    # L3: read straight off disk, after the writer process has fully exited —
+    # the strongest simple proof that this is real persistence in the XDG
+    # data dir, not state the still-running process merely holds in memory.
+    add_check "L3: the spool note persisted in library.db after the sidecar exited" \
+      "$([ -f "$api_db_path" ] && [ "$(sqlite3 "$api_db_path" "SELECT COUNT(*) FROM spools WHERE host='$spool_host' AND slot=1;" 2>/dev/null)" = "1" ] && echo true || echo false)" \
+      "$api_db_path"
+    add_check "L3: the nozzle confirmation persisted in library.db after the sidecar exited" \
+      "$([ -f "$api_db_path" ] && [ "$(sqlite3 "$api_db_path" "SELECT COUNT(*) FROM nozzle_confirmations WHERE host='$spool_host' AND diameter IS NOT NULL;" 2>/dev/null || echo 0)" -ge 1 ] && echo true || echo false)" \
+      "$api_db_path"
+
+    # L-b (Sol 6): a real relaunch, not only a fresh sqlite3 read — a SECOND
+    # standalone sidecar process, same $xdg_data_home, reading the same notes
+    # back through its own API.
+    relaunch_fifo="$api_workdir/sidecar-stdin-2.fifo"
+    runuser -u "$test_user" -- mkfifo "$relaunch_fifo"
+    relaunch_handshake="$api_workdir/handshake-2.json"
+    runuser -u "$test_user" -- env DISPLAY=":$x_display" XDG_DATA_HOME="$xdg_data_home" HOME="$user_home" \
+      SNAPSTUDIO_PARENT_LIFELINE=stdin-v1 SNAPSTUDIO_PARENT_PID=$$ \
+      "$sidecar_exe" < "$relaunch_fifo" > "$relaunch_handshake" 2>"$api_workdir/sidecar-2.log" &
+    relaunch_launcher_pid=$!
+    owned_pids+=("$relaunch_launcher_pid")
+    exec 9> "$relaunch_fifo"
+
+    relaunch_sidecar_pid="$(wait_for_process_by_uid_and_argv0 "$test_uid" "$sidecar_exe" 40 || true)"
+    add_check "L3: the sidecar relaunches standalone against the same data dir" \
+      "$([ -n "$relaunch_sidecar_pid" ] && echo true || echo false)" "PID ${relaunch_sidecar_pid:-none}"
+
+    if [ -n "$relaunch_sidecar_pid" ]; then
+      owned_pids+=("$relaunch_sidecar_pid")
+      relaunch_port="" relaunch_token=""
+      for _ in $(seq 1 40); do
+        if [ -s "$relaunch_handshake" ]; then
+          relaunch_port="$(jq -r '.port // empty' "$relaunch_handshake" 2>/dev/null || true)"
+          relaunch_token="$(jq -r '.token // empty' "$relaunch_handshake" 2>/dev/null || true)"
+          [ -n "$relaunch_port" ] && [ -n "$relaunch_token" ] && break
+        fi
+        sleep 0.5
+      done
+      if [ -n "$relaunch_port" ] && [ -n "$relaunch_token" ]; then
+        relaunch_base="http://127.0.0.1:$relaunch_port"
+        relaunch_curl() {
+          curl -sS --max-time 15 -H "X-Auth-Token: $relaunch_token" -H "Content-Type: application/json" \
+            -d "$2" "$relaunch_base$1" 2>/dev/null || true
+        }
+        relaunch_list="$(relaunch_curl /local_spools "$(jq -n --arg h "$spool_host" '{host:$h}')")"
+        add_check "L3: the spool note reads back through a relaunched sidecar's own API" \
+          "$(echo "$relaunch_list" | jq -e '(has("rows")) and (.rows|type=="array") and (.rows|any(.slot==1 and .material=="PETG"))' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$relaunch_list" | jq -c '.rows // "no rows key"' 2>/dev/null)"
+
+        relaunch_nz="$(relaunch_curl /nozzles/status "$(jq -n --arg h "$spool_host" '{host:$h, port:7125, probe:false}')")"
+        add_check "L3: the nozzle confirmation reads back through a relaunched sidecar's own API" \
+          "$(echo "$relaunch_nz" | jq -e '(has("toolheads")) and (.toolheads|type=="array") and (.toolheads|any(.confirmed==0.4))' >/dev/null 2>&1 && echo true || echo false)" \
+          "$(echo "$relaunch_nz" | jq -c '.toolheads // "no toolheads key"' 2>/dev/null)"
+      else
+        add_check "L3: the spool note reads back through a relaunched sidecar's own API" "false" "handshake not received"
+        add_check "L3: the nozzle confirmation reads back through a relaunched sidecar's own API" "false" "handshake not received"
+      fi
+
+      exec 9<&-
+      relaunch_deadline=$(($(date +%s) + 10))
+      relaunch_exited=1
+      while [ "$(date +%s)" -lt "$relaunch_deadline" ]; do
+        kill -0 "$relaunch_sidecar_pid" 2>/dev/null || { relaunch_exited=0; break; }
+        sleep 0.25
+      done
+      [ "$relaunch_exited" -ne 0 ] && { kill -9 "$relaunch_sidecar_pid" 2>/dev/null || true; }
+    else
+      exec 9<&- 2>/dev/null || true
+    fi
   else
     exec 8<&- 2>/dev/null || true
   fi

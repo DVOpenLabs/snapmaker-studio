@@ -22,6 +22,12 @@
 # Usage:
 #   pwsh -File tools/acceptance/run.ps1 [-Installer <path>] [-KeepInstall]
 #        [-SpoolmanUrl host:port] [-BambuddyUrl host:port]
+#
+# v1.2: this run now also drives the spool-note and nozzle-confirmation phases
+# in checks.mjs (W1-W9), no extra parameter needed — they run against the U1's
+# stock placeholder host, with no printer present. A3.7: the acceptance.json
+# report is now also swept for bare/bracketed IPv6 and IPv4 addresses, and the
+# run fails outright if a supplied provider address survives redaction.
 
 [CmdletBinding()]
 param(
@@ -347,6 +353,29 @@ try {
     $code = Invoke-Phase "novice" $sampleWork $gcodeWork
     Add-Check "First-evening mistakes are answered, not ignored" ($code -eq 0)
 
+    # --- v1.2: local spool notes and per-printer nozzle confirmation ---------
+    #
+    # No printer is present for this half of the run (host stays the U1's
+    # stock mDNS placeholder), which is deliberate: these checks prove the
+    # local-only note path end to end in the installed build without needing
+    # real hardware. The real-U1 half of the same feature (a live nozzle
+    # reading and a conflict against it) is tools/hardware/checks.mjs +
+    # verify.ps1, run separately against an actual printer.
+    $code = Invoke-Phase "spool-nozzle-empty"
+    Add-Check "Spool notes and nozzle empty states render (W1/W6/W9)" ($code -eq 0)
+
+    $code = Invoke-Phase "spool-notes-create"
+    Add-Check "Spool notes are created through the installed UI (W2)" ($code -eq 0)
+
+    $code = Invoke-Phase "spool-edit-validate"
+    Add-Check "Editing, clearing and validating a spool note behave as specified (W3/W5/W9)" ($code -eq 0)
+
+    $code = Invoke-Phase "spool-record-used"
+    Add-Check "Recording filament used shows an estimate, not a measurement (W4)" ($code -eq 0)
+
+    $code = Invoke-Phase "nozzle-confirm"
+    Add-Check "Nozzle sizes are confirmed through the installed UI (W6)" ($code -eq 0)
+
     $gcodeHashAfter = (Get-FileHash $gcodeWork -Algorithm SHA256).Hash
     Add-Check "Sliced job is byte-identical afterwards" ($gcodeHashBefore -eq $gcodeHashAfter)
 
@@ -368,6 +397,19 @@ try {
     Start-Sleep -Seconds 12
     $code = Invoke-Phase "painted"
     Add-Check "Painted colour is shown in the installed build" ($code -eq 0)
+
+    # --- v1.2: the same relaunch proves persistence, then destructive removal -
+    #
+    # The app was just closed (Stop-Tracked above) and started again with a
+    # different project — a genuine process relaunch, the same mechanism W7
+    # asks for. What was created before that relaunch must still be there.
+    $code = Invoke-Phase "spool-nozzle-restored"
+    Add-Check "Spool notes and nozzle confirmations survive a relaunch (W7)" ($code -eq 0)
+
+    # Destructive, so run last among the v1.2 checks: nothing after this
+    # depends on the notes or nozzle confirmations it removes.
+    $code = Invoke-Phase "spool-nozzle-remove"
+    Add-Check "Removing nozzles, deleting a note and switching provider kind behave as specified (W8)" ($code -eq 0)
 
     # --- the material provider, through the installed UI ----------------------
     #
@@ -561,22 +603,138 @@ $report = [pscustomobject]@{
 $reportPath = Join-Path $outDir "acceptance.json"
 
 # The repository's own rules forbid local paths and usernames in tracked files,
-# and this report is meant to be committed as release evidence. Replace them
-# here rather than remembering to do it by hand later.
-$json = $report | ConvertTo-Json -Depth 5
-foreach ($pair in @(
-    @{ from = $repo;      to = "<repo>" },
-    @{ from = $WorkDir;   to = "<workdir>" },
-    @{ from = $env:TEMP;  to = "<temp>" },
-    @{ from = $env:USERNAME; to = "<user>" })) {
-    if ($pair.from) {
-        $json = $json.Replace($pair.from.Replace('\', '\\'), $pair.to)
-        $json = $json.Replace($pair.from, $pair.to)
+# and this report (and every per-phase results-*.json checks.mjs writes
+# straight into $outDir) is meant to be committed as release evidence.
+#
+# A1 (harness-fix round 1, Opus 5/Sol 4): this used to scrub only the
+# in-memory acceptance.json string — every results-<phase>.json and log file
+# checks.mjs writes directly to $outDir was never touched at all. It also
+# leak-checked that SAME already-replaced string, which can never fail (a
+# vacuous pass Sol flagged as BLOCK). Fixed: every text file actually in
+# $outDir is scrubbed in place, and the final leak check re-reads every file
+# fresh off disk afterward, independent of any in-memory string this script
+# built along the way.
+function Scrub-EvidenceText([string]$text) {
+    foreach ($pair in $literalRedactionPairs) {
+        $text = $text.Replace($pair.from.Replace('\', '\\'), $pair.to)
+        $text = $text.Replace($pair.from, $pair.to)
+    }
+    # IPv4.
+    $text = [regex]::Replace($text, '\b(?:\d{1,3}\.){3}\d{1,3}\b', '<ip>')
+    # Bracketed IPv6 (A7-2, Opus): requires either a literal "::" or at least
+    # 3 colons inside the brackets — a short bracketed list like a log's
+    # "[22:14:05]" (2 colons) or "[1]"/"[2]" (no colon at all) used to match
+    # the old, looser "any hex/colon chars in brackets" pattern and get
+    # wrongly redacted; neither shape is a real IPv6 address.
+    $text = [regex]::Replace($text,
+        '\[(?:[0-9a-fA-F]*::[0-9a-fA-F:]*|(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{0,4})(?:%[0-9a-zA-Z]+)?\]',
+        '<ip>')
+    # Bare compressed IPv6 (fe80::1, 2001:db8::1, ::1, fd00::abcd:1234, ...),
+    # with an optional zone id. Requires the literal "::" — a plain clock
+    # time like 22:14:05 has no double colon and can never match this, unlike
+    # a broader hex-run regex.
+    #
+    # F7 (Opus polish): also requires a REAL hex group immediately touching
+    # the "::" on at least one side — bare "::" with nothing hex-shaped on
+    # either side (e.g. "[System.IO.File]::Read(...)", a plain PowerShell/.NET
+    # member-access token, not an address) used to match the old, looser
+    # "{0,4} on both sides" pattern, since both sides being zero-width was
+    # still allowed. The two alternatives below require the LEADING group
+    # non-empty (covers "fe80::", "fd00::abcd:1234") or the TRAILING group
+    # non-empty (covers "::1") — never both empty at once.
+    $text = [regex]::Replace($text,
+        '(?<![0-9a-fA-F:])(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){0,7}::(?:[0-9a-fA-F]{0,4}:){0,7}[0-9a-fA-F]{0,4}|[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){0,7}::(?:[0-9a-fA-F]{0,4}:){0,7}[0-9a-fA-F]{1,4})(?:%[0-9a-zA-Z]+)?(?![0-9a-fA-F:])',
+        '<ip>')
+    # A7-4 (Opus): bare, FULLY EXPANDED IPv6 (8 groups, exactly 7 colons, no
+    # "::" at all) — the round-1 pattern only matched a compressed form. A
+    # plain clock time has only 2 colons and can never satisfy "exactly 7", so
+    # this is still never a false positive on one.
+    $text = [regex]::Replace($text,
+        '(?<![0-9a-fA-F:])(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}(?:%[0-9a-zA-Z]+)?(?![0-9a-fA-F:])',
+        '<ip>')
+    return $text
+}
+
+$literalRedactionPairs = @(
+    @{ from = $repo;         to = "<repo>" },
+    @{ from = $WorkDir;      to = "<workdir>" },
+    @{ from = $env:TEMP;     to = "<temp>" },
+    @{ from = $env:USERNAME; to = "<user>" },
+    @{ from = $SpoolmanUrl;  to = "<provider-on-lan>" },
+    @{ from = $BambuddyUrl;  to = "<provider-on-lan>" }
+) | Where-Object { $_.from }
+
+$json = Scrub-EvidenceText ($report | ConvertTo-Json -Depth 5)
+$json | Set-Content $reportPath -Encoding utf8
+
+$textExtensions = @(".json", ".log", ".txt")
+foreach ($file in @(Get-ChildItem $outDir -File -Recurse -ErrorAction SilentlyContinue)) {
+    if ($file.FullName -eq $reportPath) { continue } # already scrubbed and written above
+    if ($textExtensions -notcontains $file.Extension.ToLowerInvariant()) { continue }
+    $raw = $null
+    try { $raw = Get-Content -Raw -Path $file.FullName -ErrorAction Stop } catch { continue }
+    if ($null -eq $raw) { continue }
+    $scrubbed = Scrub-EvidenceText $raw
+    if ($scrubbed -ne $raw) {
+        $scrubbed | Set-Content -Path $file.FullName -Encoding utf8 -NoNewline
     }
 }
-$json | Set-Content $reportPath -Encoding utf8
+
+# Final scan: re-read every file fresh off disk (byte-safe, so a binary
+# screenshot is scanned too, not just text) and fail the run if the RAW
+# supplied provider address is still found anywhere in the evidence
+# directory — independent of the $json variable above, which would trivially
+# "pass" having just been replaced in it.
+#
+# A7-3 (Opus): matched case-INsensitively, and both WITH and WITHOUT the
+# address's own port — a log line that dropped the ":port" suffix, or wrote
+# the hostname in a different case, used to slip past a case-sensitive,
+# exact-string Contains() check.
+# F7 (Opus polish): also strips any "http(s)://" prefix, in addition to the
+# port, so a candidate supplied as a full URL still produces the bare-host
+# form to match against.
+function Get-LeakCandidates([string]$addr) {
+    if (-not $addr) { return @() }
+    $out = New-Object System.Collections.Generic.List[string]
+    $out.Add($addr)
+    $noScheme = $addr -replace '^[a-zA-Z][a-zA-Z0-9+.-]*://', ''
+    if ($noScheme -ne $addr) { $out.Add($noScheme) }
+    foreach ($candidate in @($addr, $noScheme)) {
+        if ($candidate -match '^(.*):(\d+)$') { $out.Add($matches[1]) }
+    }
+    return @($out | Select-Object -Unique)
+}
+$leakCandidates = @(
+    (Get-LeakCandidates $SpoolmanUrl) + (Get-LeakCandidates $BambuddyUrl)
+) | Select-Object -Unique
+# F4 (fix-round-3, Sol 4 BLOCKING): records/prints the FILENAME only on a hit
+# — never the candidate string itself. The round-2 code embedded the raw
+# address into `$leaked` (`"$($file.Name): $candidate"`) and then printed
+# that straight to the console via Write-Host, which is exactly the "write
+# the raw address somewhere" mistake H8 exists to prevent elsewhere in this
+# same round — it just hadn't been fixed here yet.
+$leaked = New-Object System.Collections.Generic.List[string]
+if ($leakCandidates.Count -gt 0) {
+    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+    foreach ($file in @(Get-ChildItem $outDir -File -Recurse -ErrorAction SilentlyContinue)) {
+        $text = $null
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $text = $latin1.GetString($bytes)
+        } catch { continue }
+        foreach ($candidate in $leakCandidates) {
+            if ($text.IndexOf($candidate, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                if (-not $leaked.Contains($file.Name)) { $leaked.Add($file.Name) }
+                break
+            }
+        }
+    }
+}
+if ($leaked.Count -gt 0) {
+    Write-Host "FAIL  A supplied provider address survived redaction in the evidence directory (F4/A3.7/A1) — found in: $($leaked -join ', ')"
+}
 
 Write-Host ""
 Write-Host "$passed/$total checks passed"
 Write-Host "Evidence and screenshots: $outDir"
-if ($passed -ne $total) { exit 1 }
+if ($passed -ne $total -or $leaked.Count -gt 0) { exit 1 }
