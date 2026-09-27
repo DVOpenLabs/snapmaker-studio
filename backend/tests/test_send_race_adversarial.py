@@ -89,7 +89,7 @@ def upload(job, expect, uploaded):
 def test_a_check_records_what_it_looked_at(job, world):
     result = check(job)
     assert result["state"]["token"]
-    assert set(result["state"]["hashes"]) == {"job", "printer", "materials", "provenance"}
+    assert set(result["state"]["hashes"]) == {"job", "printer", "materials", "provenance", "nozzle_notes"}
 
 
 def test_the_same_world_produces_the_same_fingerprint(job, world):

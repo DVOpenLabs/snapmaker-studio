@@ -25,9 +25,57 @@
 // the seeded spool ids, enable the provider-against-hardware checks. Without
 // them everything else still runs and the provider checks say they were
 // skipped rather than quietly passing.
+//
+// v1.2 (R1/R2): also proves the per-printer nozzle confirmation against this
+// real machine — a live reading on every toolhead, a note that disagrees
+// becoming a conflict row with the printer still winning, and (via the
+// `nonAllowedPrinterPosts` network-log assertion) that none of it ever POSTs
+// to a `/printer/*` control route. The redacted screenshot this adds
+// (v12-nozzle-live.png) goes through redactDom() first (A2.3).
+//
+// v1.2 fix-up (real Windows run): a fixed wait after navigating to Settings
+// raced the nozzle status fetch, which has been observed taking several
+// seconds against a real printer — R1/R2 now poll via
+// waitForNozzleSettled() (up to 25s, returns the last-seen state either way)
+// and scrollNozzleCardIntoView() before the screenshot, which otherwise only
+// showed whatever card sits above it.
+//
+// v1.2 harness-fix round 1 (real-U1 run, 44/47 — Opus/Sol BLOCK on artifact
+// 073d7d20f31e1bf): R1 never pointed the app at the SUPPLIED printer — the
+// Settings card read "Nozzles · for u1.local" because the app's own printer
+// address (usePrinter/localStorage `u1Host`) was still the placeholder.
+// setAppPrinterHost() now fills the real Settings address field with
+// `printerHost` before R1 reads anything (H1). R2 now drives the conflict
+// through the real select + Save and the real "Remove my note" button
+// (H2) — one direct /nozzles/confirm bootstrap write is still unavoidable to
+// unlock that row's select at all: NozzleTable hides the select whenever a
+// toolhead is `reported_live` with no stored note yet (a toolhead the
+// printer currently answers for has nothing to override), so the very first
+// note for a live-reporting toolhead cannot be typed through this table; see
+// the comment at that call site. Every conflict/removal assertion reads a
+// fresh `/nozzles/status` with `probe:true`, never the app's own
+// `/nozzles/confirm` reply (that reply is `probe:false` by backend design —
+// R2-B6 — so it cannot prove the current conflict state). H3: every capture,
+// including hardware.png, is now redacted (or taken off the Settings route
+// entirely) and skipped on any residue. H4: anonymise()/redactDom()/the final
+// leak scan all match the raw supplied host AND its canonical form
+// (lowercase, one trailing dot stripped, IPv6 bracketed+compressed),
+// case-insensitively, and the run FAILS if either form survives anywhere in
+// the evidence directory. H5: the network-log assertion now also proves the
+// request listener actually saw allow-listed printer traffic (>=1), so a
+// silently-broken listener can no longer pass by finding nothing.
+//
+// F6: THE PROCESS EXIT CODE IS AUTHORITATIVE, not hardware.json's own
+// `passed`/`total` fields. hardware.json is written once, before the final
+// evidence-directory leak scan (H8 — nothing is ever written again after
+// that scan runs), so it can legitimately read "every check passed" even on
+// a run whose exit code is still non-zero because the leak scan itself found
+// something. A caller (verify.ps1, or anyone reading this run's result)
+// must check `$LASTEXITCODE` / this process's exit status, not just parse
+// the JSON and assume 0 means clean.
 
 import { chromium } from "playwright-core";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const [, , cdpUrl, outDir, printerHost, samplePath] = process.argv;
@@ -44,6 +92,14 @@ const READ_ONLY_ROUTES = [
   // behind a different route, which is not in this list and never will be.
   "/send_check",
   "/material_plan",
+  // v1.2 (R1/R2): a per-printer nozzle confirmation is Studio's own local
+  // note, stored in the app's own database and keyed by the printer's
+  // address — it never reaches the printer at all, so it belongs on this
+  // read-only-of-the-machine list even though "confirm" sounds like a write.
+  // The network-log assertion below (`nonAllowedPrinterPosts`) is the actual
+  // proof that nothing was sent to the machine.
+  "/nozzles/status",
+  "/nozzles/confirm",
 ];
 
 // Anything that could change the machine's state. Asserted, not assumed.
@@ -75,9 +131,84 @@ const record = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
 };
 
-/** Replace the printer's address wherever it appears, at any depth. */
+/** Best-effort RFC5952-ish IPv6 compression, good enough for the common
+ *  forms this harness needs to match (already-compressed input, or a fully
+ *  expanded one) — this is a redaction aid, not the product's own host
+ *  validation, so it only has to be a plausible candidate string, not a
+ *  canonical parser. */
+function compressIPv6(addr) {
+  let groups;
+  if (addr.includes("::")) {
+    const [head, tail] = addr.split("::");
+    const headGroups = head ? head.split(":") : [];
+    const tailGroups = tail ? tail.split(":") : [];
+    const missing = Math.max(0, 8 - headGroups.length - tailGroups.length);
+    groups = [...headGroups, ...Array(missing).fill("0"), ...tailGroups];
+  } else {
+    groups = addr.split(":");
+  }
+  groups = groups.map((g) => (g === "" ? "0" : parseInt(g, 16).toString(16)));
+  let bestStart = -1, bestLen = 0, curStart = -1, curLen = 0;
+  for (let i = 0; i < groups.length; i += 1) {
+    if (groups[i] === "0") {
+      if (curStart === -1) curStart = i;
+      curLen += 1;
+      if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+    } else {
+      curStart = -1;
+      curLen = 0;
+    }
+  }
+  if (bestLen > 1) {
+    const before = groups.slice(0, bestStart).join(":");
+    const after = groups.slice(bestStart + bestLen).join(":");
+    return `${before}::${after}`;
+  }
+  return groups.join(":");
+}
+
+/** v1.2 (H4): the same normalisation the backend's `canonical_host()` applies
+ *  — lowercase a DNS name, strip exactly one trailing dot, bracket+compress
+ *  IPv6 — so redaction matches whatever form a route response echoes back,
+ *  not only the exact string typed on the command line. Best-effort: not
+ *  meant to reject anything, only to produce a second plausible candidate. */
+function canonicalHostGuess(raw) {
+  const h = (raw || "").trim();
+  if (!h) return "";
+  const isBracketed = h.startsWith("[") && h.endsWith("]");
+  const inner = isBracketed ? h.slice(1, -1) : h;
+  if (isBracketed || (h.match(/:/g) || []).length >= 2) {
+    try {
+      return `[${compressIPv6(inner.toLowerCase())}]`;
+    } catch {
+      return h.toLowerCase();
+    }
+  }
+  let lowered = h.toLowerCase();
+  if (lowered.length > 1 && lowered.endsWith(".") && !lowered.endsWith("..")) {
+    lowered = lowered.slice(0, -1);
+  }
+  return lowered;
+}
+
+// Both forms a route response could echo: the raw supplied address, and the
+// backend's canonicalisation of it. Deduplicated and never empty-stringed.
+const hostCandidates = [...new Set([printerHost, canonicalHostGuess(printerHost)])]
+  .filter((h) => h && h.length > 0);
+
+function redactText(text, candidates) {
+  let out = text;
+  for (const c of candidates) {
+    const escaped = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(escaped, "ig"), "<printer-on-lan>");
+  }
+  return out;
+}
+
+/** Replace the printer's address (raw AND canonical form, case-insensitively)
+ *  wherever it appears, at any depth. */
 const anonymise = (value) =>
-  JSON.parse(JSON.stringify(value).split(printerHost).join("<printer-on-lan>"));
+  JSON.parse(redactText(JSON.stringify(value), hostCandidates));
 
 async function appPage(browser) {
   const ctx = browser.contexts()[0];
@@ -106,9 +237,242 @@ async function callRoute(page, route, body) {
   );
 }
 
+/** v1.2 (A2.3/H4): redacts the printer's address — both the raw supplied form
+ *  and its canonical form, case-insensitively — out of visible text, input/
+ *  textarea values and the title/aria-label/placeholder/alt attributes, and
+ *  reports whether any of either form is still there. The caller must skip
+ *  the capture rather than ship a screenshot that still names the real
+ *  printer. */
+async function redactDom(page, hostTexts) {
+  const needles = (Array.isArray(hostTexts) ? hostTexts : [hostTexts]).filter(Boolean);
+  if (needles.length === 0) return true;
+  const stillPresent = await page.evaluate((rawNeedles) => {
+    const lowers = rawNeedles.map((n) => n.toLowerCase());
+    const res = rawNeedles.map((n) => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"));
+    const ATTRS = ["title", "aria-label", "placeholder", "alt"];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      for (const re of res) {
+        if (node.nodeValue && re.test(node.nodeValue)) {
+          node.nodeValue = node.nodeValue.replace(re, "your printer");
+        }
+      }
+    }
+    document.querySelectorAll("input, textarea").forEach((el) => {
+      for (const re of res) {
+        if (el.value && re.test(el.value)) el.value = el.value.replace(re, "your printer");
+      }
+    });
+    document.querySelectorAll("*").forEach((el) => {
+      for (const attr of ATTRS) {
+        const v = el.getAttribute(attr);
+        if (!v) continue;
+        for (const re of res) {
+          if (re.test(v)) el.setAttribute(attr, v.replace(re, "your printer"));
+        }
+      }
+    });
+    const bodyText = (document.body.innerText || "").toLowerCase();
+    const inputVals = [...document.querySelectorAll("input, textarea")]
+      .map((el) => el.value || "").join(" ").toLowerCase();
+    const attrVals = [...document.querySelectorAll("*")]
+      .flatMap((el) => ATTRS.map((a) => el.getAttribute(a) || "")).join(" ").toLowerCase();
+    const haystack = bodyText + " " + inputVals + " " + attrVals;
+    return lowers.some((lower) => haystack.includes(lower));
+  }, needles);
+  return !stillPresent;
+}
+
+/** Polls the Nozzles card until its initial load finishes ("Checking your
+ *  printer…" is gone) or `timeoutMs` elapses, returning the last-observed
+ *  body text either way — a fixed short wait has been observed racing a
+ *  status fetch that took 7-9s in a real run. */
+async function waitForNozzleSettled(page, timeoutMs = 25000) {
+  const deadline = Date.now() + timeoutMs;
+  let body = await page.locator("body").innerText();
+  while (Date.now() < deadline) {
+    if (!/Checking (the|your) printer/i.test(body)) break;
+    await page.waitForTimeout(500);
+    body = await page.locator("body").innerText();
+  }
+  return body;
+}
+
+/** A screenshot naming the Nozzles card must actually show it. */
+async function scrollNozzleCardIntoView(page) {
+  await page.evaluate(() => {
+    const heading = [...document.querySelectorAll("p")]
+      .find((el) => /Nozzles · for/i.test(el.textContent || ""));
+    const card = heading?.closest("div")?.parentElement || heading;
+    card?.scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(300);
+}
+
+/** v1.2 (H7/H6): scopes an assertion to exactly one toolhead's own `<tr>` —
+ *  a page-wide count (the round-1 approach) could pass on the right NUMBER
+ *  of "Reported live"/"Confirmed by you" rows while actually describing the
+ *  wrong toolheads. `n` is 1-based, matching the rendered "Toolhead N" text. */
+function toolheadRow(page, n) {
+  return page.locator("tr").filter({ hasText: `Toolhead ${n}` });
+}
+
+/** v1.2 (H6, F1 — fix-round-3, second real-run failure on this exact item):
+ *  forces the Nozzles card to refetch after a write made through the API
+ *  directly (a seeded note, in this case) rather than through the card's own
+ *  controller — the controller has no reason to know that happened, so
+ *  without this the card would keep showing what it already had.
+ *
+ *  Round-2's fix (re-filling the Settings host field with the SAME address)
+ *  was confirmed wrong by a real run: `settingsNozzleFetchTrigger(host)` only
+ *  changes when `host` itself changes, and re-filling a field with its own
+ *  current value is not a change — no re-render, no refetch, and the row
+ *  kept showing the pre-seed state. The card refetches on two things only:
+ *  a host change, or a genuine remount. This forces the second, exactly as
+ *  specified: navigate to "/" — the real Dashboard route ("/dashboard" is
+ *  NotFound and was never the fix) — wait for its own heading, then navigate
+ *  back to "/settings", which mounts a fresh PrinterNozzleSettings instance
+ *  and restarts its fetch. */
+async function forceNozzleCardRefetch(page) {
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await page.locator("h1").filter({ hasText: "Dashboard" }).waitFor({ state: "visible", timeout: 10000 });
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/settings");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+}
+
+/** v1.2 (H1): sets the app's OWN printer address — the same field a real
+ *  owner types into (Settings -> "Your Snapmaker U1") — to the supplied host,
+ *  so the Nozzles card (and everything else keyed by `usePrinter`) actually
+ *  points at this real printer instead of the "U1.local" placeholder it
+ *  otherwise defaults to. Filling this field calls the store's own setHost(),
+ *  which persists to localStorage and reactively restarts the Nozzles card's
+ *  fetch — no page reload needed. */
+async function setAppPrinterHost(page, host) {
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/settings");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await page.waitForTimeout(800);
+  await page.getByPlaceholder("U1.local").first().fill(host);
+  await page.waitForTimeout(500);
+}
+
+/** True while the Nozzles card's own Save/Remove all/Update my note/Remove my
+ *  note button is disabled — a save/clear currently re-probes the printer
+ *  (7-9s observed offline; still real network time against a real one), so a
+ *  click has to be followed by waiting for this to clear, not a fixed pause. */
+async function nozzleCardBusy(page) {
+  return page.evaluate(() => {
+    const heading = [...document.querySelectorAll("p")]
+      .find((el) => /Nozzles · for/i.test(el.textContent || ""));
+    const card = heading?.closest("div")?.parentElement || heading;
+    if (!card) return true;
+    const buttons = [...card.querySelectorAll("button")]
+      .filter((b) => /^(Save|Remove all|Update my note|Remove my note)/i
+        .test((b.textContent || "").trim()));
+    return buttons.some((b) => b.disabled);
+  });
+}
+
+/** Waits, after a click on the Nozzles card's own Save/Update/Remove/Remove
+ *  all, until that button is enabled again AND the card's own loading text is
+ *  gone, or `timeoutMs` elapses — always returning the last-observed body
+ *  text so a timeout still carries real evidence rather than a blind FAIL. */
+async function waitForNozzleIdle(page, timeoutMs = 25000) {
+  const deadline = Date.now() + timeoutMs;
+  let body = await page.locator("body").innerText();
+  let busy = (await nozzleCardBusy(page)) || /Checking (the|your) printer/i.test(body);
+  while (busy && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+    body = await page.locator("body").innerText();
+    busy = (await nozzleCardBusy(page)) || /Checking (the|your) printer/i.test(body);
+  }
+  return body;
+}
+
+/** v1.2 (H4/H8): scans every file already written to the evidence directory
+ *  for either form of the supplied printer address, byte-for-byte (latin1,
+ *  so a screenshot's raw bytes/metadata are scanned too, not just text/JSON)
+ *  — a backstop independent of, and run strictly after, every in-page
+ *  redaction pass above and every write this script makes (H8: nothing is
+ *  written again after this scan runs, and this scan is never re-run).
+ *
+ *  This is NOT a check that the printer's address never appears as rendered
+ *  PIXELS in a screenshot — a PNG stores compressed pixel data, not plain
+ *  text, so a string search over its bytes cannot see text that was drawn on
+ *  screen. That protection is redactDom()'s job, run on the live page BEFORE
+ *  each screenshot is captured; this scan instead catches whatever redactDom
+ *  cannot reach — file metadata, JSON, and any other byte sequence.
+ *
+ *  H8: returns FILENAMES ONLY, never the address itself — a caller must not
+ *  be able to leak the very thing this check exists to catch back into its
+ *  own output (e.g. by writing this function's return value into evidence). */
+function scanEvidenceForHost(dir, candidates) {
+  const hitFiles = new Set();
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  for (const name of names) {
+    let buf;
+    try {
+      buf = readFileSync(join(dir, name));
+    } catch {
+      continue;
+    }
+    const haystack = buf.toString("latin1").toLowerCase();
+    for (const candidate of candidates) {
+      if (candidate && haystack.includes(candidate.toLowerCase())) {
+        hitFiles.add(name);
+        break;
+      }
+    }
+  }
+  return [...hitFiles];
+}
+
 const browser = await chromium.connectOverCDP(cdpUrl);
 const page = await appPage(browser);
 const evidence = {};
+
+// v1.2 (R2/H5/A7-6): every POST this session makes to a genuine `/printer/*`
+// CONTROL route that is not on READ_ONLY_ROUTES — the actual, network-level
+// proof that a nozzle confirmation/conflict never reaches the machine,
+// rather than trusting that the code path this script happens to call is the
+// only one that could. Narrowed (Opus A7-6) to actual control surfaces —
+// /printer/control/*, job_queue, upload_gcode, and print start/pause/resume/
+// cancel — rather than any unlisted `/printer/*` POST at all: an unlisted
+// READ route this script has not yet added to the allow-list is a coverage
+// gap to fix, not machine-state evidence, and flagging it as "forbidden" only
+// muddies the one check that actually matters here. H5: also counts the
+// ALLOW-LISTED `/printer/*` POSTs this listener sees, so a silently-broken
+// listener (one that never fires at all) cannot pass by finding nothing.
+const PRINTER_CONTROL_PATH = /^\/printer\/(control(\/|$)|job_queue(\/|$)|upload_gcode(\/|$)|print\/(start|pause|resume|cancel)(\/|$)?$)/i;
+const nonAllowedPrinterPosts = [];
+let allowedPrinterPostCount = 0;
+page.on("request", (req) => {
+  try {
+    const url = new URL(req.url());
+    if (req.method() === "POST" && url.pathname.startsWith("/printer/")) {
+      if (READ_ONLY_ROUTES.includes(url.pathname)) {
+        allowedPrinterPostCount += 1;
+      } else if (PRINTER_CONTROL_PATH.test(url.pathname)) {
+        nonAllowedPrinterPosts.push(url.pathname);
+      }
+      // Else: an unlisted read route — not flagged here (see comment above).
+    }
+  } catch {
+    // Not a request this script can parse as a URL; not a printer route either.
+  }
+});
 
 // --- the printer answers -----------------------------------------------------
 
@@ -558,8 +922,175 @@ if (spoolmanUrl && bambuddyUrl) {
   console.log("no provider addresses supplied — the provider-on-hardware checks were skipped");
 }
 
+// --- v1.2 (R1/R2): a per-printer nozzle confirmation, against a real U1 -----
+//
+// Read-only of the machine by construction: /nozzles/status and
+// /nozzles/confirm are Studio's own local note, never a call to the printer
+// (see the comment on READ_ONLY_ROUTES above). The printer's own live reading
+// still always wins — this proves that a note disagreeing with it becomes a
+// conflict row rather than a silent override, and that removing the note
+// never touched the machine either.
+
+// H1: point the app's OWN printer address at this real printer BEFORE reading
+// anything from the UI — the real-U1 run this fix-round responds to found the
+// Settings card still reading "Nozzles · for u1.local" because this step did
+// not exist. The direct route calls below (nozzleBefore, etc.) already pass
+// `host: printerHost` explicitly and were never affected; only the
+// UI-rendered assertions were.
+await setAppPrinterHost(page, printerHost);
+
+const nozzleBefore = await callRoute(page, "/nozzles/status", { host: printerHost, port: 7125, probe: true });
+evidence.nozzle_before = anonymise(nozzleBefore.body);
+const liveDiameters = nozzleBefore.body?.live ?? [];
+record("The real printer's nozzle sizes are read live (R1)",
+  nozzleBefore.status === 200 && Array.isArray(liveDiameters) && liveDiameters.length > 0,
+  `${liveDiameters.length} toolhead(s) reported live`);
+
+// The status fetch against a real printer has also been observed taking
+// several seconds; wait for the card to settle rather than race a fixed wait.
+let bodyText = await waitForNozzleSettled(page);
+
+// H7: scoped to each toolhead's OWN row — a page-wide count of "Reported
+// live" occurrences (the round-1 approach) could pass on the right NUMBER of
+// matches while actually describing the wrong toolheads.
+for (let i = 0; i < liveDiameters.length; i += 1) {
+  const rowText = await toolheadRow(page, i + 1).innerText();
+  record(`Toolhead ${i + 1}'s own row: nozzle=live size, Source=Printer, Status=Reported live (R1/H7)`,
+    rowText.includes(`${liveDiameters[i]} mm`) && /Printer/.test(rowText) && /Reported live/i.test(rowText),
+    rowText.replace(/\s+/g, " ").trim());
+}
+
+// H6 (product guarantee, a named passing check): a live-reporting toolhead
+// offers no way to type an override at all — proved here, before anything
+// below seeds a note, and again after the seeded note is removed.
+const toolhead1SelectCountBefore = await page
+  .locator('select[aria-label="Nozzle size for toolhead 1"]').count();
+record("A live-reported toolhead offers no way to type a size — the printer's evidence cannot be overridden (H6)",
+  toolhead1SelectCountBefore === 0, `${toolhead1SelectCountBefore} select(s) found`);
+
+await scrollNozzleCardIntoView(page);
+const clean1 = await redactDom(page, hostCandidates);
+record("Host text redacted before capture: v12-nozzle-live", clean1,
+  clean1 ? "host_text_redacted: true" : "printer address still present after redaction");
+if (clean1) await page.screenshot({ path: join(outDir, "v12-nozzle-live.png") });
+
+// H6 (R2 redesign): a conflict never arises by typing over a toolhead the
+// printer is currently reporting — NozzleTable has no select for one at all
+// (just proved above), by product design ("your note cannot override the
+// printer"). It arises the way it really would: a note saved while the
+// printer did NOT report sizes, discovered later once the printer answers
+// and disagrees with it. This write is Studio's own local note (never the
+// printer, per READ_ONLY_ROUTES) and is clearly labelled as a seed, not a
+// UI action — every assertion that follows reads the real, rendered result.
+const conflictValue = Math.abs((liveDiameters[0] ?? 0) - 0.6) < 1e-9 ? 0.4 : 0.6;
+const seedDraft = liveDiameters.map((_, i) => (i === 0 ? conflictValue : null));
+const seed = await callRoute(page, "/nozzles/confirm", {
+  host: printerHost, port: 7125, diameters: seedDraft,
+  expected_revision: nozzleBefore.body?.revision ?? 0,
+});
+record("seed: note saved while offline (a direct, labelled write — not a UI action) is accepted",
+  seed.status === 200, `HTTP ${seed.status}`);
+
+// The card's own controller has no reason to know a write happened outside
+// it — force it to remount (F1) the same way navigating away and back for
+// real would, rather than reading whatever it already had.
+await forceNozzleCardRefetch(page);
+bodyText = await waitForNozzleSettled(page);
+
+// F1: asserted BEFORE the conflict text itself, so a no-op refetch (the
+// exact, real failure this responds to: the row still read "0.4 mm Printer
+// Reported live" — the pre-seed state — after a refetch that never actually
+// happened) fails loudly right here, naming the real cause, instead of
+// cascading into the conflict-text check below failing for an unrelated-
+// looking reason.
+const postRemountRowText = await toolheadRow(page, 1).innerText();
+record("Toolhead 1's row shows the seeded note after the remount, before asserting the conflict (F1)",
+  postRemountRowText.includes(`${conflictValue} mm`),
+  postRemountRowText.replace(/\s+/g, " ").trim());
+
+const conflictRowText = await toolheadRow(page, 1).innerText();
+record("Toolhead 1's own row shows the conflict, naming both the printer's and the noted size (R2/H6)",
+  /Studio uses the printer's reading/i.test(conflictRowText)
+    && conflictRowText.includes(`${liveDiameters[0]} mm`)
+    && conflictRowText.includes(`${conflictValue} mm`)
+    && /Printer/.test(conflictRowText),
+  conflictRowText.replace(/\s+/g, " ").trim());
+
+// Never asserted from the seed write's own reply — any /nozzles/confirm
+// reply is `probe:false` by backend design (R2-B6) and cannot prove the
+// CURRENT conflict state. A fresh, explicit `probe:true` status call is.
+const statusAfterConflict = await callRoute(page, "/nozzles/status",
+  { host: printerHost, port: 7125, probe: true });
+evidence.nozzle_conflict = anonymise(statusAfterConflict.body);
+const conflictRow = (statusAfterConflict.body?.toolheads ?? []).find((t) => t.toolhead === 0);
+record("A fresh probe:true status confirms the conflict, and that the printer still wins (R2)",
+  statusAfterConflict.status === 200 && conflictRow?.conflict === true
+    && Math.abs((conflictRow?.diameter ?? NaN) - liveDiameters[0]) < 1e-9
+    && Math.abs((conflictRow?.confirmed ?? NaN) - conflictValue) < 1e-9,
+  `printer=${conflictRow?.diameter} noted=${conflictRow?.confirmed}`);
+
+// The real "Remove my note" button, scoped to toolhead 1's own row — an
+// atomic replace of that one position back to unknown, never a global clear
+// (PrinterNozzleSettings.removeNote).
+const removeButton = toolheadRow(page, 1).getByRole("button", { name: "Remove my note" });
+const removeButtonVisible = (await removeButton.count()) > 0;
+record("The real 'Remove my note' button is reachable on toolhead 1's conflict row",
+  removeButtonVisible, "");
+if (removeButtonVisible) {
+  await removeButton.click();
+}
+bodyText = await waitForNozzleIdle(page);
+const restoredRowText = await toolheadRow(page, 1).innerText();
+record("Removing the note through the real button returns toolhead 1's row to 'Reported live' (R2)",
+  /Reported live/i.test(restoredRowText) && !/conflict|noted/i.test(restoredRowText),
+  restoredRowText.replace(/\s+/g, " ").trim());
+
+const statusAfterRemove = await callRoute(page, "/nozzles/status",
+  { host: printerHost, port: 7125, probe: true });
+const removedRow = (statusAfterRemove.body?.toolheads ?? []).find((t) => t.toolhead === 0);
+record("A fresh probe:true status shows no stored note after removal (R2)",
+  statusAfterRemove.status === 200 && removedRow?.conflict === false
+    && (removedRow?.confirmed === null || removedRow?.confirmed === undefined)
+    && removedRow?.source === "printer",
+  `confirmed=${removedRow?.confirmed} conflict=${removedRow?.conflict} source=${removedRow?.source}`);
+
+// H6 (product guarantee, re-asserted after removal): back to the same
+// no-override-possible state R1 started in, not just "some row exists".
+const toolhead1SelectCountAfter = await page
+  .locator('select[aria-label="Nozzle size for toolhead 1"]').count();
+record("A live-reported toolhead still offers no way to type a size, after removing the note (H6)",
+  toolhead1SelectCountAfter === 0, `${toolhead1SelectCountAfter} select(s) found`);
+
+record("The request listener actually observed allow-listed printer traffic (H5)",
+  allowedPrinterPostCount >= 1, `${allowedPrinterPostCount} allow-listed /printer/* POST(s) observed`);
+record("No printer CONTROL route was ever called during this run (R2/A7-6)",
+  nonAllowedPrinterPosts.length === 0, JSON.stringify(nonAllowedPrinterPosts));
+
 // --- report -------------------------------------------------------------------
 
+// H3/F5: hardware.png used to be captured straight off whatever page was on
+// screen, with no redaction at all — navigate off Settings first (belt) AND
+// still run the same fail-closed redaction pass (suspenders) before
+// capturing. F5: "/" (the real Dashboard route), not "/dashboard" (NotFound —
+// never a real page; F1 is the same fix applied where it was actually
+// blocking, this is the same correction applied here too).
+await page.evaluate(() => {
+  window.history.pushState({}, "", "/");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+});
+await page.waitForTimeout(600);
+const cleanFinal = await redactDom(page, hostCandidates);
+record("Host text redacted before capture: hardware.png", cleanFinal,
+  cleanFinal ? "host_text_redacted: true" : "printer address still present after redaction");
+if (cleanFinal) await page.screenshot({ path: join(outDir, "hardware.png") });
+
+// H8: the scan is TRULY final — every check above is already computed, and
+// hardware.json (this write) is the LAST artifact write before the scan. The
+// scan's own result is deliberately NOT folded back into hardware.json or
+// any other write: doing that would mean writing to a file again after the
+// scan ran, which is exactly the pattern H8 forbids (it also can never be
+// asked to re-validate its own output that way). Its verdict instead only
+// ever reaches the console and this process's exit code.
 const passed = results.filter((r) => r.ok).length;
 writeFileSync(join(outDir, "hardware.json"), JSON.stringify({
   schema_version: "hardware/1",
@@ -570,8 +1101,27 @@ writeFileSync(join(outDir, "hardware.json"), JSON.stringify({
   total: results.length,
   evidence,
 }, null, 2));
-await page.screenshot({ path: join(outDir, "hardware.png") });
+
+// H4/H8: scan every file now sitting in the evidence directory (this JSON,
+// both screenshots, the gcode fixture) for either form of the supplied
+// address, independent of and after every in-page redaction above. On a hit,
+// only the FILENAME is ever printed — never the address itself, and never
+// written to any file — so a leak this check finds is never reproduced a
+// second time inside the very evidence it exists to protect.
+const leakHits = scanEvidenceForHost(outDir, hostCandidates);
+if (leakHits.length > 0) {
+  console.log(`FAIL  No supplied printer address survives redaction anywhere in the evidence directory (H4/H8)  — found in: ${leakHits.join(", ")}`);
+} else {
+  console.log("PASS  No supplied printer address survives redaction anywhere in the evidence directory (H4/H8)");
+}
 
 console.log(`\n${passed}/${results.length} hardware checks passed`);
+// F6: hardware.json is written BEFORE this final leak scan, by design (H8 —
+// nothing is ever written again after the scan runs), so it can read as
+// "all checks passed" even on a run this process still exits non-zero for.
+// The process EXIT CODE (not hardware.json's own `passed`/`total` fields) is
+// what a caller must treat as authoritative.
+console.log("EXIT CODE IS AUTHORITATIVE: hardware.json is written before this final leak scan (H8); "
+  + "a 0 exit means both every check passed AND no address leaked, not hardware.json's own passed/total alone.");
 await browser.close();
-process.exit(passed === results.length ? 0 : 1);
+process.exit(passed === results.length && leakHits.length === 0 ? 0 : 1);

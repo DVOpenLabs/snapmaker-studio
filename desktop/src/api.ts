@@ -1291,7 +1291,25 @@ export interface Preflight {
   printer_reachable: boolean;
   summary: string;
   disclaimer: string;
-  printer?: Record<string, unknown>;
+  printer?: {
+    /** Present whenever a stored confirmation snapshot exists, even when a
+     *  request-level override or the live printer won for this check (B6). */
+    nozzle_revision?: number;
+    nozzle_confirmed_at?: string | null;
+    /** The source actually used for the nozzle comparison — "printer" when
+     *  live won, "user" only when a stored/request confirmation was used and
+     *  nothing live contradicted it (B7/D9). */
+    nozzle_confirmed_by?: "printer" | "user" | null;
+    /** `service.preflight()` copies the backend's `nozzle_conflicts` — a LIST
+     *  of per-toolhead conflict entries, not a single pair — verbatim. */
+    nozzle_conflicts?: {
+      toolhead: number;
+      printer: number | null;
+      confirmed: number | null;
+      source: "stored" | "request";
+      confirmed_at: string | null;
+    }[];
+  } & Record<string, unknown>;
 }
 
 export async function preflight(path: string, host?: string, port = 7125): Promise<Preflight> {
@@ -1521,14 +1539,68 @@ export interface SendCheck {
   printer?: { observed_at?: number; reachable?: boolean };
 }
 
-async function post<T>(route: string, body: unknown, label: string): Promise<T> {
+/** The v1.2 plan's frozen error map (A4.3): every new/changed route returns
+ *  one of these exact codes with this exact plain-language text. Kept here as
+ *  a named, testable reference — and as the fallback below when a response is
+ *  missing `message` but does carry a code we recognise — so the UI never has
+ *  to invent its own wording for an error the backend already promised exact
+ *  copy for (R2-D3). */
+export const A4_3_MESSAGES: Record<string, string> = {
+  invalid_host: "That printer address isn't valid.",
+  invalid_slot: "That slot number isn't valid.",
+  invalid_color: "Colour must be a hex value like #1A2B3C, or empty.",
+  invalid_weight: "Weight must be between 0 and 10000 grams.",
+  invalid_diameters: "Nozzle sizes must be between 0 and 2 mm, one per toolhead, up to 8.",
+  invalid_request: "That request isn't valid.",
+  no_spool_note: "There is no note with a remaining weight for that slot.",
+  no_such_note: "That note no longer exists.",
+  stale: "Nozzle notes changed elsewhere. Reload and try again.",
+  duplicate_notes: "Two notes exist for this slot. Remove one first.",
+  storage_unavailable: "Studio couldn't read or save its local data.",
+};
+
+/** Pure lookup — undefined for a code this desktop build doesn't recognise,
+ *  rather than guessing at wording for it. */
+export function errorCodeMessage(code: string | undefined): string | undefined {
+  return code ? A4_3_MESSAGES[code] : undefined;
+}
+
+/** A structured backend error (A4.3 map): `code` is the stable `error` field
+ *  ("stale", "duplicate_notes", "invalid_weight", …), `message` is already the
+ *  fixed plain-language text the backend sends — callers show it as-is rather
+ *  than re-deriving their own copy from `code`. */
+export class ApiError extends Error {
+  code?: string;
+  extra?: Record<string, unknown>;
+  constructor(message: string, code?: string, extra?: Record<string, unknown>) {
+    super(message);
+    this.code = code;
+    this.extra = extra;
+  }
+}
+
+export async function post<T>(route: string, body: unknown, label: string): Promise<T> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}${route}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Auth-Token": token },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`${label} failed (${r.status})`);
+  if (!r.ok) {
+    let parsed: { error?: string; message?: string } | null = null;
+    try { parsed = await r.json(); } catch { /* body wasn't JSON */ }
+    // Prefer the backend's own message; fall back to our copy of its frozen
+    // text if the body is missing `message` but names a code we know; only
+    // then fall back to a generic, non-specific failure string.
+    const message = parsed?.message ?? errorCodeMessage(parsed?.error);
+    if (message) {
+      const rest: Record<string, unknown> = { ...(parsed as Record<string, unknown>) };
+      delete rest.error;
+      delete rest.message;
+      throw new ApiError(message, parsed?.error, rest);
+    }
+    throw new ApiError(`${label} failed (${r.status})`);
+  }
   return r.json();
 }
 
@@ -1996,4 +2068,129 @@ export async function launchFile(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// ---- v1.2: per-printer nozzle confirmation ----------------------------------
+// Stock U1 firmware does not always publish which nozzle is fitted per toolhead.
+// This lets a person say so themselves, per printer — the printer's own live
+// reading always wins over anything typed here; a confirmation only fills the
+// gap when there is no live reading. Frozen contract: see v12-plan-final.md.
+
+export interface NozzleToolhead {
+  toolhead: number; // 0-based, as the engine counts
+  diameter: number | null;
+  source: "printer" | "user" | "unknown";
+  confirmed_at: string | null;
+  confirmed: number | null;
+  conflict: boolean;
+  out_of_range: boolean;
+}
+
+export interface NozzleStatus {
+  host: string;
+  port: number;
+  reachable: boolean;
+  live: number[] | null;
+  live_error: string | null;
+  toolhead_count: number | null;
+  toolhead_count_source: "printer" | "profile" | "unknown";
+  revision: number;
+  observed_at: string;
+  count_mismatch: boolean;
+  storage_error: string | null;
+  toolheads: NozzleToolhead[];
+}
+
+/** `probe` (R2-D5): false/omitted returns instantly from stored+profile data
+ *  (`live_error: "not_checked"`, no live read attempted) — used for the first
+ *  paint so the table never shows zero rows while the printer is contacted.
+ *  `true` does the real live read and can take several seconds on an
+ *  unreachable printer; callers do a probe:false call first, then a
+ *  probe:true call whose (possibly slower-arriving) response replaces it via
+ *  the shared accept/drop decision (R2-D2), never the other way around. */
+export function nozzleStatus(host: string, port = 7125, probe = false): Promise<NozzleStatus> {
+  return post("/nozzles/status", { host, port, probe }, "nozzle status");
+}
+
+/** `diameters[i] === null` means "not sure" for that toolhead. Atomic replace
+ *  of the whole list; `expectedRevision` guards against a stale write (409). */
+export function nozzleConfirm(
+  host: string, port: number, diameters: (number | null)[], expectedRevision: number,
+): Promise<NozzleStatus> {
+  return post(
+    "/nozzles/confirm",
+    { host, port, diameters, expected_revision: expectedRevision },
+    "nozzle confirm",
+  );
+}
+
+export function nozzleClear(host: string, port: number, expectedRevision: number): Promise<NozzleStatus> {
+  return post("/nozzles/clear", { host, port, expected_revision: expectedRevision }, "nozzle clear");
+}
+
+// ---- v1.2: local spool notes -------------------------------------------------
+// What a person knows about a loaded spool that nothing else on their network
+// reports. Never authoritative over the printer or a configured provider —
+// only fills the gap when both are silent about a slot.
+
+export type RemainingQuality = "tracked" | "derived" | "user_confirmed" | "unknown";
+
+export interface LocalSpoolRow {
+  id: number;
+  host_as_stored: string;
+  slot: number; // 0-based
+  /** Null for a legacy colour-only row that never had a material recorded. */
+  material: string | null;
+  subtype: string | null;
+  color: string | null;
+  vendor: string | null;
+  starting_g: number | null;
+  remaining_g: number | null;
+  remaining_quality: RemainingQuality;
+  remaining_as_of: string | null;
+  notes: string | null;
+  updated_at: string;
+  alias_conflict: boolean;
+}
+
+export interface LocalSpoolsList {
+  rows: LocalSpoolRow[];
+}
+
+export function localSpoolsList(host: string): Promise<LocalSpoolsList> {
+  return post("/local_spools", { host }, "spool notes");
+}
+
+export interface LocalSpoolSaveInput {
+  host: string;
+  slot: number; // 0-based
+  material?: string;
+  subtype?: string | null;
+  color?: string | null; // omit/undefined preserves, null/"" clears, else sets
+  vendor?: string | null;
+  // omit/undefined preserves; "" clears; a number sets (CodeRabbit PR #41 #3,
+  // Opus P3 follow-up: `null` dropped — buildSpoolSaveBody never produces it
+  // and the backend contract has no meaning for an explicit null here that
+  // differs from omitting the field, so keeping it just invited a caller to
+  // send the wrong "preserve" spelling).
+  starting_g?: number | "";
+  remaining_g?: number | "";
+  notes?: string | null;
+}
+
+export function localSpoolsSave(input: LocalSpoolSaveInput): Promise<LocalSpoolsList> {
+  return post("/local_spools/save", input, "save spool note");
+}
+
+/** `id` removes exactly one note (used to resolve an alias conflict); omitted,
+ *  it removes every alias stored for that (host, slot). */
+export function localSpoolsDelete(host: string, slot: number, id?: number): Promise<LocalSpoolsList> {
+  return post("/local_spools/delete", { host, slot, id: id ?? null }, "remove spool note");
+}
+
+/** The editor's secondary "Record filament used" action — the only caller of
+ *  this route anywhere in the app. Result is estimated from what was recorded,
+ *  never presented as a tracked measurement. */
+export function localSpoolsMarkUsed(host: string, slot: number, usedG: number): Promise<LocalSpoolsList> {
+  return post("/local_spools/mark_used", { host, slot, used_g: usedG }, "record filament used");
 }

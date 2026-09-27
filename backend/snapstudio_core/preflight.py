@@ -179,23 +179,21 @@ def _nozzle_number(value) -> str:
     """Normalise a nozzle-size value for comparison: 0.4, "0.4", "0.40" and
     0.4000000059604645 (real float noise a firmware or a project can report)
     all compare equal. Falls back to the raw string for anything that is not
-    numeric, rather than crashing on malformed trait/firmware data."""
+    numeric, rather than crashing on malformed trait/firmware data. ``None``
+    ("not sure" — a person explicitly said they do not know) is its own case:
+    R2-B1 (Opus N1), never rendered to a person as the Python string "None"."""
+    if value is None:
+        return "not sure"
     try:
         return f"{round(float(value), 2):g}"
     except (TypeError, ValueError):
         return str(value)
 
 
-def _nozzles_match(wanted: list, reported: list) -> bool:
-    """Same toolhead count on both sides: compare position by position — a
-    project sliced for [0.4, 0.6, 0.4, 0.4] and a printer reporting
-    [0.4, 0.4, 0.6, 0.4] have the identical sizes but on different
-    toolheads, a real mismatch a set comparison would call a match.
-    Different counts: there is no toolhead to align position by position,
-    so fall back to comparing which sizes exist at all."""
-    if len(wanted) == len(reported):
-        return all(_nozzle_number(w) == _nozzle_number(r) for w, r in zip(wanted, reported))
-    return {_nozzle_number(w) for w in wanted} == {_nozzle_number(r) for r in reported}
+def _nozzle_with_unit(text: str) -> str:
+    """"0.4" -> "0.4 mm"; "not sure" stays "not sure" — a unit on a
+    non-measurement reads as nonsense ("not sure mm")."""
+    return text if text == "not sure" else f"{text} mm"
 
 
 def _nozzle(project: dict, printer: dict) -> dict:
@@ -268,14 +266,42 @@ def _nozzle(project: dict, printer: dict) -> dict:
         # reading with nothing saying where it came from, and that must never
         # be mislabelled as either firmware evidence or a person's own word.
         source, who, verb = "unstated source", "something Studio read", "reports"
-    matched = (_nozzles_match(ordered, reported) if ordered
-              else {_nozzle_number(w) for w in wanted} == {_nozzle_number(n) for n in reported})
-    if matched:
+    from . import nozzle_confirm as nc
+
+    # A1.8 (Opus B3, A2.1): preflight's required positions are ALL of the
+    # project's own ordered positions when it genuinely has them — v1.2 does
+    # not attempt to infer which extruder a filament assignment would use, so
+    # there is no narrower set to check. With no ordered trait at all, fall
+    # back to the printer's own toolhead count (or the reported list's own
+    # length) so a set-only comparison still has a required count to reason
+    # "all/some/none known" against.
+    if ordered:
+        required = list(range(len(ordered)))
+    else:
+        # No genuine per-toolhead order: the only thing there is to reason
+        # about is which SIZES the printer reported at all, so "required"
+        # is bounded by how many positions it actually answered for — the
+        # printer's overall toolhead_count is not a narrower requirement
+        # this comparison can use without a mapping it does not have.
+        required = list(range(len(reported)))
+    verdict = nc.match_verdict(required, ordered, set(wanted), reported)
+
+    if verdict == nc.OK:
         return _check(
             "nozzle.match", "Nozzle size", OK,
             evidence=f"project expects {wanted_txt}; {who} {verb} the same",
             confidence=CONFIRMED,
             consequence=f"The project was made for the nozzle {who} {verb}.",
+            source=source)
+    if verdict == nc.UNKNOWN:
+        reported_evidence_txt = ", ".join(_nozzle_with_unit(_nozzle_number(n)) for n in reported)
+        return _check(
+            "nozzle.match", "Nozzle size — check this yourself", UNKNOWN,
+            evidence=f"project expects {wanted_txt}; {who} {verb} {reported_evidence_txt} "
+                     "but not enough of it lines up with what this project needs",
+            confidence=CONFIRMED,
+            consequence="Studio cannot fully compare this project's nozzle needs to what was read.",
+            action=f"Check the nozzle on the printer is {wanted_txt} before slicing.",
             source=source)
     # With genuine per-toolhead order and a matching toolhead count, show the
     # real per-toolhead values, not a deduplicated set — [0.4, 0.6] vs
@@ -284,11 +310,11 @@ def _nozzle(project: dict, printer: dict) -> dict:
     # this check exists to catch. Otherwise (no order, or no toolhead to line
     # up) fall back to the deduplicated sets.
     if ordered and len(ordered) == len(reported):
-        wanted_mismatch_txt = ", ".join(f"{_nozzle_number(w)} mm" for w in ordered)
-        reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+        wanted_mismatch_txt = ", ".join(_nozzle_with_unit(_nozzle_number(w)) for w in ordered)
+        reported_txt = ", ".join(_nozzle_with_unit(_nozzle_number(n)) for n in reported)
     else:
         wanted_mismatch_txt = wanted_txt
-        reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
+        reported_txt = ", ".join(_nozzle_with_unit(n) for n in sorted({_nozzle_number(n) for n in reported}))
     return _check(
         "nozzle.match", "Nozzle size does not match", ATTENTION,
         evidence=f"project expects {wanted_mismatch_txt}; {who} {verb} {reported_txt}",
@@ -297,6 +323,24 @@ def _nozzle(project: dict, printer: dict) -> dict:
                      "and very fine features may disappear."),
         action="Fit the nozzle the project expects, or re-slice for the nozzle you have.",
         source=source)
+
+
+def _nozzle_conflict(printer: dict) -> dict | None:
+    """A1.7: once, whenever a stored/request confirmation disagrees with a
+    live reading — even when live matches the job, because the disagreement
+    itself is worth surfacing so the person can update or remove their note."""
+    conflicts = printer.get("nozzle_conflicts") or []
+    if not conflicts:
+        return None
+    detail = "; ".join(
+        f"toolhead {c['toolhead'] + 1}: you noted {c['confirmed']} mm, "
+        f"the printer reports {c['printer']} mm" for c in conflicts)
+    return _check(
+        "nozzle.confirmation_conflict", "Your nozzle note does not match the printer", ATTENTION,
+        evidence=detail, confidence=CONFIRMED,
+        consequence="Studio uses the printer's reading, not your note.",
+        action="Update your note in Settings to match, or remove it.",
+        source="your nozzle note vs the printer's live reading")
 
 
 def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
@@ -466,6 +510,7 @@ def evaluate(project: dict, printer: dict, placement: dict | None = None) -> dic
         _bed(project, printer, placement),
         _toolheads_vs_filaments(project, printer),
         _nozzle(project, printer),
+        _nozzle_conflict(printer),
         _loaded_materials(project, printer),
         _object_exclusion(project, printer),
         _printer_busy(printer),

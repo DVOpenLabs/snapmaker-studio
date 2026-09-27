@@ -7,6 +7,7 @@ import { useMode } from "@/store/mode";
 import { usePrinter } from "@/store/printer";
 import { useFilament } from "@/store/filament";
 import MaterialProviderSettings from "@/components/MaterialProviderSettings";
+import PrinterNozzleSettings from "@/components/PrinterNozzleSettings";
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -47,6 +48,8 @@ export default function Settings() {
           </Row>
         </CardContent>
       </Card>
+
+      <PrinterNozzleSettings />
 
       <Card>
         <CardContent className="divide-y divide-border p-5">

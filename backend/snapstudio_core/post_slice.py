@@ -302,23 +302,19 @@ def _nozzle_number(value) -> str:
     """Normalise a nozzle-size value for comparison: 0.4, "0.4", "0.40" and
     0.4000000059604645 (real float noise a firmware or a job can report) all
     compare equal. Falls back to the raw string for anything not numeric,
-    rather than crashing on malformed G-code or firmware data."""
+    rather than crashing on malformed G-code or firmware data. ``None`` ("not
+    sure") is its own case: R2-B1 (Opus N1), never rendered as "None"."""
+    if value is None:
+        return "not sure"
     try:
         return f"{round(float(value), 2):g}"
     except (TypeError, ValueError):
         return str(value)
 
 
-def _nozzles_match(wanted: list, reported: list) -> bool:
-    """Same toolhead count on both sides: compare position by position — a
-    job sliced for [0.4, 0.6, 0.4, 0.4] and a printer reporting
-    [0.4, 0.4, 0.6, 0.4] have the identical sizes but on different
-    toolheads, a real mismatch a set comparison would call a match.
-    Different counts: there is no toolhead to align position by position,
-    so fall back to comparing which sizes exist at all."""
-    if len(wanted) == len(reported):
-        return all(_nozzle_number(w) == _nozzle_number(r) for w, r in zip(wanted, reported))
-    return {_nozzle_number(w) for w in wanted} == {_nozzle_number(r) for r in reported}
+def _nozzle_with_unit(text: str) -> str:
+    """"0.4" -> "0.4 mm"; "not sure" stays "not sure"."""
+    return text if text == "not sure" else f"{text} mm"
 
 
 def _nozzle(g: dict, printer: dict) -> dict:
@@ -349,25 +345,50 @@ def _nozzle(g: dict, printer: dict) -> dict:
             label, who, verb = "user confirmed", "you", "confirmed"
         else:
             label, who, verb = "an unstated source", "something Studio read", "reports"
-        if _nozzles_match(sizes, reported):
+        from . import nozzle_confirm as nc
+
+        # A1.8/A3.1: post_slice's required positions are the toolheads this
+        # JOB actually used (tools_used); with none recorded, fall back to
+        # every position, same rule as before required positions existed.
+        tools_used = g.get("tools_used")
+        required = list(tools_used) if tools_used else list(range(len(reported) or len(sizes)))
+        # B1 (Opus H1/Sol 3): `sizes` (G-code's own `nozzle_diameter` config
+        # array) is ALWAYS genuinely ordered by toolhead/extruder index — it
+        # is the slicer's own per-extruder list, never a deduplicated set —
+        # so it is compared position-by-position unconditionally. The old
+        # `len(sizes) == len(reported)` gate silently fell back to a set
+        # comparison whenever the printer answered for fewer toolheads than
+        # the job uses, which could produce a false ATTENTION on a toolhead
+        # the job never touches, or hide a real mismatch on one it does.
+        verdict = nc.match_verdict(required, sizes, set(sizes), reported)
+        if verdict == nc.OK:
             return _check(
                 "gcode.nozzle", "Nozzle size matches", OK,
                 evidence=f"the job was sliced for {stated}; {who} {verb} the same",
                 confidence=CONFIRMED,
                 consequence=f"The job was sliced for the nozzle {who} {verb}.",
                 source=f"G-code configuration block; {label}")
+        if verdict == nc.UNKNOWN:
+            return _check(
+                "gcode.nozzle", "Nozzle size — check this yourself", UNKNOWN,
+                evidence=f"the job was sliced for {stated}; not enough of what {who} {verb} lines up "
+                         "with the toolheads this job uses",
+                confidence=CONFIRMED,
+                consequence="Studio cannot fully compare this job's nozzle needs to what was read.",
+                action="Check the nozzle on the printer before starting.",
+                source=f"G-code configuration block; {label}")
         # Same toolhead count: show the real per-toolhead values, not the
         # deduplicated `stated` set — [0.4, 0.6] vs [0.4, 0.6] would otherwise
         # look identical in the evidence even though the sizes sit on
         # different toolheads, which is exactly the mismatch being reported.
         # Different counts: there is no toolhead to line up, so fall back to
-        # the deduplicated sets, same as _nozzles_match's own fallback.
+        # the deduplicated sets.
         if len(sizes) == len(reported):
-            stated_mismatch_txt = ", ".join(f"{_nozzle_number(s)} mm" for s in sizes)
-            reported_txt = ", ".join(f"{_nozzle_number(n)} mm" for n in reported)
+            stated_mismatch_txt = ", ".join(_nozzle_with_unit(_nozzle_number(s)) for s in sizes)
+            reported_txt = ", ".join(_nozzle_with_unit(_nozzle_number(n)) for n in reported)
         else:
             stated_mismatch_txt = stated
-            reported_txt = ", ".join(f"{n} mm" for n in sorted({_nozzle_number(n) for n in reported}))
+            reported_txt = ", ".join(_nozzle_with_unit(n) for n in sorted({_nozzle_number(n) for n in reported}))
         return _check(
             "gcode.nozzle", "Nozzle size does not match", ATTENTION,
             evidence=(f"the job was sliced for {stated_mismatch_txt}; {who} {verb} " + reported_txt),
@@ -490,6 +511,24 @@ def _project_match(g: dict, project: dict | None) -> dict | None:
         source="G-code tool use vs the open project")
 
 
+def _nozzle_conflict(printer: dict) -> dict | None:
+    """A1.7: emitted once here (send_check inherits it via this function's
+    place in `analyse`'s own check list) whenever a stored/request
+    confirmation disagrees with the printer's live reading."""
+    conflicts = (printer or {}).get("nozzle_conflicts") or []
+    if not conflicts:
+        return None
+    detail = "; ".join(
+        f"toolhead {c['toolhead'] + 1}: you noted {c['confirmed']} mm, "
+        f"the printer reports {c['printer']} mm" for c in conflicts)
+    return _check(
+        "nozzle.confirmation_conflict", "Your nozzle note does not match the printer", ATTENTION,
+        evidence=detail, confidence=CONFIRMED,
+        consequence="Studio uses the printer's reading, not your note.",
+        action="Update your note in Settings to match, or remove it.",
+        source="your nozzle note vs the printer's live reading")
+
+
 # --- the report -------------------------------------------------------------
 
 def analyse(gcode_facts: dict, printer: dict | None = None,
@@ -515,6 +554,7 @@ def analyse(gcode_facts: dict, printer: dict | None = None,
         _material_match(gcode_facts, printer),
         _bed_fit(gcode_facts, printer),
         _nozzle(gcode_facts, printer),
+        _nozzle_conflict(printer),
         _exclusion(gcode_facts, printer),
         _busy(printer),
         _project_match(gcode_facts, project),

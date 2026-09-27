@@ -18,6 +18,27 @@
 // environment variables rather than as more positional arguments. That is
 // deliberate: the positions above are the contract this harness already had,
 // and a run that predates the second provider must keep working unchanged.
+//
+// v1.2: added phases spool-nozzle-empty, spool-notes-create,
+// spool-edit-validate, spool-record-used, nozzle-confirm,
+// spool-nozzle-restored and spool-nozzle-remove — local spool notes and
+// per-printer nozzle confirmation (plan v12-plan-final.md, brief W1-W9), all
+// against the placeholder host "u1.local" (no printer required). The real-U1
+// half of the same feature (a live nozzle reading and a conflict against it)
+// is tools/hardware/checks.mjs, run separately with a real printer. Every new
+// screenshot goes through shotRedacted()/redactAndAssert() first (A2.3).
+//
+// v1.2 fix-up (real Windows run, v2 installer): the Nozzles card's status
+// fetch against an unreachable printer took 7-9s in practice, so every nozzle
+// assertion now polls via waitForNozzleSettled() (up to 25s, returns the
+// last-seen state on timeout) instead of racing a fixed wait. Offline, the
+// card shows the "no size reported" banner ABOVE 4 rows sourced from the U1
+// profile (D-6) — never zero rows — so the empty-state and post-"Remove all"
+// checks assert banner-and-rows, and W6's first confirmation is now driven
+// through those rows' own selects + Save (a route call remains only as a
+// fallback diagnostic). scrollNozzleCardIntoView() brings the Nozzles card
+// on screen before v12-nozzle-confirmed, which otherwise only showed the
+// Materials card above it.
 
 import { chromium } from "playwright-core";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -66,6 +87,223 @@ async function callRoute(page, route, body) {
 const shot = async (page, name) => {
   await page.screenshot({ path: join(outDir, `${name}.png`) });
 };
+
+/**
+ * v1.2 (A2.3/A3.7): before EVERY screenshot that could show a printer address,
+ * replace it in text nodes, input/textarea values and the title/aria-label/
+ * placeholder/alt attributes, then re-scan and report whether anything still
+ * carries it. Returns true ("clean") only when the address is gone everywhere
+ * this pass looks; the caller must skip the capture rather than ship a
+ * screenshot that still names a real printer.
+ */
+async function redactAndAssert(page, hostText) {
+  if (!hostText) return true;
+  const stillPresent = await page.evaluate((needle) => {
+    const lower = needle.toLowerCase();
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(escaped, "ig");
+    const ATTRS = ["title", "aria-label", "placeholder", "alt"];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue && re.test(node.nodeValue)) {
+        node.nodeValue = node.nodeValue.replace(re, "your printer");
+      }
+    }
+    document.querySelectorAll("input, textarea").forEach((el) => {
+      if (el.value && re.test(el.value)) el.value = el.value.replace(re, "your printer");
+    });
+    document.querySelectorAll("*").forEach((el) => {
+      for (const attr of ATTRS) {
+        const v = el.getAttribute(attr);
+        if (v && re.test(v)) el.setAttribute(attr, v.replace(re, "your printer"));
+      }
+    });
+    const bodyText = (document.body.innerText || "").toLowerCase();
+    const inputVals = [...document.querySelectorAll("input, textarea")]
+      .map((el) => el.value || "").join(" ").toLowerCase();
+    const attrVals = [...document.querySelectorAll("*")]
+      .flatMap((el) => ATTRS.map((a) => el.getAttribute(a) || "")).join(" ").toLowerCase();
+    return bodyText.includes(lower) || inputVals.includes(lower) || attrVals.includes(lower);
+  }, hostText);
+  return !stillPresent;
+}
+
+/** v1.2 (A6): scrolls the section this capture is meant to document — named
+ *  by its own heading text — into view, and confirms it actually landed
+ *  inside the viewport, rather than trusting that whatever an earlier phase
+ *  last scrolled to is still the right thing on screen. The real bug this
+ *  fixes: v12-spool-notes.png captured the Nozzles card, because the page was
+ *  still scrolled to wherever the PRIOR phase (nozzle-confirm) had left it. */
+async function scrollHeadingIntoView(page, headingPattern) {
+  return page.evaluate((pattern) => {
+    const re = new RegExp(pattern, "i");
+    const heading = [...document.querySelectorAll("p")]
+      .find((el) => re.test(el.textContent || ""));
+    if (!heading) return false;
+    heading.scrollIntoView({ block: "center" });
+    const rect = heading.getBoundingClientRect();
+    const viewportW = window.innerWidth || document.documentElement.clientWidth;
+    const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    return rect.top >= 0 && rect.left >= 0 && rect.bottom <= viewportH && rect.right <= viewportW;
+  }, headingPattern);
+}
+
+/** Redacts, records the outcome (`host_text_redacted: true` on success), and
+ *  only ever writes the screenshot when the capture is actually clean. When
+ *  `headingPattern` is given (A6), the capture is ALSO skipped unless that
+ *  section's own heading is confirmed inside the viewport right before the
+ *  screenshot — the previous phase's scroll position is never trusted. */
+async function shotRedacted(page, name, hostText, headingPattern) {
+  if (headingPattern) {
+    await page.waitForTimeout(200); // let a just-completed re-render settle
+    const inView = await scrollHeadingIntoView(page, headingPattern);
+    record(`Section heading in view before capture: ${name}`, inView,
+      inView ? "" : `heading matching /${headingPattern}/i was not found in the viewport`);
+    if (!inView) return false;
+  }
+  const clean = await redactAndAssert(page, hostText);
+  record(`Host text redacted before capture: ${name}`, clean,
+    clean ? "host_text_redacted: true" : `"${hostText}" still present after redaction`);
+  if (clean) await shot(page, name);
+  return clean;
+}
+
+/** Navigates within the SPA without a full reload, forcing a remount of the
+ *  route's components (used to re-fetch nozzle/spool state after a direct
+ *  route call changed it under the currently-mounted page). */
+async function bounceRoute(page, path) {
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/dashboard");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate((p) => {
+    window.history.pushState({}, "", p);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, path);
+  await page.waitForTimeout(1500);
+}
+
+/** Polls the Nozzles card's own DOM until its initial load finishes ("Checking
+ *  your printer…" is gone, or a load error is shown) or `timeoutMs` elapses —
+ *  status against an unreachable printer has been observed taking 7-9s in a
+ *  real run, and a fixed short wait races that rather than proving anything.
+ *  Always returns the last-observed body text, settled or not, so a caller
+ *  that times out still has real evidence in its failure detail instead of
+ *  asserting against a stale/loading DOM. */
+async function waitForNozzleSettled(page, timeoutMs = 25000) {
+  const deadline = Date.now() + timeoutMs;
+  let body = await page.locator("body").innerText();
+  while (Date.now() < deadline) {
+    if (!/Checking (the|your) printer/i.test(body)) break;
+    await page.waitForTimeout(500);
+    body = await page.locator("body").innerText();
+  }
+  return body;
+}
+
+/** True while the Nozzles card is still loading, or mid-save/mid-clear (its
+ *  own Save/Remove all button is disabled) — confirming currently re-probes
+ *  the printer (7-9s observed offline), so a click has to be followed by
+ *  waiting for this to clear, not a fixed pause. */
+async function nozzleCardBusy(page) {
+  return page.evaluate(() => {
+    const heading = [...document.querySelectorAll("p")]
+      .find((el) => /Nozzles · for/i.test(el.textContent || ""));
+    const card = heading?.closest("div")?.parentElement || heading;
+    if (!card) return true; // the card itself isn't there yet — not settled
+    const buttons = [...card.querySelectorAll("button")]
+      .filter((b) => /^(Save|Remove all)$/i.test((b.textContent || "").trim()));
+    return buttons.some((b) => b.disabled);
+  });
+}
+
+/** Waits, after a click on the Nozzles card's own Save/Update/Remove/Remove
+ *  all, until that button is enabled again AND the card's own loading text is
+ *  gone, or `timeoutMs` elapses — always returning the last-observed body
+ *  text so a timeout still carries real evidence rather than a blind FAIL. */
+async function waitForNozzleIdle(page, timeoutMs = 25000) {
+  const deadline = Date.now() + timeoutMs;
+  let body = await page.locator("body").innerText();
+  let busy = (await nozzleCardBusy(page)) || /Checking (the|your) printer/i.test(body);
+  while (busy && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+    body = await page.locator("body").innerText();
+    busy = (await nozzleCardBusy(page)) || /Checking (the|your) printer/i.test(body);
+  }
+  return body;
+}
+
+/** Scrolls the Nozzles card into view — a screenshot naming the Nozzles card
+ *  must actually show it, not whatever the Materials card leaves on screen. */
+async function scrollNozzleCardIntoView(page) {
+  await page.evaluate(() => {
+    const heading = [...document.querySelectorAll("p")]
+      .find((el) => /Nozzles · for/i.test(el.textContent || ""));
+    const card = heading?.closest("div")?.parentElement || heading;
+    card?.scrollIntoView({ block: "center" });
+  });
+  await page.waitForTimeout(300);
+}
+
+// --- v1.2 (A3): spool-editor helpers that wait on a real signal — the editor
+// opening/closing, or the row's own text changing — rather than a fixed
+// sleep, which either raced a slow save or padded every phase with dead time
+// for no proof of anything.
+
+/** Scopes every following assertion to exactly one slot's own `<li>` element
+ *  — the vacuous-pass Sol flagged came from asserting against the whole page
+ *  body, which a completely unrelated row (or the editor's own copy of the
+ *  same words) could satisfy just as well. */
+function slotRow(page, slotN) {
+  return page.locator("li").filter({ hasText: `Slot ${slotN}` });
+}
+
+async function slotRowText(page, slotN) {
+  return slotRow(page, slotN).innerText();
+}
+
+/** v1.2 (A5): whitespace-normalised exact-match comparison for a slot row's
+ *  full text — a substring/regex check could pass even if some OTHER part of
+ *  the row (vendor, weight, label) silently changed; this requires the whole
+ *  thing to still read exactly the same.
+ *
+ *  F7 (Opus polish): a remaining-weight label can carry a trailing
+ *  "· <date>" (remainingLabel's `fmtAsOf`, locale-formatted via
+ *  toLocaleDateString()) — every date-shaped substring is replaced with a
+ *  fixed placeholder before comparing, so this snapshot compare is tolerant
+ *  of that date (which can legitimately differ, e.g. across a day boundary
+ *  during a slow run) while still catching any OTHER change to the row. */
+function normalizeRowText(s) {
+  return (s || "")
+    .replace(/\s+/g, " ")
+    .replace(/\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}/g, "<date>")
+    .trim();
+}
+
+function readSlot2Snapshot(outDir) {
+  try {
+    return JSON.parse(readFileSync(join(outDir, "slot2-snapshot.json"), "utf8")).text;
+  } catch {
+    return null;
+  }
+}
+
+async function openEditorForSlot(page, slotN) {
+  await slotRow(page, slotN).getByRole("button", { name: "Edit" }).first().click();
+  await page.locator('input[aria-label="Material"]').waitFor({ state: "visible", timeout: 5000 });
+}
+
+/** Clicks the editor's Save button and waits for the editor to actually
+ *  close (the app's own success signal — save() only calls setEditor(null)
+ *  once the request round-trips) rather than a fixed pause that could read
+ *  a save still in flight, or that could time out before a slow one lands. */
+async function clickSaveExpectClose(page, timeoutMs = 15000) {
+  const materialField = page.locator('input[aria-label="Material"]');
+  await page.getByRole("button", { name: "Save" }).first().click();
+  await materialField.waitFor({ state: "detached", timeout: timeoutMs });
+}
 
 async function phaseStartup(page) {
   record("App window present", (await page.title()) === "Snapmaker Studio", await page.title());
@@ -1174,6 +1412,356 @@ PRINT_END
         && (off.map ?? "{}") === "{}",
       "kind=" + off.kind + " url=" + off.url + " map=" + off.map);
 
+  } else if (phase === "spool-nozzle-empty") {
+    // v1.2 W1 + W6a: the empty states for both new Settings cards, and the
+    // negative half of W9 — "Record filament used" lives only inside the
+    // spool editor, so it must not exist anywhere before one is open.
+    await bounceRoute(page, "/settings");
+    const quickBody = await page.locator("body").innerText();
+    record("Spool notes empty state renders",
+      /No notes yet\. Add one when you load a spool/i.test(quickBody), "");
+    record("Record filament used is not reachable before any editor is open (W9)",
+      !/Record filament used/i.test(quickBody), "");
+
+    // The Nozzles card's own status fetch against an unreachable printer has
+    // been observed taking 7-9s in a real run; assert only once it settles,
+    // and with the printer offline the card now shows the "no size reported"
+    // banner ABOVE 4 rows sourced from the U1 profile (D-6) — not instead of
+    // rows, and not zero rows.
+    const body = await waitForNozzleSettled(page);
+    record("Nozzle empty-state banner renders above the profile-sourced rows (W1/W6)",
+      /No nozzle size reported by this printer/i.test(body),
+      `last seen: ${body.slice(0, 200)}`);
+    const nozzleRowCount = await page
+      .locator('select[aria-label^="Nozzle size for toolhead "]').count();
+    record("Four rows render from the U1 profile while the printer is unreachable (W1/W6)",
+      nozzleRowCount === 4, `${nozzleRowCount} row(s)`);
+
+    await shotRedacted(page, "v12-spool-empty", "u1.local", "Your spool notes · for");
+  } else if (phase === "spool-notes-create") {
+    // v1.2 W2: two notes made through the real editor — Slot 2 first, so the
+    // list reads like a real person's, then Slot 1, which is asserted.
+    await bounceRoute(page, "/settings");
+
+    async function setColour(value) {
+      await page.evaluate((v) => {
+        const input = document.querySelector('input[aria-label="Colour"]');
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, "value").set;
+        setter.call(input, v);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }, value);
+    }
+
+    async function addNote(nth, material, vendor, startingG, remainingG) {
+      await page.getByRole("button", { name: "Add a note" }).nth(nth).click();
+      const materialField = page.locator('input[aria-label="Material"]');
+      await materialField.waitFor({ state: "visible", timeout: 5000 });
+      await materialField.fill(material);
+      await setColour("#1A2B3C");
+      await page.locator('input[aria-label="Vendor"]').fill(vendor);
+      await page.locator('input[aria-label="Starting weight in grams"]').fill(String(startingG));
+      await page.locator('input[aria-label="Remaining weight in grams"]').fill(String(remainingG));
+      // A3: wait for the editor to actually close (save()'s own success
+      // signal) rather than a fixed pause that could read a save in flight.
+      await clickSaveExpectClose(page);
+    }
+
+    // Both empty slots at this point, ascending order: index 1 is Slot 2.
+    await addNote(1, "PLA", "Acme Filaments", 1000, 750);
+    // After that save, the remaining empty slots are 0, 2, 3 — index 0 is
+    // Slot 1 again.
+    await addNote(0, "PLA", "Acme Filaments", 1000, 750);
+
+    // A2: scoped to each slot's own row, not the whole page body — asserting
+    // against the whole body let an unrelated row (or the editor's own
+    // leftover copy of the same words) satisfy the check just as well.
+    const slot1Text = await slotRowText(page, 1);
+    const slot1Ok = /PLA/.test(slot1Text) && /entered by you/i.test(slot1Text);
+    record("Slot 1's row shows the material and 'entered by you' (W2)",
+      slot1Ok, slot1Text.replace(/\s+/g, " ").slice(0, 140));
+    const slot2Text = await slotRowText(page, 2);
+    const slot2Ok = /PLA/.test(slot2Text) && /entered by you/i.test(slot2Text);
+    record("Slot 2's row shows the material and 'entered by you' (W2)",
+      slot2Ok, slot2Text.replace(/\s+/g, " ").slice(0, 140));
+
+    // A6: capture only once both rows actually show their saved text — not
+    // merely once the Save clicks returned.
+    if (slot1Ok && slot2Ok) {
+      await shotRedacted(page, "v12-spool-notes", "u1.local", "Your spool notes · for");
+    } else {
+      record("Screenshot skipped: v12-spool-notes", false,
+        "Slot 1 and/or Slot 2 did not yet show their saved text — see the checks above");
+    }
+  } else if (phase === "spool-edit-validate") {
+    // v1.2 W3/W5/W9: editing an existing note, the tri-state clear rule
+    // (A2.2/A3.3), and both invalid-input cases. Every assertion below reads
+    // Slot 1's own row, not the whole page body (A2) — the desktop app's
+    // buildSpoolSaveBody() only ever resends a weight the user actually
+    // touched (startingGTouched/remainingGTouched), so W3a below leaves the
+    // weight field completely untouched rather than clearing it: that is the
+    // real "material only" edit, and it is what makes the backend's identity
+    // -change reset (A2.2) the thing actually being proven, not a clear.
+    await openEditorForSlot(page, 1);
+
+    const usedButtons = await page.getByRole("button", { name: /Record filament used/i }).count();
+    record("Record filament used is reachable only from the open editor, and only there (W9)",
+      usedButtons === 1, `${usedButtons} button(s) while an editor is open`);
+
+    // W3a: change MATERIAL ONLY — the weight fields are never touched at all.
+    await page.locator('input[aria-label="Material"]').fill("PETG");
+    await clickSaveExpectClose(page);
+    let slot1Text = await slotRowText(page, 1);
+    record("Changing the material only (weight field never touched) resets that weight (W3a/A2.2)",
+      /no weight recorded/i.test(slot1Text), slot1Text);
+
+    // W3b setup: give Slot 1 a real weight again, so the next step has one to
+    // prove survives a clear.
+    await openEditorForSlot(page, 1);
+    await page.locator('input[aria-label="Remaining weight in grams"]').fill("500");
+    await clickSaveExpectClose(page);
+    slot1Text = await slotRowText(page, 1);
+    record("A weight can be set again on the same row (W3b setup)",
+      /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text), slot1Text);
+
+    // W3b: clear an unrelated field (vendor) — the weight field is untouched
+    // this time too, so this proves clearing is never an identity change,
+    // not merely that an untouched field survives its own no-op.
+    await openEditorForSlot(page, 1);
+    await page.locator('input[aria-label="Vendor"]').fill("");
+    await clickSaveExpectClose(page);
+    slot1Text = await slotRowText(page, 1);
+    record("Clearing an unrelated field leaves the already-set weight shown (W3b/A2.2)",
+      /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text), slot1Text);
+
+    // W5: an invalid colour. The editor's colour field is a native colour
+    // picker, which cannot hold a malformed string, so this is asserted at
+    // the very route the UI itself calls — still against the installed,
+    // frozen sidecar. Labelled as an API-level check, per A2.
+    const badColour = await callRoute(page, "/local_spools/save",
+      { host: "u1.local", slot: 2, material: "PLA", color: "not-a-colour" });
+    record("API-level check (native colour input cannot hold an invalid value): "
+      + "an invalid colour is refused by the installed sidecar (W5)",
+      badColour.status === 400 && badColour.body?.error === "invalid_color",
+      `HTTP ${badColour.status} ${JSON.stringify(badColour.body)}`.slice(0, 90));
+    const afterBadColour = await callRoute(page, "/local_spools", { host: "u1.local" });
+    const afterBadColourRows = afterBadColour.body?.rows;
+    // A7-5: fails on a missing/malformed rows array rather than defaulting to
+    // "empty" (`?? []`) — a broken response with no rows key at all used to
+    // read as "no row", exactly like a genuine empty list would.
+    record("The refused colour created no row (W5)",
+      Array.isArray(afterBadColourRows) && !afterBadColourRows.some((r) => r.slot === 2),
+      Array.isArray(afterBadColourRows) ? `${afterBadColourRows.length} row(s)` : "rows array missing/malformed");
+
+    // W5: an out-of-range weight, through the real form — an inline error,
+    // and nothing is saved. F3 (fix-round-3, Sol 3 BLOCKING — supersedes the
+    // round-2/A4 attempt): counts REQUESTS, not responses — the product's own
+    // validateSpoolForm()/save() checks client-side before ever calling the
+    // API, so the correct, stronger claim is that no request is issued AT
+    // ALL, not merely that none of the requests that were issued happened to
+    // succeed. The listener stays attached until the page is network-idle
+    // (no in-flight requests) before detaching, so a request that fired but
+    // had not yet resolved when the inline error appeared is still counted.
+    await page.getByRole("button", { name: "Add a note" }).first().click();
+    const newMaterialField = page.locator('input[aria-label="Material"]');
+    await newMaterialField.waitFor({ state: "visible", timeout: 5000 });
+    await newMaterialField.fill("PLA");
+    await page.locator('input[aria-label="Remaining weight in grams"]').fill("20000");
+    const inlineError = page.getByText(/Weight must be between 0 and 10000 grams/i);
+
+    const saveRequests = [];
+    const onSaveRequest = (req) => {
+      if (req.method() === "POST" && req.url().includes("/local_spools/save")) {
+        saveRequests.push(req.url());
+      }
+    };
+    page.on("request", onSaveRequest);
+    await page.getByRole("button", { name: "Save" }).first().click();
+    await inlineError.waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    page.off("request", onSaveRequest);
+    record("Zero POSTs to /local_spools/save were issued during the invalid-weight attempt (F3)",
+      saveRequests.length === 0, `${saveRequests.length} request(s) observed`);
+
+    record("An out-of-range weight shows an inline error, not a silent failure (W5)",
+      (await inlineError.count()) > 0, "");
+    record("The editor is still open — the save did not silently succeed (W5)",
+      (await newMaterialField.count()) > 0, "");
+    const afterBadWeight = await callRoute(page, "/local_spools", { host: "u1.local" });
+    const afterBadWeightRows = afterBadWeight.body?.rows;
+    // A4/A7-5: same non-vacuous shape as the colour case above.
+    record("The rejected weight created no row (W5)",
+      Array.isArray(afterBadWeightRows) && !afterBadWeightRows.some((r) => r.slot === 2
+        && r.material === "PLA" && r.remaining_g === 20000),
+      Array.isArray(afterBadWeightRows) ? `${afterBadWeightRows.length} row(s)` : "rows array missing/malformed");
+    await page.getByRole("button", { name: "Cancel" }).first().click();
+  } else if (phase === "spool-record-used") {
+    // v1.2 W4: the editor's secondary "Record filament used" action, through
+    // its confirm step, on the slot that still carries a weight.
+    await bounceRoute(page, "/settings");
+    await openEditorForSlot(page, 2);
+    await page.getByRole("button", { name: /^Record filament used$/i }).first().click();
+    const gramsField = page.locator('input[aria-label="Grams used"]');
+    await gramsField.waitFor({ state: "visible", timeout: 5000 });
+    await gramsField.fill("50");
+    await page.getByRole("button", { name: /Record 50 g used/i }).first().click();
+    const confirmButton = page.getByRole("button", { name: "Confirm" }).first();
+    await confirmButton.waitFor({ state: "visible", timeout: 5000 });
+    await confirmButton.click();
+    // A2 (W4): confirmMarkUsed() closes the editor on success (setEditor(null))
+    // — the real signal to wait on, not a fixed pause.
+    await page.locator('input[aria-label="Material"]').waitFor({ state: "detached", timeout: 15000 });
+    const slot2Text = await slotRowText(page, 2);
+    record("Slot 2's own row shows an estimate, never a claimed measurement (W4)",
+      /estimated from what you recorded/i.test(slot2Text), slot2Text);
+    // A5: this is the reference snapshot W7/W8 compare Slot 2's full row
+    // against, byte-for-byte (normalised for whitespace only) — not a
+    // substring/regex check, which could pass even if some other part of the
+    // row silently changed.
+    writeFileSync(join(outDir, "slot2-snapshot.json"), JSON.stringify({ text: slot2Text }));
+  } else if (phase === "nozzle-confirm") {
+    // v1.2 W6: confirming nozzle sizes with no printer present. Offline, 4
+    // rows render from the U1 profile (D-6) once the status fetch settles —
+    // drive the confirmation through the real selects and Save button, the
+    // way a person actually would. A direct route call is kept only as a
+    // fallback diagnostic if those rows somehow are not there.
+    await bounceRoute(page, "/settings");
+    let body = await waitForNozzleSettled(page);
+    const selects = page.locator('select[aria-label^="Nozzle size for toolhead "]');
+    const rowCount = await selects.count();
+    record("Four profile-sourced rows are available to confirm against, offline (W6 setup)",
+      rowCount === 4, `${rowCount} row(s) after settling; last seen: ${body.slice(0, 200)}`);
+
+    if (rowCount === 4) {
+      await selects.nth(0).selectOption("0.4");
+      await selects.nth(1).selectOption("0.4");
+      await selects.nth(2).selectOption("0.6");
+      await selects.nth(3).selectOption("not_sure");
+      await page.getByRole("button", { name: "Save" }).first().click();
+      // Confirm currently re-probes the printer (7-9s observed offline); wait
+      // for the Save button to re-enable and the loading text to clear rather
+      // than assert while the save is still in flight.
+      body = await waitForNozzleIdle(page);
+    } else {
+      // Fallback diagnostic only — not what W6 itself is asserting, but keeps
+      // the rest of this phase (and W7/W8 downstream) informative rather than
+      // silent when the offline row count did not come up as expected.
+      const before = await callRoute(page, "/nozzles/status", { host: "u1.local", port: 7125 });
+      const confirmedDiag = await callRoute(page, "/nozzles/confirm", {
+        host: "u1.local", port: 7125, diameters: [0.4, 0.4, 0.6, null],
+        expected_revision: before.body?.revision ?? 0,
+      });
+      record("Fallback diagnostic: the sidecar route still accepts a confirmation",
+        confirmedDiag.status === 200,
+        `HTTP ${confirmedDiag.status} — UI row count was ${rowCount}, not 4; see the check above`);
+      body = await waitForNozzleSettled(page);
+    }
+
+    const confirmedCount = (body.match(/Confirmed by you/g) || []).length;
+    record("Toolheads 1-3 render as confirmed by you (W6)", confirmedCount === 3,
+      `${confirmedCount} row(s); last seen: ${body.slice(0, 200)}`);
+    record("Toolhead 4 ('Not sure') renders as unknown, not guessed at (W6)",
+      /Unknown — tell Studio/.test(body), "");
+
+    // A6: shotRedacted's own heading-in-view check (below) supersedes the
+    // separate scrollNozzleCardIntoView() call this used to make — same
+    // scroll target, now also asserted, not just attempted.
+    await shotRedacted(page, "v12-nozzle-confirmed", "u1.local", "Nozzles · for");
+  } else if (phase === "spool-nozzle-restored") {
+    // v1.2 W7: after the app was closed and relaunched (the existing
+    // relaunch mechanism — see run.ps1's painted-project restart), each
+    // slot's OWN row text must still be there (A2) — not just some mention of
+    // the slot number anywhere on the page.
+    await bounceRoute(page, "/settings");
+    const slot1Text = await slotRowText(page, 1);
+    record("Slot 1's own row text survives an app relaunch (W7)",
+      /PETG/.test(slot1Text) && /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text),
+      slot1Text.replace(/\s+/g, " ").slice(0, 140));
+    // A5: Slot 2's FULL row, compared byte-for-byte (whitespace-normalised)
+    // against the snapshot taken right after W4 — not a substring check, so
+    // a change to material/vendor/weight/label anywhere in the row is caught,
+    // not only a change to the one phrase being pattern-matched.
+    const slot2Text = await slotRowText(page, 2);
+    const slot2Snapshot = readSlot2Snapshot(outDir);
+    record("Slot 2's full row is identical before/after the relaunch (A5/W7)",
+      slot2Snapshot != null && normalizeRowText(slot2Text) === normalizeRowText(slot2Snapshot),
+      `before="${slot2Snapshot}" after="${normalizeRowText(slot2Text)}"`.slice(0, 220));
+
+    const body = await waitForNozzleSettled(page);
+    const confirmedCount = (body.match(/Confirmed by you/g) || []).length;
+    record("Nozzle confirmations survive an app relaunch (W7)",
+      confirmedCount === 3 && /Unknown — tell Studio/.test(body),
+      `${confirmedCount} confirmed row(s); last seen: ${body.slice(0, 200)}`);
+  } else if (phase === "spool-nozzle-remove") {
+    // v1.2 W8: removing every nozzle note, deleting one spool note, and
+    // switching provider kind twice — none of which may touch the other.
+    await bounceRoute(page, "/settings");
+    await waitForNozzleSettled(page); // "Remove all" only exists once the card has settled
+
+    await page.getByRole("button", { name: "Remove all" }).first().click();
+    // Same re-probe as Save (above) — wait for the button to re-enable and the
+    // loading text to clear before reading the result.
+    let body = await waitForNozzleIdle(page);
+    // Offline, removing every confirmation returns to the same profile-sourced
+    // shape as the very first load (D-6): the banner ABOVE 4 unknown rows —
+    // not zero rows, since the U1 profile's toolhead count does not depend on
+    // whether the user has confirmed anything.
+    record("Removing every nozzle note returns to the profile-sourced empty state (W8)",
+      /No nozzle size reported by this printer/i.test(body), `last seen: ${body.slice(0, 200)}`);
+    const nozzleRowCountAfterRemove = await page
+      .locator('select[aria-label^="Nozzle size for toolhead "]').count();
+    record("The 4 profile-sourced rows are still there after removing every note (W8)",
+      nozzleRowCountAfterRemove === 4, `${nozzleRowCountAfterRemove} row(s)`);
+    // A2: the specific, non-vacuous claim — zero rows read as confirmed any
+    // more, not just that the banner text happens to be present.
+    const confirmedAfterRemoveAll = (body.match(/Confirmed by you/g) || []).length;
+    record("Zero rows read as 'Confirmed by you' after Remove all (W8)",
+      confirmedAfterRemoveAll === 0, `${confirmedAfterRemoveAll} row(s); last seen: ${body.slice(0, 200)}`);
+
+    // A5: Slot 2's full row, compared against the same reference snapshot W7
+    // uses, right before touching Slot 1 at all — establishes the baseline
+    // this phase's own actions must not disturb.
+    const slot2Snapshot = readSlot2Snapshot(outDir);
+    let slot2Text = await slotRowText(page, 2);
+    record("Slot 2's full row matches the reference snapshot, just before deleting Slot 1 (A5/W8 setup)",
+      slot2Snapshot != null && normalizeRowText(slot2Text) === normalizeRowText(slot2Snapshot),
+      `snapshot="${slot2Snapshot}" now="${normalizeRowText(slot2Text)}"`.slice(0, 220));
+
+    // A2/A3: wait for Slot 1's own row to actually turn into its empty-state
+    // "Add a note" li (the real signal the delete round-tripped), not a
+    // fixed pause.
+    const slot1Empty = page.locator("li").filter({ hasText: "Slot 1" }).filter({ hasText: "Add a note" });
+    await slotRow(page, 1).getByRole("button", { name: "Remove" }).first().click();
+    await slot1Empty.waitFor({ state: "visible", timeout: 10000 });
+    record("Deleting Slot 1's note shows 'Add a note' for that slot, and only that slot (W8)",
+      (await slot1Empty.count()) === 1, "");
+
+    // A5: Slot 2's full row, again against the same snapshot, now AFTER
+    // deleting Slot 1 — "identical before/after", not merely "still mentions
+    // the estimate somewhere".
+    slot2Text = await slotRowText(page, 2);
+    record("Slot 2's full row is identical before/after deleting Slot 1's note (A5/W8)",
+      slot2Snapshot != null && normalizeRowText(slot2Text) === normalizeRowText(slot2Snapshot),
+      `snapshot="${slot2Snapshot}" after="${normalizeRowText(slot2Text)}"`.slice(0, 220));
+
+    // Provider kind change never touches a local note (D-1/A1.3). A7-8: waits
+    // on the address input's own appear/disappear — a real, synchronous
+    // local-state signal (MaterialProviderSettings renders it only when
+    // kind !== "none") — instead of a fixed pause.
+    const providerAddressField = page.getByPlaceholder(/spoolman/i);
+    await page.getByRole("button", { name: /^Spoolman$/ }).first().click();
+    await providerAddressField.waitFor({ state: "visible", timeout: 5000 });
+    slot2Text = await slotRowText(page, 2);
+    record("Switching provider kind to Spoolman leaves Slot 2's note untouched (W8)",
+      slot2Snapshot != null && normalizeRowText(slot2Text) === normalizeRowText(slot2Snapshot),
+      normalizeRowText(slot2Text).slice(0, 140));
+    await page.getByRole("button", { name: /^None$/ }).first().click();
+    await providerAddressField.waitFor({ state: "detached", timeout: 5000 });
+    slot2Text = await slotRowText(page, 2);
+    record("Switching provider kind back to None leaves Slot 2's note untouched (W8)",
+      slot2Snapshot != null && normalizeRowText(slot2Text) === normalizeRowText(slot2Snapshot),
+      normalizeRowText(slot2Text).slice(0, 140));
   } else if (phase === "goto-compatibility") {
     await page.evaluate(() => {
       window.history.pushState({}, "", "/compatibility");

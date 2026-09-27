@@ -70,6 +70,17 @@ def fingerprint(gcode_facts: dict | None, printer: dict | None,
             "remaining": slot.get("remaining_g"),
         })
 
+    # B8 (Opus LOW): a stored note's OWN conflict list carries the printer's
+    # live value alongside it (so the person can see both sides on screen) —
+    # but that means the raw list would change hash the moment the LIVE
+    # reading moves, even when the note itself never changed. Reduced to just
+    # which toolhead, from which source, confirmed what, so a live-only
+    # change is invisible here and shows up under "printer" instead, never
+    # double-reported (or mis-reported) as "your nozzle notes changed".
+    note_conflicts_signature = sorted(
+        (c.get("toolhead"), c.get("confirmed"), c.get("source"))
+        for c in (machine.get("nozzle_conflicts") or []))
+
     parts = {
         "job": job,
         "printer": {
@@ -80,9 +91,28 @@ def fingerprint(gcode_facts: dict | None, printer: dict | None,
             # object exclusion appearing or disappearing changes what Studio may
             # promise about cancelling one object mid-print.
             "capabilities": _hash(sorted(machine.get("klipper_objects") or [])),
+            # B2/B8: the printer's own live nozzle reading lives HERE — a
+            # change in what the firmware itself reports is a printer change,
+            # never "your nozzle notes changed".
+            "nozzle_live": machine.get("_live_nozzle_diameters"),
         },
         "materials": loaded,
         "provenance": (provenance or {}).get("verdict"),
+        # A1.12/R2-B3 (Sol 3): a nozzle confirmation the person saved (or
+        # removed) after the check ran is a change worth catching — even when
+        # a live reading already matches it and always wins. Keyed on the
+        # STORED snapshot itself (every toolhead, including an explicit "not
+        # sure" null) and the stored revision, never on the resolved
+        # `nozzle_diameters` (that value IS the live reading whenever one
+        # exists, and belongs to the printer part above) and never on
+        # `observed_at` (ticks on every read, live or not).
+        "nozzle_notes": {
+            "stored": sorted(
+                (toolhead, entry.get("diameter"))
+                for toolhead, entry in (machine.get("_stored_nozzle_confirmations") or {}).items()),
+            "revision": machine.get("nozzle_revision"),
+            "conflicts": note_conflicts_signature,
+        },
     }
     return {
         "schema_version": SCHEMA_VERSION,
@@ -98,6 +128,7 @@ WORDS = {
     "printer": "the printer",
     "materials": "what is loaded in the slots",
     "provenance": "whether this job came from your project",
+    "nozzle_notes": "your nozzle notes",
 }
 
 #: What a change in each part means for someone about to press send.
@@ -107,6 +138,7 @@ CONSEQUENCE = {
     "printer": "The printer is not in the state it was checked against.",
     "materials": "The spools are not the ones the job was checked against.",
     "provenance": "Studio no longer reads this job the same way against your project.",
+    "nozzle_notes": "The nozzle note you saved has changed since Studio checked this job.",
 }
 
 
@@ -116,7 +148,7 @@ def changes(before: dict | None, after: dict | None) -> list[dict]:
         return []
     old, new = before.get("hashes") or {}, after.get("hashes") or {}
     found = []
-    for name in ("job", "printer", "materials", "provenance"):
+    for name in ("job", "printer", "materials", "provenance", "nozzle_notes"):
         if name in old and name in new and old[name] != new[name]:
             found.append({
                 "part": name,

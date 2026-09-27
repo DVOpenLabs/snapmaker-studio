@@ -1,8 +1,8 @@
 # Do I have enough filament to finish this print?
 
-> **State:** describes v1.1.0, the current release. Spoolman and Bambuddy both
-> ship in the desktop app. Local spool notes (below) are in the engine and its local interface only — the
-> desktop app has no screen for them yet.
+> **State:** Spoolman and Bambuddy both ship in the v1.1.0 desktop app. The
+> "Your spool notes" screen described below arrives in the next
+> release; in v1.1.0 the notes exist only in the engine and its local interface.
 
 A printer knows which spool is in which slot, because it is looking at it. It
 knows nothing at all about how much filament is left on that spool. So the
@@ -128,7 +128,12 @@ real reason to expect an 87 g job to run out.
 - **Invents a figure.** A provider that cannot say how much is left produces
   unknown, everywhere, all the way to the send button.
 
-## Local spool notes, with no provider (engine and local interface only)
+## Your spool notes
+
+![Your spool notes, with two notes recorded](screenshots/next/spool-notes.png)
+![Your spool notes, before any note is added](screenshots/next/spool-notes-empty.png)
+
+*Screenshots from a pre-release build of the next version.*
 
 Since v1.1.0 the engine can also keep your own notes on a spool — material,
 colour, vendor, starting and remaining weight — stored in Studio's local library
@@ -143,9 +148,16 @@ a provider:
 - Studio subtracts from a note's remaining weight only when explicitly asked to
   record a job's usage — never while reading, planning or sending a job.
 
-**The desktop app has no screen for these notes yet.** The capability is in the
-engine and its local interface; a Settings screen for it is on the
-[roadmap](ROADMAP.md).
+In the desktop app (next release): Settings → **Materials provider** card →
+**Your spool notes**.
+Each slot shows its note, or "Add a note". A weight you type reads "entered by
+you"; after **Record filament used** — which asks you to confirm the grams first —
+it reads "estimated from what you recorded". Changing the material, subtype,
+colour or vendor to a different spool resets the weight to "no weight recorded";
+clearing a field does not. Switching between None, Spoolman and Bambuddy never
+touches your notes. If two notes exist for one slot (the same printer saved
+under two spellings of its address), neither is used and the slot shows
+a message such as "Two notes exist for slot 1 — remove one" until you remove one.
 
 ## Other providers
 

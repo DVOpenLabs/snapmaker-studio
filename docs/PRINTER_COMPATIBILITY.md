@@ -57,6 +57,33 @@ material plan — and they behaved as a printer that is not a U1 requires:
 That last one is the point. A tool count is not a spool count, and an abstraction
 that quietly turns one into the other would look like it worked.
 
+## Fitted nozzles: what the printer says, and what you told Studio
+
+Stock Snapmaker U1 firmware reports the fitted nozzle diameter of every
+toolhead, and Studio reads it live. In the next release, the **Nozzles**
+card in Settings, under Printer, shows that reading row by row — size,
+**Source: Printer**, **Reported live**. A live row with no note of yours has no
+size picker at all, and a note never overrides the printer's own evidence.
+
+When the printer does not report sizes (offline, or a machine whose firmware
+stays silent), you can confirm each toolhead yourself — mixed sizes included;
+a toolhead left as "Not sure" stays unknown. Your confirmation is stored per printer, dated, and used only
+where no live reading exists. If a note you saved earlier disagrees with a live
+reading, the row shows both, Studio uses the printer's value, and "Remove my
+note" clears it.
+
+Verified on the installed build against a real Snapmaker U1, read-only: four
+toolheads read live as 0.4 mm and shown as the printer's; a note saved while the
+printer was not reporting appeared as a conflict once it reported, the printer's
+value was used, and removing the note restored the live row. No printer control
+action was made. Offline, the table falls back to the U1 profile's four
+toolheads and confirmations survive a restart.
+
+![Nozzles read live from a real U1](screenshots/next/nozzles-live-u1.png)
+![Nozzle sizes confirmed by you, printer offline](screenshots/next/nozzles-confirmed-offline.png)
+
+*Screenshots from a pre-release build of the next version.*
+
 ## What is not claimed
 
 - **No VORON has been tested with Studio.** Not by this project, not on hardware,

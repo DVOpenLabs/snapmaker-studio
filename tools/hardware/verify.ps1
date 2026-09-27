@@ -1,4 +1,4 @@
-# Verify the installed Snapmaker Studio against a real Snapmaker U1 — read-only.
+# Verify the installed Snapmaker Studio against a real Snapmaker U1 - read-only.
 #
 # Installs the release installer into an isolated directory, launches it with an
 # isolated WebView2 profile and engine data directory, asks the real printer a
@@ -16,10 +16,24 @@
 #
 # Usage:
 #   pwsh -File tools/hardware/verify.ps1 -PrinterHost <ip-or-hostname> [-Installer <path>]
+#   (or set SNAPSTUDIO_ACCEPT_PRINTER instead of -PrinterHost)
+#
+# v1.2: also runs the nozzle-confirmation checks (R1/R2) against this same
+# real printer - see the header of checks.mjs for what they prove.
+#
+# F6: THE EXIT CODE THIS SCRIPT RETURNS IS AUTHORITATIVE (it is checks.mjs's
+# own exit code, passed through as $code below) - not hardware.json's own
+# `passed`/`total` fields. checks.mjs writes hardware.json once, before its
+# final evidence-directory leak scan (H8: nothing is written again after that
+# scan runs), so the JSON can legitimately say "every check passed" on a run
+# whose exit code is still non-zero because the leak scan found something.
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$PrinterHost,
+    # v1.2: falls back to SNAPSTUDIO_ACCEPT_PRINTER so this real-U1 phase can
+    # be wired into a CI-style invocation the same way tools/acceptance/run.ps1
+    # is, without hardcoding an address in any script.
+    [string]$PrinterHost = $env:SNAPSTUDIO_ACCEPT_PRINTER,
     [string]$Installer,
     [string]$WorkDir = (Join-Path $env:TEMP "snapstudio-hardware"),
     [int]$DebugPort = 9377,
@@ -27,6 +41,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $PrinterHost) {
+    throw "Supply -PrinterHost or set SNAPSTUDIO_ACCEPT_PRINTER - this script only runs against a real, reachable printer."
+}
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $started = @()
 
@@ -96,4 +113,5 @@ finally {
 }
 
 Write-Host "Evidence: $outDir"
+Write-Host "EXIT CODE IS AUTHORITATIVE (F6): $code - see hardware.json's own passed/total for detail, but treat this code, not that file, as the pass/fail verdict."
 exit $code

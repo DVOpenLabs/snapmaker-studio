@@ -66,11 +66,22 @@ def test_local_is_not_a_network_provider_name():
 
 
 # --- the service layer: save / list / delete / mark used --------------------
+#
+# v1.2: save/delete/mark_used now return the frozen `rows` list (A1.3/A2.5/
+# A2.8) — every stored row for the canonical host, not a single row dict — so
+# the desktop can refresh its whole spool table from one response. `_row`
+# picks out the one row these single-slot tests care about.
+
+def _row(rows: list[dict], slot: int = 0) -> dict:
+    matches = [r for r in rows if r["slot"] == slot]
+    assert len(matches) == 1, f"expected exactly one row for slot {slot}, got {matches}"
+    return matches[0]
+
 
 def test_save_then_list_local_spool(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
-    saved = service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
-                                     starting_g=1000.0, remaining_g=800.0)
+    saved = _row(service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
+                                          starting_g=1000.0, remaining_g=800.0))
     assert saved["remaining_quality"] == providers.USER_CONFIRMED
     assert saved["remaining_as_of"]
 
@@ -84,9 +95,11 @@ def test_save_then_list_local_spool(tmp_path, monkeypatch):
 
 def test_saving_with_no_remaining_weight_records_nothing_to_be_confident_about(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
-    saved = service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0)
+    saved = _row(service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0))
     assert saved["remaining_g"] is None
-    assert saved["remaining_quality"] is None
+    # v1.2: the `rows` shape always carries one of the four named quality
+    # strings (never a bare null) — "unknown" here, not None.
+    assert saved["remaining_quality"] == providers.UNTRACKED
 
 
 # --- M2 regression: save_local_spool is a genuine partial update -----------
@@ -98,7 +111,7 @@ def test_editing_an_unrelated_field_keeps_the_remaining_weight_untouched(tmp_pat
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=800.0)
-    updated = service.save_local_spool("u1.local", 0, notes="a bit warped")
+    updated = _row(service.save_local_spool("u1.local", 0, notes="a bit warped"))
     assert updated["notes"] == "a bit warped"
     assert updated["material"] == "PLA"
     assert updated["remaining_g"] == 800.0
@@ -116,17 +129,17 @@ def test_changing_the_colour_also_resets_the_remaining_weight(tmp_path, monkeypa
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=50.0)
-    updated = service.save_local_spool("u1.local", 0, color="#0000FF")
+    updated = _row(service.save_local_spool("u1.local", 0, color="#0000FF"))
     assert updated["color"] == "#0000FF"
     assert updated["remaining_g"] is None
-    assert updated["remaining_quality"] is None
+    assert updated["remaining_quality"] == providers.UNTRACKED  # v1.2 rows shape: "unknown", not None
 
 
 def test_changing_the_subtype_also_resets_the_remaining_weight(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", subtype="matte",
                              starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, subtype="silk")
+    updated = _row(service.save_local_spool("u1.local", 0, subtype="silk"))
     assert updated["subtype"] == "silk"
     assert updated["remaining_g"] is None
 
@@ -140,7 +153,7 @@ def test_editing_an_unrelated_field_never_re_stamps_a_derived_weight_as_confirme
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0, remaining_g=800.0)
     service.mark_local_spool_used("u1.local", 0, 50.0)  # -> 750g, DERIVED
-    updated = service.save_local_spool("u1.local", 0, notes="a bit warped")
+    updated = _row(service.save_local_spool("u1.local", 0, notes="a bit warped"))
     assert updated["remaining_g"] == 750.0
     assert updated["remaining_quality"] == providers.DERIVED
 
@@ -149,7 +162,7 @@ def test_a_first_ever_save_with_only_one_field_works(tmp_path, monkeypatch):
     """No existing row to merge with — every other field defaults to None
     rather than crashing on a missing record."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
-    saved = service.save_local_spool("u1.local", 0, color="#FF0000")
+    saved = _row(service.save_local_spool("u1.local", 0, color="#FF0000"))
     assert saved["color"] == "#FF0000"
     assert saved["material"] is None
     assert saved["remaining_g"] is None
@@ -165,17 +178,17 @@ def test_changing_the_material_resets_the_remaining_weight_to_unknown(tmp_path, 
     700 g, mislabelled as though someone had just confirmed 700 g of PETG."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, material="PETG")
+    updated = _row(service.save_local_spool("u1.local", 0, material="PETG"))
     assert updated["material"] == "PETG"
     assert updated["remaining_g"] is None
-    assert updated["remaining_quality"] is None
+    assert updated["remaining_quality"] == providers.UNTRACKED  # v1.2 rows shape: "unknown", not None
 
 
 def test_changing_the_vendor_also_resets_the_remaining_weight(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", vendor="Snapmaker",
                              starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, vendor="Prusament")
+    updated = _row(service.save_local_spool("u1.local", 0, vendor="Prusament"))
     assert updated["vendor"] == "Prusament"
     assert updated["remaining_g"] is None
 
@@ -187,7 +200,7 @@ def test_recasing_the_material_is_not_a_change(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", vendor="Snapmaker",
                              starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, material="pla", vendor="SNAPMAKER")
+    updated = _row(service.save_local_spool("u1.local", 0, material="pla", vendor="SNAPMAKER"))
     assert updated["remaining_g"] == 700.0
     assert updated["remaining_quality"] == providers.USER_CONFIRMED
 
@@ -198,7 +211,7 @@ def test_a_material_change_with_a_fresh_weight_in_the_same_call_uses_the_fresh_w
     other explicit remaining_g."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, material="PETG", remaining_g=950.0)
+    updated = _row(service.save_local_spool("u1.local", 0, material="PETG", remaining_g=950.0))
     assert updated["material"] == "PETG"
     assert updated["remaining_g"] == 950.0
     assert updated["remaining_quality"] == providers.USER_CONFIRMED
@@ -210,7 +223,7 @@ def test_setting_the_material_for_the_first_time_does_not_count_as_a_change(tmp_
     remaining weight (from a save with no material at all) survives."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, starting_g=1000.0, remaining_g=700.0)
-    updated = service.save_local_spool("u1.local", 0, material="PLA")
+    updated = _row(service.save_local_spool("u1.local", 0, material="PLA"))
     assert updated["material"] == "PLA"
     assert updated["remaining_g"] == 700.0
 
@@ -225,7 +238,7 @@ def test_delete_local_spool(tmp_path, monkeypatch):
 def test_mark_local_spool_used_subtracts_and_becomes_derived(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
     service.save_local_spool("u1.local", 0, material="PLA", starting_g=1000.0, remaining_g=800.0)
-    updated = service.mark_local_spool_used("u1.local", 0, 50.0)
+    updated = _row(service.mark_local_spool_used("u1.local", 0, 50.0))
     assert updated["remaining_g"] == 750.0
     assert updated["remaining_quality"] == providers.DERIVED  # Studio's arithmetic, not a fresh confirmation
 
@@ -302,18 +315,15 @@ def test_with_providers_folds_local_spool_remaining_weight_when_no_provider_is_c
     itself says otherwise — see the H1 regression tests below for that."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
-    def fake_stock_u1(host, port):
-        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
-                "available": True, "remaining_known": False,
-                "slots": [providers._slot(0, material="PLA", color="#FF0000",
-                                          confirmed_by=providers.BY_PRINTER)]}
-
-    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=750.0)
 
-    printer = service._with_providers({"reachable": True}, "u1.local", 7125,
-                                      provider_url=None, slot_map=None)
+    # A1.11: STOCK is now built from the printer read already in hand
+    # (`loaded_filaments`, as `printer_facts()` would have set it), never a
+    # second independent read of the printer.
+    printer = service._with_providers(
+        {"reachable": True, "loaded_filaments": [{"material": "PLA", "color": "#FF0000"}]},
+        "u1.local", 7125, provider_url=None, slot_map=None)
     loaded = printer["loaded_filaments"]
     assert loaded[0]["material"] == "PLA"                          # confirmed by the printer
     assert loaded[0]["confirmed_by"] == providers.BY_PRINTER
@@ -330,17 +340,12 @@ def test_a_local_note_never_overrides_a_printer_confirmed_empty_slot(tmp_path, m
     disappear. Opus review of 7848824, finding H1."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
-    def fake_stock_u1(host, port):
-        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
-                "available": True, "remaining_known": False,
-                "slots": [providers._slot(0, present=False, confirmed_by=providers.BY_PRINTER)]}
-
-    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=800.0)
 
-    printer = service._with_providers({"reachable": True}, "u1.local", 7125,
-                                      provider_url=None, slot_map=None)
+    printer = service._with_providers(
+        {"reachable": True, "loaded_filaments": [None]},
+        "u1.local", 7125, provider_url=None, slot_map=None)
     loaded = printer["loaded_filaments"]
     assert loaded[0] is None    # still reads as empty — the printer looked and saw nothing
     slot_facts = printer["slot_facts"][0]
@@ -354,15 +359,10 @@ def test_material_plan_surfaces_why_a_printer_confirmed_empty_slot_disagrees(tmp
     output, not just the safe headline with no context."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
-    def fake_stock_u1(host, port):
-        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
-                "available": True, "remaining_known": False,
-                "slots": [providers._slot(0, present=False, confirmed_by=providers.BY_PRINTER)]}
-
-    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", remaining_g=800.0)
-    printer = service._with_providers({"reachable": True}, "u1.local", 7125,
-                                      provider_url=None, slot_map=None)
+    printer = service._with_providers(
+        {"reachable": True, "loaded_filaments": [None]},
+        "u1.local", 7125, provider_url=None, slot_map=None)
     out = material_plan.plan([_job_slot(tool=0)], printer["loaded_filaments"],
                              slot_facts=printer["slot_facts"])
     slot = out["slots"][0]
@@ -378,18 +378,13 @@ def test_send_check_still_blocks_on_a_printer_confirmed_empty_slot_despite_a_loc
 
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
-    def fake_stock_u1(host, port):
-        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
-                "available": True, "remaining_known": False,
-                "slots": [providers._slot(0, present=False, confirmed_by=providers.BY_PRINTER)]}
-
-    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", color="#FF0000",
                              starting_g=1000.0, remaining_g=800.0)
 
     printer = service._with_providers(
         {"reachable": True, "toolhead_count": 4, "bed_mm": {"x": 271, "y": 335},
-         "print_state": "standby", "klipper_objects": ["gcode", "print_stats", "exclude_object"]},
+         "print_state": "standby", "klipper_objects": ["gcode", "print_stats", "exclude_object"],
+         "loaded_filaments": [None]},
         "u1.local", 7125, provider_url=None, slot_map=None)
 
     facts = {"available": True, "tools_used": [0],
@@ -404,16 +399,11 @@ def test_with_providers_never_overrides_what_the_printer_itself_saw(tmp_path, mo
     can only add a remaining weight, exactly like every other provider here."""
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
-    def fake_stock_u1(host, port):
-        return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
-                "available": True, "remaining_known": False,
-                "slots": [providers._slot(0, material="PETG", confirmed_by=providers.BY_PRINTER)]}
-
-    monkeypatch.setattr(providers, "stock_u1", fake_stock_u1)
     service.save_local_spool("u1.local", 0, material="PLA", remaining_g=500.0)
 
-    printer = service._with_providers({"reachable": True}, "u1.local", 7125,
-                                      provider_url=None, slot_map=None)
+    printer = service._with_providers(
+        {"reachable": True, "loaded_filaments": [{"material": "PETG"}]},
+        "u1.local", 7125, provider_url=None, slot_map=None)
     loaded = printer["loaded_filaments"]
     assert loaded[0]["material"] == "PETG"       # the printer's own answer
     assert loaded[0]["remaining_g"] == 500.0      # the gap the printer could not fill
