@@ -39,6 +39,24 @@ def require_path_string(data: dict, key: str = "path") -> str:
     return require_str(data, key)
 
 
+def _safe_float(v, error_message: str) -> float:
+    """Convert to a finite float, or raise ``ValidationError(error_message)``.
+
+    A JSON body has no length limit on an integer literal — ``10**400``
+    parses to a perfectly ordinary (if enormous) Python ``int`` — but
+    ``float()`` on one that big raises ``OverflowError``, not ``ValueError``.
+    Every numeric validator that ever converts a raw JSON value to float goes
+    through this one place, so none of them can let that leak past as an
+    unhandled 500."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError, OverflowError):
+        raise ValidationError(error_message)
+    if not math.isfinite(f):
+        raise ValidationError(error_message)
+    return f
+
+
 def _as_number(data: dict, key: str, required: bool, default: float | None) -> float | None:
     if key not in data or data.get(key) is None:
         if required:
@@ -49,17 +67,10 @@ def _as_number(data: dict, key: str, required: bool, default: float | None) -> f
     if isinstance(v, bool):
         raise ValidationError(f"Invalid {key}")
     if isinstance(v, (int, float)):
-        f = float(v)
-    elif isinstance(v, str):
-        try:
-            f = float(v.strip())
-        except (TypeError, ValueError):
-            raise ValidationError(f"Invalid {key}")
-    else:
-        raise ValidationError(f"Invalid {key}")
-    if not math.isfinite(f):
-        raise ValidationError(f"Invalid {key}")
-    return f
+        return _safe_float(v, f"Invalid {key}")
+    if isinstance(v, str):
+        return _safe_float(v.strip(), f"Invalid {key}")
+    raise ValidationError(f"Invalid {key}")
 
 
 def require_float(data: dict, key: str) -> float:
@@ -209,7 +220,14 @@ def bounded_weight(data: dict, key: str) -> object:
 
 def bounded_used_weight(data: dict, key: str = "used_g") -> float:
     """A2.6: 0 < used_g <= 10000 g, required."""
-    f = require_float(data, key)
+    try:
+        f = require_float(data, key)
+    except ValidationError:
+        # Missing, non-numeric, or too large to convert (10**400) all map to
+        # the one code A4.3 promises for this route — never the generic
+        # invalid_request just because the bad-value message wasn't already
+        # shaped like a code.
+        raise ValidationError("invalid_weight")
     if f <= 0 or f > 10000:
         raise ValidationError("invalid_weight")
     return f
@@ -230,8 +248,8 @@ def nullable_diameter_list(data: dict, key: str = "diameters", max_len: int = 8)
             continue
         if isinstance(item, bool) or not isinstance(item, (int, float)):
             raise ValidationError("invalid_diameters")
-        f = float(item)
-        if not math.isfinite(f) or not (0 < f <= 2.0):
+        f = _safe_float(item, "invalid_diameters")
+        if not (0 < f <= 2.0):
             raise ValidationError("invalid_diameters")
         out.append(f)
     return out
@@ -250,8 +268,8 @@ def optional_positive_float_list(data: dict, key: str, max_len: int = 8) -> list
     for item in v:
         if isinstance(item, bool) or not isinstance(item, (int, float)):
             raise ValidationError(f"Invalid {key}")
-        f = float(item)
-        if not math.isfinite(f) or f <= 0:
+        f = _safe_float(item, f"Invalid {key}")
+        if f <= 0:
             raise ValidationError(f"Invalid {key}")
         out.append(f)
     return out
