@@ -1,5 +1,7 @@
 # Beta test plan — asking for the smallest useful thing
 
+> **Current state, recorded 2026-09-28.** Everything below was written on 2026-08-23 and is kept as written. Since then, Snapmaker's Innovation Fund community vote was observed live on 23 September 2026 (issue #18, opened by the page watcher and closed by the maintainer that day); the fund page says voting runs 22–30 September 2026. The ballot is Snapmaker's official ballot, linked from the fund page (`snapmaker.com/innovation-fund`) and hosted externally: email-verified, five votes per voter, with provisional results due 30 September and the confirmed list on 15 October. The rule below stands: this project does not ask for votes, in any channel; naming the fund page once, factually, remains the limit. The page watcher (`tools/watch/innovation_fund.py`) has done its job and no longer runs on a schedule.
+
 **Written 2026-08-23.** Studio has been downloaded 43 times and has never received
 a single report from anyone but its author. That is the project's largest gap, and
 it is not a gap in the software.
