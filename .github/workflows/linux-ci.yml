@@ -512,6 +512,16 @@ jobs:
             echo "Expected HTTP 200 from /health, got $status" >&2
             exit 1
           fi
+
+          # Frozen-sidecar SpoolEase proof: drives the SAME extracted binary
+          # through /provider/test and /material_plan against an in-test fake.
+          # Runs after the smoke child above is stopped; the test starts and
+          # stops its own child (tracks that PID only). pytest is installed
+          # here, not added to the freeze environment above — `cryptography`
+          # is already present there as a runtime dependency of the backend
+          # package itself (plan-39 v3.4 L-5).
+          python3.13 -m pip install pytest
+          (cd backend && SNAPSTUDIO_SIDECAR_EXE="$exe" python3.13 -m pytest tests/test_frozen_sidecar_spoolease.py -q -p no:cacheprovider)
           echo "PACKAGE VERIFIED: extracted, packaged sidecar starts and answers /health with 200."
 
       - name: "Sidecar alone: parent-death stdin lifeline"

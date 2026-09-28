@@ -117,13 +117,38 @@ def test_the_normalised_url_is_what_gets_requested(monkeypatch):
 
 
 def test_a_huge_response_is_bounded():
-    """The reader caps what it will take from a provider, like every other reader."""
+    """The reader caps what it will take from a provider, like every other
+    reader — the size cap lives in the shared `_fetch()` every reader routes
+    through (plan-39 v3.4 M-1/L-7: it moved out of `_get_json` when
+    `_get_text` needed the same cap for SpoolEase's plaintext body)."""
     import inspect
 
     from snapstudio_core import material_providers
 
-    source = inspect.getsource(material_providers._get_json)
-    assert "1024" in source and "read(" in source
+    source = inspect.getsource(material_providers._fetch)
+    assert "limit" in source and "read(" in source
+    assert "1024" in inspect.getsource(material_providers)
+
+
+def test_a_spoolman_timeout_reads_the_same_whether_bare_or_wrapped(monkeypatch):
+    """plan-39 v3.2 N-4 / v3.4 L-2: the same timeout sentence, and a
+    `URLError(reason=TimeoutError())` — the shape the real transport raises
+    when the shared read deadline expires — is recognised exactly like a bare
+    `TimeoutError`."""
+    import urllib.error
+
+    from snapstudio_core import material_providers as mp
+
+    monkeypatch.setattr(mp, "_get_json", lambda url, timeout=4.0: (
+        _ for _ in ()).throw(TimeoutError()))
+    bare = mp.spoolman("http://192.168.1.9:7912")
+    assert "did not answer in time" in bare["error"]
+    assert "192.168.1.9" not in bare["error"]
+
+    monkeypatch.setattr(mp, "_get_json", lambda url, timeout=4.0: (
+        _ for _ in ()).throw(urllib.error.URLError(TimeoutError())))
+    wrapped = mp.spoolman("http://192.168.1.9:7912")
+    assert "did not answer in time" in wrapped["error"]
 
 
 def test_a_provider_error_never_carries_the_address_into_the_result(monkeypatch):

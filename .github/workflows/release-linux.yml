@@ -228,6 +228,11 @@ jobs:
             echo "Expected HTTP 200 from /health, got $status" >&2
             exit 1
           fi
+
+          # Frozen-sidecar SpoolEase proof, against the installed package's
+          # own binary, before it is removed below (plan-39 addendum §6).
+          python3.13 -m pip install pytest
+          (cd backend && SNAPSTUDIO_SIDECAR_EXE="$sidecar_path" python3.13 -m pytest tests/test_frozen_sidecar_spoolease.py -q -p no:cacheprovider)
           echo "Installed cleanly and the bundled sidecar answers /health with 200."
           apt-get remove -y "$pkg_name"
 

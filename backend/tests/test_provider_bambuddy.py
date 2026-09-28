@@ -255,7 +255,20 @@ def test_a_timeout_is_an_answer_rather_than_a_crash(monkeypatch):
         _ for _ in ()).throw(TimeoutError()))
     out = providers.bambuddy("http://b")
     assert out["available"] is False
-    assert "did not answer within" in out["error"]
+    # plan-39 v3.2 N-4: the same timeout-sentence pattern as every provider.
+    assert "did not answer in time" in out["error"]
+    assert "Studio waited about 4 seconds" in out["error"]
+
+
+def test_a_wrapped_timeout_reads_the_same_as_a_bare_one(monkeypatch):
+    """plan-39 v3.4 L-2: `URLError(reason=TimeoutError())` — the shape the real
+    transport actually raises when the shared read deadline expires — is
+    recognised as a timeout exactly like a bare `TimeoutError`."""
+    monkeypatch.setattr(providers, "_get_json", lambda url, timeout=4.0: (
+        _ for _ in ()).throw(urllib.error.URLError(TimeoutError())))
+    out = providers.bambuddy("http://b")
+    assert out["available"] is False
+    assert "did not answer in time" in out["error"]
 
 
 @pytest.mark.parametrize("code", [401, 403])

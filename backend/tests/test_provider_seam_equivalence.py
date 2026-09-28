@@ -427,11 +427,11 @@ def test_no_generic_consumer_branches_on_a_provider_name(filename):
 
     def names_a_provider(node) -> bool:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return any(n in node.value.lower() for n in ("spoolman", "bambuddy"))
+            return any(n in node.value.lower() for n in ("spoolman", "bambuddy", "spoolease"))
         if isinstance(node, ast.Attribute):
-            return node.attr in ("SPOOLMAN", "BAMBUDDY")
+            return node.attr in ("SPOOLMAN", "BAMBUDDY", "SPOOLEASE")
         if isinstance(node, ast.Name):
-            return node.id in ("SPOOLMAN", "BAMBUDDY")
+            return node.id in ("SPOOLMAN", "BAMBUDDY", "SPOOLEASE")
         return False
 
     for node in ast.walk(tree):
@@ -458,6 +458,22 @@ def test_every_registered_provider_has_a_display_name():
     assert set(providers.READERS) == set(providers.PROVIDER_NAMES)
     assert providers.READERS[providers.SPOOLMAN] is providers.spoolman
     assert providers.READERS[providers.BAMBUDDY] is providers.bambuddy
+    assert providers.READERS[providers.SPOOLEASE] is providers.spoolease
+    assert providers.PROVIDER_NAMES[providers.SPOOLEASE] == "SpoolEase"
+
+
+def test_read_normalises_error_code_and_weight_source_on_every_kind(monkeypatch):
+    """Astra-5: `error_code`/`weight_source` are always present, for every
+    registered provider, not only for the one that can actually fail with a
+    wire-level code."""
+    def fake_get(url, timeout=4.0):
+        return []
+    monkeypatch.setattr(providers, "_get_json", fake_get)
+    for kind in (providers.SPOOLMAN, providers.BAMBUDDY):
+        out = providers.read(kind, "http://provider.local:1234")
+        assert "error_code" in out and "weight_source" in out
+        assert out["error_code"] is None
+        assert out["weight_source"] is None
 
 
 def test_an_unknown_provider_name_is_refused_rather_than_guessed():

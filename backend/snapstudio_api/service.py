@@ -765,7 +765,8 @@ def _local_spool_rows(host: str) -> tuple[list[dict], list[dict]]:
 def _with_providers(printer: dict, host: str | None, port: int,
                     provider_url: str | None, slot_map: dict | None,
                     slot_base: int | None = None,
-                    provider: str | None = None) -> dict:
+                    provider: str | None = None,
+                    provider_key: str | None = None) -> dict:
     """Fold optional material providers into the printer's own report.
 
     The printer stays authoritative about what is in a slot; a provider can only
@@ -788,13 +789,28 @@ def _with_providers(printer: dict, host: str | None, port: int,
     # A1.11: built from the printer read already in `printer` — never a
     # second, independent read of the machine (see `stock_from_facts`).
     states = [providers.stock_from_facts(printer)]
+    provider_status = None
     if provider_url:
         # Whether the user counted their slots from 0 or from 1 is a fact only
         # they have. Guessing it puts every spool one slot out and then reports
         # the wrong material with complete confidence, so the app states it
         # rather than leaving the engine to infer it from the shape of the map.
-        states.append(providers.read(provider or providers.SPOOLMAN, provider_url,
-                                     slot_map, slot_base=slot_base))
+        network_state = providers.read(provider or providers.SPOOLMAN, provider_url,
+                                       slot_map, slot_base=slot_base, key=provider_key)
+        states.append(network_state)
+        kind = (provider or providers.SPOOLMAN).strip().lower()
+        # F2/Astra-5 (frozen): all seven keys always present. Never the URL or
+        # the key — this is rendered in the app and can end up in a screenshot.
+        provider_status = {
+            "provider": kind,
+            "name": providers.PROVIDER_NAMES.get(kind, kind),
+            "available": bool(network_state.get("available")),
+            "error": network_state.get("error"),
+            "error_code": network_state.get("error_code"),
+            "spools": len(network_state.get("spools") or []) if network_state.get("available") else 0,
+            "with_weight": (sum(1 for s in network_state.get("spools") or [] if s.get("remaining_g") is not None)
+                            if network_state.get("available") else 0),
+        }
     if local_rows or note_conflicts:
         # A3.4/A2.8: a slot with 2+ colliding aliases is excluded from the
         # normal local-note rows above and reported here instead — a
@@ -805,18 +821,23 @@ def _with_providers(printer: dict, host: str | None, port: int,
             providers.local_spools(local_rows), note_conflicts))
     combined = providers.combine(*states)
     loaded = providers.as_loaded_filaments(combined)
-    if loaded is not None:
+    if loaded is not None or provider_status is not None:
         printer = dict(printer)
-        printer["loaded_filaments"] = loaded
-        # The normalised slots as well as the flattened list. `loaded` drops a
-        # slot that holds nothing, which loses the difference between a printer
-        # reporting an empty slot and a mapping pointing at a spool that no
-        # longer exists.
-        printer["slot_facts"] = combined.get("slots")
-        printer["material_sources"] = combined.get("sources")
-        printer["remaining_known"] = combined.get("remaining_known", False)
-        if combined.get("note_conflicts"):
-            printer["note_conflicts"] = combined["note_conflicts"]
+        if loaded is not None:
+            printer["loaded_filaments"] = loaded
+            # The normalised slots as well as the flattened list. `loaded` drops a
+            # slot that holds nothing, which loses the difference between a printer
+            # reporting an empty slot and a mapping pointing at a spool that no
+            # longer exists.
+            printer["slot_facts"] = combined.get("slots")
+            printer["material_sources"] = combined.get("sources")
+            printer["remaining_known"] = combined.get("remaining_known", False)
+            if combined.get("note_conflicts"):
+                printer["note_conflicts"] = combined["note_conflicts"]
+        # Always present whenever a network provider address was given, on
+        # /material_plan, /send_check and (via the recheck) /printer/upload_gcode
+        # — null only when no provider was configured at all (plan-39 §3.5).
+        printer["provider_status"] = provider_status
     return printer
 
 
@@ -1083,7 +1104,20 @@ def mark_local_spool_used(host: str, slot: int, used_g: float) -> list[dict]:
         conn.close()
 
 
-def provider_test(url: str, provider: str | None = None) -> dict:
+def _test_reason(text: str | None) -> str | None:
+    """plan-39 v3.4 polish: `/provider/test`'s `reason` drops the trailing
+    "so Studio carried on without it" — true of `provider_status.error`
+    (a background read Studio silently moved on from) but not of a Test press,
+    where nothing else was happening for it to carry on with."""
+    if not text:
+        return text
+    suffix = ", so Studio carried on without it."
+    if text.endswith(suffix):
+        return text[: -len(suffix)] + "."
+    return text
+
+
+def provider_test(url: str, provider: str | None = None, provider_key: str | None = None) -> dict:
     """Can Studio read this material provider, and what does it see?
 
     The one thing a person needs before trusting any of this: press a button, get
@@ -1101,29 +1135,37 @@ def provider_test(url: str, provider: str | None = None) -> dict:
     try:
         normalised = providers.validate_provider_url(url)
     except providers.InvalidProviderAddress as exc:
+        # plan-39 addendum A-1: this branch runs before any reader and does
+        # not branch on the provider name — every kind gets `invalid_address`.
         return {"schema_version": providers.SCHEMA_VERSION, "ok": False,
-                "reason": str(exc), "spools": 0, "provider": kind}
+                "reason": _test_reason(str(exc)), "spools": 0, "provider": kind,
+                "error_code": "invalid_address", "with_weight": 0}
 
-    state = providers.read(kind, normalised)
+    state = providers.read(kind, normalised, key=provider_key)
     if not state.get("available"):
         return {"schema_version": providers.SCHEMA_VERSION, "ok": False,
-                "reason": state.get("error") or f"{name} did not answer.", "spools": 0,
-                "provider": kind}
+                "reason": _test_reason(state.get("error")) or f"{name} did not answer.",
+                "spools": 0, "provider": kind,
+                "error_code": state.get("error_code"), "with_weight": 0}
 
     spools = state.get("spools") or []
     tracked = [s for s in spools
                if s.get("remaining_quality") == providers.TRACKED
                and freshness.assess(s.get("remaining_as_of"))["trustworthy"]]
+    with_weight = sum(1 for s in spools if s.get("remaining_g") is not None)
     return {
         "schema_version": providers.SCHEMA_VERSION,
         "ok": True,
         "provider": kind,
+        "error_code": None,
         "spools": len(spools),
         "with_tracked_weight": len(tracked),
+        "with_weight": with_weight,
         "archived": sum(1 for s in spools if s.get("archived")),
         # Deliberately not the address: this response is rendered in the app and
         # can end up in a screenshot.
-        "detail": _provider_detail(name, len(spools), len(tracked)),
+        "detail": _provider_detail(name, len(spools), len(tracked), with_weight,
+                                   state.get("weight_source")),
         "choices": [
             {"id": s.get("id"),
              "label": " ".join(x for x in (s.get("vendor"), s.get("name") or s.get("material"))
@@ -1138,13 +1180,29 @@ def provider_test(url: str, provider: str | None = None) -> dict:
     }
 
 
-def _provider_detail(name: str, total: int, tracked: int) -> str:
+def _provider_detail(name: str, total: int, tracked: int, with_weight: int = 0,
+                     weight_source: str | None = None) -> str:
     """Two numbers, because "connected" and "useful" are genuinely different.
 
-    The same sentence fits both providers because both have the same shape of
-    answer: a spool nobody has printed from reports what it started with, and
-    that is a declared size rather than a record of anything.
+    The same sentence fits Spoolman and Bambuddy because both have the same
+    shape of answer: a spool nobody has printed from reports what it started
+    with, and that is a declared size rather than a record of anything. A
+    scale-fed provider (SpoolEase) branches on `weight_source`, not on the
+    provider's name — the honesty caveat is a fact about *how* the number was
+    made, and any future scale-backed provider gets it for free.
     """
+    if weight_source == "scale":
+        if not total:
+            return (f"{name} answered, but has no spools in it yet. Add your spools "
+                    "there and Studio will see them.")
+        plural = "s" if total != 1 else ""
+        if not with_weight:
+            return (f"{name} answered with {total} spool{plural}, but none of them has "
+                    "a usable weight from its scale.")
+        return (f"{name} answered with {total} spool{plural}, {with_weight} of them with "
+                f"a weight from its scale. {name} does not record when a spool was "
+                "weighed and cannot see what your U1 has used since, so Studio treats "
+                "these as estimates and will never refuse a send over them.")
     if not total:
         return (f"{name} answered, but has no spools in it yet. Add your spools there "
                 "and Studio will see them.")
@@ -1189,16 +1247,20 @@ EVENT_SAMPLE = 200
 def material_plan(path: str, host: str | None = None, port: int = 7125,
                   spoolman: str | None = None, slot_map: dict | None = None,
                   slot_base: int | None = None, provider: str | None = None,
-                  provider_url: str | None = None) -> dict:
+                  provider_url: str | None = None, provider_key: str | None = None) -> dict:
     """What to load, and what can stay, for this sliced job."""
     from snapstudio_core import gcode, material_plan as mp
 
     kind, url = _provider_choice(provider, provider_url, spoolman)
     facts = gcode.read_facts(path)
     printer = printer_facts(host, port) if host else {"reachable": False}
-    printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind)
+    printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind, provider_key)
     out = mp.from_facts(facts, printer)
-    out["printer"] = {k: v for k, v in printer.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
+    # Always present (null when no provider was configured) — plan-39 §3.5.
+    out["provider_status"] = printer.get("provider_status")
+    out["printer"] = {k: v for k, v in printer.items() if k not in (
+        "klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations",
+        "provider_status")}
     return out
 
 
@@ -1206,14 +1268,14 @@ def send_check(path: str, host: str | None = None, port: int = 7125,
                include_timeline: bool = False, project_path: str | None = None,
                spoolman: str | None = None, slot_map: dict | None = None,
                slot_base: int | None = None, provider: str | None = None,
-               provider_url: str | None = None) -> dict:
+               provider_url: str | None = None, provider_key: str | None = None) -> dict:
     """Ready to send? Blockers, warnings and unknowns, kept apart."""
     from snapstudio_core import gcode, send_check as sc
 
     kind, url = _provider_choice(provider, provider_url, spoolman)
     facts = gcode.read_facts(path)
     printer = printer_facts(host, port) if host else {"reachable": False}
-    printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind)
+    printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind, provider_key)
 
     timeline = None
     if include_timeline:
@@ -1240,7 +1302,11 @@ def send_check(path: str, host: str | None = None, port: int = 7125,
     # the page was drawn.
     from snapstudio_core import send_state
     out["state"] = send_state.fingerprint(facts, printer, origin, file_stat=_file_stat(path))
-    out["printer"] = {k: v for k, v in printer.items() if k not in ("klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations")}
+    # Always present (null when no provider was configured) — plan-39 §3.5.
+    out["provider_status"] = printer.get("provider_status")
+    out["printer"] = {k: v for k, v in printer.items() if k not in (
+        "klipper_objects", "_live_nozzle_diameters", "_stored_nozzle_confirmations",
+        "provider_status")}
     return out
 
 
@@ -1399,7 +1465,8 @@ def printer_upload_gcode(host: str, path: str, port: int = 7125,
                          project_path: str | None = None, spoolman: str | None = None,
                          slot_map: dict | None = None, slot_base: int | None = None,
                          provider: str | None = None,
-                         provider_url: str | None = None) -> dict:
+                         provider_url: str | None = None,
+                         provider_key: str | None = None) -> dict:
     """Upload a sliced gcode file (chosen by the user) to the printer.
 
     Two things happen before any bytes are sent. The file is checked against what
@@ -1417,10 +1484,17 @@ def printer_upload_gcode(host: str, path: str, port: int = 7125,
     if not path:
         raise ValueError("missing 'path'")
 
+    # Computed once, right after the optional recheck, and set on every return
+    # below — never a second provider read of its own (plan-39 addendum §8/A-2).
+    # `null` whenever no recheck ran, or the recheck ran with no provider
+    # configured (`fresh["provider_status"]` is itself null in that case).
+    status = None
     if expect_state:
         fresh = send_check(path, host=host, port=port, project_path=project_path,
                            spoolman=spoolman, slot_map=slot_map, slot_base=slot_base,
-                           provider=provider, provider_url=provider_url)
+                           provider=provider, provider_url=provider_url,
+                           provider_key=provider_key)
+        status = fresh.get("provider_status")
         moved = send_state.changes(expect_state, fresh.get("state"))
         if moved:
             return {
@@ -1431,6 +1505,7 @@ def printer_upload_gcode(host: str, path: str, port: int = 7125,
                 "detail": send_state.describe(moved),
                 "check": fresh,
                 "uploaded": False,
+                "provider_status": status,
             }
 
     try:
@@ -1439,12 +1514,16 @@ def printer_upload_gcode(host: str, path: str, port: int = 7125,
         # The printer answered, and said no. That is a different problem from not
         # finding the printer at all, and it has a different fix.
         return {"ok": False, "action": "upload", "state": "refused_by_printer",
-                "uploaded": False, "status": exc.status, "detail": str(exc)}
+                "uploaded": False, "status": exc.status, "detail": str(exc),
+                "provider_status": status}
     except OSError as exc:
         return {"ok": False, "action": "upload", "state": "not_accepted", "uploaded": False,
                 "detail": ("Studio could not finish sending the file to the printer: "
                            f"{getattr(exc, 'strerror', None) or exc}. Nothing on the printer "
-                           "has been started.")}
+                           "has been started."),
+                "provider_status": status}
+
+    result["provider_status"] = status
 
     # An accepted POST is not a finished upload. Moonraker parses metadata
     # asynchronously, so a file can be on the printer and not yet readable by it —

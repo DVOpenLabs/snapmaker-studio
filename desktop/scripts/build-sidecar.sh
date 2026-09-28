@@ -16,7 +16,7 @@
 # desktop/src-tauri/bin/linux/snapstudio-api/.
 #
 # Requires: Python 3.13 with the backend installed (pip install -e backend)
-# plus pyinstaller + lxml (pip install -r backend/requirements-build.txt).
+# plus pyinstaller + lxml + cryptography (pip install -r backend/requirements-build.txt).
 #
 # Usage (from anywhere): desktop/scripts/build-sidecar.sh
 set -euo pipefail
@@ -87,7 +87,7 @@ for candidate in python3.13 python3 python; do
 import sys
 if sys.version_info[:2] < (3, 13):
     sys.exit(1)
-import PyInstaller, lxml, click
+import PyInstaller, lxml, click, cryptography
 import snapstudio_api.server
 " >/dev/null 2>&1; then
         python_bin="$resolved"
@@ -95,7 +95,7 @@ import snapstudio_api.server
     fi
 done
 if [ -z "$python_bin" ]; then
-    echo "No Python >=3.13 with the backend + pyinstaller + lxml installed was found." >&2
+    echo "No Python >=3.13 with the backend + pyinstaller + lxml + cryptography installed was found." >&2
     echo "Run: pip install -e backend && pip install -r backend/requirements-build.txt" >&2
     exit 1
 fi

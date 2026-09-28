@@ -11,7 +11,7 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "Snapmaker Studio contributors" }]
 keywords = ["3d-printing", "print-ready", "validation", "workflow", "local-first", "snapmaker", "u1", "3mf", "stl", "orca", "bambu"]
-dependencies = ["lxml>=6.1,<7", "click>=8.1,<9"]
+dependencies = ["lxml>=6.1,<7", "click>=8.1,<9", "cryptography>=44,<51"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

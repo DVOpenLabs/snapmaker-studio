@@ -4,3 +4,4 @@
 #   pip install -r backend/requirements-build.txt
 pyinstaller>=6.21,<7
 lxml>=6.1,<7
+cryptography>=44,<51

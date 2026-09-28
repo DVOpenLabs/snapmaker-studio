@@ -132,3 +132,27 @@ def test_the_note_tells_the_user_nothing_was_sent(tmp_path):
     preview = diagnostics.preview(data_dir=str(tmp_path))
     assert "Nothing has been sent anywhere" in preview["note"]
     assert preview["text"]
+
+
+def test_a_spoolease_key_never_reaches_a_diagnostics_bundle(tmp_path):
+    """plan-39 O-8: `collect()`'s allowlist (`_section`/`_project`/`_sliced`/
+    `_printer`/`_ledger`) never reaches provider state — this pins that an
+    in-process SpoolEase read with the fixture key, run just before a bundle
+    is built, leaves neither the key nor its derived-key hex anywhere in it.
+    `AC-8` was originally a redaction-pattern test (`_TOKENISH` needs 24+
+    chars; the fixture key is shorter) — this end-to-end pin is what actually
+    proves the property (plan-39 §1 O-8)."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from fixtures.providers.spoolease_fake import FIXTURE_KEY, SpoolEaseFake
+
+    from snapstudio_core import material_providers as mp, spoolease_wire as wire
+
+    with SpoolEaseFake(mode="ok") as fake:
+        mp.read("spoolease", fake.url, key=FIXTURE_KEY)  # exercised; not inspected here
+
+    bundle = diagnostics.collect(data_dir=str(tmp_path))
+    text = json.dumps(bundle)
+    assert FIXTURE_KEY not in text
+    assert wire.derive_key(FIXTURE_KEY.encode("utf-8")).hex() not in text
