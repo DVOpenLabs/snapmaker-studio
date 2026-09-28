@@ -6,6 +6,49 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **SpoolEase as a third material provider.** Settings → Materials provider
+  now offers **SpoolEase** alongside Spoolman and Bambuddy: enter its address
+  and the security key shown on its screen (or set in its own settings), and
+  Studio reads its spool list the same read-only way it reads the other two.
+  The key is kept in memory for the running session only — never written to
+  Studio's library, settings, a URL, a log or a diagnostics bundle — and you
+  enter it again after restarting Studio. SpoolEase weighs spools on its own
+  scale but cannot see anything a Snapmaker U1 has printed, so every
+  remaining-weight figure it supplies is treated as an estimate and, like an
+  undated or arithmetic figure from any other provider, can warn but never be
+  the sole reason a send is refused. **Status: PROTOCOL VERIFIED against
+  source and fixtures; REAL SPOOLEASE DEVICE VALIDATION PENDING** — see
+  `docs/interop/SPOOLEASE_PROTOCOL.md`.
+
+### Changed
+- **Material provider network behaviour, for every provider.** A provider
+  name is now checked by what it actually resolves to, not only by how it is
+  spelled — a name resolving only to a globally routable address is refused
+  ("...has no address on your own network...", with a fallback suggestion to
+  enter the provider's own local address), and a name resolving to both a
+  local and a public address is read on the local one only. Environment- and
+  system-configured proxies are now ignored for a provider read. The address
+  check remains by address category (loopback, private, link-local,
+  Tailscale-style carrier-grade-NAT, IPv6 site-local) — a real check, but not
+  literal proof an address is on your own network. Scoped IPv6 literals are
+  unchanged (passed to the operating system exactly as before; on Windows
+  only the numeric interface-index form is known to resolve).
+- **Provider timeout wording, for every provider.** Spoolman's and
+  Bambuddy's own "did not answer" timeout sentence now reads "...did not
+  answer in time (Studio waited about N seconds)...", matching SpoolEase's.
+  Verdicts are unchanged; only the sentence changed.
+- **A remaining-weight figure with no date now says so, even when it looks
+  sufficient.** When a spool's remaining weight carries no date — a Spoolman
+  spool nothing has printed from, a Bambuddy spool the same way, or any
+  SpoolEase spool — the material plan now adds "Nothing records when this
+  figure was last updated." even when there is enough of it for the job.
+  Verdicts are unchanged; only the sentence gained the caveat.
+- **A persisted slot mapping may now contain a text spool id**, because
+  SpoolEase's own ids are decimal strings rather than numbers. Existing
+  numeric mappings for Spoolman and Bambuddy are unaffected and need no
+  migration.
+
 ### Maintenance
 - `desktop/package-lock.json` now records the project's own version (1.2.0)
   at its root, not 1.0.0. Only the two root version fields changed; every

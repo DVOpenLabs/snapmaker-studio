@@ -1,7 +1,10 @@
 # Do I have enough filament to finish this print?
 
-> **State:** Spoolman, Bambuddy and the "Your spool notes" screen below all ship
-> in the v1.2.0 desktop app.
+> **State:** Spoolman, Bambuddy, SpoolEase and the "Your spool notes" screen
+> below all ship in the desktop app. SpoolEase support is
+> **PROTOCOL VERIFIED against source and fixtures; REAL SPOOLEASE DEVICE
+> VALIDATION PENDING** — see
+> [interop/SPOOLEASE_PROTOCOL.md](interop/SPOOLEASE_PROTOCOL.md).
 
 A printer knows which spool is in which slot, because it is looking at it. It
 knows nothing at all about how much filament is left on that spool. So the
@@ -10,17 +13,25 @@ and Studio said "unknown" to it on every setup.
 
 Something on your network may know. **Spoolman** tracks spools and what has been
 used from them; **Bambuddy** keeps a spool inventory alongside its printer
-management. Studio can read either — read-only, over your own network, optional.
+management; **SpoolEase** weighs spools on its own scale and keeps the
+reading. Studio can read any of the three — read-only, over your own network,
+optional.
 
 ## Setting it up
 
 **Settings → Materials provider.**
 
-1. Choose **Spoolman** or **Bambuddy**.
-2. Type the address of the machine it runs on: `spoolman.local:7912` or
-   `bambuddy.local:8000`, or the IP.
-3. Press **Test connection**.
-4. Say which numbering your slots use — 1 to 4, or 0 to 3 — and then which spool
+1. Choose **Spoolman**, **Bambuddy** or **SpoolEase**.
+2. Type the address of the machine it runs on: `spoolman.local:7912`,
+   `bambuddy.local:8000` or SpoolEase's own address (for example
+   `192.168.1.50`), or the IP.
+3. **SpoolEase only:** enter the security key shown on the SpoolEase screen
+   (or set in its own settings). Studio keeps it in memory for this session
+   only — you will enter it again after restarting Studio. SpoolEase shows a
+   new key each time it restarts unless you set a fixed key in its own
+   settings.
+4. Press **Test connection**.
+5. Say which numbering your slots use — 1 to 4, or 0 to 3 — and then which spool
    is in which slot.
 
 That is all of it. No account, no cloud, and Studio does not scan your network
@@ -37,6 +48,61 @@ to be right.
 Bambuddy can be run with authentication switched on, and then it wants an API key
 on every request. Studio has nowhere safe to keep one, so it says so rather than
 storing a key in the clear. A Bambuddy that does not require a key reads normally.
+
+### SpoolEase: what its weights mean, and why they never block a send
+
+SpoolEase weighs a spool on its own scale, then separately counts what it has
+seen a **Bambu** print consume since. It has no way to see anything a
+Snapmaker U1 has printed. So every remaining-weight figure Studio works out
+from a SpoolEase spool is an estimate — arithmetic Studio performed from a
+scale reading and a consumption counter, never a figure SpoolEase itself
+calls settled — and every one of them carries this note:
+
+> SpoolEase does not record when this spool was weighed and cannot see what
+> your U1 has used since, so treat this as an estimate.
+
+Because of that, a SpoolEase figure can warn that a job may run short, but it
+can never be the sole reason Studio refuses to send a job — exactly the same
+rule that already applies to a Spoolman or Bambuddy figure that is arithmetic
+rather than a tracked measurement, or that carries no date. The full protocol
+detail — including how Studio talks to SpoolEase, what it decrypts and how,
+and what is and is not bounded by a timeout — is in
+[interop/SPOOLEASE_PROTOCOL.md](interop/SPOOLEASE_PROTOCOL.md).
+
+**The security key stays in memory only.** Studio never writes it to its
+library database, its settings, a URL, a log, or a diagnostics bundle — only
+to the request that needs it, for as long as Studio is running. Restart
+Studio and you enter it again.
+
+**Behaviour change for every provider, including Spoolman and Bambuddy.**
+Adding SpoolEase changed how Studio decides whether an address is "on your
+own network," for every provider, not only for SpoolEase:
+
+- A provider name is now checked by what it actually resolves to, not only by
+  how it is spelled. A name that resolves to both a local and a public
+  address is read on the local one only; a name that resolves only to a
+  public address is refused, with a message asking you to enter the
+  provider's own local address instead (for example its `192.168.x.x`
+  address).
+- Environment- and system-configured proxies are now ignored for a provider
+  read — Studio connects to your provider directly, on your own network.
+- The address check is by address category (loopback, a private range,
+  link-local, a Tailscale-style carrier-grade-NAT address, IPv6 site-local) —
+  it is a real check, but it is not literally proof that an address belongs
+  to you personally, the same limit every provider address check has always
+  had.
+- Scoped IPv6 literals (`fe80::1%eth0`, `fe80::1%12`) are handed to the
+  operating system exactly as before; nothing new is claimed here. On
+  Windows, only the numeric form (`%12`) is known to resolve.
+
+None of this changes what a working Spoolman or Bambuddy setup already does —
+it changes what happens with a name that resolves partly or wholly off your
+network, and it removes a proxy from the path a provider read can quietly
+take.
+
+**Downgrading:** if you go back to a Studio version that predates SpoolEase
+support, choose **None** (or another provider) in Settings first — an older
+version does not know the `spoolease` provider kind.
 
 ### Why it asks about slot numbering
 
@@ -158,11 +224,19 @@ a message such as "Two notes exist for slot 1 — remove one" until you remove o
 
 ## Other providers
 
-Material providers normalise into a shared read-only contract; **Spoolman and
-Bambuddy are currently implemented**. Two is not "any provider works" — it is two
-providers whose wire formats have almost nothing in common, proved to produce the
-same decisions from the same facts. `material_providers.py` is the only place a
-provider's name is turned into anything; past it the name is a label on a fact.
+Material providers normalise into a shared read-only contract; **Spoolman,
+Bambuddy and SpoolEase are currently implemented**. Three is not "any
+provider works" — they are providers whose wire formats have almost nothing
+in common with each other, proved to produce the same decisions from the
+same facts. `material_providers.py` is the only place a provider's name is
+turned into anything; past it the name is a label on a fact.
+
+One difference is not yet unified: an address problem is reported the same
+way, `invalid_address`, on every provider, but every other SpoolEase failure
+carries its own specific reason while Spoolman and Bambuddy currently report
+only a general "did not answer" for their own network failures. Giving
+Spoolman and Bambuddy the same granularity SpoolEase has is recorded as
+follow-up work — no behaviour changes because of it today.
 
 **U1Hub** was re-examined on 2026-08-25 and is deliberately **not** integrated. It
 does expose `/api/spools` and `/api/slots`, but they carry no version or schema,
