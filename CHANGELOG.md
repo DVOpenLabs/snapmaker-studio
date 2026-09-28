@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Maintenance
+- `desktop/package-lock.json` now records the project's own version (1.2.0)
+  at its root, not 1.0.0. Only the two root version fields changed; every
+  dependency resolution and integrity value is unchanged.
+- A new guard, `tools/release/version_consistency.py`, checks every file that
+  carries Studio's version against `desktop/package.json`: both lockfile root
+  fields, the Tauri config, `Cargo.toml`, the `Cargo.lock` entry, and the
+  backend's `pyproject.toml`. It runs with the backend test suite and names
+  the file, the expected version and the version it found.
+- The release workflow's post-publish check no longer fails on a correct
+  release. It had exited silently on every real publish so far, because the
+  `SHA256SUMS` asset has no line in `SHA256SUMS`. It now compares that file
+  byte for byte, and retries GitHub's read-after-write for `/releases/latest`
+  on a bounded backoff (five attempts, 26 seconds of waiting, each read
+  capped at 20 seconds). When it does fail, it says whether the release is
+  wrong, only the latest pointer lagged, or the API was unreadable. It only ever reads.
+
 ## [1.2.0] - 2026-09-27
 
 **Your spool notes and your nozzle sizes, in the app.** v1.1.0 taught the

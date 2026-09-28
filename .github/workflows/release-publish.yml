@@ -353,22 +353,31 @@ jobs:
           gh release edit "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --draft=false --latest
 
       - name: Post-publish verification (live, not assumed)
+        # READ-ONLY. Nothing in this step can publish, tag, edit or upload:
+        # the helper only issues GET requests and `gh release download` only
+        # reads. A failure here means "look at the public release", never
+        # "publish again". The decision logic lives in
+        # tools/release/publish_verify.py (tested in
+        # backend/tests/test_publish_verify.py): a bounded retry (immediately,
+        # then after 2/4/8/12 s) for GitHub's read-after-write delay on
+        # /releases/latest, and a failure message that says whether the
+        # release itself is wrong (A), only the latest pointer lagged (B), or
+        # the API could not be read (C).
         if: steps.input.outputs.dry_run != 'true'
         run: |
           set -euo pipefail
-          latest="$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)"
-          if [ "$latest" != "${{ steps.input.outputs.tag }}" ]; then
-            echo "WARNING: /releases/latest is '$latest', not '${{ steps.input.outputs.tag }}'. The release IS public — this needs operator attention, not a rebuild." >&2
-            exit 1
-          fi
-          for url in $(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].url'); do
-            name="$(basename "$url")"
-            gh api "$url" -H "Accept: application/octet-stream" > "/tmp/verify-$name"
-            got="$(sha256sum "/tmp/verify-$name" | awk '{print $1}')"
-            want="$(grep " $name\$" dist/SHA256SUMS | awk '{print $1}')"
-            if [ "$got" != "$want" ]; then
-              echo "WARNING: live asset $name re-hashed to $got, expected $want. The release IS public — this needs operator attention." >&2
-              exit 1
-            fi
+          # The helper comes from the commit whose workflow file is running
+          # ($GITHUB_SHA), so a recovery dispatch for an older tag still has it.
+          git show "$GITHUB_SHA:tools/release/publish_verify.py" > /tmp/publish_verify.py
+          assets=(--asset "${{ steps.metadata.outputs.win_name }}"
+                  --asset "${{ steps.metadata.outputs.linux_name }}"
+                  --asset SHA256SUMS)
+          python3 /tmp/publish_verify.py state --repo "${{ github.repository }}" \
+            --tag "${{ steps.input.outputs.tag }}" "${assets[@]}"
+          mkdir -p /tmp/verify
+          for name in "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" SHA256SUMS; do
+            gh release download "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" \
+              --pattern "$name" --dir /tmp/verify --clobber
           done
-          echo "Post-publish verification OK: /releases/latest is ${{ steps.input.outputs.tag }}, both live assets re-hash correctly."
+          python3 /tmp/publish_verify.py hashes --sums dist/SHA256SUMS --dir /tmp/verify "${assets[@]}"
+          echo "Post-publish verification OK: ${{ steps.input.outputs.tag }} is /releases/latest and every live asset matches what was gated."

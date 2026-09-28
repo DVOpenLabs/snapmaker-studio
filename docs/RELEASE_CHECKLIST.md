@@ -36,6 +36,12 @@ Branch `release/vX.Y.Z` from `main`. Bump, in one commit:
 - `desktop/src-tauri/Cargo.lock` (regenerate via `cargo check --offline` in
   `desktop/src-tauri`, don't hand-edit)
 - `backend/pyproject.toml` (PEP 440 form, e.g. `1.0.0`)
+- `desktop/package-lock.json`: the root `"version"` and `packages[""].version`
+  only. Hand-edit these two fields; don't regenerate the lockfile, because
+  `npm install --package-lock-only` also prunes unrelated optional-dependency
+  entries. `tools/release/version_consistency.py` (run by the backend suite)
+  fails if any of these surfaces disagrees with `desktop/package.json`, and
+  names the file, the expected version and the version it found.
 
 This commit is EXPECTED to fail `backend`'s `test_app_manifests_match_the_released_version`
 / `test_the_rust_crate_version_matches_the_released_version` / the pyproject
