@@ -71,7 +71,10 @@ package, the same as any `.deb` upgrade.
 Studio does not slice — Snapmaker Orca does. Studio never starts a print on its
 own; every action in Printer Hub is confirmed by you. Everything is local: no
 cloud, no account, nothing uploaded off your local network — the one transfer
-Studio makes is a sliced job to your own printer, after you confirm it. Your
+Studio makes is a sliced job to your own printer, after you confirm it. The
+only request beyond your network is the optional check for a newer version on
+GitHub, which you start or switch on yourself and which sends none of your
+data. Your
 original files are never modified. Advice is advisory: Studio reports what it
 can establish and says "unknown" when it cannot, and it does not promise a print
 will work.

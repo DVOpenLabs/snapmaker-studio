@@ -162,7 +162,8 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 ## Evidence
 
 Everything below was verified against the published v1.2.0 installer, not
-against a development build. Commands, counts and full reports:
+against a development build. The backend and desktop test counts come from the
+source at the release commit, not from the installer. Commands, counts and full reports:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 | What | Result |

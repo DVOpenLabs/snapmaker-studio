@@ -93,7 +93,8 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 Everything below ran against the **published v1.2.0 installer** — installed,
 launched, driven through the real window, then uninstalled. Not a development
-server, not the source tree.
+server, not the source tree. The backend and desktop test counts come from the
+source at the release commit, not from the installer.
 
 | What | Result | How to reproduce |
 |---|---|---|

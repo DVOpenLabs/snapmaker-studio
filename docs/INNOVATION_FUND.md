@@ -209,7 +209,8 @@ simply the machine it is verified against.
 ## Evidence
 
 Everything below was verified against the **published v1.2.0 installer**, not a
-development build. Commands, counts and full reports:
+development build. The backend and desktop test counts come from the
+source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
 
 | What | Result |

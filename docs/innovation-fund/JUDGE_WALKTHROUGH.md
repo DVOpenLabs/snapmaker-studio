@@ -176,8 +176,8 @@ afterwards and that uninstalling leaves nothing behind. It stops only processes 
 started, and restores any pre-existing installation's registry entry. Last result:
 **41/41** — [../internal/acceptance-1.2.0.json](../internal/acceptance-1.2.0.json).
 An earlier release-candidate build of this same version scored lower here — a
-race in the harness's own test code, asserting against the spool-notes table
-before it had redrawn after "Remove all"; a defect in the test, not the
+race in the harness's own test code, reading a spool-notes row before it had
+redrawn after a save or a confirmed filament use; a defect in the test, not the
 product, fixed and reverified (see [../TRUST_STATUS.md](../TRUST_STATUS.md)).
 
 **A real printer.** With a Snapmaker U1 on the same network:

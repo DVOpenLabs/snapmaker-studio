@@ -36,9 +36,9 @@ snapshot: [internal/evidence/1.2.0.json](internal/evidence/1.2.0.json).
 ### What is verified, and what is not
 
 **Windows — a rebuilt candidate, for a test-harness defect, not a product
-regression.** RC1 gave a lower count on "the spool row refreshes after
-Remove all": the acceptance harness asserted against the row before the
-UI had actually redrawn it, a race in the test code itself. Fixed in
+regression.** RC1 gave a lower count on the spool-notes checks: after saving a
+note or confirming filament used, the acceptance harness read the slot's row
+before the UI had redrawn it with the new text, a race in the test code itself. Fixed in
 `tools/acceptance` (wait for the refreshed spool row before asserting) and the
 candidate rebuilt from scratch as RC2, reverified 41/41 before anything below
 was recorded. The Windows acceptance count changed from v1.1.0's 34/34 because

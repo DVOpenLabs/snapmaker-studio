@@ -71,7 +71,8 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the published v1.2.0 installer, not a development build.
+Verified against the published v1.2.0 installer, not a development build. The backend and desktop test counts come from the
+source at the release commit, not from the installer.
 
 | What | Result |
 |---|---|
