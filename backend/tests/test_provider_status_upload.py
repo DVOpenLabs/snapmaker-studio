@@ -10,7 +10,12 @@ never being able to construct the combination, and asserts it explicitly in
 """
 from __future__ import annotations
 
+import json
+import sys
+
 import pytest
+
+sys.path.insert(0, __file__.rsplit("tests", 1)[0] + "tests")
 
 from snapstudio_api import service
 from snapstudio_core import moonraker
@@ -183,3 +188,76 @@ def test_changed_is_unreachable_without_a_recheck(monkeypatch, gcode_file):
     out = service.printer_upload_gcode("printer.local", gcode_file, expect_state=None)
     assert out["state"] != "changed"
     assert out["provider_status"] is None
+
+
+# --- route-level (plan-39 B-1/B-3): through the REAL service.material_plan /
+# service.send_check, against a real fake reader — not the send_check stub
+# used above, which never reaches `_with_providers` at all.
+
+def test_material_plan_route_carries_provider_status_shape(gcode_file):
+    from fixtures.providers.spoolease_fake import FIXTURE_KEY, SpoolEaseFake
+
+    with SpoolEaseFake(mode="http_500") as fake:
+        out = service.material_plan(gcode_file, provider="spoolease",
+                                    provider_url=fake.url, provider_key=FIXTURE_KEY)
+    status = out["provider_status"]
+    assert status == {
+        "provider": "spoolease", "name": "SpoolEase", "available": False,
+        "error": "SpoolEase did not answer: HTTP 500", "error_code": "http_status",
+        "spools": 0, "with_weight": 0,
+    }
+    dumped = json.dumps(out)
+    assert fake.url not in dumped
+    assert FIXTURE_KEY not in dumped
+
+
+def test_send_check_route_carries_provider_status_shape(gcode_file):
+    from fixtures.providers.spoolease_fake import FIXTURE_KEY, SpoolEaseFake
+
+    with SpoolEaseFake(mode="ok") as fake:
+        out = service.send_check(gcode_file, provider="spoolease",
+                                 provider_url=fake.url, provider_key=FIXTURE_KEY)
+    status = out["provider_status"]
+    assert status == {
+        "provider": "spoolease", "name": "SpoolEase", "available": True,
+        "error": None, "error_code": None, "spools": 3, "with_weight": 2,
+    }
+    dumped = json.dumps(out)
+    assert fake.url not in dumped
+    assert FIXTURE_KEY not in dumped
+
+
+def test_send_check_route_unreachable_port_gives_transport(gcode_file):
+    """A closed local port — no fake server at all — through the real route."""
+    import socket as _socket
+
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # closed immediately: nothing is listening on this port now
+
+    out = service.send_check(gcode_file, provider="spoolease",
+                             provider_url=f"http://127.0.0.1:{port}",
+                             provider_key="Fx7-tEsT")
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "transport"
+    assert status["spools"] == 0
+    assert status["with_weight"] == 0
+
+
+def test_material_plan_route_a_raising_reader_gives_internal(monkeypatch, gcode_file):
+    """B-4: a reader that raises must never propagate — `read()`'s own
+    wrapping turns it into `error_code: "internal"`, through the real route."""
+    from snapstudio_core import material_providers as providers
+
+    def exploding_reader(base_url, slot_map=None, timeout=4.0, slot_base=None, key=None):
+        raise RuntimeError("a reader defect, not a network failure")
+
+    monkeypatch.setitem(providers.READERS, providers.SPOOLEASE, exploding_reader)
+    out = service.material_plan(gcode_file, provider="spoolease",
+                                provider_url="http://192.168.1.50", provider_key="anything")
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "internal"
+    assert "192.168.1.50" not in json.dumps(out)

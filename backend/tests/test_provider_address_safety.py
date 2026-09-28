@@ -214,7 +214,13 @@ class _Redirector:
         self.server.server_close()
 
 
-@pytest.mark.parametrize("provider_kind", ["spoolman", "bambuddy"])
+def _read_kwargs(provider_kind: str) -> dict:
+    """SpoolEase needs a key before it will make any request at all; the
+    other two providers take none."""
+    return {"key": "Fx7-tEsT"} if provider_kind == "spoolease" else {}
+
+
+@pytest.mark.parametrize("provider_kind", ["spoolman", "bambuddy", "spoolease"])
 @pytest.mark.parametrize("target", [
     "http://example.com/api/v1/spool",
     "https://example.com/",
@@ -225,14 +231,14 @@ def test_a_redirect_off_the_local_network_is_refused(provider_kind, target):
     from snapstudio_core import material_providers as mp
 
     with _Redirector(target) as server:
-        out = mp.read(provider_kind, f"127.0.0.1:{server.port}")
+        out = mp.read(provider_kind, f"127.0.0.1:{server.port}", **_read_kwargs(provider_kind))
 
     assert out["available"] is False
     assert "not on your own network" in out["error"]
     assert server.hits, "the local server was never reached, so nothing was proved"
 
 
-@pytest.mark.parametrize("provider_kind", ["spoolman", "bambuddy"])
+@pytest.mark.parametrize("provider_kind", ["spoolman", "bambuddy", "spoolease"])
 def test_a_redirect_that_stays_local_is_still_followed(provider_kind):
     """The rule is about leaving the network, not about redirects."""
     import json as _json
@@ -242,6 +248,11 @@ def test_a_redirect_that_stays_local_is_still_followed(provider_kind):
     import http.server
     import threading
 
+    if provider_kind == "spoolease":
+        import sys as _sys
+        _sys.path.insert(0, __file__.rsplit("tests", 1)[0] + "tests")
+        from fixtures.providers.spoolease_fake import FIXED_NONCE_BODY
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
             if "moved" not in self.path:
@@ -249,9 +260,14 @@ def test_a_redirect_that_stays_local_is_still_followed(provider_kind):
                 self.send_header("Location", f"http://127.0.0.1:{port}/moved")
                 self.end_headers()
                 return
-            body = _json.dumps([]).encode()
+            if provider_kind == "spoolease":
+                body = FIXED_NONCE_BODY.encode()
+                content_type = "text/plain"
+            else:
+                body = _json.dumps([]).encode()
+                content_type = "application/json"
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -263,13 +279,16 @@ def test_a_redirect_that_stays_local_is_still_followed(provider_kind):
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        out = mp.read(provider_kind, f"127.0.0.1:{port}")
+        out = mp.read(provider_kind, f"127.0.0.1:{port}", **_read_kwargs(provider_kind))
     finally:
         server.shutdown()
         server.server_close()
 
     assert out["available"] is True
-    assert out["spools"] == []
+    if provider_kind == "spoolease":
+        assert len(out["spools"]) == 3
+    else:
+        assert out["spools"] == []
 
 
 def test_the_redirect_rule_is_one_rule_for_every_provider():
@@ -346,3 +365,68 @@ def test_off_network_refusal_still_wins_over_the_credential_check():
     with pytest.raises(mp.InvalidProviderAddress, match="not on your own network"):
         mp._LocalOnlyRedirects().redirect_request(
             req, None, 302, "Found", {}, "http://example.com/")
+
+
+# --- S-1: 6to4 / Teredo / NAT64 route over the public internet ---------------
+#
+# Python's `ipaddress` module marks 2002::/16 (6to4), 2001::/32 (Teredo, a
+# subset of the 2001::/23 range it lists) and 64:ff9b:1::/48 (the RFC 8215
+# NAT64 local-use prefix) `is_private`, because that follows the IANA
+# special-purpose registry's "not globally unique" wording rather than "does
+# not leave this network" — but 6to4/Teredo packets are relayed by a
+# third-party host on the public internet, and a NAT64 address exists to
+# reach an arbitrary IPv4 destination. Each must be refused by both address
+# predicates, and a redirect that lands on one must be refused too.
+
+_6TO4_EXAMPLE = "2002:c0a8:101::"          # embeds 192.168.1.1
+_TEREDO_EXAMPLE = "2001::c0a8:6407"        # a Teredo client address
+_NAT64_WELL_KNOWN_EXAMPLE = "64:ff9b::c0a8:101"    # embeds 192.168.1.1, but is_global
+_NAT64_LOCAL_EXAMPLE = "64:ff9b:1::c0a8:101"       # the RFC 8215 local-use prefix
+
+
+@pytest.mark.parametrize("address", [
+    _6TO4_EXAMPLE, _TEREDO_EXAMPLE, _NAT64_WELL_KNOWN_EXAMPLE, _NAT64_LOCAL_EXAMPLE])
+def test_host_is_local_refuses_internet_transit_tunnels(address):
+    from snapstudio_core.material_providers import _host_is_local
+
+    assert _host_is_local(address) is False
+
+
+@pytest.mark.parametrize("address", [
+    _6TO4_EXAMPLE, _TEREDO_EXAMPLE, _NAT64_WELL_KNOWN_EXAMPLE, _NAT64_LOCAL_EXAMPLE])
+def test_ip_is_local_refuses_internet_transit_tunnels(address):
+    from snapstudio_core.material_providers import _ip_is_local
+
+    assert _ip_is_local(address) is False
+
+
+def test_host_is_local_still_accepts_an_ordinary_private_v6_address():
+    """The tunnel exclusion must not swallow ordinary ULA/link-local traffic."""
+    from snapstudio_core.material_providers import _host_is_local
+
+    assert _host_is_local("fd00::1") is True
+    assert _host_is_local("fe80::1") is True
+
+
+def test_an_ipv4_mapped_address_is_judged_by_its_embedded_ipv4():
+    from snapstudio_core.material_providers import _host_is_local, _ip_is_local
+
+    assert _host_is_local("::ffff:192.168.1.1") is True
+    assert _ip_is_local("::ffff:192.168.1.1") is True
+    assert _host_is_local("::ffff:93.184.216.34") is False
+    assert _ip_is_local("::ffff:93.184.216.34") is False
+
+
+def test_a_redirect_to_a_6to4_address_is_refused():
+    """A local server redirecting to a 6to4 literal is the same defect as
+    redirecting to a public IPv4 address — routes over the public internet
+    despite `ipaddress` calling the prefix "private"."""
+    from snapstudio_core import material_providers as mp
+
+    target = f"http://[{_6TO4_EXAMPLE}]/api/v1/spool"
+    with _Redirector(target) as server:
+        out = mp.read("spoolman", f"127.0.0.1:{server.port}")
+
+    assert out["available"] is False
+    assert "not on your own network" in out["error"]
+    assert server.hits, "the local server was never reached, so nothing was proved"

@@ -205,10 +205,17 @@ def test_cross_host_local_redirect_is_followed_with_no_credential_header():
     shared `_LocalOnlyRedirects` behaviour on the actual read path: a
     same-network cross-host redirect is followed (only a *credentialed*
     request refusing a *cross-host* hop is the rule the class enforces —
-    exercised directly in test_provider_address_safety.py)."""
-    with SpoolEaseFake(mode="redirect_same_host") as fake:
+    exercised directly in test_provider_address_safety.py). A genuine
+    cross-host redirect: the initial request goes to the literal "127.0.0.1"
+    and the 302 sends it to the literal "localhost" — a different host
+    string, same loopback port — not merely a different path on the same
+    host as the earlier `redirect_same_host` mode exercises."""
+    with SpoolEaseFake(mode="redirect_cross_host_local") as fake:
+        fake.redirect_target = f"http://localhost:{fake.port}/moved"
         out = mp.read("spoolease", f"127.0.0.1:{fake.port}", key=FIXTURE_KEY)
     assert out["available"] is True
+    assert fake.hits[0] != "/moved"
+    assert fake.hits[-1] == "/moved"
 
 
 # --- valid parse / missing weight / derived weight / duplicate ids -----------
@@ -244,22 +251,22 @@ def test_duplicate_spool_ids_are_a_whole_read_failure():
 
 
 def test_negative_consumption_disqualifies_the_spool_both_columns():
-    import base64
+    """S-N1, through the real `spoolease()` reader against the fake — not
+    just `parse_csv`: a negative figure in *either* consumption column must
+    leave `remaining_g` None and carry the bad-consumption note, and a NaN
+    (which `decode_f32` itself refuses) must do the same."""
+    neg_add_csv = "1,,PLA,,,,,,1000,250,,900,,,,,gAAAvw,,,,\n"      # ~-0.5 in consumed_since_add
+    neg_weight_csv = "1,,PLA,,,,,,1000,250,,900,,,,,,AACAvw,,,\n"   # -1.0 in consumed_since_weight
+    nan_add_csv = "1,,PLA,,,,,,1000,250,,900,,,,,AADAfw,,,,\n"      # NaN in consumed_since_add
 
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-    from fixtures.providers.spoolease_fake import FIXTURE_NONCE, _derived_key
-
-    def _body(csv_text: str) -> str:
-        ct = AESGCM(_derived_key()).encrypt(FIXTURE_NONCE, csv_text.encode(), None)
-        return (base64.b64encode(FIXTURE_NONCE).decode().rstrip("=")
-               + base64.b64encode(ct).decode().rstrip("="))
-
-    neg_add = "1,,PLA,,,,,,1000,250,,900,,,,,gAAAvw,,,,\n"       # -1.0 in consumed_since_add
-    neg_weight = "1,,PLA,,,,,,1000,250,,900,,,,,,AACAvw,,,\n"    # -1.0 in consumed_since_weight
-    for csv_text in (neg_add, neg_weight):
-        records = wire.parse_csv(csv_text)
-        assert len(records) == 1
+    for csv_text in (neg_add_csv, neg_weight_csv, nan_add_csv):
+        with SpoolEaseFake(mode="custom", plaintext=csv_text.encode()) as fake:
+            out = mp.read("spoolease", fake.url, key=FIXTURE_KEY)
+        assert out["available"] is True, csv_text
+        spool = out["spools"][0]
+        assert spool["remaining_g"] is None, csv_text
+        assert spool["remaining_quality"] == "unknown", csv_text
+        assert any("consumption figure" in n for n in spool["notes"]), (csv_text, spool["notes"])
 
 
 # --- slot mapping, IPv4, IPv6, .local -----------------------------------------
@@ -404,10 +411,15 @@ def test_a8_windows_resolves_a_numeric_ipv6_scope_and_keeps_it_local():
 # --- A-9: real TLS (S-N2 adopted the real test; the scoped-IPv6 HTTPS claim
 # was dropped, the TLS test itself was not) -----------------------------------
 
-def test_a9_https_verifies_the_certificate_and_records_sni():
+def _make_test_cert(tmp_path, *, common_name: str = "localhost", include_ip_san: bool = True):
+    """A short-lived self-signed CA-less leaf, written under pytest's own
+    `tmp_path` so the PEM/key files are cleaned up with the rest of the test's
+    temp directory rather than leaking into the OS temp folder forever.
+    ``include_ip_san=False`` builds a leaf that is valid for ``common_name``
+    only, so a request to the IP literal ``127.0.0.1`` fails verification —
+    used by the negative case below."""
     import datetime
-    import ssl
-    import threading as _threading
+    import ipaddress
 
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -415,29 +427,34 @@ def test_a9_https_verifies_the_certificate_and_records_sni():
     from cryptography.x509.oid import NameOID
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
     now = datetime.datetime.now(datetime.timezone.utc)
+    san = [x509.DNSName(common_name)]
+    if include_ip_san:
+        san.append(x509.IPAddress(ipaddress.ip_address("127.0.0.1")))
     cert = (x509.CertificateBuilder()
             .subject_name(name).issuer_name(name).public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - datetime.timedelta(days=1))
             .not_valid_after(now + datetime.timedelta(days=1))
-            .add_extension(x509.SubjectAlternativeName(
-                [x509.DNSName("localhost"), x509.IPAddress(__import__("ipaddress").ip_address("127.0.0.1"))]),
-                critical=False)
+            .add_extension(x509.SubjectAlternativeName(san), critical=False)
             .sign(key, hashes.SHA256()))
 
     key_pem = key.private_bytes(serialization.Encoding.PEM,
                                 serialization.PrivateFormat.TraditionalOpenSSL,
                                 serialization.NoEncryption())
     cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    key_path = tmp_path / f"{common_name}-key.pem"
+    cert_path = tmp_path / f"{common_name}-cert.pem"
+    key_path.write_bytes(key_pem)
+    cert_path.write_bytes(cert_pem)
+    return str(key_path), str(cert_path)
 
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as kf, \
-         tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as cf:
-        kf.write(key_pem)
-        cf.write(cert_pem)
-        key_path, cert_path = kf.name, cf.name
+
+def _tls_server(key_path, cert_path, *, body: bytes = FIXED_NONCE_BODY.encode()):
+    import ssl
+    import threading as _threading
+    import http.server
 
     seen_sni = []
     server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -448,11 +465,8 @@ def test_a9_https_verifies_the_certificate_and_records_sni():
 
     server_ctx.sni_callback = sni_callback
 
-    import http.server
-
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
-            body = FIXED_NONCE_BODY.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.send_header("Content-Length", str(len(body)))
@@ -467,6 +481,14 @@ def test_a9_https_verifies_the_certificate_and_records_sni():
     port = server.server_address[1]
     thread = _threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    return server, port, seen_sni
+
+
+def test_a9_https_verifies_the_certificate_and_records_sni(tmp_path):
+    import ssl
+
+    key_path, cert_path = _make_test_cert(tmp_path)
+    server, port, seen_sni = _tls_server(key_path, cert_path)
     try:
         client_ctx = ssl.create_default_context(cafile=cert_path)
         opener = mp._build_opener(context=client_ctx)
@@ -481,11 +503,42 @@ def test_a9_https_verifies_the_certificate_and_records_sni():
         server.server_close()
 
     assert out["available"] is True
-    assert seen_sni == ["127.0.0.1"] or seen_sni == ["localhost"] or seen_sni == [None]
-    # SNI is sent for the literal client connected to (an IP has no name to
-    # send as SNI unless `server_hostname` is set — `_LocalOnlyHTTPSConnection`
-    # passes `self.host`, i.e. the literal "127.0.0.1" here); the certificate
-    # itself still verifies because of the IP SAN above.
+    # RFC 6066 forbids sending an IP literal as the SNI extension, and
+    # `_LocalOnlyHTTPSConnection` passes `self.host` (the literal
+    # "127.0.0.1" used above) as `server_hostname` — Python's `ssl` omits
+    # the extension for an IP `server_hostname` rather than sending it as
+    # text, so the server's callback deterministically sees no server name.
+    # The certificate still verifies, because of the IP SAN above.
+    assert seen_sni == [None]
+
+
+def test_a9_negative_wrong_certificate_name_is_refused_and_host_free(tmp_path):
+    """A leaf that is valid for a different name must fail verification, and
+    the failure text must not name the host Studio was connecting to (S-2)."""
+    import ssl
+
+    key_path, cert_path = _make_test_cert(tmp_path, common_name="other.example", include_ip_san=False)
+    server, port, _seen_sni = _tls_server(key_path, cert_path)
+    try:
+        # Trust the leaf's own issuer (itself, self-signed) but do NOT
+        # disable hostname checking — the point is that the *name* fails,
+        # not that the chain is untrusted.
+        client_ctx = ssl.create_default_context(cafile=cert_path)
+        opener = mp._build_opener(context=client_ctx)
+        real_opener = mp._OPENER
+        mp._OPENER = opener
+        try:
+            out = mp.read("spoolease", f"https://127.0.0.1:{port}", key=FIXTURE_KEY, timeout=5.0)
+        finally:
+            mp._OPENER = real_opener
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert out["available"] is False
+    assert out["error_code"] == "transport"
+    assert "127.0.0.1" not in out["error"]
+    assert "other.example" not in out["error"]
 
 
 # --- M-2 (v3.4): wire errors never masquerade as transport errors ------------
@@ -540,3 +593,12 @@ def test_bambuddy_wrapped_timeout_through_the_real_transport():
         blackhole.close()
     assert out["available"] is False
     assert "did not answer in time" in out["error"]
+
+
+def test_status_with_no_content_length_then_close_is_empty_body():
+    """v3.4 M-3: a status line with no Content-Length, then a clean close
+    with no body, reads as `empty_body` — the status line and headers did
+    arrive, unlike `close_before_status`."""
+    with SpoolEaseFake(mode="status_no_content_length_then_close") as fake:
+        out = mp.read("spoolease", fake.url, key=FIXTURE_KEY, timeout=2.0)
+    assert out["error_code"] == "empty_body"

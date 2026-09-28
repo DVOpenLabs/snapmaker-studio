@@ -34,6 +34,7 @@ import ipaddress
 import json
 import re
 import socket
+import ssl
 import sys
 import time
 import urllib.error
@@ -65,6 +66,33 @@ _HOSTNAME_RE = re.compile(
     r"\A(?!-)[A-Za-z0-9_-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9_-]{1,63}(?<!-))*\.?\Z")
 
 
+#: 6to4 (RFC 3056), Teredo (RFC 4380) and NAT64 (RFC 6052 well-known prefix,
+#: RFC 8215 local-use prefix) all tunnel or synthesise traffic that actually
+#: crosses the public internet — a 6to4 or Teredo packet is relayed by a
+#: third-party host neither Studio nor the user controls, and a NAT64 address
+#: exists specifically to reach an IPv4 host that may be anywhere. Python's
+#: `ipaddress` module nonetheless marks every one of these prefixes
+#: `is_private` (it follows the IANA special-purpose registry's "not globally
+#: unique" wording, not "does not leave this network"), so `is_private` alone
+#: is not the right test here and these ranges must be excluded explicitly.
+_6TO4_NET = ipaddress.ip_network("2002::/16")
+_TEREDO_NET = ipaddress.ip_network("2001::/32")
+_NAT64_WELL_KNOWN_NET = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL_NET = ipaddress.ip_network("64:ff9b:1::/48")
+
+
+def _is_internet_transit_tunnel(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """S-1: is this a 6to4/Teredo/NAT64 address, despite `is_private` saying
+    "local"? Checked before `is_private` is trusted for anything, by both
+    `_host_is_local` (the string the user typed) and `_ip_is_local` (what the
+    resolver actually returned)."""
+    if address.version != 6:
+        return False
+    return bool(
+        address in _6TO4_NET or address in _TEREDO_NET
+        or address in _NAT64_WELL_KNOWN_NET or address in _NAT64_LOCAL_NET)
+
+
 def _host_is_local(host: str) -> bool:
     """Is this address on the user's own network?
 
@@ -83,6 +111,10 @@ def _host_is_local(host: str) -> bool:
         if name == "localhost" or "." not in name:
             return True
         return name.endswith(_LOCAL_SUFFIXES)
+    if address.version == 6 and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    if _is_internet_transit_tunnel(address):
+        return False
     # 100.64/10 is carrier-grade NAT, which is also what Tailscale hands out; a
     # tailnet is the user's own network by any reasonable reading.
     return bool(
@@ -419,6 +451,8 @@ def _ip_is_local(text: str) -> bool:
     address = ipaddress.ip_address(text)
     if address.version == 6 and address.ipv4_mapped:
         address = address.ipv4_mapped
+    if _is_internet_transit_tunnel(address):
+        return False
     return bool(
         address.is_loopback or address.is_private or address.is_link_local
         or address in ipaddress.ip_network("100.64.0.0/10")
@@ -449,10 +483,17 @@ class _LocalOnlyHTTPConnection(http.client.HTTPConnection):
 
     def connect(self):
         sys.audit("http.client.connect", self, self.host, self.port)
-        try:
-            answers = _resolve(self.host, self.port, type=socket.SOCK_STREAM)
-        except OSError as exc:
-            raise urllib.error.URLError(exc) from exc
+        # A resolver failure (e.g. `socket.gaierror`) is left to propagate as
+        # the raw `OSError` here, exactly as stdlib's own `HTTPConnection.connect`
+        # does — `urllib.request.AbstractHTTPHandler.do_open()` catches OSError
+        # and wraps it into a URLError exactly once. `URLError` is itself an
+        # `OSError` subclass, so wrapping it here as well would let do_open's
+        # except-clause catch it a second time and produce a URLError whose
+        # `.reason` is another URLError instead of the resolver's own
+        # exception — the double-wrap plan-39 B-1 named (it showed up as
+        # "<urlopen error ...>" for Spoolman/Bambuddy and the bare class name
+        # "URLError" for SpoolEase, instead of the resolver's own reason).
+        answers = _resolve(self.host, self.port, type=socket.SOCK_STREAM)
         local = [a for a in answers if _ip_is_local(a[4][0])]
         if not local:
             raise InvalidProviderAddress(
@@ -591,6 +632,18 @@ class _ProviderTransportError(Exception):
         self.code = code
 
 
+def _transport_error_sentence(name: str, exc: "_ProviderTransportError") -> str:
+    """POLISH: Spoolman/Bambuddy must never show this private class's own
+    name (`_ProviderTransportError answered with something unexpected: ...`)
+    for an oversized or short-and-truncated body — the same two plain
+    sentences SpoolEase's own §4.2 rows 7/9 use, with the provider's name in
+    place of "SpoolEase"."""
+    if exc.code == "oversized":
+        return (f"{name} sent more than Studio will read from a provider "
+                "(4 MB), so Studio stopped.")
+    return f"{name} did not answer: the response ended before it said it would"
+
+
 def _fetch(url: str, *, timeout: float = 4.0, accept: str = "application/json",
           limit: int = _MAX_RESPONSE_BYTES) -> bytes:
     """GET `url`, bounded by one deadline shared across every connect attempt
@@ -671,11 +724,14 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         # said plainly, because it is the user's network that just behaved oddly.
         out["error"] = str(exc)
         return out
+    except _ProviderTransportError as exc:
+        out["error"] = _transport_error_sentence("Spoolman", exc)
+        return out
     except Exception as exc:  # noqa: BLE001
         if _is_timeout(exc):
             out["error"] = _timeout_sentence("Spoolman", timeout)
         elif isinstance(exc, urllib.error.URLError):
-            out["error"] = f"Spoolman did not answer: {getattr(exc, 'reason', exc)}"
+            out["error"] = f"Spoolman did not answer: {_host_free_reason(exc)}"
         else:
             out["error"] = f"Spoolman answered with something unexpected: {type(exc).__name__}"
         return out
@@ -804,11 +860,14 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
             return out
         out["error"] = f"Bambuddy did not answer: HTTP {exc.code}"
         return out
+    except _ProviderTransportError as exc:
+        out["error"] = _transport_error_sentence("Bambuddy", exc)
+        return out
     except Exception as exc:  # noqa: BLE001
         if _is_timeout(exc):
             out["error"] = _timeout_sentence("Bambuddy", timeout)
         elif isinstance(exc, urllib.error.URLError):
-            out["error"] = f"Bambuddy did not answer: {getattr(exc, 'reason', exc)}"
+            out["error"] = f"Bambuddy did not answer: {_host_free_reason(exc)}"
         else:
             out["error"] = f"Bambuddy answered with something unexpected: {type(exc).__name__}"
         return out
@@ -1008,21 +1067,43 @@ def _spoolease_registered(record: dict) -> str | None:
     return stamp.isoformat().replace("+00:00", "Z")
 
 
+#: S-2 (Opus L5): stdlib's own TLS verification failure text names the host
+#: the connection was for (`ssl.SSLCertVerificationError.strerror` reads
+#: "...certificate is not valid for 'spoolease.local'...") — that must never
+#: reach a sentence the module otherwise keeps host-free.
+_TLS_VERIFY_FAILURE_TEXT = "its TLS certificate could not be verified"
+
+
 def _transport_reason(exc: BaseException) -> str:
     """A short, address-free, key-free description of a transport failure —
     never `str(exc)` on an `HTTPException`, which can carry response bytes."""
     if isinstance(exc, urllib.error.URLError):
         reason = exc.reason
+        if isinstance(reason, ssl.SSLError):
+            return _TLS_VERIFY_FAILURE_TEXT
         if isinstance(reason, socket.gaierror):
             return "name not found"
         if isinstance(reason, OSError):
             return reason.strerror or type(reason).__name__
         return str(reason)
+    if isinstance(exc, ssl.SSLError):
+        return _TLS_VERIFY_FAILURE_TEXT
     if isinstance(exc, http.client.HTTPException):
         return type(exc).__name__
     if isinstance(exc, OSError):
         return exc.strerror or type(exc).__name__
     return type(exc).__name__
+
+
+def _host_free_reason(exc: BaseException):
+    """What `spoolman()`/`bambuddy()` show for `exc.reason` (or `exc` itself)
+    on a transport failure — unchanged from the base-95fd031 form for every
+    case except a TLS verification failure (S-2), which stdlib's own message
+    would otherwise name the host for."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLError):
+        return _TLS_VERIFY_FAILURE_TEXT
+    return reason
 
 
 def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
@@ -1046,7 +1127,7 @@ def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     # no socket is opened for a key Studio already knows it cannot use.
     trimmed = spoolease_wire.trim_key(key or "")
     if not trimmed:
-        out["error"] = ("SpoolEase needs its security key — enter it in Settings -> "
+        out["error"] = ("SpoolEase needs its security key — enter it in Settings → "
                         "Materials provider. Studio keeps it in memory for this "
                         "session only.")
         out["error_code"] = "key_missing"

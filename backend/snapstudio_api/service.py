@@ -762,6 +762,17 @@ def _local_spool_rows(host: str) -> tuple[list[dict], list[dict]]:
         return [], []
 
 
+#: S-2: `provider_status.error` must never carry the address the user typed —
+#: unlike `/provider/test`'s `reason`, which is allowed to name it — because
+#: `provider_status` is rendered directly in the app and can end up in a
+#: screenshot. Every reader's other error codes are already host-free at the
+#: source; only `invalid_address` (a `validate_provider_url`/connect-time
+#: refusal, both of which name the host) needs this substitution.
+_PROVIDER_STATUS_INVALID_ADDRESS_TEXT = (
+    "The address you entered is not on your own network, or resolves only to "
+    "an address that is not. Studio makes no requests off your own network.")
+
+
 def _with_providers(printer: dict, host: str | None, port: int,
                     provider_url: str | None, slot_map: dict | None,
                     slot_base: int | None = None,
@@ -800,12 +811,20 @@ def _with_providers(printer: dict, host: str | None, port: int,
         states.append(network_state)
         kind = (provider or providers.SPOOLMAN).strip().lower()
         # F2/Astra-5 (frozen): all seven keys always present. Never the URL or
-        # the key — this is rendered in the app and can end up in a screenshot.
+        # the key, and never the host the user typed either (S-2) — this is
+        # rendered in the app and can end up in a screenshot. A reader's
+        # `error` names the host for `invalid_address` (it is also the
+        # `/provider/test` `reason`, which is allowed to), so that one case is
+        # replaced here with a host-free sentence; every other error code is
+        # already host-free at its source.
+        error_text = network_state.get("error")
+        if network_state.get("error_code") == "invalid_address":
+            error_text = _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
         provider_status = {
             "provider": kind,
             "name": providers.PROVIDER_NAMES.get(kind, kind),
             "available": bool(network_state.get("available")),
-            "error": network_state.get("error"),
+            "error": error_text,
             "error_code": network_state.get("error_code"),
             "spools": len(network_state.get("spools") or []) if network_state.get("available") else 0,
             "with_weight": (sum(1 for s in network_state.get("spools") or [] if s.get("remaining_g") is not None)

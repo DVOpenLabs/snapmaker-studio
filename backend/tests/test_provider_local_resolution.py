@@ -29,14 +29,33 @@ def test_a_name_resolving_only_to_a_public_address_is_refused(monkeypatch):
 
 
 def test_mixed_answers_only_ever_dial_the_local_one(monkeypatch):
-    """A name resolving to both a global and a local address is read, and only
-    the local candidate is ever connected to."""
+    """A2: a name resolving to both a global and a local address is read, and
+    only the local candidate is ever connected to — proved by recording every
+    address a socket was actually asked to `connect()` to, not merely by the
+    read succeeding (which it would even if the global address were dialled
+    first and merely failed over)."""
     import http.server
     import threading
 
     server = http.server.HTTPServer(("127.0.0.1", 0), _OkHandler())
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    real_socket = socket.socket
+    dialled: list[str] = []
+
+    class RecordingSocket:
+        def __init__(self, *a, **k):
+            self._s = real_socket(*a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self._s, name)
+
+        def connect(self, address):
+            dialled.append(address[0])
+            return self._s.connect(address)
+
+    monkeypatch.setattr(socket, "socket", RecordingSocket)
     try:
         monkeypatch.setattr(
             mp, "_resolve",
@@ -46,6 +65,7 @@ def test_mixed_answers_only_ever_dial_the_local_one(monkeypatch):
         server.shutdown()
         server.server_close()
     assert out["available"] is True
+    assert dialled == ["127.0.0.1"], dialled
 
 
 def _OkHandler():
@@ -250,9 +270,19 @@ def test_enoprotoopt_on_setsockopt_is_ignored(monkeypatch):
 
 
 def test_a_genuine_setsockopt_failure_is_not_swallowed(monkeypatch):
+    """A-14b: this must never dial a real LAN address — `_resolve` is stubbed
+    to a genuine loopback listener so the connect actually succeeds and
+    `setsockopt` is genuinely reached (recorded, so the test proves it ran
+    rather than merely proving the read failed for some other reason)."""
     import errno
 
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+
     real_socket = socket.socket
+    setsockopt_calls: list[tuple] = []
 
     class BadSocket:
         def __init__(self, *a, **k):
@@ -263,9 +293,60 @@ def test_a_genuine_setsockopt_failure_is_not_swallowed(monkeypatch):
 
         def setsockopt(self, level, opt, value):
             if opt == socket.TCP_NODELAY:
+                setsockopt_calls.append((level, opt, value))
                 raise OSError(errno.EINVAL, "bad value")
             return self._s.setsockopt(level, opt, value)
 
     monkeypatch.setattr(socket, "socket", BadSocket)
-    out = mp.spoolman("http://192.168.250.250:1", timeout=0.5)
+    monkeypatch.setattr(mp, "_resolve",
+                        lambda host, p, type=None: [_answer("127.0.0.1", port)])
+    try:
+        out = mp.spoolman("http://spoolman.local:1", timeout=0.5)
+    finally:
+        server.close()
     assert out["available"] is False
+    assert setsockopt_calls, "setsockopt was never reached — the failure was not genuine"
+
+
+# --- A-12 (B-1): a name that does not resolve, for every provider ------------
+#
+# `_LocalOnlyHTTPConnection.connect()` must let the resolver's own OSError
+# (`socket.gaierror`) propagate unwrapped, exactly as stdlib's own
+# `HTTPConnection.connect` does — `urllib.request.AbstractHTTPHandler.do_open`
+# then wraps it into a `URLError` exactly once. Wrapping it a second time
+# inside `connect()` produced a `URLError` whose `.reason` was itself a
+# `URLError` (since `URLError` is an `OSError` subclass and gets caught by
+# do_open's own `except OSError`), which showed up as
+# "<urlopen error ...>" for Spoolman/Bambuddy (which print `exc.reason`
+# directly) and as the bare class name "URLError" for SpoolEase (which maps
+# `exc.reason` through `_transport_reason`, expecting the raw resolver
+# exception).
+
+def _unresolvable(monkeypatch):
+    def fake_resolve(host, port, type=None):
+        raise socket.gaierror(11001, "getaddrinfo failed")
+    monkeypatch.setattr(mp, "_resolve", fake_resolve)
+
+
+def test_spoolman_unresolvable_name_matches_base_form(monkeypatch):
+    _unresolvable(monkeypatch)
+    out = mp.spoolman("http://nonexistent.invalid.lan:1234")
+    assert out["available"] is False
+    assert out["error"] == "Spoolman did not answer: [Errno 11001] getaddrinfo failed"
+    assert "<urlopen error" not in out["error"]
+
+
+def test_bambuddy_unresolvable_name_matches_base_form(monkeypatch):
+    _unresolvable(monkeypatch)
+    out = mp.bambuddy("http://nonexistent.invalid.lan:1234")
+    assert out["available"] is False
+    assert out["error"] == "Bambuddy did not answer: [Errno 11001] getaddrinfo failed"
+    assert "<urlopen error" not in out["error"]
+
+
+def test_spoolease_unresolvable_name_gives_name_not_found(monkeypatch):
+    _unresolvable(monkeypatch)
+    out = mp.spoolease("http://nonexistent.invalid.lan:1234", key="Fx7-tEsT")
+    assert out["available"] is False
+    assert out["error"] == "SpoolEase did not answer: name not found"
+    assert out["error_code"] == "transport"

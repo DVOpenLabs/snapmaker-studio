@@ -59,10 +59,15 @@ class SpoolEaseFake:
     """
 
     def __init__(self, mode: str = "ok", *, key: str = FIXTURE_KEY,
-                redirect_target: str | None = None):
+                redirect_target: str | None = None, plaintext: bytes | None = None):
         self.mode = mode
         self.key = key
         self.redirect_target = redirect_target
+        #: mode == "custom": the exact plaintext CSV to encrypt and serve —
+        #: for tests that need a specific row (a negative consumption figure,
+        #: a NaN, ...) through the real `spoolease()` reader rather than
+        #: reaching for `spoolease_wire` directly.
+        self.plaintext = plaintext
         self.hits: list[str] = []
         self.host_headers: list[str] = []
         self.accept_headers: list[str | None] = []
@@ -93,13 +98,31 @@ class SpoolEaseFake:
                         return
                     mode = "ok"
                 if mode == "redirect_cross_host_local":
-                    self.send_response(302)
-                    self.send_header("Location", owner.redirect_target)
-                    self.end_headers()
-                    return
+                    # Redirects exactly once, to a different local host
+                    # literal on the same port — the second hop lands back on
+                    # this same server (whichever loopback name it is dialled
+                    # through answers), which is what makes this a *real*
+                    # cross-host redirect rather than a same-host one.
+                    if self.path != "/moved":
+                        self.send_response(302)
+                        self.send_header("Location", owner.redirect_target)
+                        self.end_headers()
+                        return
+                    mode = "ok"
                 if mode == "close_before_status":
                     self.close_connection = True
                     return  # nothing sent at all -> RemoteDisconnected
+                if mode == "status_no_content_length_then_close":
+                    # plan-39 v3.4 M-3: a status line WITH NO Content-Length
+                    # header, then a clean close with no body at all — must
+                    # read as `empty_body`, the same as a Content-Length: 0
+                    # empty body, not as a `transport`/RemoteDisconnected
+                    # failure (the status line and headers did arrive).
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self.end_headers()
+                    self.close_connection = True
+                    return
                 if mode == "http_500":
                     self._send_text(500, "")
                     return
@@ -168,6 +191,9 @@ class SpoolEaseFake:
                     body = (base64.b64encode(FIXTURE_NONCE).decode().rstrip("=")
                            + base64.b64encode(ct).decode().rstrip("="))
                     self._send_text(200, body)
+                    return
+                if mode == "custom":
+                    self._send_text(200, _encrypt(owner.plaintext or b"", key=owner.key))
                     return
                 if mode == "duplicate_ids":
                     dup = ("1,,PLA,,,,,,,,,,,,,,,,,,\n" "1,,PETG,,,,,,,,,,,,,,,,,,\n").encode()
