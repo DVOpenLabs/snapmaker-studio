@@ -48,6 +48,13 @@ All notable changes to this project are documented here. The format is based on
   SpoolEase's own ids are decimal strings rather than numbers. Existing
   numeric mappings for Spoolman and Bambuddy are unaffected and need no
   migration.
+- **The "on your own network" address check is tighter for IPv6.** 6to4
+  (`2002::/16`) and Teredo (`2001::/32`) addresses tunnel over the public
+  internet even though they are not globally unique, and NAT64 addresses
+  (`64:ff9b::/96` and the RFC 8215 local-use `64:ff9b:1::/48`) exist to reach
+  an arbitrary IPv4 host — all four are now refused rather than accepted as
+  local, for the address a person types and for whatever a name actually
+  resolves to.
 
 ### Maintenance
 - `desktop/package-lock.json` now records the project's own version (1.2.0)

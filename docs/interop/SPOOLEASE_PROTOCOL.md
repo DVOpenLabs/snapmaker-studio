@@ -154,14 +154,20 @@ turn.
 
 DNS lookups are **not** bounded by that deadline — this is unchanged from
 every provider Studio has ever read, and identical to what the underlying
-Python networking library has always done. Once connected, each individual
-read — the status line, the response headers, the body — is bounded by
-whatever time is left, not by one wall-clock deadline for the whole
-exchange; a device that trickles bytes very slowly can still hold a
-connection open for close to the full per-read allowance on each of several
-reads. This is the same class of limit every provider read has always had,
-and is tracked as follow-up work rather than something specific to
-SpoolEase.
+Python networking library has always done. The shared deadline bounds
+connection attempts only (every address a name resolves to, every redirect
+hop). Once a connection is made, each individual read — the status line,
+the response headers, the body — reverts to the connection's own base
+per-read timeout (the same 4-second default, not whatever happened to be
+left of the shared deadline at that point), exactly as reading from
+Spoolman or Bambuddy always has. That per-read timeout is **not** a
+wall-clock bound on the whole exchange: a device that trickles bytes very
+slowly can still hold the status line, the headers, and the body each open
+for close to the full per-read allowance in turn, so a very slow drip can
+in principle hold a request open considerably longer than the deadline
+alone suggests. This is the same class of limit every provider read has
+always had, is not new here, and is tracked as follow-up work (a
+whole-exchange deadline) rather than fixed in this change.
 
 The response body itself is capped at 4 MB; anything larger is refused
 before it is fully read.
@@ -175,7 +181,8 @@ before it is fully read.
 | The key has characters Studio cannot use | Asks you to copy it exactly as SpoolEase shows it |
 | This build cannot decrypt (a packaging problem) | Asks you to report it |
 | SpoolEase returned an HTTP error status | Names the status code |
-| SpoolEase did not answer in time, or the connection failed or reset | Names roughly how long Studio waited |
+| SpoolEase did not answer within the timeout | Names roughly how long Studio waited |
+| The connection failed, was refused, reset, or the name did not resolve | Names what went wrong (never how long Studio waited — nothing timed out) |
 | The response was larger than Studio will read from a provider | Says so, without repeating any of it |
 | The response was empty | Suggests giving SpoolEase a moment and trying again |
 | The response could not be parsed as SpoolEase's wire format | Suggests checking the address points at a SpoolEase device |

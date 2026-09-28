@@ -95,10 +95,14 @@ own network," for every provider, not only for SpoolEase:
   operating system exactly as before; nothing new is claimed here. On
   Windows, only the numeric form (`%12`) is known to resolve.
 
-None of this changes what a working Spoolman or Bambuddy setup already does —
-it changes what happens with a name that resolves partly or wholly off your
-network, and it removes a proxy from the path a provider read can quietly
-take.
+Most working Spoolman or Bambuddy setups see no difference. Two setups will:
+a provider address that used to reach the internet through a system or
+environment proxy no longer does — Studio now connects to your provider
+directly, so a setup that relied on a proxy to resolve or reach the address
+will need the provider's own local address entered instead; and a
+dual-stack name that used to resolve to both a local and a public address is
+now read on the local address only rather than possibly following the
+public one, which is a narrowing of behaviour, not a loosening of it.
 
 **Downgrading:** if you go back to a Studio version that predates SpoolEase
 support, choose **None** (or another provider) in Settings first — an older
