@@ -130,15 +130,20 @@ export default function MaterialProviderSettings() {
                 className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               />
               {kind === "spoolease" && (
-                <input
-                  value={keyDraft}
-                  type="password"
-                  aria-label="Security key"
-                  onChange={(e) => { setKeyDraft(e.target.value); invalidate(); }}
-                  onBlur={() => setKey(keyDraft)}
-                  placeholder="Security key"
-                  className="h-9 min-w-[180px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                />
+                <>
+                  <input
+                    value={keyDraft}
+                    type="password"
+                    aria-label="Security key"
+                    onChange={(e) => { setKeyDraft(e.target.value); invalidate(); }}
+                    onBlur={() => setKey(keyDraft)}
+                    placeholder="Security key"
+                    className="h-9 min-w-[180px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  />
+                  <p className="basis-full text-[11px] text-muted-foreground">
+                    Kept in memory for this session only. You will enter it again after restarting Studio. SpoolEase shows a new key each time it restarts unless you set a fixed key in its settings.
+                  </p>
+                </>
               )}
               <Button size="sm" onClick={test} disabled={busy || !draft.trim()}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Test connection

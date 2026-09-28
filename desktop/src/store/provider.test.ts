@@ -153,7 +153,8 @@ describe("the provider store", () => {
     useProvider.getState().setKind("spoolease");
     expect(useProvider.getState().keyEpoch).toBe(changed);
     useProvider.getState().setKey("abc");
-    expect([...store.values()].some((value) => value.includes("abc"))).toBe(false);
+    expect([...store.entries()].some(([key, value]) =>
+      key.includes("abc") || value.includes("abc") || key.includes("keyEpoch") || value.includes("keyEpoch"))).toBe(false);
     expect(providerArgs(useProvider.getState())).not.toHaveProperty("keyEpoch");
     useProvider.getState().clear();
     expect(useProvider.getState().keyEpoch).toBe(changed + 1);
