@@ -35,6 +35,7 @@ jobs:
           set +e
           out=$(python tools/watch/innovation_fund.py 2>&1)
           code=$?
+          set -e
           echo "$out"
           {
             echo "report<<EOF"
@@ -73,7 +74,8 @@ jobs:
             echo "- Do **not** automate, solicit or coordinate votes. Linking the project page once, factually, is the limit."
             echo "- Refresh the snapshot with \`python tools/watch/innovation_fund.py --update\`."
           } > issue-body.md
-          existing=$(gh issue list --state open --limit 100 --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --state open --limit 100 --search "\"$TITLE\" in:title" --json number,title \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file issue-body.md
           else

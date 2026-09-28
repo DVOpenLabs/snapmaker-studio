@@ -7,19 +7,24 @@ channel that reliably reaches an entrant — so this checks the page itself.
 It is deliberately minimal about what it does to the site: at most one GET per
 run, a normal User-Agent, and nothing that resembles interacting with a vote.
 
-This script's job was to notice voting go live. It did (recorded_at in the
-committed snapshot). It is kept for manual checks — a maintainer can still run
+This script's job was to notice voting go live. It did: the vote was observed
+live on 2026-09-23. It is kept for manual checks — a maintainer can still run
 it — but once the snapshot records ``voting_live: true`` it refuses to fetch
 again and reports the terminal state instead, so a stale page fingerprint
-cannot cause a repeated alert.
+cannot cause a repeated alert. ``recorded_at`` in the snapshot dates the most
+recent refresh of that snapshot, not the detection itself.
 
     python tools/watch/innovation_fund.py            # compare against the snapshot
     python tools/watch/innovation_fund.py --update   # accept the current page as the snapshot
     python tools/watch/innovation_fund.py --force    # compare even if terminal; never writes
+                                                      # (with no snapshot yet, --force alone
+                                                      # refuses instead of fetching: there is
+                                                      # nothing recorded to compare against)
 
 Exit codes: 0 = no meaningful change (or terminal, or snapshot written), 2 =
 signals changed (the workflow opens an issue), 1 = the page could not be
-read, or the snapshot could not be read.
+read, the snapshot could not be read, or (``--force`` with no snapshot yet)
+there is nothing recorded to compare against.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,12 +108,23 @@ def _utc_today_iso() -> str:
 
 
 def write_snapshot(data: dict) -> None:
-    """Write the snapshot atomically: a temp file in the same directory, then replace."""
+    """Write the snapshot atomically: a uniquely-named temp file in the same
+    directory (so two concurrent writes cannot collide), LF-only line endings
+    even on Windows, then an atomic replace. The temp name always ends in
+    ``.tmp`` so it matches the repo's ``.gitignore`` rule; it is removed in a
+    ``finally`` if something goes wrong before the replace."""
     payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SNAPSHOT.with_name(SNAPSHOT.name + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
-    os.replace(tmp, SNAPSHOT)
+    fd, tmp_name = tempfile.mkstemp(prefix=SNAPSHOT.name + ".", suffix=".tmp",
+                                     dir=str(SNAPSHOT.parent))
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+        os.replace(tmp, SNAPSHOT)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,6 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     previous, problem = load()
     if problem:
         print(problem)
+        return 1
+
+    if previous is None and args.force and not args.update:
+        print("--force needs a recorded snapshot to compare against, and none exists yet; "
+              "run with --update to create one")
         return 1
 
     if previous is not None and not args.update and not args.force and is_terminal(previous):

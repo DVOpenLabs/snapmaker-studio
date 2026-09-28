@@ -164,6 +164,44 @@ def test_only_recorded_at_and_text_sha256_differ_is_no_change(tmp_path, monkeypa
     assert snap.read_bytes() == before
 
 
+# --- --force with no snapshot yet ------------------------------------------
+
+def test_force_without_update_and_missing_snapshot_exits_one_no_fetch(tmp_path, monkeypatch):
+    snap = write(tmp_path, monkeypatch, None)  # no file at all
+    no_fetch(monkeypatch)
+    code = ifw.main(["--force"])
+    assert code == 1
+    assert not snap.exists()
+
+
+def test_update_force_with_missing_snapshot_still_writes(tmp_path, monkeypatch):
+    snap = write(tmp_path, monkeypatch, None)
+    stub_fetch(monkeypatch, html=LIVE_HTML)
+    code = ifw.main(["--update", "--force"])
+    assert code == 0
+    assert snap.exists()
+    data = json.loads(snap.read_text(encoding="utf-8"))
+    assert data["voting_live"] is True
+
+
+# --- write_snapshot: line endings and temp-file uniqueness -----------------
+
+def test_snapshot_bytes_have_no_crlf(tmp_path, monkeypatch):
+    snap = write(tmp_path, monkeypatch, None)
+    stub_fetch(monkeypatch, html=LIVE_HTML)
+    ifw.main(["--update"])
+    assert b"\r\n" not in snap.read_bytes()
+
+
+def test_write_snapshot_leaves_no_temp_file_behind(tmp_path, monkeypatch):
+    snap = write(tmp_path, monkeypatch, None)
+    ifw.write_snapshot({"a": 1})
+    ifw.write_snapshot({"a": 2})  # a second write must not collide with a leftover temp
+    leftovers = list(tmp_path.glob("*.tmp"))
+    assert leftovers == []
+    assert json.loads(snap.read_text(encoding="utf-8")) == {"a": 2}
+
+
 # --- is_terminal / missing keys -----------------------------------------
 
 def test_missing_watched_key_is_not_terminal_and_fetches(tmp_path, monkeypatch):
@@ -219,6 +257,12 @@ def test_is_terminal(snapshot, expected):
     assert ifw.is_terminal(snapshot) is expected
 
 
+def test_committed_snapshot_is_terminal():
+    """The snapshot actually committed to the repo records the vote as live."""
+    committed = json.loads(ifw.SNAPSHOT.read_text(encoding="utf-8"))
+    assert ifw.is_terminal(committed) is True
+
+
 # --- static workflow checks -----------------------------------------------
 
 WORKFLOW = (ROOT / ".github" / "workflows" / "watch-innovation-fund.yml").read_text(encoding="utf-8")
@@ -241,3 +285,36 @@ def test_workflow_issue_list_precedes_issue_create():
 
 def test_workflow_body_says_manual_run():
     assert "A manual run of the page watcher saw" in WORKFLOW
+
+
+def test_workflow_invokes_the_script_with_no_flags():
+    # The scheduled/manual check must be a plain comparison run, never
+    # --force or --update (those are for a maintainer's own terminal).
+    assert "python tools/watch/innovation_fund.py 2>&1" in WORKFLOW
+    assert "innovation_fund.py --force" not in WORKFLOW
+    assert "innovation_fund.py --update" not in WORKFLOW.split("Refresh the snapshot")[0]
+
+
+def test_workflow_check_step_fails_the_job_on_code_one():
+    assert 'if [ "$code" = "0" ] || [ "$code" = "2" ]; then' in WORKFLOW
+    assert "exit 0" in WORKFLOW
+    assert "exit 1" in WORKFLOW
+
+
+def test_workflow_restores_set_e_after_capturing_exit_code():
+    check_block = WORKFLOW.split("Compare the page against")[1].split("Open or update an issue")[0]
+    lines = [line.strip() for line in check_block.splitlines() if line.strip()]
+    code_idx = lines.index("code=$?")
+    assert lines[code_idx + 1] == "set -e"
+
+
+def test_workflow_selects_issue_by_exact_title():
+    assert "jq -r --arg t \"$TITLE\"" in WORKFLOW
+    assert 'select(.title == $t)' in WORKFLOW
+
+
+def test_workflow_has_both_comment_and_create_branches():
+    issue_block = WORKFLOW.split("Open or update an issue")[1]
+    assert "gh issue comment" in issue_block
+    assert "gh issue create" in issue_block
+    assert "if [ -n \"$existing\" ]; then" in issue_block
