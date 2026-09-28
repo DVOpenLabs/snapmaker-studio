@@ -1,6 +1,6 @@
 # Which printers Studio understands, and how well
 
-> **State:** describes v1.1.0, the current release. Printer profiles as data
+> **State:** describes v1.2.0, the current release. Printer profiles as data
 > first shipped in v0.8.0.
 
 Studio's printer intelligence talks to Moonraker, the API server that sits in
@@ -60,7 +60,7 @@ that quietly turns one into the other would look like it worked.
 ## Fitted nozzles: what the printer says, and what you told Studio
 
 Stock Snapmaker U1 firmware reports the fitted nozzle diameter of every
-toolhead, and Studio reads it live. In the next release, the **Nozzles**
+toolhead, and Studio reads it live. The **Nozzles**
 card in Settings, under Printer, shows that reading row by row — size,
 **Source: Printer**, **Reported live**. A live row with no note of yours has no
 size picker at all, and a note never overrides the printer's own evidence.
@@ -79,10 +79,8 @@ value was used, and removing the note restored the live row. No printer control
 action was made. Offline, the table falls back to the U1 profile's four
 toolheads and confirmations survive a restart.
 
-![Nozzles read live from a real U1](screenshots/next/nozzles-live-u1.png)
-![Nozzle sizes confirmed by you, printer offline](screenshots/next/nozzles-confirmed-offline.png)
-
-*Screenshots from a pre-release build of the next version.*
+![Nozzles read live from a real U1](screenshots/v1.2.0/nozzles-live-u1.png)
+![Nozzle sizes confirmed by you, printer offline](screenshots/v1.2.0/nozzles-confirmed-offline.png)
 
 ## What is not claimed
 

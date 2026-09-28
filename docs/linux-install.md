@@ -18,8 +18,8 @@ Linux desktops, or installed automatically by `apt` if missing.
 
 | Distro | How it was verified |
 |---|---|
-| Ubuntu 22.04 (x86_64) | Automated: real `.deb` installed with `apt` on a genuinely clean `ubuntu:22.04` container (no prior checkout, no dev tools), then exercised by 35 automated checks — some launch the real app under a virtual display (Xvfb) with a real window manager (Openbox) and close its real window, others call the local backend directly — all 35 passing |
-| Ubuntu 24.04 (x86_64) | Same, on a clean `ubuntu:24.04` container — all 35 passing |
+| Ubuntu 22.04 (x86_64) | Automated: real `.deb` installed with `apt` on a genuinely clean `ubuntu:22.04` container (no prior checkout, no dev tools), then exercised by 49 automated checks — some launch the real app under a virtual display (Xvfb) with a real window manager (Openbox) and close its real window, others call the local backend directly, including spool-note and nozzle-confirmation round-trips through the installed sidecar — all 49 passing, where one check (L5, a Settings screenshot) is skipped by the harness because it cannot navigate between in-app screens and counts as a pass by convention, so the spool-note and nozzle-confirmation screens were exercised through the installed app's local interface, not by driving the UI |
+| Ubuntu 24.04 (x86_64) | Same, on a clean `ubuntu:24.04` container — all 49 passing, with the same L5 skip |
 
 **Not yet tested:** a person clicking through Doctor, Prepare, and the Orca
 handoff in the live UI (the automated checks above cover the backend logic

@@ -17,15 +17,15 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.1.0 |
-| Installer | `Snapmaker.Studio_1.1.0_x64-setup.exe` |
-| Size (bytes) | 18,150,932 |
-| SHA256 | `b41931774eac5586bc31746599d4a637e89eda195c620067dc1c756281b217ee` |
-| Linux installer | `snapmaker-studio_1.1.0_amd64_8811738a2cc2.deb` |
-| Linux size (bytes) | 20,741,014 |
-| Linux SHA256 | `51742a6493c6adeb5f33915fbe44bee4bc386ecfe6e82cd1442b765d0dff4096` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/36281000312 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.1.0 |
+| Version | v1.2.0 |
+| Installer | `Snapmaker.Studio_1.2.0_x64-setup.exe` |
+| Size (bytes) | 18,187,076 |
+| SHA256 | `af88020e8a928354638a2e6b67206db288efd39299710482f8b23862d83b9485` |
+| Linux installer | `snapmaker-studio_1.2.0_amd64_25193d05f979.deb` |
+| Linux size (bytes) | 20,775,352 |
+| Linux SHA256 | `e0368006e6e38fbbd6b4e05b4258a37828e7d90f7379f60df17a1c99ce47a216` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/36361000688 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.
@@ -35,6 +35,19 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 `sha256sum <file>.deb` (Linux).
 
 ## Previous release
+
+| Field | Value |
+|---|---|
+| Version | v1.1.0 |
+| Installer | `Snapmaker.Studio_1.1.0_x64-setup.exe` |
+| Size (bytes) | 18,150,932 |
+| SHA256 | `b41931774eac5586bc31746599d4a637e89eda195c620067dc1c756281b217ee` |
+| Linux installer | `snapmaker-studio_1.1.0_amd64_8811738a2cc2.deb` |
+| Linux size (bytes) | 20,741,014 |
+| Linux SHA256 | `51742a6493c6adeb5f33915fbe44bee4bc386ecfe6e82cd1442b765d0dff4096` |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.1.0 |
+
+## Superseded
 
 | Field | Value |
 |---|---|

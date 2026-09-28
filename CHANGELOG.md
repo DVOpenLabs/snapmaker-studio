@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-27
+
+**Your spool notes and your nozzle sizes, in the app.** v1.1.0 taught the
+engine to keep this information; this release puts both on screen.
+
 ### Added
 - **Your spool notes, in the desktop app.** The Materials provider card in
   Settings now has a
@@ -36,6 +41,8 @@ All notable changes to this project are documented here. The format is based on
   a trailing dot, IPv6 forms), so your notes follow the printer. If two notes end
   up stored for the same slot this way, neither is used — the slot reads unknown
   until you remove one.
+- Save and Remove all are hidden in both new cards when there is nothing to
+  save or remove.
 - For anything talking to Studio's local interface: the spool-note routes now
   return the full list of notes; clearing a field no longer resets the recorded
   weight (only a different spool does); recording filament used against a slot
@@ -46,6 +53,10 @@ All notable changes to this project are documented here. The format is based on
 - A conflict between a material provider and your own spool note is now worded
   with the real source ("your provider says…", "your note says…") instead of
   attributing it to the printer.
+- When a save's request to re-check the printer never actually reaches it
+  (a local failure, not the printer's own answer), the nozzle card now shows a
+  neutral "couldn't check" note instead of claiming the printer is unreachable
+  or that nothing was reported.
 
 ## [1.1.0] - 2026-09-26
 

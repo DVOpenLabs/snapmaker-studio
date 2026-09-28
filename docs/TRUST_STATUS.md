@@ -5,6 +5,89 @@ Honest, current verification state for the current release. A release is only ma
 published installer, and — from beta.24 onward — read-only verification against a
 real Snapmaker U1 have all passed and are recorded here.
 
+## v1.2.0 — ACCEPTED
+
+**Your spool notes and your nozzle sizes reach the app, and a rebuilt candidate
+after a harness race — test code only, product unchanged.** Every
+installed-build and hardware check in the table below ran against *these exact
+artifacts* — the Windows installer and the Linux `.deb` on the release page,
+both verified by SHA256. Build:
+[run 36361000688](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/36361000688),
+commit `25193d05f9794bb4a2028f645f54e2ac556311cb` (RC2). RC1
+([run 36359425758](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/36359425758),
+commit `59ff659`) was superseded before anything below was recorded: the
+installed-application acceptance harness raced against the app's own refreshed
+spool row, an acceptance-test defect rather than a product regression, fixed in
+the test code and the candidate rebuilt as RC2. Canonical values:
+[RELEASE_METADATA.md](RELEASE_METADATA.md). This release's own immutable
+snapshot: [internal/evidence/1.2.0.json](internal/evidence/1.2.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2082 passed / 7 skipped**, desktop **531** |
+| `u1convert selfcheck` | **27/27** |
+| Windows installed-application acceptance | **41/41** on RC2 |
+| Windows default-path upgrade smoke (CI, silent install, v1.1.0 → RC2) | **pass** |
+| Linux installed-build acceptance, clean `ubuntu:22.04` | **49/49** |
+| Linux installed-build acceptance, clean `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed RC2 app | **58/58** |
+| `tsc`, `cargo check`, production build (both platforms) | clean |
+
+### What is verified, and what is not
+
+**Windows — a rebuilt candidate, for a test-harness defect, not a product
+regression.** RC1 gave a lower count on "the spool row refreshes after
+Remove all": the acceptance harness asserted against the row before the
+UI had actually redrawn it, a race in the test code itself. Fixed in
+`tools/acceptance` (wait for the refreshed spool row before asserting) and the
+candidate rebuilt from scratch as RC2, reverified 41/41 before anything below
+was recorded. The Windows acceptance count changed from v1.1.0's 34/34 because
+7 checks were added this release (W1–W9 spool and nozzle round-trips through
+the installed app), not because any of v1.1.0's checks were removed.
+
+**Windows default-path upgrade smoke.** A silent default-path install of the
+published v1.1.0 installer, then RC2 over it: one registration afterward,
+version updated, same install location, legacy publisher key intact, clean
+uninstall.
+
+**Linux — clean-image verified, DESKTOP WORKFLOW VERIFIED, not yet EXTERNAL
+USER VERIFIED.** The published `.deb` installed on genuinely clean
+`ubuntu:22.04` and `ubuntu:24.04` containers, driven through 49 checks each —
+up from v1.1.0's 35 because this release adds L1–L3: spool-note and
+nozzle-confirmation round-trips through the installed sidecar's own local
+interface (a 409 on a stale revision, persistence under XDG, and a correct
+read-back after relaunch), plus everything v1.1.0 already checked. L5, the
+Settings screenshot, is skipped by the harness's own convention because it has
+no in-app route navigation, and counts as a pass in the totals above — on
+Linux, the spool-notes and nozzle-confirmation screens are proven through the
+installed app's local interface, not by driving the UI. Orca detection on
+Linux is covered by Linux CI's own unit tests, not by this clean-install
+harness. Zero orphaned processes; the clean image has no Python, Node or Rust,
+and installing the package pulls none in.
+
+**Snapmaker U1 — read-only, from the Windows-installed RC2 app, 58/58.** A
+physical U1 answered this release's read-only harness through the installed
+Windows build itself, not the raw engine: four toolheads' fitted nozzles read
+live as 0.4 mm each and shown as the printer's own reading; Source: Printer /
+Reported live rendered with no size picker on a live row; an offline-saved
+conflicting note (seeded through Studio's own local interface, not typed into
+a live UI) shown as a conflict once the printer answered again, with the
+printer's value used; a real "Remove my note" action restoring the live row;
+zero printer-control routes called throughout, confirmed by the harness's
+request listener; and the printer's address never appearing anywhere in the
+recorded evidence, confirmed by a final byte scan. Save
+and Remove all confirmed hidden (screenshot) when every row is already live.
+Full report: [internal/hardware-1.2.0.json](internal/hardware-1.2.0.json).
+**Not run this release:** the Spoolman/Bambuddy-seeded provider-on-hardware
+checks (no provider containers were configured); a genuinely mixed-nozzle
+printer (this printer's four toolheads all carry the same 0.4 mm nozzle); the
+Linux-installed app against the real printer; only one machine and one
+firmware version.
+
+The read-only discipline is unchanged: every call made was a GET-equivalent
+read. Nothing was uploaded, started, paused, resumed, cancelled, heated,
+homed, moved or configured.
+
 ## v1.1.0 — ACCEPTED
 
 **Linux Orca detection, the nozzle stops being a mystery, and a real
