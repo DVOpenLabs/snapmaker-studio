@@ -79,7 +79,9 @@ The clearest example is the fitted nozzle. For releases up to v1.0.0, Studio sai
 report it. That conclusion was wrong: stock U1 firmware publishes the fitted nozzle
 diameter, and Studio was not asking for it. Since v1.1.0 Studio reads it live and
 labels it as the printer's reading — confirmed against a real U1, 0.4 mm on all four
-toolheads. "Check this yourself" remains the answer when no reading is available,
+toolheads. Since v1.2.0 you can also confirm a size yourself, per toolhead, when the
+printer gives no live reading — and the printer's own reading always wins if the two
+disagree. "Check this yourself" remains the answer when no reading is available,
 never "unsupported".
 
 The second clearest: multi-plate repositioning was built, reviewed, and
@@ -89,27 +91,28 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **published v1.1.0 installer** — installed,
+Everything below ran against the **published v1.2.0 installer** — installed,
 launched, driven through the real window, then uninstalled. Not a development
-server, not the source tree.
+server, not the source tree. The backend and desktop test counts come from the
+source at the release commit, not from the installer.
 
 | What | Result | How to reproduce |
 |---|---|---|
-| Installed-application acceptance | **34/34** | `pwsh -File tools/acceptance/run.ps1` |
-| Linux clean-image validation, Ubuntu 22.04 + 24.04 | **35/35** each | see [../linux-install.md](../linux-install.md) |
-| Read-only verification against a real Snapmaker U1, from Linux | **11/11** | see [../internal/hardware-1.1.0.json](../internal/hardware-1.1.0.json) |
+| Installed-application acceptance | **41/41** | `pwsh -File tools/acceptance/run.ps1` |
+| Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
+| Read-only verification against a real Snapmaker U1, from the Windows-installed app | **58/58** | see [../internal/hardware-1.2.0.json](../internal/hardware-1.2.0.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 1942 passed, 7 skipped | `pytest` |
-| Desktop | 344 passed | `npm run test` |
+| Backend | 2082 passed, 7 skipped | `pytest` |
+| Desktop | 531 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
-The counts above are lower than the previous release's: this release's runs
-skipped the optional materials-provider checks, which need a Spoolman and
-Bambuddy instance seeded and running — 39/39 is the honest count of what
-actually ran, not a partial version of a larger number. Full records, including the raw
-evidence files: [../TRUST_STATUS.md](../TRUST_STATUS.md). Step-by-step:
-[JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).
+The installed-application acceptance count is higher than the previous
+release's, because this release adds checks for the two new desktop screens
+(spool notes and nozzle confirmation) — see
+[../TRUST_STATUS.md](../TRUST_STATUS.md) for exactly which. Full records,
+including the raw evidence files: [../TRUST_STATUS.md](../TRUST_STATUS.md).
+Step-by-step: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).
 
 The hardware run was read-only by construction: the allowed routes are asserted
 against a deny-list before the first request. Nothing was started, uploaded or
@@ -163,4 +166,4 @@ SHA256 before running it. Why, and what is being done:
 | Technical depth | [TECHNICAL_DEPTH.md](TECHNICAL_DEPTH.md) |
 | Where Studio sits in the field | [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md) · [DIFFERENTIATION_STRATEGY.md](DIFFERENTIATION_STRATEGY.md) |
 | The ecosystem story | [OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md) |
-| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.1.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
+| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |

@@ -1,6 +1,6 @@
 # Snapmaker Studio Roadmap
 
-Where Studio is today, and what comes next. Status reflects v1.1.0, the current
+Where Studio is today, and what comes next. Status reflects v1.2.0, the current
 release (September 2026). Dates are targets, not commitments. Release-by-release
 detail is in [CHANGELOG.md](../CHANGELOG.md); what was verified, and how, is in
 [TRUST_STATUS.md](TRUST_STATUS.md).
@@ -13,7 +13,7 @@ defined in [PRODUCT_VISION.md](PRODUCT_VISION.md) §4.
 
 ---
 
-## Shipped — v1.1.0
+## Shipped — v1.2.0
 
 **Platforms.** A one-click Windows 10/11 installer and a self-contained Linux
 `.deb` for Ubuntu 22.04/24.04 x86_64, each with the engine bundled — no Python,
@@ -51,9 +51,9 @@ Printer profiles are data; the Snapmaker U1 is hardware-verified and a VORON
 2.4 250 profile ships as a second, profile-only target.
 
 **Materials.** Spoolman and Bambuddy as read-only material providers, with
-freshness rules for remaining weight. The engine can also keep local spool
-notes and a nozzle size you confirm yourself; the desktop screens for both are
-built for the next release (see Near-term).
+freshness rules for remaining weight. Your own spool notes and a nozzle size
+you confirm yourself, both in the desktop app under Settings, each value
+labelled by where it came from and the printer's own reading always winning.
 
 **Handing off and reading back.** Open the prepared copy in Snapmaker Orca,
 detected on Windows and Linux. After slicing, the G-code is read back and
@@ -77,12 +77,6 @@ SHA256 for every installer.
 
 Only work that is genuinely not shipped yet.
 
-- **Next release (built): desktop screens for your spool notes and
-  per-toolhead nozzle confirmation** — "Your spool notes" in the Materials
-  provider card and a "Nozzles" card under Printer, both in Settings, with each nozzle size and each
-  remaining weight labelled by where it came from, and the printer's own reading
-  always winning. See
-  [CHANGELOG.md](../CHANGELOG.md) under Unreleased.
 - **Signed-in material providers.** A provider that requires a sign-in cannot
   be read today, because Studio has nowhere safe to keep a credential. This
   needs a credential store Studio can rely on across Windows and Linux.

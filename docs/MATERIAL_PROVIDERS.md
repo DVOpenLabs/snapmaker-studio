@@ -1,8 +1,7 @@
 # Do I have enough filament to finish this print?
 
-> **State:** Spoolman and Bambuddy both ship in the v1.1.0 desktop app. The
-> "Your spool notes" screen described below arrives in the next
-> release; in v1.1.0 the notes exist only in the engine and its local interface.
+> **State:** Spoolman, Bambuddy and the "Your spool notes" screen below all ship
+> in the v1.2.0 desktop app.
 
 A printer knows which spool is in which slot, because it is looking at it. It
 knows nothing at all about how much filament is left on that spool. So the
@@ -130,12 +129,10 @@ real reason to expect an 87 g job to run out.
 
 ## Your spool notes
 
-![Your spool notes, with two notes recorded](screenshots/next/spool-notes.png)
-![Your spool notes, before any note is added](screenshots/next/spool-notes-empty.png)
+![Your spool notes, with two notes recorded](screenshots/v1.2.0/spool-notes.png)
+![Your spool notes, before any note is added](screenshots/v1.2.0/spool-notes-empty.png)
 
-*Screenshots from a pre-release build of the next version.*
-
-Since v1.1.0 the engine can also keep your own notes on a spool — material,
+Since v1.1.0 the engine has kept your own notes on a spool — material,
 colour, vendor, starting and remaining weight — stored in Studio's local library
 on your machine, one note per printer slot. They pass through the same rules as
 a provider:
@@ -148,7 +145,7 @@ a provider:
 - Studio subtracts from a note's remaining weight only when explicitly asked to
   record a job's usage — never while reading, planning or sending a job.
 
-In the desktop app (next release): Settings → **Materials provider** card →
+In the desktop app: Settings → **Materials provider** card →
 **Your spool notes**.
 Each slot shows its note, or "Add a note". A weight you type reads "entered by
 you"; after **Record filament used** — which asks you to confirm the grams first —

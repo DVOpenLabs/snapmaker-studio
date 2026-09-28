@@ -264,6 +264,32 @@ async function slotRowText(page, slotN) {
   return slotRow(page, slotN).innerText();
 }
 
+/** v1.2 (real-run fix): polls a slot's own row until its text matches
+ *  `pattern`, or `timeoutMs` elapses — always returning the last-observed
+ *  text so a timeout still carries real evidence rather than a blind FAIL.
+ *
+ *  The editor closing is NOT the completion signal for save()/
+ *  confirmMarkUsed(): both call `setEditor(null)` BEFORE `await refresh()`
+ *  lands (LocalSpoolSettings.tsx), so the editor can detach — and
+ *  clickSaveExpectClose() return — while the row list still shows the
+ *  PRE-save data. Confirmed by a real run: W4 read Slot 2 immediately after
+ *  the editor closed and saw the OLD "750 g · entered by you" instead of the
+ *  new "700 g · estimated from what you recorded"; only after a relaunch
+ *  (which re-fetches from scratch) did the row read correctly, and W7/W8
+ *  then failed only because they compared against that stale snapshot. Every
+ *  assertion that reads a slot's row right after a save/confirm must wait
+ *  for THIS — the row's own expected content — not the editor's DOM state. */
+async function waitForRowText(page, slotN, predicate, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let text = await slotRowText(page, slotN);
+  while (Date.now() < deadline) {
+    if (predicate(text)) break;
+    await page.waitForTimeout(300);
+    text = await slotRowText(page, slotN);
+  }
+  return text;
+}
+
 /** v1.2 (A5): whitespace-normalised exact-match comparison for a slot row's
  *  full text — a substring/regex check could pass even if some OTHER part of
  *  the row (vendor, weight, label) silently changed; this requires the whole
@@ -1454,7 +1480,7 @@ PRINT_END
       }, value);
     }
 
-    async function addNote(nth, material, vendor, startingG, remainingG) {
+    async function addNote(nth, slotNumber, material, vendor, startingG, remainingG) {
       await page.getByRole("button", { name: "Add a note" }).nth(nth).click();
       const materialField = page.locator('input[aria-label="Material"]');
       await materialField.waitFor({ state: "visible", timeout: 5000 });
@@ -1463,16 +1489,23 @@ PRINT_END
       await page.locator('input[aria-label="Vendor"]').fill(vendor);
       await page.locator('input[aria-label="Starting weight in grams"]').fill(String(startingG));
       await page.locator('input[aria-label="Remaining weight in grams"]').fill(String(remainingG));
-      // A3: wait for the editor to actually close (save()'s own success
-      // signal) rather than a fixed pause that could read a save in flight.
+      // A3: wait for the editor to actually close — necessary, but not
+      // sufficient (see waitForRowText's own comment: save() closes the
+      // editor BEFORE refresh() lands).
       await clickSaveExpectClose(page);
+      // Real-run fix: wait for THIS slot's own row to actually show the
+      // saved material and label — the row list can still hold the pre-save
+      // "Add a note" placeholder for a moment after the editor has already
+      // closed.
+      await waitForRowText(page, slotNumber,
+        (text) => text.includes(material) && /entered by you/i.test(text));
     }
 
     // Both empty slots at this point, ascending order: index 1 is Slot 2.
-    await addNote(1, "PLA", "Acme Filaments", 1000, 750);
+    await addNote(1, 2, "PLA", "Acme Filaments", 1000, 750);
     // After that save, the remaining empty slots are 0, 2, 3 — index 0 is
     // Slot 1 again.
-    await addNote(0, "PLA", "Acme Filaments", 1000, 750);
+    await addNote(0, 1, "PLA", "Acme Filaments", 1000, 750);
 
     // A2: scoped to each slot's own row, not the whole page body — asserting
     // against the whole body let an unrelated row (or the editor's own
@@ -1510,9 +1543,13 @@ PRINT_END
       usedButtons === 1, `${usedButtons} button(s) while an editor is open`);
 
     // W3a: change MATERIAL ONLY — the weight fields are never touched at all.
+    // Real-run fix: wait for Slot 1's own row, not just the editor closing —
+    // save() calls setEditor(null) before refresh() lands, so the row list
+    // can still hold the pre-save text for a moment after the editor's DOM
+    // has already detached.
     await page.locator('input[aria-label="Material"]').fill("PETG");
     await clickSaveExpectClose(page);
-    let slot1Text = await slotRowText(page, 1);
+    let slot1Text = await waitForRowText(page, 1, (text) => /no weight recorded/i.test(text));
     record("Changing the material only (weight field never touched) resets that weight (W3a/A2.2)",
       /no weight recorded/i.test(slot1Text), slot1Text);
 
@@ -1521,7 +1558,8 @@ PRINT_END
     await openEditorForSlot(page, 1);
     await page.locator('input[aria-label="Remaining weight in grams"]').fill("500");
     await clickSaveExpectClose(page);
-    slot1Text = await slotRowText(page, 1);
+    slot1Text = await waitForRowText(page, 1,
+      (text) => /500 g/.test(text) && /entered by you/i.test(text));
     record("A weight can be set again on the same row (W3b setup)",
       /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text), slot1Text);
 
@@ -1531,9 +1569,10 @@ PRINT_END
     await openEditorForSlot(page, 1);
     await page.locator('input[aria-label="Vendor"]').fill("");
     await clickSaveExpectClose(page);
-    slot1Text = await slotRowText(page, 1);
+    slot1Text = await waitForRowText(page, 1,
+      (text) => !text.includes("Acme") && /500 g/.test(text) && /entered by you/i.test(text));
     record("Clearing an unrelated field leaves the already-set weight shown (W3b/A2.2)",
-      /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text), slot1Text);
+      !slot1Text.includes("Acme") && /500 g/.test(slot1Text) && /entered by you/i.test(slot1Text), slot1Text);
 
     // W5: an invalid colour. The editor's colour field is a native colour
     // picker, which cannot hold a malformed string, so this is asserted at
@@ -1610,9 +1649,21 @@ PRINT_END
     await confirmButton.waitFor({ state: "visible", timeout: 5000 });
     await confirmButton.click();
     // A2 (W4): confirmMarkUsed() closes the editor on success (setEditor(null))
-    // — the real signal to wait on, not a fixed pause.
+    // — necessary, but NOT the completion signal: confirmMarkUsed() calls
+    // setEditor(null) BEFORE `await refresh()` lands (LocalSpoolSettings.tsx),
+    // so the editor can finish closing while the row list still shows the
+    // OLD weight. A real run confirmed exactly this: this check read Slot 2
+    // right after the editor closed and saw the stale "750 g · entered by
+    // you" instead of the new "700 g · estimated from what you recorded" —
+    // it only read correctly after a relaunch (a full re-fetch), and W7/W8
+    // then failed only because they compared against the stale snapshot this
+    // phase wrote. Fixed: wait for the editor to close (still necessary —
+    // confirms the request didn't fail), THEN poll Slot 2's own row (real
+    // content, ≤15s) until it actually reads the new label, before asserting
+    // or writing the snapshot.
     await page.locator('input[aria-label="Material"]').waitFor({ state: "detached", timeout: 15000 });
-    const slot2Text = await slotRowText(page, 2);
+    const slot2Text = await waitForRowText(page, 2,
+      (text) => /estimated from what you recorded/i.test(text));
     record("Slot 2's own row shows an estimate, never a claimed measurement (W4)",
       /estimated from what you recorded/i.test(slot2Text), slot2Text);
     // A5: this is the reference snapshot W7/W8 compare Slot 2's full row

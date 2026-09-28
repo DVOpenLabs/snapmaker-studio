@@ -1,127 +1,119 @@
-# Snapmaker Studio v1.1.0 — Linux detects Orca, the nozzle stops being a mystery
+# Snapmaker Studio v1.2.0 — your spool notes and your nozzle sizes, in the app
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-> **Correction, 2026-09-26:** two items below describe what Studio's engine
-> can do, not what the desktop app shows. Recording your own spool notes, and
-> confirming a nozzle size yourself when firmware does not answer, are both
-> supported by the engine, but the v1.1.0 desktop app has no screen for either
-> yet. Reading the fitted nozzle live from your printer works in the app as
-> described. Screens for both are next on the
-> [roadmap](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/ROADMAP.md).
+v1.1.0 taught Studio's engine to keep your own spool notes and a nozzle size you
+confirm yourself. This release puts both in the desktop app, with every value
+labelled by where it came from — and the printer's own reading always winning.
 
-Everything you already know about Studio — read a project, check it against
-your printer, prepare a copy, hand it to Snapmaker Orca, read the sliced job
-back — is unchanged and still local-first. This release closes several
-long-standing gaps between what Studio could tell you and what your printer
-and your slicer actually know.
+## Your spool notes
 
-## Snapmaker Orca is now found automatically on Linux
+Settings → the Materials provider card → **Your spool notes**. For each slot you
+can record the material, subtype, colour, vendor, starting weight, remaining
+weight and a free-form note; edit it; clear any field; or remove the note.
 
-The Windows-only limitation from v1.0.0 is gone. Studio finds Snapmaker Orca
-and related tools on Linux by reading their `.desktop` files correctly, and
-no longer confuses a similarly-named tool for the one you actually have
-installed.
+- The remaining weight says where it came from: **entered by you**,
+  **estimated from what you recorded**, **tracked by your provider**, or **no
+  weight recorded**.
+- Changing to a different spool — another material, subtype, colour or vendor —
+  resets the remaining weight to "no weight recorded". Clearing a field does not.
+- **Record filament used** subtracts a job's grams only after you confirm the
+  amount, and the result is labelled as an estimate.
+- A slot the printer reports empty stays empty, whatever a note says.
+- Switching between None, Spoolman and Bambuddy never touches your notes.
+- If two notes ever end up stored for the same slot, neither is used: the slot
+  reads unknown until you remove one.
 
-## The fitted nozzle is no longer unknowable
+## Your nozzle sizes, per printer and per toolhead
 
-Stock Snapmaker U1 firmware does publish the fitted nozzle diameter — Studio
-just wasn't asking for it. Now it reads the live reading from your printer,
-or accepts your own confirmation when firmware doesn't answer, and always
-tells you which of the two it used. A size comparison against your project
-now lines up toolhead by toolhead where the data supports it, instead of
-only checking whether the same sizes exist somewhere.
+Settings → the **Nozzles** card under Printer.
 
-## An optional daily update check
+- When the printer reports its fitted nozzles, each toolhead shows the printer's
+  reading — **Source: Printer**, **Reported live** — and there is nothing to type
+  over it.
+- When it does not, or it is offline, you can confirm each toolhead yourself,
+  including mixed sizes. A toolhead left as "Not sure" stays unknown. Your
+  confirmation is dated, kept per printer, and editable or removable, and it
+  survives a restart. Offline, the table uses the U1's four toolheads.
+- If a note you saved earlier disagrees with a live reading, both are shown and
+  Studio uses the printer's value; **Remove my note** clears yours.
+- Preflight, the after-slicing check and the send check use your confirmation
+  only when the printer gives no live reading, and flag a disagreement
+  separately.
+- The comparison is toolhead by toolhead: a proven wrong size or swap is
+  flagged; anything that cannot be proven is reported as unknown, never as a
+  match.
 
-Off by default. Turn it on in Help, and Studio checks GitHub for a newer
-release once a day — the same request the manual "Check GitHub now" button
-already made, so nothing new leaves your machine either way.
+## Also in this release
 
-## Local spool tracking, with no Spoolman or Bambuddy required
-
-When you haven't set up a network material provider, you can now record
-what's on a spool yourself — material, colour, vendor, remaining weight —
-and Studio treats your own note with the same care as a network provider: a
-printer that has physically confirmed a slot is empty can never be
-overridden by a stale note.
-
-## Community hardware verification
-
-`u1convert verify-printer` produces a read-only, redacted evidence bundle
-anyone can attach to a GitHub issue to help verify a printer or a bug
-report, without exposing their network address.
-
-## Read on Linux, against a real Snapmaker U1
-
-Beyond the automated suites, this release's engine was also run directly on
-Linux against a physical Snapmaker U1 on the local network — reachability,
-identification, firmware capabilities, loaded filament, and the full
-project-versus-printer comparison, all read-only. See
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.1.0/docs/TRUST_STATUS.md)
-for exactly what that covered.
+- Two printer addresses that mean the same printer — different case, a trailing
+  dot, IPv6 forms — are treated as one, so your notes follow the printer.
+- A disagreement between your material provider and your own note now names the
+  real source, instead of attributing it to the printer.
+- Save and Remove all are hidden when there is nothing to save or remove.
+- If Studio cannot check the printer at all after a save, it says so plainly
+  rather than claiming the printer is unreachable.
 
 ## Upgrading
 
-**Windows:** installing v1.1.0 over an existing install works exactly as
-before — verified with an in-place upgrade test that confirms the
-installation ends up reporting the new version, at the same location, with
-your data kept and nothing left duplicated.
+**Windows:** installing v1.2.0 over v1.1.0 upgrades in place — verified
+with a silent default-path install of the published v1.1.0
+installer followed by this release's candidate: one registration afterward,
+the version updated, the same install location, and a clean uninstall. That
+test checks the installation itself; it does not inspect your saved notes.
 
 **Linux:** install with `sudo apt install ./<file>.deb` over the existing
 package, the same as any `.deb` upgrade.
 
 ## Still true
 
-Studio does not slice — Snapmaker Orca does. Studio never starts a print on
-its own; every action in Printer Hub is confirmed by you. Everything is
-local: no cloud, no account, nothing uploaded off your local network — the
-one transfer Studio makes is a sliced job to your own printer, after you
-confirm it. Your original files are never modified; preparing always writes
-a copy. Advice is advisory: Studio reports what it can establish and says
-"unknown" when it cannot, and it does not promise a print will work.
+Studio does not slice — Snapmaker Orca does. Studio never starts a print on its
+own; every action in Printer Hub is confirmed by you. Everything is local: no
+cloud, no account, nothing uploaded off your local network — the one transfer
+Studio makes is a sliced job to your own printer, after you confirm it. The
+only request beyond your network is the optional check for a newer version on
+GitHub, which you start or switch on yourself and which sends none of your
+data. Your
+original files are never modified. Advice is advisory: Studio reports what it
+can establish and says "unknown" when it cannot, and it does not promise a print
+will work.
 
 Neither installer is code-signed yet — verify the SHA256 on the release page
 before running either one.
 
 ## Current limitations
 
-Things Studio does not do yet.
-
 - A materials provider that requires a sign-in cannot be read; Studio has
   nowhere safe to keep a credential and says so rather than storing one.
 - An object whose volumes cannot all be represented declines the split and
   crosses whole, with the audit naming what that costs.
-- Painted colour is read, but whether two colours meet on a layer is decided
-  by the slice, so such colours have a toolhead reserved rather than being
-  called simultaneous. Several attempts to prove this from tool-change data
-  alone were tried and found unreliable; the honest "reserve a toolhead"
-  answer stands until Studio reads the actual extrusion moves.
+- Painted colour is read, but whether two colours meet on a layer is decided by
+  the slice, so such colours have a toolhead reserved rather than being called
+  simultaneous.
+- A "Not sure" entry saved for a toolhead the printer now reports live stays
+  stored (it is never used while the live reading exists) and is not offered for
+  removal until the printer stops reporting.
 
 ## Data boundaries
-
-Information your printer, provider or file does not supply, which Studio
-refuses to invent.
 
 - Remaining filament is known only where something tracks it — a network
   provider, or your own note. Studio never estimates one on its own.
 
 ## Verification scope
 
-Implemented and tested, with limited real-hardware or outside-user coverage
-so far.
-
-- One machine, one firmware version verified on real hardware. The
-  read-only verification generalises; the sample does not.
-- The nozzle-size comparison's toolhead-by-toolhead check was verified live
-  on a printer with the same size fitted on every toolhead; a genuinely
-  mismatched multi-nozzle setup was exercised only in automated tests, not
+- One machine, one firmware version, verified read-only against the
+  Windows-installed application: uniform 0.4 mm on all four toolheads.
+- A genuinely mixed-nozzle printer was exercised only in automated tests, not
   against real hardware.
-- Linux has been run against a real Snapmaker U1's engine directly, but not
-  yet through the full provider-backed hardware harness, and has not yet
-  had an external user report.
+- On Linux, the spool-notes and nozzle-confirmation screens were exercised
+  through the installed app's local interface on clean Ubuntu 22.04 and 24.04,
+  not by driving the UI; the Linux-installed app was not run against the real
+  printer.
+- Reading spools from Spoolman or Bambuddy was checked in automated tests, not
+  against the real printer alongside a live provider.
+- Linux has not yet had an external user report.
 
-Verification for this release — every count, and what was run against the
-real printer — is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.1.0/docs/TRUST_STATUS.md).
+Verification for this release — every count, and what was run against the real
+printer — is in
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.2.0/docs/TRUST_STATUS.md).

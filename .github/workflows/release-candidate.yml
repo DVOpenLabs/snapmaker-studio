@@ -45,34 +45,34 @@ jobs:
           name: snapmaker-studio-installer
           path: rc
 
-      - name: Download the published v0.9.0 installer, verify its checksum
+      - name: Download the published v1.1.0 installer, verify its checksum
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v0.9.0/Snapmaker.Studio_0.9.0_x64-setup.exe"
-          $dest = "old\Snapmaker.Studio_0.9.0_x64-setup.exe"
+          $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v1.1.0/Snapmaker.Studio_1.1.0_x64-setup.exe"
+          $dest = "old\Snapmaker.Studio_1.1.0_x64-setup.exe"
           New-Item -ItemType Directory -Force -Path old | Out-Null
           Invoke-WebRequest -Uri $url -OutFile $dest
           $hash = (Get-FileHash -Algorithm SHA256 $dest).Hash.ToLower()
-          $expected = "294f7d25d8b1ef0f3fe26df9f83df6fa7482fa86aa998928db2a40335b4d202b"
+          $expected = "b41931774eac5586bc31746599d4a637e89eda195c620067dc1c756281b217ee"
           if ($hash -ne $expected) {
-            throw "Downloaded v0.9.0 installer hash $hash does not match the published $expected"
+            throw "Downloaded v1.1.0 installer hash $hash does not match the published $expected"
           }
-          Write-Host "v0.9.0 installer verified: $hash"
+          Write-Host "v1.1.0 installer verified: $hash"
 
-      - name: Install v0.9.0 (default path), record its registration
+      - name: Install v1.1.0 (default path), record its registration
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $old = (Resolve-Path "old\Snapmaker.Studio_0.9.0_x64-setup.exe").Path
+          $old = (Resolve-Path "old\Snapmaker.Studio_1.1.0_x64-setup.exe").Path
           $p = Start-Process -FilePath $old -ArgumentList '/S', '/NCRC' -PassThru -Wait
-          if ($p.ExitCode -ne 0) { throw "v0.9.0 silent install failed, exit $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0) { throw "v1.1.0 silent install failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
           $before = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-          if (@($before).Count -ne 1) { throw "Expected exactly one v0.9.0 registration, found $(@($before).Count)" }
+          if (@($before).Count -ne 1) { throw "Expected exactly one v1.1.0 registration, found $(@($before).Count)" }
           $beforeProps = Get-ItemProperty $before.PSPath
-          if ($beforeProps.DisplayVersion -ne "0.9.0") { throw "v0.9.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 0.9.0" }
+          if ($beforeProps.DisplayVersion -ne "1.1.0") { throw "v1.1.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 1.1.0" }
           # NSIS can write InstallLocation wrapped in literal quote
           # characters (part of the string value itself, not just how it
           # displays) — trim them unconditionally so every later
@@ -80,7 +80,7 @@ jobs:
           # value with no quotes is untouched by Trim.
           $installLocation = $beforeProps.InstallLocation.Trim('"')
           "install_location=$installLocation" >> $env:GITHUB_ENV
-          Write-Host "v0.9.0 installed at $installLocation, DisplayVersion 0.9.0"
+          Write-Host "v1.1.0 installed at $installLocation, DisplayVersion 1.1.0"
 
       - name: Install the release candidate over it (default path, same key)
         shell: pwsh
