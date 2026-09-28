@@ -848,6 +848,7 @@ export interface UploadResult extends PrinterControlResult {
   changed?: Array<{ part: string; title: string; detail: string }>;
   check?: SendCheck;
   confirmation?: { ok?: boolean; detail?: string };
+  provider_status?: ProviderStatus | null;
 }
 
 export function printerUploadGcode(
@@ -1501,6 +1502,7 @@ export interface MaterialPlan {
   ready?: number[];
   colour_notes?: number[];
   summary: string;
+  provider_status?: ProviderStatus | null;
 }
 
 export interface SendItem {
@@ -1537,6 +1539,7 @@ export interface SendCheck {
   disclaimer: string;
   state?: SendState;
   printer?: { observed_at?: number; reachable?: boolean };
+  provider_status?: ProviderStatus | null;
 }
 
 /** The v1.2 plan's frozen error map (A4.3): every new/changed route returns
@@ -1619,8 +1622,9 @@ export interface ProviderArgs {
    *  in the adapter; nothing downstream of that looks at it again. */
   provider?: string;
   provider_url?: string;
-  slot_map?: Record<string, number>;
+  slot_map?: Record<string, number | string>;
   slot_base?: number;
+  provider_key?: string;
 }
 
 /** Can Studio read this provider? Read-only, and the address is validated in the
@@ -1637,13 +1641,15 @@ export interface ProviderTest {
    *  Both providers report what a spool started with until something prints from
    *  it, so "connected" and "useful" are different numbers. */
   with_tracked_weight?: number;
+  with_weight?: number;
+  error_code?: string;
   archived?: number;
   detail?: string;
   choices?: ProviderSpool[];
 }
 
 export interface ProviderSpool {
-  id: number;
+  id: number | string;
   label: string;
   material?: string | null;
   color?: string | null;
@@ -1652,8 +1658,18 @@ export interface ProviderSpool {
   archived?: boolean;
 }
 
-export function providerTest(url: string, provider: string): Promise<ProviderTest> {
-  return post("/provider/test", { url, provider }, "provider test");
+export interface ProviderStatus {
+  provider: string;
+  name: string;
+  available: boolean;
+  error: string | null;
+  error_code: string | null;
+  spools: number;
+  with_weight: number;
+}
+
+export function providerTest(url: string, provider: string, key?: string): Promise<ProviderTest> {
+  return post("/provider/test", { url, provider, ...(key !== undefined ? { provider_key: key } : {}) }, "provider test");
 }
 
 export function materialPlan(

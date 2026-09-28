@@ -21,7 +21,7 @@
 #
 # Usage:
 #   pwsh -File tools/acceptance/run.ps1 [-Installer <path>] [-KeepInstall]
-#        [-SpoolmanUrl host:port] [-BambuddyUrl host:port]
+#        [-SpoolmanUrl host:port] [-BambuddyUrl host:port] [-SpoolEasePort 9403]
 #
 # v1.2: this run now also drives the spool-note and nozzle-confirmation phases
 # in checks.mjs (W1-W9), no extra parameter needed - they run against the U1's
@@ -48,6 +48,7 @@ param(
     # supplied the run also proves that equivalent facts produce equal decisions
     # in the installed build rather than only in the test suite.
     [string]$BambuddyUrl,
+    [int]$SpoolEasePort = 9403,
     # Ports for the two throwaway probe servers this script owns. One counts the
     # requests it receives, which is how "no provider is configured" becomes a
     # measurement; the other answers every request with a redirect to a public
@@ -203,7 +204,7 @@ if ($existing) {
 # looked like a product defect and was this line.
 $probeScript = '"' + (Join-Path $PSScriptRoot "probes.mjs") + '"'
 $probes = Start-Process -FilePath "node" `
-    -ArgumentList $probeScript, $ProbePort, $RedirectPort `
+    -ArgumentList $probeScript, $ProbePort, $RedirectPort, $SpoolEasePort `
     -PassThru -WindowStyle Hidden
 # Deliberately not in $started. That list is stopped and emptied every time the
 # app is restarted with a different project, and the probes have to outlive
@@ -216,6 +217,8 @@ $redirectUrl = "127.0.0.1:$RedirectPort"
 $env:SNAPSTUDIO_PROBE_URL = $probeUrl
 $env:SNAPSTUDIO_REDIRECT_URL = $redirectUrl
 $env:SNAPSTUDIO_BAMBUDDY_URL = $BambuddyUrl
+$env:SNAPSTUDIO_SPOOLEASE_URL = "127.0.0.1:$SpoolEasePort"
+$env:SNAPSTUDIO_SPOOLEASE_KEY = "Fx7-tEsT"
 try {
     $probeAlive = (Invoke-WebRequest "http://$probeUrl/__hits" -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200
 } catch { $probeAlive = $false }
@@ -528,6 +531,19 @@ try {
         Add-Check "Provider settings survive a restart and reach the send decision" ($code -eq 0)
     }
 
+    if ($env:SNAPSTUDIO_SPOOLEASE_KEY) {
+        $code = Invoke-Phase "provider-spoolease" $sampleWork $gcodeWork
+        Add-Check "SpoolEase can be configured and read in the installed build" ($code -eq 0)
+
+        Stop-Tracked
+        $script:started = @()
+        $spooleaseAgain = Start-Process -FilePath $appExe -PassThru
+        $script:started += $spooleaseAgain.Id
+        Start-Sleep -Seconds 8
+        $code = Invoke-Phase "provider-spoolease-restored" $sampleWork $gcodeWork
+        Add-Check "SpoolEase settings restore without the session key" ($code -eq 0)
+    }
+
     # Only now, with the first provider's persistence proved, is it safe to
     # switch. Doing it earlier cleared the Spoolman configuration that the
     # restart check above exists to find - which is what the first run of this
@@ -562,7 +578,8 @@ finally {
     Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue
     Remove-Item Env:SNAPSTUDIO_DATA_DIR -ErrorAction SilentlyContinue
     foreach ($name in @("SNAPSTUDIO_PROBE_URL", "SNAPSTUDIO_REDIRECT_URL",
-                        "SNAPSTUDIO_BAMBUDDY_URL")) {
+                        "SNAPSTUDIO_BAMBUDDY_URL", "SNAPSTUDIO_SPOOLEASE_URL",
+                        "SNAPSTUDIO_SPOOLEASE_KEY")) {
         Remove-Item "Env:$name" -ErrorAction SilentlyContinue
     }
 }
@@ -662,6 +679,7 @@ $literalRedactionPairs = @(
     @{ from = $env:USERNAME; to = "<user>" },
     @{ from = $SpoolmanUrl;  to = "<provider-on-lan>" },
     @{ from = $BambuddyUrl;  to = "<provider-on-lan>" }
+    @{ from = "Fx7-tEsT";    to = "<fixture-key>" }
 ) | Where-Object { $_.from }
 
 $json = Scrub-EvidenceText ($report | ConvertTo-Json -Depth 5)

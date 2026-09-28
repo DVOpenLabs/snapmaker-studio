@@ -72,6 +72,12 @@ describe("providerArgs", () => {
       .toEqual({});
   });
 
+  it("sends only a non-empty SpoolEase key, never keyEpoch", () => {
+    expect(providerArgs({ kind: "spoolease", url: "192.168.1.50", slotMap: { "1": "12" }, slotBase: 1, key: "session-key" }))
+      .toEqual({ provider: "spoolease", provider_url: "192.168.1.50", slot_map: { "1": "12" }, slot_base: 1, provider_key: "session-key" });
+    expect(providerArgs({ kind: "spoolease", url: "192.168.1.50", slotMap: {}, slotBase: 1, key: "" })).not.toHaveProperty("provider_key");
+  });
+
   it("always states the slot numbering rather than leaving it to be guessed", () => {
     // Getting this wrong puts every spool one slot out and then reports the
     // wrong material with complete confidence.
@@ -138,6 +144,20 @@ describe("the provider store", () => {
     expect(state.lastSeen).toBeNull();
     expect(localStorage.getItem("materialProviderUrl")).toBeNull();
   });
+
+  it("keeps keys session-only and advances keyEpoch only on real resets", () => {
+    const initial = useProvider.getState().keyEpoch;
+    useProvider.getState().setKind("spoolease");
+    const changed = useProvider.getState().keyEpoch;
+    expect(changed).toBe(initial + 1);
+    useProvider.getState().setKind("spoolease");
+    expect(useProvider.getState().keyEpoch).toBe(changed);
+    useProvider.getState().setKey("abc");
+    expect([...store.values()].some((value) => value.includes("abc"))).toBe(false);
+    expect(providerArgs(useProvider.getState())).not.toHaveProperty("keyEpoch");
+    useProvider.getState().clear();
+    expect(useProvider.getState().keyEpoch).toBe(changed + 1);
+  });
 });
 
 
@@ -187,5 +207,13 @@ describe("switching provider", () => {
     expect(JSON.parse(localStorage.getItem("materialProviderUrl")!)).toBe("bambuddy.local:8000");
     expect(JSON.parse(localStorage.getItem("materialProviderSlotMap")!)).toEqual({ "0": 4 });
     expect(JSON.parse(localStorage.getItem("materialProviderSlotBase")!)).toBe(0);
+  });
+
+  it("does not delete local spool notes when switching providers", () => {
+    localStorage.setItem("localSpoolsExample", "keep-me");
+    const before = new Map([...store].filter(([key]) => !key.startsWith("materialProvider")));
+    useProvider.getState().setKind("spoolease");
+    useProvider.getState().setKind("spoolman");
+    expect(new Map([...store].filter(([key]) => !key.startsWith("materialProvider")))).toEqual(before);
   });
 });

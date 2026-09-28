@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Boxes, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,25 +36,45 @@ function quality(spool: ProviderSpool): string {
 }
 
 export default function MaterialProviderSettings() {
-  const { kind, url, slotMap, slotBase, lastSeen, setKind, setUrl, setSlot, setSlotBase, markSeen } =
+  const { kind, url, key, keyEpoch, slotMap, slotBase, lastSeen, setKind, setUrl, setKey, setSlot, setSlotBase, markSeen } =
     useProvider();
   const [draft, setDraft] = useState(url);
+  const [keyDraft, setKeyDraft] = useState(key);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProviderTest | null>(null);
+  const seqRef = useRef(0);
+  const firstEpoch = useRef(keyEpoch);
+
+  function invalidate() { seqRef.current += 1; setBusy(false); }
+
+  useEffect(() => {
+    if (keyEpoch !== firstEpoch.current) {
+      setKeyDraft("");
+      invalidate();
+    }
+  }, [keyEpoch]);
+
+  useEffect(() => { if (key === "") setKeyDraft(""); }, [key]);
+  useEffect(() => { setResult(null); }, [kind]);
 
   async function test() {
+    const seq = ++seqRef.current;
     setBusy(true);
     setResult(null);
     try {
       const value = draft.trim();
       setUrl(value);
-      const out = await providerTest(value, kind);
+      const committedKey = kind === "spoolease" ? keyDraft : "";
+      if (kind === "spoolease") setKey(committedKey);
+      const out = await providerTest(value, kind, committedKey !== "" ? committedKey : undefined);
+      if (seq !== seqRef.current) return;
       setResult(out);
       if (out.ok) markSeen();
     } catch (e) {
-      setResult({ ok: false, spools: 0, reason: e instanceof Error ? e.message : String(e) });
+      if (seq !== seqRef.current) return;
+      setResult({ ok: false, spools: 0, reason: e instanceof Error ? e.message : String(e), error_code: undefined, with_weight: 0 });
     } finally {
-      setBusy(false);
+      if (seq === seqRef.current) setBusy(false);
     }
   }
 
@@ -76,7 +96,7 @@ export default function MaterialProviderSettings() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(["none", "spoolman", "bambuddy"] as ProviderKind[]).map((option) => (
+          {(["none", "spoolman", "bambuddy", "spoolease"] as ProviderKind[]).map((option) => (
             <Button
               key={option}
               size="sm"
@@ -88,7 +108,9 @@ export default function MaterialProviderSettings() {
                 // an address that is no longer configured.
                 if (option !== kind) {
                   setDraft("");
+                  setKeyDraft("");
                   setResult(null);
+                  invalidate();
                 }
               }}
             >
@@ -102,11 +124,22 @@ export default function MaterialProviderSettings() {
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => { setDraft(e.target.value); invalidate(); }}
                 onKeyDown={(e) => e.key === "Enter" && test()}
                 placeholder={PROVIDERS[kind].placeholder}
                 className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               />
+              {kind === "spoolease" && (
+                <input
+                  value={keyDraft}
+                  type="password"
+                  aria-label="Security key"
+                  onChange={(e) => { setKeyDraft(e.target.value); invalidate(); }}
+                  onBlur={() => setKey(keyDraft)}
+                  placeholder="Security key"
+                  className="h-9 min-w-[180px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                />
+              )}
               <Button size="sm" onClick={test} disabled={busy || !draft.trim()}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Test connection
               </Button>
@@ -129,7 +162,9 @@ export default function MaterialProviderSettings() {
                 ) : (
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 )}
-                <span>{result.ok ? result.detail : result.reason}</span>
+                <span>{result.ok
+                  ? `Connected. ${result.spools} spools. ${result.with_weight ?? 0} with usable remaining weight.`
+                  : result.reason}</span>
               </div>
             )}
 
@@ -176,7 +211,7 @@ export default function MaterialProviderSettings() {
                         <select
                           value={chosen ?? ""}
                           onChange={(e) =>
-                            setSlot(key, e.target.value === "" ? null : Number(e.target.value))
+                            setSlot(key, e.target.value === "" ? null : (spools.find((spool) => String(spool.id) === e.target.value)?.id ?? null))
                           }
                           className="h-8 flex-1 rounded-md border border-border bg-card px-2 text-xs outline-none"
                         >

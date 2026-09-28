@@ -12,7 +12,7 @@ import { create } from "zustand";
 // network, the engine refuses anything that is not, and none of it is ever sent
 // off the machine.
 
-export type ProviderKind = "none" | "spoolman" | "bambuddy";
+export type ProviderKind = "none" | "spoolman" | "bambuddy" | "spoolease";
 
 /** What each provider is called on screen, and what to suggest typing.
  *
@@ -34,11 +34,16 @@ export const PROVIDERS: Record<Exclude<ProviderKind, "none">, {
       "Bambuddy keeps a spool inventory alongside its printer management. Studio " +
       "reads the inventory only, and cannot read an instance that requires an API key.",
   },
+  spoolease: {
+    label: "SpoolEase",
+    placeholder: "192.168.1.50",
+    blurb: "SpoolEase weighs spools on its scale and keeps the reading. Studio reads its spool list only, using the security key shown on the SpoolEase screen; it never writes to SpoolEase.",
+  },
 };
 
 /** Which spool the user says is in which slot. Keyed by the slot number as the
  *  user counts them — see `slotBase`, which records whether that is 0 or 1. */
-export type SlotMap = Record<string, number>;
+export type SlotMap = Record<string, number | string>;
 
 const KEY_KIND = "materialProviderKind";
 const KEY_URL = "materialProviderUrl";
@@ -75,10 +80,13 @@ interface ProviderState {
   /** ISO timestamp of the last successful read, so the app can say how long it
    *  has been since it actually spoke to the provider. */
   lastSeen: string | null;
+  key: string;
+  keyEpoch: number;
 
   setKind: (kind: ProviderKind) => void;
   setUrl: (url: string) => void;
-  setSlot: (slot: string, spoolId: number | null) => void;
+  setKey: (key: string) => void;
+  setSlot: (slot: string, spoolId: number | string | null) => void;
   setSlotBase: (base: 0 | 1) => void;
   markSeen: () => void;
   clear: () => void;
@@ -86,25 +94,33 @@ interface ProviderState {
 
 /** What to send with a request, or nothing at all when no provider is set up. */
 export function providerArgs(state: {
-  kind: ProviderKind; url: string; slotMap: SlotMap; slotBase: 0 | 1;
-}): { provider?: string; provider_url?: string; slot_map?: SlotMap; slot_base?: number } {
+  kind: ProviderKind; url: string; slotMap: SlotMap; slotBase: 0 | 1; key?: string;
+}): { provider?: string; provider_url?: string; slot_map?: SlotMap; slot_base?: number; provider_key?: string } {
   // "None" sends nothing at all, so no provider request is made anywhere. The
   // engine never sees an address it might then try to open.
   if (state.kind === "none" || !state.url.trim()) return {};
-  return {
+  const args = {
     provider: state.kind,
     provider_url: state.url.trim(),
     slot_map: state.slotMap,
     slot_base: state.slotBase,
   };
+  return state.kind === "spoolease" && state.key ? { ...args, provider_key: state.key } : args;
+}
+
+function validKind(value: unknown): ProviderKind {
+  return value === "none" || value === "spoolman" || value === "bambuddy" || value === "spoolease"
+    ? value : "none";
 }
 
 export const useProvider = create<ProviderState>((set, get) => ({
-  kind: read<ProviderKind>(KEY_KIND, "none"),
+  kind: validKind(read<ProviderKind>(KEY_KIND, "none")),
   url: read<string>(KEY_URL, ""),
   slotMap: read<SlotMap>(KEY_MAP, {}),
   slotBase: read<0 | 1>(KEY_BASE, 1),
   lastSeen: read<string | null>(KEY_SEEN, null),
+  key: "",
+  keyEpoch: 0,
 
   setKind: (kind) => {
     // Changing provider clears the address and the slot map. They belong to the
@@ -117,7 +133,7 @@ export const useProvider = create<ProviderState>((set, get) => ({
       write(KEY_URL, "");
       write(KEY_MAP, {});
       write(KEY_SEEN, null);
-      set({ kind, url: "", slotMap: {}, lastSeen: null });
+      set({ kind, url: "", slotMap: {}, lastSeen: null, key: "", keyEpoch: get().keyEpoch + 1 });
       return;
     }
     set({ kind });
@@ -127,6 +143,7 @@ export const useProvider = create<ProviderState>((set, get) => ({
     write(KEY_URL, value);
     set({ url: value });
   },
+  setKey: (key) => set({ key }),
   setSlot: (slot, spoolId) => {
     const next = { ...get().slotMap };
     if (spoolId === null) delete next[slot];
@@ -147,6 +164,6 @@ export const useProvider = create<ProviderState>((set, get) => ({
     [KEY_KIND, KEY_URL, KEY_MAP, KEY_BASE, KEY_SEEN].forEach((k) => {
       try { localStorage.removeItem(k); } catch { /* nothing to do */ }
     });
-    set({ kind: "none", url: "", slotMap: {}, slotBase: 1, lastSeen: null });
+    set({ kind: "none", url: "", slotMap: {}, slotBase: 1, lastSeen: null, key: "", keyEpoch: get().keyEpoch + 1 });
   },
 }));

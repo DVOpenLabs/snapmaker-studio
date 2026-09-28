@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { materialPlan, printerUploadGcode, printPlan, sendCheck } from "@/api";
 import type { MaterialPlan, PrintPlan, SendCheck, SendItem, UploadResult } from "@/api";
 import { ProvenanceNote } from "@/components/ProvenanceNote";
+import ProviderStatusNote from "@/components/ProviderStatusNote";
 import { usePrinter } from "@/store/printer";
 import { providerArgs, useProvider } from "@/store/provider";
 import {
@@ -65,6 +66,7 @@ export function SendReadyCard({ path, projectPath }: { path: string; projectPath
         </h3>
 
         <p className="text-sm text-muted-foreground">{sendHeadline(check)}</p>
+        <ProviderStatusNote status={check?.provider_status} />
         {check?.printer?.observed_at ? (
           <p className="text-[11px] text-muted-foreground">{readAt(check.printer.observed_at)}</p>
         ) : null}
