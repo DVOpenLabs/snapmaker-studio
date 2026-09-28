@@ -56,11 +56,16 @@ name: Publish release
 # 'true'`, set by an "arm" step that runs immediately before the flip-to-
 # public step, on the same non-dry-run-only `if:` — see that step). This is
 # deliberately NOT "the flip succeeded": if `gh release edit --draft=false`
-# itself fails, or the runner dies between a server-side-successful edit and
-# the step recording its own success, `attempted` is still 'true' and
-# `verify` still runs — it is read-only, so running it is always safe, and
-# it is the only way to learn, from the read side, whether the release
-# actually went public or is still a draft. `!cancelled()` (not `always()`):
+# itself fails, or the flip step's own job then times out or otherwise
+# fails after a server-side-successful edit, `attempted` is still 'true'
+# (a failed or timed-out job still exports its outputs) and `verify` still
+# runs — it is read-only, so running it is always safe, and it is the only
+# way to learn, from the read side, whether the release actually went
+# public or is still a draft. Limitation: if the runner machine itself is
+# lost after the flip but before the job finishes, GitHub never receives
+# this job's outputs and `verify` is skipped. In that case (the publish job
+# shows as failed/lost with no verify job), run a `verify_only` dispatch
+# for the tag (see docs/RELEASE_CHECKLIST.md §9). `!cancelled()` (not `always()`):
 # if the WHOLE workflow run is cancelled, `verify` should NOT force itself
 # to run — cancelling is supposed to stop everything; re-check a cancelled
 # run's actual state with a `verify_only` dispatch instead (see
@@ -147,9 +152,12 @@ jobs:
       # before the flip-to-public step and on the identical `if:`. This is
       # what the `verify` job's `if:` actually keys off (see the header
       # comment and that step's own comment): it must be true even if the
-      # flip itself then fails, times out, or the runner dies before
-      # `published` below gets written, so a read-only check still always
-      # happens for a publish that was genuinely attempted.
+      # flip itself then fails or the job times out before `published`
+      # below gets written, so a read-only check still happens for a
+      # publish that was genuinely attempted. Limitation: if the runner
+      # machine itself is lost before the job finishes, this output is
+      # never delivered and `verify` is skipped -- recover with a
+      # `verify_only` dispatch (see docs/RELEASE_CHECKLIST.md §9).
       attempted: ${{ steps.arm.outputs.attempted }}
       # 'true' only once the "Publish" step's `gh release edit` call itself
       # has returned success. NOT used by `verify`'s `if:` (see `attempted`
@@ -492,11 +500,14 @@ jobs:
       - name: Arm post-publish verification (records that a real publish is about to be attempted)
         # Written BEFORE the flip below, not after: `verify`'s `if:` keys
         # off this output specifically so an uncertain outcome (the flip
-        # succeeds server-side but this job then fails/times out/the
-        # runner dies before recording anything else) still gets a
-        # read-only check afterwards, rather than the release silently
-        # sitting there unverified. Same `if:` as the flip step itself --
-        # never armed for a dry run.
+        # succeeds server-side but this job then fails or times out before
+        # recording anything else) still gets a read-only check afterwards,
+        # rather than the release silently sitting there unverified.
+        # Limitation: if the runner machine itself is lost after the flip
+        # but before the job finishes, this output is never delivered to
+        # GitHub and `verify` is skipped -- recover with a `verify_only`
+        # dispatch (see docs/RELEASE_CHECKLIST.md §9). Same `if:` as the
+        # flip step itself -- never armed for a dry run.
         if: steps.input.outputs.dry_run != 'true'
         id: arm
         run: echo "attempted=true" >> "$GITHUB_OUTPUT"

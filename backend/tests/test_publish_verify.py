@@ -992,17 +992,30 @@ def test_workflow_published_output_is_only_written_after_the_real_flip():
 # --- round 4: uncertain-result window (Sol HIGH) + concurrency deadlock (Opus HIGH) -
 
 def test_workflow_arm_step_precedes_the_flip_step_and_shares_its_if():
-    """Sol HIGH: `attempted=true` must be written BEFORE the flip is
-    attempted (so it is recorded even if the flip itself then fails/times
-    out/the runner dies), and only ever on the identical non-dry-run `if:`
-    the flip step itself uses -- never armed for a dry run."""
+    """Sol HIGH (round 4) / round 5 tightening: `attempted=true` must be
+    written BEFORE the flip is attempted (so it is recorded even if the
+    flip itself then fails or the job later times out -- NOT if the runner
+    machine itself is lost, in which case no job outputs are ever
+    delivered and `verify` is skipped; see the header comment and
+    docs/RELEASE_CHECKLIST.md §9 for that residual case and its
+    `verify_only` recovery), and only ever on the EXACT SAME non-dry-run
+    `if:` the flip step itself uses -- never armed for a dry run, and never
+    armed under a weaker or stronger condition than the flip."""
     publish = _job_blocks(_workflow_text())["publish"]
     steps = publish.split("      - name:")
     arm_step = next(s for s in steps if s.strip().startswith("Arm post-publish verification"))
     publish_step = next(s for s in steps if s.strip().startswith("Publish — flip the draft to public"))
     assert "id: arm" in arm_step
-    assert 'if: steps.input.outputs.dry_run != \'true\'' in arm_step
-    assert 'if: steps.input.outputs.dry_run != \'true\'' in publish_step
+
+    def _if_line(step_text: str) -> str:
+        lines = [ln.strip() for ln in step_text.splitlines() if ln.strip().startswith("if:")]
+        assert len(lines) == 1, f"expected exactly one `if:` line, found {lines!r}"
+        return lines[0]
+
+    arm_if = _if_line(arm_step)
+    publish_if = _if_line(publish_step)
+    expected_if = "if: steps.input.outputs.dry_run != 'true'"
+    assert arm_if == publish_if == expected_if
     assert 'echo "attempted=true" >> "$GITHUB_OUTPUT"' in arm_step
     # The arm step must be the one immediately before the flip step.
     arm_idx = steps.index(arm_step)
@@ -1133,3 +1146,37 @@ def test_workflow_metadata_whole_blob_crlf_check_precedes_both_writes():
         idx_output_write = metadata_step.index('echo "$out" >> "$GITHUB_OUTPUT"')
         idx_env_write = metadata_step.index('echo "${upper}=${value}" >> "$GITHUB_ENV"')
         assert idx_out < idx_case < idx_cr < idx_output_write < idx_env_write
+
+
+# --- round 5: docs/comments must not overclaim runner-death coverage (Sol HIGH) --
+
+CHECKLIST_PATH = ROOT / "docs" / "RELEASE_CHECKLIST.md"
+
+
+def _checklist_text() -> str:
+    return CHECKLIST_PATH.read_text(encoding="utf-8")
+
+
+def test_docs_do_not_claim_verify_survives_a_lost_runner():
+    """Sol r4 HIGH: the arm step and the flip step run in the same job, so
+    if the runner machine itself is lost after a server-side-successful
+    flip but before the job finishes, its outputs are never delivered to
+    GitHub and `verify` is skipped -- this is a real gap, not covered by
+    `attempted`. Neither the workflow nor the checklist may claim
+    otherwise."""
+    workflow_text = _workflow_text()
+    checklist_text = _checklist_text()
+    assert "runner dies" not in workflow_text
+    assert "runner dies" not in checklist_text
+
+
+def test_checklist_documents_verify_only_as_the_lost_runner_recovery():
+    """The checklist must state the actual recovery for a lost runner: a
+    manual `verify_only` dispatch for the tag."""
+    checklist_text = _checklist_text()
+    assert (
+        "**Limitation**: if the runner machine itself is lost\n"
+        "after the flip but before the job finishes, GitHub never receives that\n"
+        "job's outputs and `verify` is skipped."
+    ) in checklist_text
+    assert "run a `verify_only` dispatch" in checklist_text
