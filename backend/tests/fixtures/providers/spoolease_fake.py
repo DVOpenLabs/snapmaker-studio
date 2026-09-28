@@ -17,6 +17,7 @@ import base64
 import hashlib
 import http.server
 import os
+import socket
 import threading
 
 from snapstudio_core import spoolease_wire as wire
@@ -109,11 +110,26 @@ class SpoolEaseFake:
                     return
                 if mode == "truncated_after_headers":
                     # Status line + a Content-Length that promises more than
-                    # is ever sent, then the connection drops.
+                    # is ever sent, then the connection drops (a clean FIN).
                     self.send_response(200)
                     self.send_header("Content-Length", "100")
                     self.end_headers()
                     self.wfile.write(b"0123456789")
+                    self.close_connection = True
+                    return
+                if mode == "reset_mid_body":
+                    # plan-39 v3.4 M-2: a genuine RST (not a clean close) part
+                    # way through the body — SO_LINGER(on=1, timeout=0) makes
+                    # the OS send RST instead of FIN on close(), so the client
+                    # sees ConnectionResetError, not a clean EOF.
+                    import struct as _struct
+                    self.send_response(200)
+                    self.send_header("Content-Length", "100")
+                    self.end_headers()
+                    self.wfile.write(b"0123456789")
+                    self.wfile.flush()
+                    self.connection.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_LINGER, _struct.pack("ii", 1, 0))
                     self.close_connection = True
                     return
                 if mode == "oversized":

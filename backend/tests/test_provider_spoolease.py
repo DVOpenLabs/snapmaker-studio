@@ -342,3 +342,201 @@ def test_provider_status_never_contains_the_key():
     assert out["with_weight"] == 2
     assert out["error_code"] is None
     assert "estimate" in out["detail"] or "scale" in out["detail"]
+
+
+# --- D-suite: key semantics, in full (plan-39 v3 §7, D-1..D-8) ---------------
+
+def test_d2_a_fixed_key_never_trimmed_on_the_device_mismatches_a_trimmed_typed_key():
+    """O-3: the reference client's fixed-key SETTER sends `.value` untrimmed,
+    so a device whose fixed key was set with surrounding whitespace has a real
+    key that includes it. Studio always trims what the person types before
+    deriving, so it can never reproduce that key — this documents the
+    consequence rather than treating it as a Studio bug."""
+    device_key = "  padded-secret  "  # never trimmed when set on the device
+    with SpoolEaseFake(mode="ok", key=device_key) as fake:
+        out = mp.read("spoolease", fake.url, key=device_key)  # Studio trims first
+    assert out["error_code"] == "authentication_failed"
+
+
+def test_d3_inner_whitespace_is_preserved_not_stripped():
+    key = "sch luss el-7"  # internal space must survive the JS-trim
+    with SpoolEaseFake(mode="ok", key=key) as fake:
+        out = mp.read("spoolease", fake.url, key=f"  {key}  ")  # only outer padding
+    assert out["available"] is True
+
+
+def test_d4_unicode_key_round_trips():
+    key = "Schlüssel-7"
+    with SpoolEaseFake(mode="ok", key=key) as fake:
+        out = mp.read("spoolease", fake.url, key=key)
+    assert out["available"] is True
+
+
+def test_d5_a_200_char_key_is_accepted_no_length_cap():
+    """plan-39 §2 item 3: 'Crypto' decision states no length cap; PBKDF2
+    pre-hashes long keys so the cost is flat regardless of key length."""
+    key = "x" * 200
+    with SpoolEaseFake(mode="ok", key=key) as fake:
+        out = mp.read("spoolease", fake.url, key=key)
+    assert out["available"] is True
+
+
+# --- A-8: Windows numeric-scope resolution (this machine is Windows) --------
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: numeric scope resolution")
+def test_a8_windows_resolves_a_numeric_ipv6_scope_and_keeps_it_local():
+    """plan-39 §1 O-4: on Windows, `getaddrinfo('fe80::1%<ifindex>')` resolves
+    to a sockaddr whose scope survives, and that address still passes
+    `_ip_is_local` (link-local). Resolve-only — no connect, since there is no
+    real interface with index 1 guaranteed to answer on this host; the point
+    is that the *resolver* accepts the numeric form and the scope is not lost
+    or mangled on the way to `_ip_is_local`."""
+    try:
+        answers = socket.getaddrinfo("fe80::1%1", 80, type=socket.SOCK_STREAM)
+    except OSError:
+        pytest.skip("this host has no interface with numeric index 1")
+    sockaddr = answers[0][4]
+    ip, _port, _flow, scope = sockaddr
+    assert scope == 1
+    assert mp._ip_is_local(ip) is True
+
+
+# --- A-9: real TLS (S-N2 adopted the real test; the scoped-IPv6 HTTPS claim
+# was dropped, the TLS test itself was not) -----------------------------------
+
+def test_a9_https_verifies_the_certificate_and_records_sni():
+    import datetime
+    import ssl
+    import threading as _threading
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder()
+            .subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=1))
+            .add_extension(x509.SubjectAlternativeName(
+                [x509.DNSName("localhost"), x509.IPAddress(__import__("ipaddress").ip_address("127.0.0.1"))]),
+                critical=False)
+            .sign(key, hashes.SHA256()))
+
+    key_pem = key.private_bytes(serialization.Encoding.PEM,
+                                serialization.PrivateFormat.TraditionalOpenSSL,
+                                serialization.NoEncryption())
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as kf, \
+         tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as cf:
+        kf.write(key_pem)
+        cf.write(cert_pem)
+        key_path, cert_path = kf.name, cf.name
+
+    seen_sni = []
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(cert_path, key_path)
+
+    def sni_callback(sslsock, server_name, ctx):
+        seen_sni.append(server_name)
+
+    server_ctx.sni_callback = sni_callback
+
+    import http.server
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = FIXED_NONCE_BODY.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    server.socket = server_ctx.wrap_socket(server.socket, server_side=True)
+    port = server.server_address[1]
+    thread = _threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client_ctx = ssl.create_default_context(cafile=cert_path)
+        opener = mp._build_opener(context=client_ctx)
+        real_opener = mp._OPENER
+        mp._OPENER = opener
+        try:
+            out = mp.read("spoolease", f"https://127.0.0.1:{port}", key=FIXTURE_KEY, timeout=5.0)
+        finally:
+            mp._OPENER = real_opener
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert out["available"] is True
+    assert seen_sni == ["127.0.0.1"] or seen_sni == ["localhost"] or seen_sni == [None]
+    # SNI is sent for the literal client connected to (an IP has no name to
+    # send as SNI unless `server_hostname` is set — `_LocalOnlyHTTPSConnection`
+    # passes `self.host`, i.e. the literal "127.0.0.1" here); the certificate
+    # itself still verifies because of the IP SAN above.
+
+
+# --- M-2 (v3.4): wire errors never masquerade as transport errors ------------
+
+def test_wire_error_types_are_never_oserror_subclasses():
+    import http.client
+
+    assert not issubclass(wire.SpoolEaseWireError, OSError)
+    assert not issubclass(wire.SpoolEaseWireError, http.client.HTTPException)
+    assert not issubclass(wire.F32DecodeError, OSError)
+
+
+def test_reset_mid_body_is_transport_never_framing_or_csv():
+    with SpoolEaseFake(mode="reset_mid_body") as fake:
+        out = mp.read("spoolease", fake.url, key=FIXTURE_KEY, timeout=2.0)
+    assert out["error_code"] == "transport"
+    assert out["error_code"] not in ("framing", "csv")
+    assert FIXTURE_KEY not in json.dumps(out)
+
+
+# --- L-2 (v3.4): wrapped URLError(reason=TimeoutError) through the REAL
+# transport, for Spoolman and Bambuddy, against a genuinely non-answering
+# local socket (not a monkeypatched exception) -------------------------------
+
+def _non_answering_socket():
+    """A bound, listening socket that never accepts — every connect() to it
+    succeeds at the TCP level and then simply gets no response, so a read
+    against it times out for real."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    s.listen(1)  # never call accept() -- backlog fills, further connects hang
+    return s
+
+
+def test_spoolman_wrapped_timeout_through_the_real_transport():
+    blackhole = _non_answering_socket()
+    port = blackhole.getsockname()[1]
+    try:
+        out = mp.spoolman(f"http://127.0.0.1:{port}", timeout=0.5)
+    finally:
+        blackhole.close()
+    assert out["available"] is False
+    assert "did not answer in time" in out["error"]
+
+
+def test_bambuddy_wrapped_timeout_through_the_real_transport():
+    blackhole = _non_answering_socket()
+    port = blackhole.getsockname()[1]
+    try:
+        out = mp.bambuddy(f"http://127.0.0.1:{port}", timeout=0.5)
+    finally:
+        blackhole.close()
+    assert out["available"] is False
+    assert "did not answer in time" in out["error"]
