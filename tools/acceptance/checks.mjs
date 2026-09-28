@@ -1345,18 +1345,25 @@ PRINT_END
     await page.waitForTimeout(300);
     const address = process.env.SNAPSTUDIO_SPOOLEASE_URL;
     await page.getByPlaceholder("192.168.1.50").fill(address);
-    await page.getByLabel("Security key").fill(process.env.SNAPSTUDIO_SPOOLEASE_KEY);
+    await page.getByLabel("SpoolEase security key").fill(process.env.SNAPSTUDIO_SPOOLEASE_KEY);
     await page.getByRole("button", { name: /Test connection/i }).first().click();
     await page.waitForTimeout(1500);
     record("SpoolEase reports safe connection facts",
-      await page.getByText(/Connected\. 3 spools\. 2 with usable remaining weight\./).count() > 0);
-    const stored = await page.evaluate(() => ({
+      await page.getByText(/Connected\. 3 spools\. 2 with usable remaining weights\./).count() > 0);
+    const stored = await page.evaluate((typedKey) => {
+      const entries = (storage) => [...Array(storage.length)].map((_, i) => {
+        const key = storage.key(i) ?? "";
+        return [key, storage.getItem(key) ?? ""];
+      });
+      const all = [...entries(localStorage), ...entries(sessionStorage)];
+      return {
       kind: localStorage.getItem("materialProviderKind"),
       url: localStorage.getItem("materialProviderUrl"),
-      key: localStorage.getItem("materialProviderKey"),
-    }));
+      keyFound: all.some(([key, value]) => key.includes(typedKey) || value.includes(typedKey)),
+      };
+    }, process.env.SNAPSTUDIO_SPOOLEASE_KEY);
     record("The SpoolEase key is never persisted", stored.kind === JSON.stringify("spoolease")
-      && stored.url === JSON.stringify(address) && stored.key === null);
+      && stored.url === JSON.stringify(address) && !stored.keyFound);
     const out = await callRoute(page, "/send_check", {
       path: gcodePath, host: "", port: 7125, provider: "spoolease",
       provider_url: address, provider_key: process.env.SNAPSTUDIO_SPOOLEASE_KEY,

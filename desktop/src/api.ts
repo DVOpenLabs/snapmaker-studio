@@ -1642,7 +1642,7 @@ export interface ProviderTest {
    *  it, so "connected" and "useful" are different numbers. */
   with_tracked_weight?: number;
   with_weight?: number;
-  error_code?: string;
+  error_code?: string | null;
   archived?: number;
   detail?: string;
   choices?: ProviderSpool[];

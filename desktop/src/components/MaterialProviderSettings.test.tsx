@@ -28,7 +28,7 @@ describe("MaterialProviderSettings SpoolEase", () => {
     click("SpoolEase");
     const url = screen.getByPlaceholderText("192.168.1.50");
     change(url, "192.168.1.50");
-    return { url, key: screen.getByLabelText("Security key") as HTMLInputElement };
+    return { url, key: screen.getByLabelText("SpoolEase security key") as HTMLInputElement };
   }
   async function pressTest() {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Test connection" })); });
@@ -52,7 +52,7 @@ describe("MaterialProviderSettings SpoolEase", () => {
     click("Spoolman");
     click("SpoolEase");
     expect(useProvider.getState().key).toBe("");
-    expect((screen.getByLabelText("Security key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("SpoolEase security key") as HTMLInputElement).value).toBe("");
     change(screen.getByPlaceholderText("192.168.1.50"), "192.168.1.50");
     await pressTest();
     expect(providerTestMock).toHaveBeenCalledWith("192.168.1.50", "spoolease", undefined);
@@ -64,7 +64,7 @@ describe("MaterialProviderSettings SpoolEase", () => {
     change(key, "draft-only");
     click("Spoolman");
     click("SpoolEase");
-    expect((screen.getByLabelText("Security key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("SpoolEase security key") as HTMLInputElement).value).toBe("");
   });
 
   it("F-M2c clears then reselects SpoolEase without a key", async () => {
@@ -72,10 +72,10 @@ describe("MaterialProviderSettings SpoolEase", () => {
     const { key } = selectSpoolEase();
     change(key, "draft-only");
     act(() => { useProvider.getState().clear(); });
-    expect(screen.queryByLabelText("Security key")).toBeNull();
+    expect(screen.queryByLabelText("SpoolEase security key")).toBeNull();
     click("SpoolEase");
     change(screen.getByPlaceholderText("192.168.1.50"), "192.168.1.50");
-    expect((screen.getByLabelText("Security key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("SpoolEase security key") as HTMLInputElement).value).toBe("");
     await pressTest();
     expect(providerTestMock).toHaveBeenCalledWith("192.168.1.50", "spoolease", undefined);
   });
@@ -87,7 +87,7 @@ describe("MaterialProviderSettings SpoolEase", () => {
     const firstMount = render(<MaterialProviderSettings />);
     firstMount.unmount();
     const { unmount } = render(<MaterialProviderSettings />);
-    const key = screen.getByLabelText("Security key") as HTMLInputElement;
+    const key = screen.getByLabelText("SpoolEase security key") as HTMLInputElement;
     expect(key.value).toBe("abc");
     expect(key.type).toBe("password");
     expect([...Array(window.localStorage.length)].every((_, i) => {
@@ -151,13 +151,60 @@ describe("MaterialProviderSettings SpoolEase", () => {
   });
 
   it("formats success without exposing the key", async () => {
-    providerTestMock.mockResolvedValueOnce({ ok: true, spools: 4, with_weight: 3, choices: [] });
+    providerTestMock.mockResolvedValueOnce({ ok: true, spools: 4, with_weight: 3, detail: "SpoolEase answered with 4 spools.", choices: [] });
     render(<MaterialProviderSettings />);
     const { key } = selectSpoolEase();
     change(key, "success-secret");
     await pressTest();
-    expect(screen.getByText("Connected. 4 spools. 3 with usable remaining weight.")).toBeTruthy();
+    expect(screen.getByText("Connected. 4 spools. 3 with usable remaining weights.")).toBeTruthy();
+    expect(screen.getByText("SpoolEase answered with 4 spools.")).toBeTruthy();
     expect(document.body.textContent).not.toContain("success-secret");
+  });
+
+  it("forwards the typed SpoolEase key exactly and uses the required field metadata", async () => {
+    render(<MaterialProviderSettings />);
+    const { url, key } = selectSpoolEase();
+    expect(key.autocomplete).toBe("off");
+    // jsdom does not implement HTMLInputElement.spellcheck, but React's
+    // rendered metadata is the required spellcheck="false" attribute.
+    expect(key.getAttribute("spellcheck")).toBe("false");
+    change(url, "192.168.1.50");
+    change(key, "  exact-key  ");
+    await pressTest();
+    expect(providerTestMock).toHaveBeenCalledWith("192.168.1.50", "spoolease", "  exact-key  ");
+    expect(document.body.textContent).not.toContain("exact-key");
+  });
+
+  it("renders both success lines for each provider and pluralizes singular counts", async () => {
+    render(<MaterialProviderSettings />);
+    for (const [name, placeholder, detail] of [
+      ["Spoolman", "spoolman.local:7912", "Spoolman answered with 1 spool, with a recent tracked weight Studio can use."],
+      ["Bambuddy", "bambuddy.local:8000", "Bambuddy answered with 1 spool, with a recent tracked weight Studio can use."],
+      ["SpoolEase", "192.168.1.50", "SpoolEase answered with 1 spool, a weight from its scale. It estimates and will never refuse a send."],
+    ] as const) {
+      click(name);
+      change(screen.getByPlaceholderText(placeholder), placeholder);
+      providerTestMock.mockResolvedValueOnce({ ok: true, spools: 1, with_weight: 1, detail, choices: [] });
+      await pressTest();
+      expect(screen.getByText("Connected. 1 spool. 1 with usable remaining weight.")).toBeTruthy();
+      expect(screen.getByText(detail)).toBeTruthy();
+      expect(document.body.textContent).not.toContain("secret-key");
+    }
+  });
+
+  it("round-trips string and numeric spool ids through the slot select", async () => {
+    render(<MaterialProviderSettings />);
+    for (const [name, placeholder, id] of [["SpoolEase", "192.168.1.50", "A1"], ["Spoolman", "spoolman.local:7912", 7]] as const) {
+      click(name);
+      change(screen.getByPlaceholderText(placeholder), placeholder);
+      providerTestMock.mockResolvedValueOnce({ ok: true, spools: 1, with_weight: 1, choices: [{ id, label: "Test spool", remaining_g: 500 }] });
+      await pressTest();
+      fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: String(id) } });
+      // The store/UI default is slots numbered 1–4, so the first select maps
+      // to slot "1". The selected option still preserves the provider's id
+      // type (string for SpoolEase, number for Spoolman).
+      expect(useProvider.getState().slotMap["1"]).toBe(id);
+    }
   });
 
   it("simulates relaunch with kind and URL persisted but key cleared", async () => {

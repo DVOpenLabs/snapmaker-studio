@@ -35,6 +35,10 @@ function quality(spool: ProviderSpool): string {
   return spool.remaining_quality === "tracked" ? `${amount} tracked` : `${amount} estimated`;
 }
 
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
 export default function MaterialProviderSettings() {
   const { kind, url, key, keyEpoch, slotMap, slotBase, lastSeen, setKind, setUrl, setKey, setSlot, setSlotBase, markSeen } =
     useProvider();
@@ -72,7 +76,7 @@ export default function MaterialProviderSettings() {
       if (out.ok) markSeen();
     } catch (e) {
       if (seq !== seqRef.current) return;
-      setResult({ ok: false, spools: 0, reason: e instanceof Error ? e.message : String(e), error_code: undefined, with_weight: 0 });
+      setResult({ ok: false, spools: 0, reason: e instanceof Error ? e.message : String(e), error_code: null, with_weight: 0 });
     } finally {
       if (seq === seqRef.current) setBusy(false);
     }
@@ -134,7 +138,9 @@ export default function MaterialProviderSettings() {
                   <input
                     value={keyDraft}
                     type="password"
-                    aria-label="Security key"
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-label="SpoolEase security key"
                     onChange={(e) => { setKeyDraft(e.target.value); invalidate(); }}
                     onBlur={() => setKey(keyDraft)}
                     placeholder="Security key"
@@ -167,9 +173,12 @@ export default function MaterialProviderSettings() {
                 ) : (
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 )}
-                <span>{result.ok
-                  ? `Connected. ${result.spools} spools. ${result.with_weight ?? 0} with usable remaining weight.`
-                  : result.reason}</span>
+                {result.ok ? (
+                  <span>
+                    <span className="block">Connected. {plural(result.spools, "spool", "spools")}. {plural(result.with_weight ?? 0, "with usable remaining weight", "with usable remaining weights")}.</span>
+                    {result.detail && <span className="mt-1 block">{result.detail}</span>}
+                  </span>
+                ) : <span>{result.reason}</span>}
               </div>
             )}
 

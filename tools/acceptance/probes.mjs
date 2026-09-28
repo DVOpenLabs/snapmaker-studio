@@ -16,14 +16,18 @@
 // die with it. Usage:  node probes.mjs <countPort> <redirectPort>
 
 import { createServer } from "node:http";
-import { createCipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, pbkdf2Sync, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const [, , countPort, redirectPort, spooleasePort = "9403"] = process.argv;
 
 const SPOOLEASE_KEY = process.env.SNAPSTUDIO_SPOOLEASE_KEY || "Fx7-tEsT";
-const CSV = `1,04A1B2C3D4E5F6,PLA,Basic,Galaxy Black,000000,,Fixture Filaments,1000,250,1250,812,Generic PLA,1750000000,1750000000,y,,AABIQQ,n,tag,ntag215
-2,04B1B2C3D4E5F7,PETG,HF,"Signal Blue, matte",0055FF,"Second shelf, ""left""",Fixture Filaments,1000,,1240,640,Generic PETG,1750086400,,y,,,n,manual,
-3,,ABS,,Red,FF0000,,,1000,,,,,,,,,,n,,`;
+const CSV = readFileSync(new URL("../../backend/tests/fixtures/providers/spoolease_3532f8d.csv", import.meta.url));
+const CSV_SHA256 = "26c7ffdeec3d3a484a9361f642487cb87134ce61df14934366d2fa38b184ec4d";
+const actualHash = createHash("sha256").update(CSV).digest("hex");
+if (CSV.length !== 331 || !CSV.toString("utf8").endsWith("\n") || actualHash !== CSV_SHA256) {
+  throw new Error(`SpoolEase fixture mismatch: ${CSV.length} bytes, sha256 ${actualHash}`);
+}
 const kdf = pbkdf2Sync(SPOOLEASE_KEY, "example_salt", 10000, 32, "sha256");
 function encryptedPayload(payload, nonce = randomBytes(12)) {
   const cipher = createCipheriv("aes-256-gcm", kdf, nonce);
@@ -33,7 +37,7 @@ function encryptedPayload(payload, nonce = randomBytes(12)) {
 function encryptedCsv(mode) {
   const nonce = mode === "fixed_nonce" || mode === "empty_csv"
     ? Buffer.from("000102030405060708090a0b", "hex") : randomBytes(12);
-  return encryptedPayload(mode === "empty_csv" ? "" : CSV, nonce);
+  return encryptedPayload(mode === "empty_csv" ? "" : CSV.toString("utf8"), nonce);
 }
 
 let hits = 0;
