@@ -1,15 +1,18 @@
 name: Watch the Innovation Fund page
 
-# Twenty per cent of the Phase 1 score is a community vote whose system did not
-# exist when the entry was listed, and there is no notification channel that
-# reaches an entrant when it launches. This checks the page once a day and opens
-# an issue if any watched signal moves.
+# Twenty per cent of the Phase 1 score was a community vote whose system did
+# not exist when the entry was listed, and there was no notification channel
+# that reached an entrant when it launched. This script's job was to notice
+# that. It did: the vote was observed live on 2026-09-23 (issue #18, opened by
+# this watcher, closed by the maintainer the same day). The schedule is
+# retired in this change; the script itself refuses to re-alert once the
+# recorded snapshot shows `voting_live: true`. `workflow_dispatch` stays for a
+# manual check.
 #
-# One GET per run. Nothing here votes, submits, or interacts with the site.
+# At most one GET per run. Nothing here votes, submits, or interacts with the
+# site.
 
 on:
-  schedule:
-    - cron: "17 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -39,19 +42,25 @@ jobs:
             echo "EOF"
             echo "code=$code"
           } >> "$GITHUB_OUTPUT"
-          # Only a signal change (2) is interesting; a fetch failure (1) is not
-          # worth an issue, and the run log records it.
-          exit 0
+          # 0 = no change (or terminal); 2 = a watched signal changed, the next
+          # step opens or updates an issue. 1 = the page or snapshot could not
+          # be read, which is a real failure worth a red run in the log.
+          if [ "$code" = "0" ] || [ "$code" = "2" ]; then
+            exit 0
+          fi
+          exit 1
 
-      - name: Open an issue when a signal changes
+      - name: Open or update an issue when a signal changes
         if: steps.check.outputs.code == '2'
         env:
           GH_TOKEN: ${{ github.token }}
           REPORT: ${{ steps.check.outputs.report }}
+          TITLE: "Innovation Fund page changed - check whether project voting is live"
         shell: bash
         run: |
+          set -euo pipefail
           {
-            echo "The daily watcher saw a change in the signals it tracks on"
+            echo "A manual run of the page watcher saw a change in the signals it tracks on"
             echo "<https://www.snapmaker.com/innovation-fund>."
             echo
             echo '```'
@@ -64,4 +73,9 @@ jobs:
             echo "- Do **not** automate, solicit or coordinate votes. Linking the project page once, factually, is the limit."
             echo "- Refresh the snapshot with \`python tools/watch/innovation_fund.py --update\`."
           } > issue-body.md
-          gh issue create --title "Innovation Fund page changed - check whether project voting is live" --body-file issue-body.md
+          existing=$(gh issue list --state open --limit 100 --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+          else
+            gh issue create --title "$TITLE" --body-file issue-body.md
+          fi

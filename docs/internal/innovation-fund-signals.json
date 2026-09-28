@@ -1,11 +1,12 @@
 {
   "evaluation_close": false,
   "phase1_deadline": true,
-  "project_count_hint": 33,
+  "project_count_hint": 45,
   "project_pages": false,
-  "text_sha256": "bfccaafa3b6cae0825827eeb06cef8f65baec1a5bb950c60cce98a4cf330f1ff",
-  "voting_live": false,
-  "voting_promised": true,
+  "recorded_at": "2026-09-28",
+  "text_sha256": "e08d887bdb3c16d88401579c59ec2870810aa4c0ce281fb83ccaf224b052d9d0",
+  "voting_live": true,
+  "voting_promised": false,
   "weighting": true,
   "winners_date": true
 }

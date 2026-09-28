@@ -1,26 +1,36 @@
 """Watch the Innovation Fund page for the project-voting system going live.
 
-The fund's page says the community-vote system is still being built. Twenty per
-cent of the Phase 1 score depends on it, and there is no announcement channel that
-reliably reaches an entrant — so this checks the page itself, once a day.
+The fund's page said the community-vote system was still being built. Twenty
+per cent of the Phase 1 score depends on it, and there is no announcement
+channel that reliably reaches an entrant — so this checks the page itself.
 
-It is deliberately minimal about what it does to the site: one GET per run, a
-normal User-Agent, and nothing that resembles interacting with a vote.
+It is deliberately minimal about what it does to the site: at most one GET per
+run, a normal User-Agent, and nothing that resembles interacting with a vote.
+
+This script's job was to notice voting go live. It did (recorded_at in the
+committed snapshot). It is kept for manual checks — a maintainer can still run
+it — but once the snapshot records ``voting_live: true`` it refuses to fetch
+again and reports the terminal state instead, so a stale page fingerprint
+cannot cause a repeated alert.
 
     python tools/watch/innovation_fund.py            # compare against the snapshot
     python tools/watch/innovation_fund.py --update   # accept the current page as the snapshot
+    python tools/watch/innovation_fund.py --force    # compare even if terminal; never writes
 
-Exit codes: 0 = no meaningful change, 2 = signals changed (the workflow opens an
-issue), 1 = the page could not be read.
+Exit codes: 0 = no meaningful change (or terminal, or snapshot written), 2 =
+signals changed (the workflow opens an issue), 1 = the page could not be
+read, or the snapshot could not be read.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 URL = "https://www.snapmaker.com/innovation-fund"
@@ -36,6 +46,11 @@ SIGNALS = {
     "winners_date": r"Sep\s*30|September\s*30",
     "weighting": r"\b80\s*%|\b20\s*%",
 }
+
+# The explicit compare allowlist. `text_sha256` (the page's full text changes
+# for trivial reasons) and `recorded_at` (metadata, not a signal) are never
+# compared.
+WATCHED = tuple(SIGNALS) + ("project_count_hint",)
 
 
 def fetch(url: str = URL) -> str:
@@ -55,17 +70,64 @@ def signals(html: str) -> dict:
     return found
 
 
-def load() -> dict:
+def load() -> tuple[dict | None, str | None]:
+    """Read the snapshot. Returns (snapshot, problem).
+
+    Missing file -> (None, None): a first run, handled the same as before
+    (fetch and write). Unreadable / invalid JSON / not a JSON object ->
+    (None, "snapshot unreadable: ..."); the caller must not fetch in that case.
+    """
     if not SNAPSHOT.exists():
-        return {}
-    return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+        return None, None
+    try:
+        data = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"snapshot unreadable: {type(exc).__name__}: {exc}"
+    if not isinstance(data, dict):
+        return None, "snapshot unreadable: not a JSON object"
+    return data, None
 
 
-def main() -> int:
+def is_terminal(snapshot: dict | None) -> bool:
+    """True once the snapshot is a dict with every watched key and a live vote."""
+    if not isinstance(snapshot, dict):
+        return False
+    if not all(key in snapshot for key in WATCHED):
+        return False
+    return snapshot.get("voting_live") is True
+
+
+def _utc_today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def write_snapshot(data: dict) -> None:
+    """Write the snapshot atomically: a temp file in the same directory, then replace."""
+    payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SNAPSHOT.with_name(SNAPSHOT.name + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, SNAPSHOT)
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--update", action="store_true",
                         help="write the current page's signals as the new snapshot")
-    args = parser.parse_args()
+    parser.add_argument("--force", action="store_true",
+                        help="compare against the page even if the snapshot is terminal; never writes")
+    args = parser.parse_args(argv)
+
+    previous, problem = load()
+    if problem:
+        print(problem)
+        return 1
+
+    if previous is not None and not args.update and not args.force and is_terminal(previous):
+        recorded = previous.get("recorded_at") or "unknown date"
+        print(f"terminal: voting_live recorded on {recorded} — the vote is open; "
+              "nothing left to watch (--force compares anyway, --update refreshes)")
+        return 0
 
     try:
         current = signals(fetch())
@@ -73,18 +135,17 @@ def main() -> int:
         print(f"could not read {URL}: {type(exc).__name__}: {exc}")
         return 1
 
-    previous = load()
-
-    if args.update or not previous:
-        SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-        SNAPSHOT.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.update or previous is None:
+        to_write = dict(current)
+        to_write["recorded_at"] = _utc_today_iso()
+        write_snapshot(to_write)
         print(f"snapshot written to {SNAPSHOT.name}")
         return 0
 
-    # The page's full text changes for trivial reasons; only the named signals
-    # and the project count are treated as meaningful.
-    watched = [k for k in current if k != "text_sha256"]
-    changes = [(k, previous.get(k), current[k]) for k in watched if previous.get(k) != current[k]]
+    # previous is not None here, so watched keys are read with .get() for safety
+    # against an older snapshot missing a newer signal.
+    changes = [(key, previous.get(key), current.get(key))
+               for key in WATCHED if previous.get(key) != current.get(key)]
 
     if not changes:
         print("no change in the watched signals")
