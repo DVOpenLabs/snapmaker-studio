@@ -11,20 +11,86 @@ name: Publish release
 # creating a draft, so a corrupted or partial artifact fails Gate 3 even if
 # the RC run somehow reported green.
 #
-# Two entry points:
+# Expression-injection hygiene: no `${{ ... }}` is ever interpolated
+# directly into a `run:` script body in this file. Every tag/input/step-
+# output value a script needs is passed through `env:` (or, for values
+# produced mid-job — the resolved tag, dry_run, target_sha, and the parsed
+# metadata fields — exported once to `$GITHUB_ENV` right after they're
+# computed and VALIDATED, see below) and referenced as a plain shell
+# variable. `if:`/`needs:` conditions and `with:` blocks are evaluated by
+# the Actions runner itself, never handed to a shell, so they may keep
+# `${{ }}` expressions.
+#
+# Output/env injection hygiene: a resolved tag is validated (no CR/LF,
+# matches `^v[0-9A-Za-z.+-]+$`) BEFORE it is ever written to
+# `$GITHUB_OUTPUT`/`$GITHUB_ENV` in either job — an unvalidated value with
+# an embedded newline could otherwise forge additional key=value lines in
+# those files. The metadata-parsing steps apply the same CR rejection to
+# every field, belt-and-braces, even though `tools/release/publish_verify.py`
+# already normalizes them. SemVer precedence proper is still enforced later
+# by `should-be-latest`; this is a cheap, early, structural gate.
+#
+# Three entry points:
 #  - `push: tags: v*` — the real publish path. The tag must already exist
 #    and be on `main` (Gate 0). This is what actually makes a Release public.
-#  - `workflow_dispatch` — for a pre-tag REHEARSAL only. `dry_run` defaults
-#    to true and MUST stay true unless an existing, already-pushed tag is
-#    being re-run as a recovery (e.g. this workflow itself needed a fix
-#    after the tag was pushed and its first run failed mid-way — never to
-#    mint a NEW tag/release from an arbitrary dispatched ref, which is
-#    exactly the gap Gate 0 + the tag-must-already-exist check below closes).
+#  - `workflow_dispatch` with `verify_only: false` (the default) — a
+#    pre-tag REHEARSAL (`dry_run` defaults to true and MUST stay true unless
+#    an existing, already-pushed tag is being re-run as a recovery). Never
+#    mints a NEW tag/release from an arbitrary dispatched ref — exactly the
+#    gap Gate 0 + the tag-must-already-exist check below closes.
+#  - `workflow_dispatch` with `verify_only: true` — a READ-ONLY re-check of
+#    an ALREADY-PUBLISHED release. The `publish` job's `if:` excludes it, so
+#    a verify-only dispatch can never reach the refuse-if-exists check,
+#    draft creation, or the publish step. Ignores `dry_run`.
 #
-# Rehearse this via workflow_dispatch BEFORE tagging, from a throwaway
-# metadata-only commit if needed — catching a bug in THIS workflow after
-# the real U1/acceptance runs have already happened is expensive; catching
-# it before is cheap. See docs/RELEASE_CHECKLIST.md.
+# Post-publish verification runs in the SEPARATE `verify` job (`needs:
+# publish`), never inside the `publish` job itself: a job's own
+# timeout-minutes is a ceiling on everything in it together, so a slow
+# earlier gate could otherwise eat into the time meant for post-publish
+# verification. Splitting it into its own job gives it its own, disjoint
+# timeout budget instead. `verify` runs in exactly two cases: a verify-only
+# dispatch (whether or not `publish` even ran — it is skipped by its own
+# `if:` in that case, which is why `verify`'s condition uses `!cancelled()`
+# rather than plain success/failure logic — see below), or whenever
+# publication was actually ATTEMPTED (`needs.publish.outputs.attempted ==
+# 'true'`, set by an "arm" step that runs immediately before the flip-to-
+# public step, on the same non-dry-run-only `if:` — see that step). This is
+# deliberately NOT "the flip succeeded": if `gh release edit --draft=false`
+# itself fails, or the flip step's own job then times out or otherwise
+# fails after a server-side-successful edit, `attempted` is still 'true'
+# (a failed or timed-out job still exports its outputs) and `verify` still
+# runs — it is read-only, so running it is always safe, and it is the only
+# way to learn, from the read side, whether the release actually went
+# public or is still a draft. Limitation: if the runner machine itself is
+# lost after the flip but before the job finishes, GitHub never receives
+# this job's outputs and `verify` is skipped. In that case (the publish job
+# shows as failed/lost with no verify job), run a `verify_only` dispatch
+# for the tag (see docs/RELEASE_CHECKLIST.md §9). `!cancelled()` (not `always()`):
+# if the WHOLE workflow run is cancelled, `verify` should NOT force itself
+# to run — cancelling is supposed to stop everything; re-check a cancelled
+# run's actual state with a `verify_only` dispatch instead (see
+# docs/RELEASE_CHECKLIST.md §9). A release that publishes successfully but
+# whose `verify` job then fails means the release IS public but UNVERIFIED;
+# a `verify` job that reports the release is still a draft, after an
+# attempted publish, means the flip itself did not complete — inspect with
+# `gh release view` before doing anything else, never re-dispatch blindly.
+#
+# Time budget: `tools/release/publish_verify.py verify` (the `verify` job's
+# last step) enforces its OWN end-to-end wall-clock deadline (default 480s —
+# see `DEFAULT_DEADLINE_SECONDS`) across listing releases, the state retry
+# loop, and every asset download, and ALWAYS prints one combined pass/fail
+# report even if the deadline cuts it short (unfinished checks are recorded
+# as failures, never silently skipped). Every step in the `verify` job has
+# its own `timeout-minutes`, small and explicit; their sum (plus the last
+# step's own margin above 480s) stays under the job's `timeout-minutes`, so
+# no earlier step can eat into the last step's budget and the workflow's own
+# kill can never fire before pv.py's combined report has printed. See
+# `backend/tests/test_publish_verify.py`'s static timeout-sum test.
+#
+# Rehearse a real publish via workflow_dispatch (verify_only=false) BEFORE
+# tagging, from a throwaway metadata-only commit if needed — catching a bug
+# in THIS workflow after the real U1/acceptance runs have already happened
+# is expensive; catching it before is cheap. See docs/RELEASE_CHECKLIST.md.
 
 on:
   push:
@@ -32,51 +98,100 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish (must already exist, e.g. v1.0.0)"
+        description: "Tag to publish or verify (must already exist, e.g. v1.0.0)"
         required: true
         type: string
       dry_run:
-        description: "true = rehearse every gate, create+delete a draft, publish nothing"
+        description: "true = rehearse every gate, create+delete a draft, publish nothing. Ignored when verify_only is true."
         required: true
         type: boolean
         default: true
+      verify_only:
+        description: "Read-only re-check of an already-public release; ignores dry_run."
+        required: true
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
-  # Keyed on the TAG NAME (not github.ref) so a rehearsal dispatch and a
-  # real tag push for the SAME version can never run concurrently — a
-  # rehearsal's cleanup step must never race a real publish for the tag it
-  # is about to delete.
-  group: publish-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  # Workflow-level: this ONE group covers the ENTIRE run, both the
+  # `publish` job AND the `verify` job that follows it (`verify` must NOT
+  # define its own job-level `concurrency:` — a job-level group identical or
+  # overlapping with the workflow-level one is a documented GitHub Actions
+  # deadlock: the run cancels itself). That also means the next queued
+  # publish waits until THIS run's post-publish verification has finished —
+  # intentional, not a bug: two publishes deciding /releases/latest at the
+  # same time could both compute "I am highest" against a not-yet-updated
+  # listing, so publishes (and the verification that follows one) must
+  # serialize with each other, not just with themselves per tag. A
+  # verify-only dispatch gets its OWN per-run-id group (see the ternary
+  # below) so a read-only check never queues behind, or is cancelled by, a
+  # publish. Known limitation: this means at most ONE publish (real or
+  # rehearsal, any tag), including the verification that follows it, can be
+  # pending at a time — see docs/RELEASE_CHECKLIST.md.
+  group: ${{ inputs.verify_only == true && format('release-verify-{0}', github.run_id) || 'release-publish' }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: github.event_name == 'push' || inputs.verify_only != true
     runs-on: ubuntu-latest
+    # Post-publish verification no longer runs in this job (see the `verify`
+    # job below), so this only has to cover checkout + the gates + draft
+    # creation/publish themselves.
     timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      tag: ${{ steps.input.outputs.tag }}
+      # 'true' as soon as this run has committed to a REAL (non-dry-run)
+      # publish attempt -- set by the "arm" step, which runs immediately
+      # before the flip-to-public step and on the identical `if:`. This is
+      # what the `verify` job's `if:` actually keys off (see the header
+      # comment and that step's own comment): it must be true even if the
+      # flip itself then fails or the job times out before `published`
+      # below gets written, so a read-only check still happens for a
+      # publish that was genuinely attempted. Limitation: if the runner
+      # machine itself is lost before the job finishes, this output is
+      # never delivered and `verify` is skipped -- recover with a
+      # `verify_only` dispatch (see docs/RELEASE_CHECKLIST.md §9).
+      attempted: ${{ steps.arm.outputs.attempted }}
+      # 'true' only once the "Publish" step's `gh release edit` call itself
+      # has returned success. NOT used by `verify`'s `if:` (see `attempted`
+      # above) -- kept only for a human glancing at this run's job summary
+      # to see, without opening logs, whether the flip itself reported
+      # success from here.
+      published: ${{ steps.publish.outputs.published }}
     env:
       GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Fetch the read-only verifier from this workflow's own commit
+        run: git show "$GITHUB_SHA:tools/release/publish_verify.py" > /tmp/pv.py
+
       - name: Resolve the tag, target commit, and dry-run flag for either trigger
         id: input
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             tag="${GITHUB_REF#refs/tags/}"
             dry_run="false"
             # For a tag push, GITHUB_SHA is already the commit the tag
             # points to (not a tag object SHA), so it IS the target.
             target_sha="$GITHUB_SHA"
           else
-            tag="${{ inputs.tag }}"
-            dry_run="${{ inputs.dry_run }}"
+            tag="$INPUT_TAG"
+            dry_run="$INPUT_DRY_RUN"
             # The dispatch path must NEVER mint a new tag — only rehearse
             # (dry_run=true, any tag name — including one that doesn't
             # exist yet, the normal pre-tag rehearsal case) or recover an
@@ -95,6 +210,20 @@ jobs:
               target_sha="$(git rev-parse "refs/tags/$tag^{commit}")"
             fi
           fi
+          # Validate BEFORE any $GITHUB_OUTPUT/$GITHUB_ENV write: an
+          # embedded newline in a written value can forge additional
+          # key=value lines in those files, and a non-ref-shaped string has
+          # no business reaching a later git/gh command either.
+          case "$tag" in
+            *$'\n'*|*$'\r'*)
+              echo "Resolved tag contains a newline/carriage return; refusing to use it." >&2
+              exit 1
+              ;;
+          esac
+          if ! [[ "$tag" =~ ^v[0-9A-Za-z.+-]+$ ]]; then
+            echo "Resolved tag '$tag' does not match ^v[0-9A-Za-z.+-]+\$; refusing to use it." >&2
+            exit 1
+          fi
           # Recorded BEFORE `gh release create` ever runs, so the dry-run
           # cleanup step below can tell "this run's own throwaway tag" (safe
           # to delete) apart from "a real tag that already existed" (must
@@ -109,6 +238,15 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "tag_preexisted=$tag_preexisted" >> "$GITHUB_OUTPUT"
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          # Also exported as plain env vars for every later step in this
+          # job, so no later run: script ever needs to interpolate a
+          # step-output expression into shell text.
+          {
+            echo "TAG=$tag"
+            echo "DRY_RUN=$dry_run"
+            echo "TAG_VERSION=${tag#v}"
+            echo "TARGET_SHA=$target_sha"
+          } >> "$GITHUB_ENV"
           echo "Resolved: tag=$tag dry_run=$dry_run tag_preexisted=$tag_preexisted target_sha=$target_sha"
 
       - name: Check out the target commit
@@ -120,91 +258,101 @@ jobs:
         # branch was selected in the dispatch UI, not from the tag's own
         # commit — publishing metadata that was never actually verified
         # against these bytes.
-        run: git checkout --quiet "${{ steps.input.outputs.target_sha }}"
+        run: git checkout --quiet "$TARGET_SHA"
 
       - name: 'Gate 0: the target commit is on main (skipped only for a pure pre-tag rehearsal)'
         if: steps.input.outputs.dry_run != 'true' || steps.input.outputs.tag_preexisted == 'true'
         run: |
           set -euo pipefail
-          target_sha="${{ steps.input.outputs.target_sha }}"
-          if ! git merge-base --is-ancestor "$target_sha" origin/main; then
-            echo "Target commit $target_sha is not an ancestor of origin/main — refusing to publish a release for a commit that is not on main." >&2
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "Target commit $TARGET_SHA is not an ancestor of origin/main — refusing to publish a release for a commit that is not on main." >&2
             exit 1
           fi
-          echo "Gate 0 OK: $target_sha is on main."
+          echo "Gate 0 OK: $TARGET_SHA is on main."
 
       - name: Parse docs/RELEASE_METADATA.md "Current release"
         id: metadata
         run: |
           set -euo pipefail
-          python3 - "$GITHUB_OUTPUT" <<'PYEOF'
-          import re, sys
-          out_path = sys.argv[1]
-          text = open("docs/RELEASE_METADATA.md", encoding="utf-8").read()
-          start = text.index("## Current release")
-          end = text.find("## Previous release", start)
-          block = text[start:end if end != -1 else len(text)]
-          fields = {}
-          for m in re.finditer(r"^\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$", block, re.M):
-              key, value = m.group(1).strip(), m.group(2).strip()
-              if key.lower() in ("field", "---"):
-                  continue
-              fields[key.lower()] = value.strip("`")
-          required = ["version", "installer", "size (bytes)", "sha256",
-                      "linux installer", "linux size (bytes)", "linux sha256",
-                      "build run"]
-          missing = [k for k in required if k not in fields]
-          if missing:
-              print(f"RELEASE_METADATA.md's Current release table is missing: {missing}", file=sys.stderr)
-              sys.exit(1)
-          with open(out_path, "a", encoding="utf-8") as f:
-              f.write(f"version={fields['version']}\n")
-              f.write(f"win_name={fields['installer']}\n")
-              f.write(f"win_size={fields['size (bytes)'].replace(',', '')}\n")
-              f.write(f"win_sha256={fields['sha256']}\n")
-              f.write(f"linux_name={fields['linux installer']}\n")
-              f.write(f"linux_size={fields['linux size (bytes)'].replace(',', '')}\n")
-              f.write(f"linux_sha256={fields['linux sha256']}\n")
-              f.write(f"build_run={fields['build run']}\n")
-          PYEOF
+          out="$(python3 /tmp/pv.py metadata --path docs/RELEASE_METADATA.md)"
+          # Belt-and-braces (even though the parser already normalizes each
+          # field to one line): reject the WHOLE blob if it contains a
+          # carriage return, BEFORE the first write to either
+          # $GITHUB_OUTPUT or $GITHUB_ENV -- an embedded CR in a value
+          # written to either file can forge additional key=value lines.
+          case "$out" in
+            *$'\r'*)
+              echo "Metadata output contains a carriage return; refusing to export it." >&2
+              exit 1
+              ;;
+          esac
+          echo "$out" >> "$GITHUB_OUTPUT"
+          # Also exported as plain (upper-cased) env vars for every later
+          # step in this job, so no later run: script ever needs to
+          # interpolate a step-output expression.
+          while IFS='=' read -r key value; do
+            [ -z "$key" ] && continue
+            upper="$(echo "$key" | tr '[:lower:]' '[:upper:]')"
+            echo "${upper}=${value}" >> "$GITHUB_ENV"
+          done <<< "$out"
 
       - name: 'Gate 1: tag matches metadata, metadata matches the manifests'
         run: |
           set -euo pipefail
-          meta_version="${{ steps.metadata.outputs.version }}"
-          meta_version="${meta_version#v}"
-          tag_version="${{ steps.input.outputs.version }}"
-          if [ "$meta_version" != "$tag_version" ]; then
-            echo "Tag says version $tag_version, RELEASE_METADATA.md says $meta_version" >&2
+          meta_version="${VERSION#v}"
+          if [ "$meta_version" != "$TAG_VERSION" ]; then
+            echo "Tag says version $TAG_VERSION, RELEASE_METADATA.md says $meta_version" >&2
             exit 1
           fi
           for f in desktop/package.json desktop/src-tauri/tauri.conf.json; do
             v="$(grep -m1 '"version"' "$f" | sed -E 's/.*"version"\s*:\s*"([^"]+)".*/\1/')"
-            if [ "$v" != "$tag_version" ]; then
-              echo "$f says version $v, expected $tag_version" >&2
+            if [ "$v" != "$TAG_VERSION" ]; then
+              echo "$f says version $v, expected $TAG_VERSION" >&2
               exit 1
             fi
           done
           cargo_v="$(grep -m1 '^version' desktop/src-tauri/Cargo.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')"
-          if [ "$cargo_v" != "$tag_version" ]; then
-            echo "Cargo.toml says version $cargo_v, expected $tag_version" >&2
+          if [ "$cargo_v" != "$TAG_VERSION" ]; then
+            echo "Cargo.toml says version $cargo_v, expected $TAG_VERSION" >&2
             exit 1
           fi
           pyproject_v="$(grep -m1 '^version' backend/pyproject.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')"
-          if [ "$pyproject_v" != "$tag_version" ]; then
-            echo "backend/pyproject.toml says version $pyproject_v, expected $tag_version" >&2
+          if [ "$pyproject_v" != "$TAG_VERSION" ]; then
+            echo "backend/pyproject.toml says version $pyproject_v, expected $TAG_VERSION" >&2
             exit 1
           fi
-          echo "Gate 1 OK: tag, RELEASE_METADATA.md, and all manifests agree on $tag_version."
+          echo "Gate 1 OK: tag, RELEASE_METADATA.md, and all manifests agree on $TAG_VERSION."
+
+      - name: Decide whether this tag should become /releases/latest
+        # Fails closed, BEFORE any draft exists: a tag whose name carries
+        # SemVer prerelease identifiers (e.g. v1.3.0-rc.1) can never be
+        # latest and errors here rather than reaching the draft step; same
+        # for two releases tying at equal SemVer precedence, or a releases
+        # listing that could not be read at all.
+        id: latest
+        run: |
+          set -euo pipefail
+          rc=0
+          latest=$(python3 /tmp/pv.py should-be-latest --repo "$REPO" --tag "$TAG") || rc=$?
+          case "$rc" in
+            0) : ;;
+            *) echo "could not decide whether $TAG should be latest; refusing to continue" >&2; exit 1 ;;
+          esac
+          case "$latest" in
+            true|false) : ;;
+            *) echo "should-be-latest printed unexpected output: '$latest'" >&2; exit 1 ;;
+          esac
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "LATEST=$latest" >> "$GITHUB_ENV"
+          echo "Gate: this tag should-be-latest=$latest"
 
       - name: 'Gate 2: provenance — the RC run built this tag''s exact bytes'
         run: |
           set -euo pipefail
-          build_run_url="${{ steps.metadata.outputs.build_run }}"
-          run_id="$(basename "$build_run_url")"
+          run_id="$(basename "$BUILD_RUN")"
           echo "run_id=$run_id" >> "$GITHUB_ENV"
 
-          run_json="$(gh api "repos/${{ github.repository }}/actions/runs/$run_id")"
+          run_json="$(gh api "repos/$REPO/actions/runs/$run_id")"
           conclusion="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["conclusion"])')"
           workflow_path="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["path"])')"
           head_sha="$(echo "$run_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head_sha"])')"
@@ -217,12 +365,11 @@ jobs:
             echo "Build run $run_id is not a release-candidate.yml run (path=$workflow_path)." >&2
             exit 1
           fi
-          target_sha="${{ steps.input.outputs.target_sha }}"
-          if ! git merge-base --is-ancestor "$head_sha" "$target_sha"; then
-            echo "RC run's commit $head_sha is not an ancestor of $target_sha — the target does not build on the verified RC." >&2
+          if ! git merge-base --is-ancestor "$head_sha" "$TARGET_SHA"; then
+            echo "RC run's commit $head_sha is not an ancestor of $TARGET_SHA — the target does not build on the verified RC." >&2
             exit 1
           fi
-          changed="$(git diff --name-only "$head_sha" "$target_sha")"
+          changed="$(git diff --name-only "$head_sha" "$TARGET_SHA")"
           disallowed="$(echo "$changed" | grep -vE '^(README\.md|CHANGELOG\.md|docs/)' || true)"
           if [ -n "$disallowed" ]; then
             echo "Files changed between the RC commit and the target that are NOT docs-only:" >&2
@@ -241,32 +388,32 @@ jobs:
           # files (both renamed binaries + SHA256SUMS), never these
           # subdirectories.
           mkdir -p dist raw/win raw/linux
-          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-installer --dir raw/win
-          gh run download "$run_id" --repo "${{ github.repository }}" --name snapmaker-studio-linux-release-candidate --dir raw/linux
+          gh run download "$run_id" --repo "$REPO" --name snapmaker-studio-installer --dir raw/win
+          gh run download "$run_id" --repo "$REPO" --name snapmaker-studio-linux-release-candidate --dir raw/linux
 
           win_src="$(find raw/win -name '*.exe' -print -quit)"
-          cp "$win_src" "dist/${{ steps.metadata.outputs.win_name }}"
-          win_hash="$(sha256sum "dist/${{ steps.metadata.outputs.win_name }}" | awk '{print $1}')"
-          win_size="$(stat -c%s "dist/${{ steps.metadata.outputs.win_name }}")"
-          if [ "$win_hash" != "${{ steps.metadata.outputs.win_sha256 }}" ]; then
-            echo "Windows installer hash mismatch: downloaded $win_hash, metadata says ${{ steps.metadata.outputs.win_sha256 }}" >&2
+          cp "$win_src" "dist/$WIN_NAME"
+          win_hash="$(sha256sum "dist/$WIN_NAME" | awk '{print $1}')"
+          win_size="$(stat -c%s "dist/$WIN_NAME")"
+          if [ "$win_hash" != "$WIN_SHA256" ]; then
+            echo "Windows installer hash mismatch: downloaded $win_hash, metadata says $WIN_SHA256" >&2
             exit 1
           fi
-          if [ "$win_size" != "${{ steps.metadata.outputs.win_size }}" ]; then
-            echo "Windows installer size mismatch: downloaded $win_size, metadata says ${{ steps.metadata.outputs.win_size }}" >&2
+          if [ "$win_size" != "$WIN_SIZE" ]; then
+            echo "Windows installer size mismatch: downloaded $win_size, metadata says $WIN_SIZE" >&2
             exit 1
           fi
 
           linux_src="$(find raw/linux -name '*.deb' -print -quit)"
-          cp "$linux_src" "dist/${{ steps.metadata.outputs.linux_name }}"
-          linux_hash="$(sha256sum "dist/${{ steps.metadata.outputs.linux_name }}" | awk '{print $1}')"
-          linux_size="$(stat -c%s "dist/${{ steps.metadata.outputs.linux_name }}")"
-          if [ "$linux_hash" != "${{ steps.metadata.outputs.linux_sha256 }}" ]; then
-            echo "Linux .deb hash mismatch: downloaded $linux_hash, metadata says ${{ steps.metadata.outputs.linux_sha256 }}" >&2
+          cp "$linux_src" "dist/$LINUX_NAME"
+          linux_hash="$(sha256sum "dist/$LINUX_NAME" | awk '{print $1}')"
+          linux_size="$(stat -c%s "dist/$LINUX_NAME")"
+          if [ "$linux_hash" != "$LINUX_SHA256" ]; then
+            echo "Linux .deb hash mismatch: downloaded $linux_hash, metadata says $LINUX_SHA256" >&2
             exit 1
           fi
-          if [ "$linux_size" != "${{ steps.metadata.outputs.linux_size }}" ]; then
-            echo "Linux .deb size mismatch: downloaded $linux_size, metadata says ${{ steps.metadata.outputs.linux_size }}" >&2
+          if [ "$linux_size" != "$LINUX_SIZE" ]; then
+            echo "Linux .deb size mismatch: downloaded $linux_size, metadata says $LINUX_SIZE" >&2
             exit 1
           fi
 
@@ -276,36 +423,40 @@ jobs:
             exit 1
           fi
 
-          (cd dist && sha256sum "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" > SHA256SUMS)
+          (cd dist && sha256sum "$WIN_NAME" "$LINUX_NAME" > SHA256SUMS)
           cat dist/SHA256SUMS
           echo "Gate 3 OK: both artifacts re-hashed and match RELEASE_METADATA.md exactly."
 
       - name: Refuse if a release or draft already exists for this tag
         run: |
           set -euo pipefail
-          if gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "A release (or draft) already exists for ${{ steps.input.outputs.tag }}." >&2
-            exit 1
-          fi
+          rc=0
+          python3 /tmp/pv.py exists --repo "$REPO" --tag "$TAG" || rc=$?
+          case "$rc" in
+            0) echo "no release or draft for $TAG" ;;
+            3) echo "release or draft already exists for $TAG" >&2; exit 1 ;;
+            *) echo "could not enumerate releases; refusing to continue" >&2; exit 1 ;;
+          esac
 
       - name: Create the release as a DRAFT
         id: create
         run: |
           set -euo pipefail
-          create_args=(--draft --title "Snapmaker Studio ${{ steps.input.outputs.tag }}" --notes-file docs/RELEASE_NOTES.md dist/*)
-          if [ "${{ steps.input.outputs.dry_run }}" = "true" ]; then
-            gh release create "${{ steps.input.outputs.tag }}" --target "$GITHUB_SHA" "${create_args[@]}"
+          create_args=(--draft --title "Snapmaker Studio $TAG" --notes-file docs/RELEASE_NOTES.md dist/*)
+          if [ "$DRY_RUN" = "true" ]; then
+            gh release create "$TAG" --target "$GITHUB_SHA" "${create_args[@]}"
           else
-            gh release create "${{ steps.input.outputs.tag }}" --verify-tag "${create_args[@]}"
+            gh release create "$TAG" --verify-tag "${create_args[@]}"
           fi
-          release_id="$(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json databaseId --jq .databaseId)"
+          release_id="$(gh release view "$TAG" --repo "$REPO" --json databaseId --jq .databaseId)"
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_ID=$release_id" >> "$GITHUB_ENV"
 
       - name: 'Gate 4: the draft has exactly the 3 expected assets'
         run: |
           set -euo pipefail
-          assets="$(gh release view "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | sort)"
-          expected="$(printf '%s\n' "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" SHA256SUMS | sort)"
+          assets="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | sort)"
+          expected="$(printf '%s\n' "$WIN_NAME" "$LINUX_NAME" SHA256SUMS | sort)"
           if [ "$assets" != "$expected" ]; then
             echo "Draft assets don't match. Got:" >&2
             echo "$assets" >&2
@@ -319,16 +470,15 @@ jobs:
         if: steps.input.outputs.dry_run == 'true'
         run: |
           set -euo pipefail
-          # Defense in depth on top of the tag-name-keyed concurrency group
-          # above (which already prevents a rehearsal and a real publish for
-          # the SAME tag from ever running at once): re-check, by the exact
-          # release id THIS run created, that it is still a draft before
-          # deleting anything. If something published it in the meantime,
-          # refuse rather than delete a live release.
-          release_id="${{ steps.create.outputs.release_id }}"
-          is_draft="$(gh api "repos/${{ github.repository }}/releases/$release_id" --jq .draft)"
+          # Defense in depth on top of the concurrency group above (which
+          # already prevents a rehearsal and a real publish from ever
+          # running at once): re-check, by the exact release id THIS run
+          # created, that it is still a draft before deleting anything. If
+          # something published it in the meantime, refuse rather than
+          # delete a live release.
+          is_draft="$(gh api "repos/$REPO/releases/$RELEASE_ID" --jq .draft)"
           if [ "$is_draft" != "true" ]; then
-            echo "Release id $release_id is no longer a draft — refusing to delete it. Investigate before doing anything else." >&2
+            echo "Release id $RELEASE_ID is no longer a draft — refusing to delete it. Investigate before doing anything else." >&2
             exit 1
           fi
           # NEVER --cleanup-tag here. The concurrency group above only
@@ -344,40 +494,197 @@ jobs:
           # explicitly mutable/deletable per `gh release create --help`);
           # worst case a stray tag needs a manual `git push --delete`,
           # which is a minor cleanup, not an incident.
-          gh release delete "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --yes
+          gh release delete "$TAG" --repo "$REPO" --yes
           echo "Dry run complete: every gate passed, a draft was created and verified, nothing was published. Draft deleted. If this rehearsal used a tag name that did not exist before it ran, verify no stray tag was left behind (git ls-remote origin refs/tags/<tag>) and delete it by hand if so."
+
+      - name: Arm post-publish verification (records that a real publish is about to be attempted)
+        # Written BEFORE the flip below, not after: `verify`'s `if:` keys
+        # off this output specifically so an uncertain outcome (the flip
+        # succeeds server-side but this job then fails or times out before
+        # recording anything else) still gets a read-only check afterwards,
+        # rather than the release silently sitting there unverified.
+        # Limitation: if the runner machine itself is lost after the flip
+        # but before the job finishes, this output is never delivered to
+        # GitHub and `verify` is skipped -- recover with a `verify_only`
+        # dispatch (see docs/RELEASE_CHECKLIST.md §9). Same `if:` as the
+        # flip step itself -- never armed for a dry run.
+        if: steps.input.outputs.dry_run != 'true'
+        id: arm
+        run: echo "attempted=true" >> "$GITHUB_OUTPUT"
 
       - name: Publish — flip the draft to public (the one moment this becomes real)
         if: steps.input.outputs.dry_run != 'true'
-        run: |
-          gh release edit "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" --draft=false --latest
-
-      - name: Post-publish verification (live, not assumed)
-        # READ-ONLY. Nothing in this step can publish, tag, edit or upload:
-        # the helper only issues GET requests and `gh release download` only
-        # reads. A failure here means "look at the public release", never
-        # "publish again". The decision logic lives in
-        # tools/release/publish_verify.py (tested in
-        # backend/tests/test_publish_verify.py): a bounded retry (immediately,
-        # then after 2/4/8/12 s) for GitHub's read-after-write delay on
-        # /releases/latest, and a failure message that says whether the
-        # release itself is wrong (A), only the latest pointer lagged (B), or
-        # the API could not be read (C).
-        if: steps.input.outputs.dry_run != 'true'
+        id: publish
         run: |
           set -euo pipefail
-          # The helper comes from the commit whose workflow file is running
-          # ($GITHUB_SHA), so a recovery dispatch for an older tag still has it.
-          git show "$GITHUB_SHA:tools/release/publish_verify.py" > /tmp/publish_verify.py
-          assets=(--asset "${{ steps.metadata.outputs.win_name }}"
-                  --asset "${{ steps.metadata.outputs.linux_name }}"
-                  --asset SHA256SUMS)
-          python3 /tmp/publish_verify.py state --repo "${{ github.repository }}" \
-            --tag "${{ steps.input.outputs.tag }}" "${assets[@]}"
-          mkdir -p /tmp/verify
-          for name in "${{ steps.metadata.outputs.win_name }}" "${{ steps.metadata.outputs.linux_name }}" SHA256SUMS; do
-            gh release download "${{ steps.input.outputs.tag }}" --repo "${{ github.repository }}" \
-              --pattern "$name" --dir /tmp/verify --clobber
-          done
-          python3 /tmp/publish_verify.py hashes --sums dist/SHA256SUMS --dir /tmp/verify "${assets[@]}"
-          echo "Post-publish verification OK: ${{ steps.input.outputs.tag }} is /releases/latest and every live asset matches what was gated."
+          gh release edit "$TAG" --repo "$REPO" --draft=false --latest="$LATEST"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify a release's live state (read-only)
+    needs: publish
+    # See the header comment's "Post-publish verification" note for what
+    # each branch of this condition covers. `!cancelled()` (not `always()`)
+    # is required because a verify-only dispatch makes `publish` SKIP itself
+    # (its own `if:` excludes that case) -- without it, GitHub Actions would
+    # auto-skip `verify` too, since a dependency being skipped otherwise
+    # skips its dependents by default -- but `!cancelled()` still lets a
+    # whole-run cancellation skip `verify`, unlike `always()`.
+    # No job-level `concurrency:` here on purpose: this job shares the
+    # workflow-level group above (see its comment) -- a job-level group
+    # identical or overlapping with the workflow-level one is a documented
+    # GitHub Actions deadlock (the run cancels itself trying to satisfy
+    # both). A verify-only dispatch already gets its own per-run-id group
+    # from the workflow-level ternary, which is enough.
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.verify_only == true) || needs.publish.outputs.attempted == 'true') }}
+    runs-on: ubuntu-latest
+    # Sum of every step's own timeout-minutes below (3+1+1+2+2+2+2+1+1+10 =
+    # 25) plus a 5-minute margin. See
+    # backend/tests/test_publish_verify.py's static timeout-sum test, which
+    # fails if a step is added/changed without keeping this invariant.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      VERIFY_ONLY_INPUT: ${{ inputs.verify_only }}
+      TAG_INPUT: ${{ inputs.tag }}
+      TAG_FROM_PUBLISH: ${{ needs.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        timeout-minutes: 3
+
+      - name: Resolve and validate the tag to verify
+        # Tag source: a verify-only dispatch supplies its own `tag` input
+        # directly; a post-publish run takes the tag the `publish` job just
+        # resolved and used (`needs.publish.outputs.tag`) -- never re-reads
+        # `inputs.tag` in that case, which could differ from what was
+        # actually published on a recovery dispatch. Validated the same way
+        # and for the same reason as the publish job's own tag resolution
+        # (see the header comment) before it is written anywhere.
+        id: tag
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$VERIFY_ONLY_INPUT" = "true" ]; then
+            tag="$TAG_INPUT"
+          else
+            tag="$TAG_FROM_PUBLISH"
+          fi
+          if [ -z "$tag" ]; then
+            echo "No tag was resolved to verify (neither the verify_only input nor the publish job's output provided one)." >&2
+            exit 1
+          fi
+          case "$tag" in
+            *$'\n'*|*$'\r'*)
+              echo "Resolved tag contains a newline/carriage return; refusing to use it." >&2
+              exit 1
+              ;;
+          esac
+          if ! [[ "$tag" =~ ^v[0-9A-Za-z.+-]+$ ]]; then
+            echo "Resolved tag '$tag' does not match ^v[0-9A-Za-z.+-]+\$; refusing to use it." >&2
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "Resolved tag to verify: $tag"
+
+      - name: Prepare read-only scratch directories
+        timeout-minutes: 1
+        run: mkdir -p /tmp/verify/expected /tmp/verify/live
+
+      - name: Resolve the tag's own commit (the tag must already exist)
+        id: target
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag '$TAG' does not exist in this checkout." >&2
+            exit 1
+          fi
+          target_sha="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          echo "TARGET_SHA=$target_sha" >> "$GITHUB_ENV"
+
+      - name: 'Gate 0: the tagged commit is on main'
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "Tagged commit $TARGET_SHA is not an ancestor of origin/main." >&2
+            exit 1
+          fi
+          echo "Gate 0 OK: $TARGET_SHA is on main."
+
+      - name: Fetch the read-only verifier and the tagged commit's own metadata
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          git show "$GITHUB_SHA:tools/release/publish_verify.py" > /tmp/pv.py
+          git show "$TARGET_SHA:docs/RELEASE_METADATA.md" > /tmp/verify/RELEASE_METADATA.md
+
+      - name: Derive expected values from the tagged commit's own metadata
+        id: metadata
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          out="$(python3 /tmp/pv.py metadata --path /tmp/verify/RELEASE_METADATA.md)"
+          # Same whole-blob carriage-return belt-and-braces check as the
+          # publish job's metadata step, BEFORE the first write to either
+          # $GITHUB_OUTPUT or $GITHUB_ENV.
+          case "$out" in
+            *$'\r'*)
+              echo "Metadata output contains a carriage return; refusing to export it." >&2
+              exit 1
+              ;;
+          esac
+          echo "$out" >> "$GITHUB_OUTPUT"
+          # Also exported as plain (upper-cased) env vars, same as the
+          # publish job's metadata step.
+          while IFS='=' read -r key value; do
+            [ -z "$key" ] && continue
+            upper="$(echo "$key" | tr '[:lower:]' '[:upper:]')"
+            echo "${upper}=${value}" >> "$GITHUB_ENV"
+          done <<< "$out"
+
+      - name: Metadata version must match the tag
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          meta_version="${VERSION#v}"
+          tag_version="${TAG#v}"
+          if [ "$meta_version" != "$tag_version" ]; then
+            echo "Tag says version $tag_version, the tagged commit's RELEASE_METADATA.md says $meta_version" >&2
+            exit 1
+          fi
+          echo "Metadata version OK: $meta_version matches tag $TAG."
+
+      - name: Build the expected SHA256SUMS from that same metadata
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 /tmp/pv.py expected-sums \
+            --win-name "$WIN_NAME" --win-sha256 "$WIN_SHA256" \
+            --linux-name "$LINUX_NAME" --linux-sha256 "$LINUX_SHA256" \
+            --out /tmp/verify/expected/SHA256SUMS
+
+      - name: State + hash verification (live, not assumed)
+        # READ-ONLY: `gh api --method GET` and `gh release download` only.
+        # Covers the latest decision, the release's public/non-prerelease/
+        # asset state, and a re-hash of every downloaded asset in one
+        # combined report, within pv.py's own 480s (8 min) end-to-end
+        # deadline -- the report always prints, pass or fail. This step's
+        # own timeout-minutes (10) stays comfortably above that deadline so
+        # pv.py always has time to print before the step itself would be
+        # killed.
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          python3 /tmp/pv.py verify --repo "$REPO" --tag "$TAG" \
+            --asset "$WIN_NAME" \
+            --asset "$LINUX_NAME" \
+            --asset SHA256SUMS \
+            --sums /tmp/verify/expected/SHA256SUMS --dir /tmp/verify/live
+          echo "Verify check OK: $TAG matches the expected latest state and every live asset matches its recorded metadata."

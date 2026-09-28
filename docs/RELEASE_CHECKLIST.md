@@ -186,6 +186,21 @@ commit) before merging. Otherwise this step can be skipped.
 
 ## 8. Merge, tag, publish
 
+**Known limitation:** `release-publish.yml`'s concurrency group is
+repo-wide for every publish (a real tag push OR a dry-run rehearsal, for
+ANY tag) — this project deliberately serializes ALL publishes rather than
+only the same tag, since the SemVer-latest decision (§9) needs a
+not-currently-changing releases listing. This ONE group covers the whole
+run, `publish` AND the `verify` job that follows it (`verify` has no
+job-level concurrency of its own — a job-level group identical to the
+workflow-level one is a documented GitHub Actions deadlock and would cancel
+the run). In practice this means at most ONE publish, including the
+post-publish verification that follows it, can be pending at a time; a
+second one queues rather than running concurrently. A stuck/long rehearsal
+delays a real publish behind it — cancel the rehearsal first if that
+happens. A `verify_only` dispatch is unaffected — it gets its own per-run
+group and never queues behind a publish.
+
 ```
 gh pr create --base main --head release/vX.Y.Z ...
 ```
@@ -200,15 +215,81 @@ git tag -a vX.Y.Z -m "Snapmaker Studio vX.Y.Z" <merge commit>
 git push origin vX.Y.Z
 ```
 `release-publish.yml` fires automatically. Confirm it goes green and the
-Release is public, not a draft.
+Release is public, not a draft. A tag whose name carries SemVer prerelease
+identifiers (e.g. `v1.3.0-rc.1`) now fails closed at the latest decision —
+before any draft exists — since a prerelease-identifier tag can never
+become `/releases/latest`; this project's own tags are plain SemVer, so
+that path is not expected to trigger here, but it fails safely if it ever
+does.
 
 ## 9. Post-publish verification (live, not assumed)
 
-- `gh api repos/DVOpenLabs/snapmaker-studio/releases/latest` → `tag_name` is
-  the new tag, `prerelease: false`, `draft: false`, exactly 3 assets, sizes
-  match metadata.
-- Download both assets from their `browser_download_url`s, re-hash locally,
-  compare against `docs/RELEASE_METADATA.md` and `SHA256SUMS`.
+Post-publish verification runs as its **own `verify` job** (`needs:
+publish`), never inside the `publish` job itself — a job's `timeout-minutes`
+is a ceiling on everything in it together, so giving verification its own
+job gives it its own, disjoint time budget instead of sharing one with every
+earlier gate. It runs automatically whenever a real (non-dry-run) publish
+was **attempted** — not only once it is known to have *succeeded*: an "arm"
+step writes that fact down immediately before the flip-to-public step, so
+even if `gh release edit --draft=false` itself fails or the job then times
+out before it can record its own result, `verify` still runs afterwards
+and reports the true live state from the read side — no separate action
+needed either way. **Limitation**: if the runner machine itself is lost
+after the flip but before the job finishes, GitHub never receives that
+job's outputs and `verify` is skipped. In that case (the `publish` job
+shows as failed/lost with no `verify` job), run a `verify_only` dispatch
+for the tag by hand (see below) to check the actual state. It runs
+`tools/release/publish_verify.py verify` (tested in
+`backend/tests/test_publish_verify.py`): whether the tag should be
+`/releases/latest` (SemVer precedence against every other non-draft,
+non-prerelease release), the release's public/non-prerelease/asset state
+(bounded retry for GitHub's read-after-write delay), and a
+re-download-and-re-hash of every asset — one combined pass/fail report,
+always printed even if its own 480s end-to-end deadline is hit.
+
+**If `verify` reports the release is still a draft (or missing) after a
+publish was attempted**: the flip itself did not complete — nothing new
+went live. Inspect with `gh release view vX.Y.Z` before doing anything
+else; do not re-dispatch blindly (the refuse-if-exists check makes a
+re-dispatch safe regardless, but understand what happened first).
+
+**If `publish` succeeds and `verify` then fails for any other reason (or is
+cancelled)**: the release **IS public** — a failed/cancelled `verify` job
+never un-publishes anything — but it is **unverified**. Re-run the same
+check, read-only, with no rebuild and nothing else touched, via
+`workflow_dispatch` with `verify_only: true`:
+```
+gh workflow run release-publish.yml -f tag=vX.Y.Z -f verify_only=true
+```
+This dispatches the SAME `verify` job directly (the `publish` job's `if:`
+excludes a verify-only dispatch, so it never reaches the refuse-if-exists
+check, draft creation, or the publish step). `dry_run` is ignored when
+`verify_only` is true. A tag whose name carries SemVer prerelease
+identifiers (e.g. `v0.4.0-beta.24`) fails closed at the latest decision with
+a clear message, the same as it would during a real publish — that tag was
+never meant to be `/releases/latest`. Do not re-tag to "fix" a
+failed/cancelled verify — the release already exists; re-verify, don't
+re-publish.
+
+**Cancelling the whole workflow run** (not just watching a failure) skips
+`verify` too — cancelling is meant to stop everything, so `verify`
+deliberately does not force itself to run in that case. Use a `verify_only`
+dispatch afterwards to check the actual state by hand.
+
+A publish run that ends **cancelled** (not failed) is only guaranteed to
+have published nothing and left no draft behind if it was cancelled
+**before** the "Create the release as a DRAFT" step started (pending, or
+still in an earlier gate) — re-dispatch it; do not re-tag. If it was
+cancelled **during or after** draft creation (including during or after the
+publish step, or during the separate `verify` job), do not assume either
+way: check the release state by hand first (`gh release view vX.Y.Z` —
+present but still a draft means clean up the draft; present and public
+means the release actually went out, cancellation only interrupted
+verification) before re-dispatching. The refuse-if-exists check makes a
+re-dispatch safe either way — it will not create a second release for a tag
+that already has one.
+
+Besides the automated check, still by hand:
 - Open the live release body: every link resolves (no 404s), SHA256 +
   unsigned notice present for both platforms, no banned tooling/AI/vendor
   terms (`backend/tests/test_public_claims.py`'s guard covers this
