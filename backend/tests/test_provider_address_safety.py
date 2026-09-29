@@ -367,6 +367,67 @@ def test_off_network_refusal_still_wins_over_the_credential_check():
             req, None, 302, "Found", {}, "http://example.com/")
 
 
+# --- #39 r4 M1: OffNetworkAddress marks locality/redirect refusals only, ----
+# --- distinctly from a pure format refusal or the credential-redirect one ---
+
+def test_off_network_address_is_an_invalid_provider_address():
+    """`OffNetworkAddress` must be catchable by every existing
+    `except InvalidProviderAddress` and `isinstance` check."""
+    from snapstudio_core import material_providers as mp
+
+    assert issubclass(mp.OffNetworkAddress, mp.InvalidProviderAddress)
+    assert isinstance(mp.OffNetworkAddress("boom"), mp.InvalidProviderAddress)
+
+
+def test_validate_provider_url_off_network_case_is_the_subclass():
+    from snapstudio_core import material_providers as mp
+
+    with pytest.raises(mp.OffNetworkAddress):
+        mp.validate_provider_url("http://8.8.8.8:7912")
+
+
+@pytest.mark.parametrize("address", [
+    "",
+    "http://192.168.1.9:7912/api/v1/spool",
+    "ftp://192.168.1.9",
+    "http://user:secret@192.168.1.9:7912",
+    "http://192.168.1.9:notaport",
+])
+def test_validate_provider_url_format_refusals_are_not_the_off_network_subclass(address):
+    """A format problem (a path, a bad scheme, credentials, a bad port, an
+    empty address) must stay a base `InvalidProviderAddress`, never the
+    `OffNetworkAddress` subclass — `service._with_providers` (M1) uses that
+    distinction to decide whether to replace the message."""
+    from snapstudio_core import material_providers as mp
+
+    with pytest.raises(mp.InvalidProviderAddress) as raised:
+        mp.validate_provider_url(address)
+    assert not isinstance(raised.value, mp.OffNetworkAddress)
+
+
+def test_a_credentialed_cross_host_redirect_is_not_off_network():
+    """The credential/cross-host redirect refusal is a different defect from
+    leaving the network — it must stay a base `InvalidProviderAddress`, not
+    `OffNetworkAddress`, so the host-free replacement in
+    `service._with_providers` never fires for it."""
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api", authorization="Bearer secret-token")
+    with pytest.raises(mp.InvalidProviderAddress, match="carried credentials") as raised:
+        mp._LocalOnlyRedirects().redirect_request(
+            req, None, 302, "Found", {}, "http://127.0.0.2:1234/api")
+    assert not isinstance(raised.value, mp.OffNetworkAddress)
+
+
+def test_a_redirect_off_the_network_raises_the_off_network_subclass():
+    from snapstudio_core import material_providers as mp
+
+    with pytest.raises(mp.OffNetworkAddress):
+        mp._LocalOnlyRedirects().redirect_request(
+            _request("http://127.0.0.1:1234/api"), None, 302, "Found", {},
+            "http://example.com/")
+
+
 # --- S-1: 6to4 / Teredo / NAT64 route over the public internet ---------------
 #
 # Python's `ipaddress` module marks 2002::/16 (6to4), 2001::/32 (Teredo, a

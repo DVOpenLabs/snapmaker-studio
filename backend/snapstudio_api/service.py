@@ -6,6 +6,7 @@ timestamps and the on-disk library index. The engine stays pure and testable.
 from __future__ import annotations
 import datetime
 import os
+import re
 import threading
 import urllib.parse
 import uuid
@@ -767,9 +768,13 @@ def _local_spool_rows(host: str) -> tuple[list[dict], list[dict]]:
 #: what it resolves to, or a host a redirect named — unlike `/provider/test`'s
 #: `reason`, which is allowed to name any of those — because `provider_status`
 #: is rendered directly in the app and can end up in a screenshot.
-#: `invalid_address` (a `validate_provider_url`/connect-time/redirect refusal,
-#: all of which can name a host) is always replaced with this sentence below.
-#: Every other error code is host-free at its source today, but that is a
+#: `invalid_address` marked `off_network` (a `validate_provider_url`/
+#: connect-time/redirect refusal that fired because the address is not on the
+#: user's own network — `material_providers.OffNetworkAddress`) is always
+#: replaced with this sentence below. A pure format refusal (bad scheme,
+#: credentials, a path, a bad port, ...) also carries `invalid_address` but is
+#: never off-network and never names a host, so it keeps its own message
+#: (#39 r4 M1). Every other error code is host-free at its source today, but that is a
 #: property of each reader's current implementation, not something this seam
 #: can rely on staying true — so `_scrub_configured_host` below also checks
 #: every `provider_status.error`, whichever code produced it, for the
@@ -786,22 +791,48 @@ def _scrub_configured_host(error_text: str | None, provider_url: str | None) -> 
     """Defence in depth for S-2: if a reader's error text ever names the
     configured provider host — bracketed or unbracketed IPv6 included —
     replace the whole error with the host-free sentence, whichever error
-    code produced it. `invalid_address` is already fully replaced above;
-    this is the backstop for any other code that turns out to carry the
-    host too."""
+    code produced it. An off-network `invalid_address` is already replaced
+    above; this is the backstop for any other code that turns out to carry
+    the host too.
+
+    L1 (#39 r4): `provider_url` here is exactly what the user typed, which
+    `validate_provider_url` accepts without a scheme (`spoolman.local:7912`,
+    a bare `192.168.1.50`, `[fe80::1]:7912`) — `urlsplit` on that alone puts
+    the whole thing in `.path`, not `.hostname`, and the scrub would silently
+    do nothing. Prepend `http://` when there is none, exactly as
+    `validate_provider_url` does, before parsing.
+
+    L2 (#39 r4): the host is matched only as a whole token, case-insensitive
+    — neither character immediately next to a match may be `[A-Za-z0-9.-]`,
+    so `192.168.1.5` does not match inside `192.168.1.50` — and a host that
+    is nothing but one of Studio's own provider display names (`spoolman`,
+    `bambuddy`, `spoolease`) is never matched: that word is Studio's own
+    provider name in every generic error sentence regardless of what host
+    is configured (e.g. "Spoolman did not answer: timed out"), so it is not
+    the leak this backstop exists to catch even when a person happens to
+    have named their own server exactly that.
+    """
     if not error_text or not provider_url:
         return error_text
+    text = provider_url.strip()
+    if "://" not in text:
+        text = "http://" + text
     try:
-        host = urllib.parse.urlsplit(provider_url).hostname
+        host = urllib.parse.urlsplit(text).hostname
     except ValueError:
         host = None
     if not host:
         return error_text
-    candidates = [host]
+    from snapstudio_core import material_providers as providers
+    if host.lower() in providers.PROVIDER_NAMES:
+        return error_text
+    candidates = [re.escape(host)]
     if ":" in host:
-        candidates.append(f"[{host}]")
-    lowered = error_text.lower()
-    if any(candidate.lower() in lowered for candidate in candidates):
+        candidates.append(re.escape(f"[{host}]"))
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9.-])(?:" + "|".join(candidates) + r")(?![A-Za-z0-9.-])",
+        re.IGNORECASE)
+    if pattern.search(error_text):
         return _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
     return error_text
 
@@ -852,7 +883,11 @@ def _with_providers(printer: dict, host: str | None, port: int,
         # then re-checks the result against the configured host as a backstop
         # for any other error code (see the comment on that sentence above).
         error_text = network_state.get("error")
-        if network_state.get("error_code") == "invalid_address":
+        if network_state.get("error_code") == "invalid_address" and network_state.get("off_network"):
+            # Only a locality/redirect refusal (`OffNetworkAddress`) is replaced
+            # here — a pure format refusal (bad scheme, credentials, a path, a
+            # bad port, ...) keeps its own message, which is already host-free
+            # and tells the user what to fix (#39 r4 M1).
             error_text = _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
         error_text = _scrub_configured_host(error_text, provider_url)
         provider_status = {

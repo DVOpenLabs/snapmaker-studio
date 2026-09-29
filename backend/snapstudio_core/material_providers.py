@@ -57,6 +57,17 @@ class InvalidProviderAddress(ValueError):
     """A provider address Studio will not turn into a request."""
 
 
+class OffNetworkAddress(InvalidProviderAddress):
+    """An `InvalidProviderAddress` raised specifically because the address is
+    not on the user's own network — the typed host is not local, it resolves
+    only to a public address, or a redirect walked off-network. Unlike a pure
+    format refusal (bad scheme, credentials, a path, a bad port, ...), this is
+    the one class of refusal `service._with_providers` replaces with a fixed
+    host-free sentence for `provider_status.error` (S-2/M1, #39 r4) — kept as
+    an `InvalidProviderAddress` subclass so every existing `except
+    InvalidProviderAddress` and `isinstance` check still catches it."""
+
+
 #: Name suffixes that mean "a machine on this network". A bare single-label name
 #: (`spoolman`) is a LAN name too. Anything else with a dot in it is a public DNS
 #: name, and Studio does not make requests to those.
@@ -123,6 +134,25 @@ def _host_is_local(host: str) -> bool:
         or (address.version == 6 and address.is_site_local))
 
 
+def _address_error(out: dict, exc: InvalidProviderAddress) -> dict:
+    """Fill a reader's error result from a caught `InvalidProviderAddress`,
+    the same way in every reader.
+
+    `error_code` stays `"invalid_address"` for every case, format refusals
+    included — unchanged from before, and every existing caller keys on that
+    string. `off_network` additionally records whether this was specifically
+    an `OffNetworkAddress` (not local / resolves only publicly / a redirect
+    left the network) as opposed to a pure format refusal (bad scheme,
+    credentials, a path, a bad port, ...) — `service._with_providers` (S-2/M1)
+    replaces `provider_status.error` with a fixed host-free sentence only for
+    the former; a format refusal's own message is already host-free and must
+    reach the user unchanged (#39 r4)."""
+    out["error"] = str(exc)
+    out["error_code"] = "invalid_address"
+    out["off_network"] = isinstance(exc, OffNetworkAddress)
+    return out
+
+
 def validate_provider_url(value: str) -> str:
     """Return a normalised provider base URL, or raise InvalidProviderAddress.
 
@@ -159,7 +189,7 @@ def validate_provider_url(value: str) -> str:
     if not _HOSTNAME_RE.match(host) and ":" not in host:
         raise InvalidProviderAddress("That doesn't look like a server address.")
     if not _host_is_local(host):
-        raise InvalidProviderAddress(
+        raise OffNetworkAddress(
             f"{host} is not an address on your own network. Studio reads material "
             "providers running on your network only — it makes no requests to the "
             "internet.")
@@ -424,7 +454,7 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parts = urllib.parse.urlsplit(newurl)
         if parts.scheme not in ("http", "https") or not _host_is_local(parts.hostname or ""):
-            raise InvalidProviderAddress(
+            raise OffNetworkAddress(
                 f"That provider redirected Studio to {parts.hostname or newurl}, which is "
                 "not on your own network. Studio makes no requests to the internet, so it "
                 "stopped rather than following it.")
@@ -496,7 +526,7 @@ class _LocalOnlyHTTPConnection(http.client.HTTPConnection):
         answers = _resolve(self.host, self.port, type=socket.SOCK_STREAM)
         local = [a for a in answers if _ip_is_local(a[4][0])]
         if not local:
-            raise InvalidProviderAddress(
+            raise OffNetworkAddress(
                 f"{self.host} has no address on your own network, so Studio did "
                 "not connect. Enter the provider's local network address "
                 "instead (for example its 192.168.x.x address).")
@@ -512,7 +542,7 @@ class _LocalOnlyHTTPConnection(http.client.HTTPConnection):
                     # Belt-and-braces: the resolver answered with something
                     # local and the socket ended up connected to something
                     # that is not. Should be unreachable; refused anyway.
-                    raise InvalidProviderAddress(
+                    raise OffNetworkAddress(
                         f"{self.host} connected to an address that is not on "
                         "your own network, so Studio stopped.")
                 try:
@@ -709,9 +739,7 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     try:
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
     try:
         # Spoolman leaves archived spools out of this list unless asked. Studio
         # asks for them: a slot mapped to a spool somebody archived last week
@@ -723,9 +751,7 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     except InvalidProviderAddress as exc:
         # A redirect that led off the local network. Refused mid-request, and
         # said plainly, because it is the user's network that just behaved oddly.
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
     except _ProviderTransportError as exc:
         out["error"] = _transport_error_sentence("Spoolman", exc)
         return out
@@ -839,9 +865,7 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     try:
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
     try:
         # Archived spools are left out of the default listing, exactly as
         # Spoolman leaves them out of its own — measured against a real instance,
@@ -850,9 +874,7 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         spools = _get_json(f"{root}/api/v1/inventory/spools?include_archived=true",
                            timeout=timeout)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             # Bambuddy can be run with authentication on, and then every route
@@ -1159,16 +1181,12 @@ def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     try:
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
 
     try:
         body = _get_text(f"{root}/api/spools", timeout=timeout)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        out["error_code"] = "invalid_address"
-        return out
+        return _address_error(out, exc)
     except urllib.error.HTTPError as exc:
         out["error"] = f"SpoolEase did not answer: HTTP {exc.code}"
         out["error_code"] = "http_status"

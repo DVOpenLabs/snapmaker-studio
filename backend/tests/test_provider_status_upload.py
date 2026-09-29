@@ -381,3 +381,97 @@ def test_scrub_configured_host_helper_unit():
 
     assert _scrub_configured_host(None, "http://legacy-host.local:7912") is None
     assert _scrub_configured_host("anything", None) == "anything"
+
+
+# --- #39 r4 M1: a format refusal must keep its own host-free text, not the --
+# --- off-network sentence, through the real service route -------------------
+
+@pytest.mark.parametrize("kind", ["spoolman", "bambuddy", "spoolease"])
+@pytest.mark.parametrize("address, expected_text", [
+    ("http://192.168.1.9:7912/api/v1",
+     "Enter just the server's address and port, without a path."),
+    ("ftp://192.168.1.9",
+     "Studio only reads providers over http or https on your own network."),
+])
+def test_a_format_refusal_keeps_its_own_text_through_the_real_route(
+        kind, address, expected_text, gcode_file):
+    """M1 (#39 r4): a path on the address, or a scheme other than http/https,
+    is a format problem `validate_provider_url` catches before any locality
+    check runs — `provider_status.error` must show that specific, accurate,
+    host-free sentence, not the "not on your own network" one, and must never
+    carry the configured host either."""
+    out = service.material_plan(gcode_file, **_provider_kwargs(kind, address))
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "invalid_address"
+    assert status["error"] == expected_text
+    assert "not on your own network" not in status["error"]
+    assert "192.168.1.9" not in status["error"]
+    dumped = json.dumps(out)
+    assert "192.168.1.9" not in dumped
+
+
+@pytest.mark.parametrize("kind", ["spoolman", "bambuddy", "spoolease"])
+def test_an_off_network_refusal_sets_the_off_network_flag_and_stays_host_free(
+        kind, gcode_file):
+    """The counterpart to the format-refusal test above: a genuine
+    off-network address (`OffNetworkAddress`, not a format problem) still
+    gets the fixed host-free sentence in `provider_status.error`, and the
+    reader-level result it came from carries `off_network=True` (M1)."""
+    from fixtures.providers.spoolease_fake import FIXTURE_KEY
+    from snapstudio_core import material_providers as mp
+
+    key = FIXTURE_KEY if kind == "spoolease" else None
+    network_state = mp.read(kind, "http://8.8.8.8:7912", key=key)
+    assert network_state["error_code"] == "invalid_address"
+    assert network_state["off_network"] is True
+    assert "8.8.8.8" in network_state["error"]  # the reader's own error may name it
+
+    out = service.material_plan(gcode_file, **_provider_kwargs(kind, "http://8.8.8.8:7912"))
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "invalid_address"
+    from snapstudio_api.service import _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+    assert status["error"] == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+    assert "8.8.8.8" not in status["error"]
+    dumped = json.dumps(out)
+    assert "8.8.8.8" not in dumped
+
+
+def test_scrub_configured_host_scheme_less_inputs_and_extra_cases():
+    """L1/L2 (#39 r4): direct unit coverage of the scheme-less parsing fix and
+    the whole-token matching rule, beyond the pre-existing cases above."""
+    from snapstudio_api.service import _scrub_configured_host, _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    # L1: provider_url with no "://" (exactly what validate_provider_url itself
+    # accepts) must still parse a hostname and scrub a match.
+    assert _scrub_configured_host(
+        "Something failed while talking to spoolman.local:7912",
+        "spoolman.local:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+    assert _scrub_configured_host(
+        "Something failed while talking to 192.168.1.50",
+        "192.168.1.50") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+    assert _scrub_configured_host(
+        "Something failed while talking to fe80::1",
+        "[fe80::1]:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    # L2: a host that is exactly one of Studio's own provider display names is
+    # never matched — that word is the provider's own name in generic prose,
+    # not a leak of the configured host.
+    kept = "Spoolman did not answer: timed out"
+    assert _scrub_configured_host(kept, "http://spoolman:7912") == kept
+
+    # L2: a dotted host is still matched as a whole token.
+    assert _scrub_configured_host(
+        "Something failed talking to spoolman.local",
+        "http://spoolman.local:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    # L2: the host must not match as a mere substring of a longer address.
+    unchanged = "Something failed talking to 192.168.1.50"
+    assert _scrub_configured_host(unchanged, "http://192.168.1.5:7912") == unchanged
+
+    # L2: a host that merely starts with a provider's display name (not an
+    # exact match) is not exempt — it still matches as a whole token.
+    assert _scrub_configured_host(
+        "Something failed talking to spoolman-nas",
+        "http://spoolman-nas:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
