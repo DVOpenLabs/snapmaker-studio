@@ -446,7 +446,7 @@ def test_a_configured_provider_is_reached_even_with_no_printer_host(monkeypatch)
         return {"schema_version": providers.SCHEMA_VERSION, "source": providers.STOCK,
                 "available": False, "slots": []}
 
-    def fake_read(provider, url, slot_map, slot_base=None):
+    def fake_read(provider, url, slot_map, slot_base=None, key=None):
         calls.append(("read", provider, url))
         return {"schema_version": providers.SCHEMA_VERSION, "source": provider,
                 "available": True, "remaining_known": True,

@@ -110,6 +110,14 @@ jobs:
           if ($fail.Count -gt 0) { throw "bundled-sidecar smoke FAILED: $($fail -join ', ')" }
           Write-Host "bundled-sidecar smoke OK"
 
+      - name: Frozen-sidecar SpoolEase proof (pytest against the bundled exe)
+        working-directory: backend
+        env:
+          SNAPSTUDIO_SIDECAR_EXE: ${{ github.workspace }}\desktop\src-tauri\bin\snapstudio-api-x86_64-pc-windows-msvc.exe
+        run: |
+          python -m pip install pytest==9.1.1
+          python -m pytest tests/test_frozen_sidecar_spoolease.py -q -p no:cacheprovider
+
       - name: Rename to the dotted form GitHub publishes assets under, then hash
         # Tauri's NSIS bundler names the file with a space
         # ("Snapmaker Studio_<v>_x64-setup.exe"); GitHub has always renamed

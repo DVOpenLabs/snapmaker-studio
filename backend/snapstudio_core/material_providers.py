@@ -26,18 +26,46 @@ exactly like the printer. Studio still makes no outbound internet requests.
 """
 from __future__ import annotations
 
+import contextvars
+import datetime
+import errno
+import http.client
 import ipaddress
 import json
 import re
+import socket
+import ssl
+import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import spoolease_wire
+
 SCHEMA_VERSION = "materials/2"
+
+#: One deadline per provider read, shared by every connect attempt of every
+#: candidate address of every hop (initial request + redirects). Set by
+#: `_fetch()` for the whole `_OPENER.open(...)` + body read and reset in a
+#: `finally`; read by `_LocalOnlyHTTPConnection._left()`. `None` outside a
+#: `_fetch()` call — production code never leaves it set.
+_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar("_DEADLINE", default=None)
 
 
 class InvalidProviderAddress(ValueError):
     """A provider address Studio will not turn into a request."""
+
+
+class OffNetworkAddress(InvalidProviderAddress):
+    """An `InvalidProviderAddress` raised specifically because the address is
+    not on the user's own network — the typed host is not local, it resolves
+    only to a public address, or a redirect walked off-network. Unlike a pure
+    format refusal (bad scheme, credentials, a path, a bad port, ...), this is
+    the one class of refusal `service._with_providers` replaces with a fixed
+    host-free sentence for `provider_status.error` (S-2/M1, #39 r4) — kept as
+    an `InvalidProviderAddress` subclass so every existing `except
+    InvalidProviderAddress` and `isinstance` check still catches it."""
 
 
 #: Name suffixes that mean "a machine on this network". A bare single-label name
@@ -47,6 +75,33 @@ _LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".home.arpa")
 
 _HOSTNAME_RE = re.compile(
     r"\A(?!-)[A-Za-z0-9_-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9_-]{1,63}(?<!-))*\.?\Z")
+
+
+#: 6to4 (RFC 3056), Teredo (RFC 4380) and NAT64 (RFC 6052 well-known prefix,
+#: RFC 8215 local-use prefix) all tunnel or synthesise traffic that actually
+#: crosses the public internet — a 6to4 or Teredo packet is relayed by a
+#: third-party host neither Studio nor the user controls, and a NAT64 address
+#: exists specifically to reach an IPv4 host that may be anywhere. Python's
+#: `ipaddress` module nonetheless marks every one of these prefixes
+#: `is_private` (it follows the IANA special-purpose registry's "not globally
+#: unique" wording, not "does not leave this network"), so `is_private` alone
+#: is not the right test here and these ranges must be excluded explicitly.
+_6TO4_NET = ipaddress.ip_network("2002::/16")
+_TEREDO_NET = ipaddress.ip_network("2001::/32")
+_NAT64_WELL_KNOWN_NET = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL_NET = ipaddress.ip_network("64:ff9b:1::/48")
+
+
+def _is_internet_transit_tunnel(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """S-1: is this a 6to4/Teredo/NAT64 address, despite `is_private` saying
+    "local"? Checked before `is_private` is trusted for anything, by both
+    `_host_is_local` (the string the user typed) and `_ip_is_local` (what the
+    resolver actually returned)."""
+    if address.version != 6:
+        return False
+    return bool(
+        address in _6TO4_NET or address in _TEREDO_NET
+        or address in _NAT64_WELL_KNOWN_NET or address in _NAT64_LOCAL_NET)
 
 
 def _host_is_local(host: str) -> bool:
@@ -67,12 +122,35 @@ def _host_is_local(host: str) -> bool:
         if name == "localhost" or "." not in name:
             return True
         return name.endswith(_LOCAL_SUFFIXES)
+    if address.version == 6 and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    if _is_internet_transit_tunnel(address):
+        return False
     # 100.64/10 is carrier-grade NAT, which is also what Tailscale hands out; a
     # tailnet is the user's own network by any reasonable reading.
     return bool(
         address.is_loopback or address.is_private or address.is_link_local
         or address in ipaddress.ip_network("100.64.0.0/10")
         or (address.version == 6 and address.is_site_local))
+
+
+def _address_error(out: dict, exc: InvalidProviderAddress) -> dict:
+    """Fill a reader's error result from a caught `InvalidProviderAddress`,
+    the same way in every reader.
+
+    `error_code` stays `"invalid_address"` for every case, format refusals
+    included — unchanged from before, and every existing caller keys on that
+    string. `off_network` additionally records whether this was specifically
+    an `OffNetworkAddress` (not local / resolves only publicly / a redirect
+    left the network) as opposed to a pure format refusal (bad scheme,
+    credentials, a path, a bad port, ...) — `service._with_providers` (S-2/M1)
+    replaces `provider_status.error` with a fixed host-free sentence only for
+    the former; a format refusal's own message is already host-free and must
+    reach the user unchanged (#39 r4)."""
+    out["error"] = str(exc)
+    out["error_code"] = "invalid_address"
+    out["off_network"] = isinstance(exc, OffNetworkAddress)
+    return out
 
 
 def validate_provider_url(value: str) -> str:
@@ -111,7 +189,7 @@ def validate_provider_url(value: str) -> str:
     if not _HOSTNAME_RE.match(host) and ":" not in host:
         raise InvalidProviderAddress("That doesn't look like a server address.")
     if not _host_is_local(host):
-        raise InvalidProviderAddress(
+        raise OffNetworkAddress(
             f"{host} is not an address on your own network. Studio reads material "
             "providers running on your network only — it makes no requests to the "
             "internet.")
@@ -125,6 +203,7 @@ def validate_provider_url(value: str) -> str:
 STOCK = "stock-u1"
 SPOOLMAN = "spoolman"
 BAMBUDDY = "bambuddy"
+SPOOLEASE = "spoolease"
 LOCAL = "local"
 
 #: The network providers a user can choose, and what to call them on screen —
@@ -132,7 +211,7 @@ LOCAL = "local"
 #: not here: it has no address to read, no `READERS` entry, and its own
 #: dedicated functions (`local_spools`, and the library-backed writes in
 #: `snapstudio_api.service`) rather than the network seam this table serves.
-PROVIDER_NAMES = {SPOOLMAN: "Spoolman", BAMBUDDY: "Bambuddy"}
+PROVIDER_NAMES = {SPOOLMAN: "Spoolman", BAMBUDDY: "Bambuddy", SPOOLEASE: "SpoolEase"}
 
 CONFIRMED = "confirmed"
 LIKELY = "likely"
@@ -332,6 +411,22 @@ def stock_u1(host: str, port: int = 7125) -> dict:
 
 # --- Spoolman ----------------------------------------------------------------
 
+def _is_timeout(exc: BaseException) -> bool:
+    """A plain `TimeoutError`, or a `URLError` wrapping one — `_fetch`'s shared
+    deadline can raise either shape depending on where the time ran out
+    (connect vs. a later read), and both mean the same thing to the reader."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, TimeoutError)
+
+
+def _timeout_sentence(name: str, timeout: float) -> str:
+    """plan-39 v3.2 N-4: the same pattern for every provider's timeout, in
+    `provider_status.error` and in a reader's own `error` field alike."""
+    return (f"{name} did not answer in time (Studio waited about {timeout:g} "
+            "seconds), so Studio carried on without it.")
+
+
 class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
     """Refuse a redirect that walks off the user's own network.
 
@@ -359,7 +454,7 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parts = urllib.parse.urlsplit(newurl)
         if parts.scheme not in ("http", "https") or not _host_is_local(parts.hostname or ""):
-            raise InvalidProviderAddress(
+            raise OffNetworkAddress(
                 f"That provider redirected Studio to {parts.hostname or newurl}, which is "
                 "not on your own network. Studio makes no requests to the internet, so it "
                 "stopped rather than following it.")
@@ -374,17 +469,253 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _ip_is_local(text: str) -> bool:
+    """Is this resolved address on the user's own network? (plan-39 O-1)
+
+    Unlike `_host_is_local`, this checks an address the *resolver* returned,
+    not the string the user typed — so a name Studio accepted (a bare LAN
+    name, or one ending `.local`/`.lan`/...) is still refused at connect time
+    if DNS answers with something off-network, and a name that resolves to
+    both a LAN and a public address is only ever dialled on the LAN one.
+    """
+    address = ipaddress.ip_address(text)
+    if address.version == 6 and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    if _is_internet_transit_tunnel(address):
+        return False
+    return bool(
+        address.is_loopback or address.is_private or address.is_link_local
+        or address in ipaddress.ip_network("100.64.0.0/10")
+        or (address.version == 6 and address.is_site_local))
+
+
+#: `socket.getaddrinfo`, called through a module attribute so tests can stub
+#: it without touching the real resolver. Production code never reassigns it.
+_resolve = socket.getaddrinfo
+
+
+class _FatalConnect(Exception):
+    """Wraps a `setsockopt` failure that is not `ENOPROTOOPT` (plan-39 addendum
+    §1/§3): it must surface as the underlying `OSError`, not be treated as a
+    failed candidate to try the next address for."""
+
+    def __init__(self, exc: OSError):
+        super().__init__(str(exc))
+        self.exc = exc
+
+
+class _LocalOnlyHTTPConnection(http.client.HTTPConnection):
+    """An `HTTPConnection` that only ever dials an address on the user's own
+    network — checked against what the resolver actually returned, not the
+    name that was typed (plan-39 §3.1, amended by the addendum §1 for the
+    per-candidate connect deadline).
+    """
+
+    def connect(self):
+        sys.audit("http.client.connect", self, self.host, self.port)
+        # A resolver failure (e.g. `socket.gaierror`) is left to propagate as
+        # the raw `OSError` here, exactly as stdlib's own `HTTPConnection.connect`
+        # does — `urllib.request.AbstractHTTPHandler.do_open()` catches OSError
+        # and wraps it into a URLError exactly once. `URLError` is itself an
+        # `OSError` subclass, so wrapping it here as well would let do_open's
+        # except-clause catch it a second time and produce a URLError whose
+        # `.reason` is another URLError instead of the resolver's own
+        # exception — the double-wrap plan-39 B-1 named (it showed up as
+        # "<urlopen error ...>" for Spoolman/Bambuddy and the bare class name
+        # "URLError" for SpoolEase, instead of the resolver's own reason).
+        answers = _resolve(self.host, self.port, type=socket.SOCK_STREAM)
+        local = [a for a in answers if _ip_is_local(a[4][0])]
+        if not local:
+            raise OffNetworkAddress(
+                f"{self.host} has no address on your own network, so Studio did "
+                "not connect. Enter the provider's local network address "
+                "instead (for example its 192.168.x.x address).")
+        last: OSError | None = None
+        for index, (family, kind, proto, _canon, sockaddr) in enumerate(local):
+            slice_seconds = self._slice(len(local) - index)
+            sock = None
+            try:
+                sock = socket.socket(family, kind, proto)
+                sock.settimeout(slice_seconds)
+                sock.connect(sockaddr)
+                if not _ip_is_local(sock.getpeername()[0]):
+                    # Belt-and-braces: the resolver answered with something
+                    # local and the socket ended up connected to something
+                    # that is not. Should be unreachable; refused anyway.
+                    raise OffNetworkAddress(
+                        f"{self.host} connected to an address that is not on "
+                        "your own network, so Studio stopped.")
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except OSError as exc:
+                    # Exactly what stdlib's own HTTPConnection.connect does:
+                    # a platform that has no TCP_NODELAY option is fine; any
+                    # other failure is real and must not be swallowed as
+                    # though this candidate merely failed to connect.
+                    if exc.errno != errno.ENOPROTOOPT:
+                        raise _FatalConnect(exc) from exc
+                # Bounds every later read op (status line, headers, body) by
+                # the base per-operation timeout — not by what is left of the
+                # shared connect deadline, so a slow-but-connected provider
+                # gets the same per-recv budget it always did.
+                sock.settimeout(self.timeout if self.timeout is not
+                                socket._GLOBAL_DEFAULT_TIMEOUT else None)
+            except InvalidProviderAddress:
+                if sock is not None:
+                    sock.close()
+                raise
+            except _FatalConnect as wrapped:
+                if sock is not None:
+                    sock.close()
+                raise wrapped.exc
+            except OSError as exc:  # incl. a TimeoutError from this slice
+                if sock is not None:
+                    sock.close()
+                last = exc
+                continue
+            self.sock = sock
+            return
+        raise last or OSError(f"could not connect to {self.host}")
+
+    def _left(self) -> float | None:
+        """Time left on the shared per-read deadline, or the connection's own
+        base timeout when there is no deadline (a direct call outside
+        `_fetch()`, e.g. a test)."""
+        base = None if self.timeout is socket._GLOBAL_DEFAULT_TIMEOUT else self.timeout
+        deadline = _DEADLINE.get()
+        if deadline is None:
+            return base
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("the provider read ran out of time")
+        return left if base is None else min(base, left)
+
+    def _slice(self, remaining_candidates: int) -> float | None:
+        """This candidate's even share of the time left (addendum §1): a
+        black-holed candidate can consume only its own slice, never the whole
+        deadline, so the candidates after it still get a real chance."""
+        left = self._left()
+        if left is None:
+            return None
+        return left / max(1, remaining_candidates)
+
+
+class _LocalOnlyHTTPSConnection(_LocalOnlyHTTPConnection, http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        try:
+            self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+        except Exception:
+            self.sock.close()
+            self.sock = None
+            raise
+
+
+class _LocalOnlyHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_LocalOnlyHTTPConnection, req)
+
+
+class _LocalOnlyHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_LocalOnlyHTTPSConnection, req, context=self._context)
+
+
+def _build_opener(context=None) -> urllib.request.OpenerDirector:
+    """One opener builder for every provider (and for tests that need a
+    fresh one with a specific TLS context), so the local-only rule and the
+    redirect rule cannot be true of one and not another.
+
+    `ProxyHandler({})` disables environment- and system-configured proxies
+    for provider reads: a proxy is a third host that would resolve the name
+    on Studio's behalf and could defeat the local-only check entirely.
+    """
+    return urllib.request.build_opener(
+        _LocalOnlyRedirects, _LocalOnlyHTTPHandler,
+        _LocalOnlyHTTPSHandler(context=context), urllib.request.ProxyHandler({}))
+
+
 #: One opener for every provider, so the redirect rule cannot be true of one and
 #: not another. Deliberately not the module-level default: replacing the global
 #: opener would change behaviour for code that has nothing to do with providers.
-_OPENER = urllib.request.build_opener(_LocalOnlyRedirects)
+_OPENER = _build_opener()
+
+#: What a single provider read will take from the network, at most. Every
+#: reader shares this cap; a provider that tries to send more is refused, not
+#: read in pieces.
+_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+class _ProviderTransportError(Exception):
+    """An I/O-shaped failure a reader maps to its own error vocabulary.
+
+    Deliberately not `SpoolEaseWireError` (that is a wire-decode failure, not
+    a network one) and not a subclass of `OSError`/`HTTPException` (so it
+    cannot be mistaken for one by an except-clause that catches those).
+    `code` is `"oversized"` or `"transport"` (an early close after a partial,
+    under-length body — plan-39 v3.3 C-4b) — never anything a caller has to
+    string-match to tell the two apart.
+    """
+
+    def __init__(self, code: str, message: str = ""):
+        super().__init__(message or code)
+        self.code = code
+
+
+def _transport_error_sentence(name: str, exc: "_ProviderTransportError") -> str:
+    """POLISH: Spoolman/Bambuddy must never show this private class's own
+    name (`_ProviderTransportError answered with something unexpected: ...`)
+    for an oversized or short-and-truncated body — the same two plain
+    sentences SpoolEase's own §4.2 rows 7/9 use, with the provider's name in
+    place of "SpoolEase"."""
+    if exc.code == "oversized":
+        return (f"{name} sent more than Studio will read from a provider "
+                "(4 MB), so Studio stopped.")
+    return f"{name} did not answer: the response ended before it said it would"
+
+
+def _fetch(url: str, *, timeout: float = 4.0, accept: str = "application/json",
+          limit: int = _MAX_RESPONSE_BYTES) -> bytes:
+    """GET `url`, bounded by one deadline shared across every connect attempt
+    of every candidate of every hop, and by `limit` bytes of body. Raises
+    stdlib's own `urllib.error.URLError`/`HTTPError`, `TimeoutError`, or
+    `_ProviderTransportError` (oversized / truncated body) — callers translate
+    those into their own error vocabulary.
+    """
+    request = urllib.request.Request(url, headers={"Accept": accept})
+    token = _DEADLINE.set(time.monotonic() + timeout)
+    try:
+        with _OPENER.open(request, timeout=timeout) as response:
+            body = response.read(limit + 1)
+            if len(body) > limit:
+                raise _ProviderTransportError(
+                    "oversized", "response exceeded the size Studio will read")
+            declared = response.getheader("Content-Length")
+            if declared is not None:
+                try:
+                    declared_n = int(declared)
+                except ValueError:
+                    raise _ProviderTransportError(
+                        "transport", "the response's Content-Length was not a number")
+                if declared_n != len(body):
+                    # `resp.read(limit + 1)` can return a short body at EOF
+                    # without raising (plan-39 v3.3 C-4b) — an early close
+                    # after a partial body must be caught explicitly, not
+                    # treated as a complete-but-short answer.
+                    raise _ProviderTransportError(
+                        "transport", "the response ended before it said it would")
+            return body
+    finally:
+        _DEADLINE.reset(token)
 
 
 def _get_json(url: str, timeout: float = 4.0):
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with _OPENER.open(request, timeout=timeout) as response:
-        # Bounded like every other response Studio reads from the network.
-        return json.loads(response.read(4 * 1024 * 1024).decode("utf-8", "replace"))
+    return json.loads(_fetch(url, timeout=timeout, accept="application/json")
+                      .decode("utf-8", "replace"))
+
+
+def _get_text(url: str, timeout: float = 4.0) -> str:
+    return _fetch(url, timeout=timeout, accept="text/plain").decode("utf-8", "replace")
 
 
 def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
@@ -408,8 +739,7 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     try:
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        return out
+        return _address_error(out, exc)
     try:
         # Spoolman leaves archived spools out of this list unless asked. Studio
         # asks for them: a slot mapped to a spool somebody archived last week
@@ -418,20 +748,20 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         # which every mocked test agreed with, because a mock returns whatever
         # it was handed.
         spools = _get_json(f"{root}/api/v1/spool?allow_archived=true", timeout=timeout)
-    except TimeoutError:
-        out["error"] = (f"Spoolman did not answer within {timeout:g} seconds — Studio carried "
-                        "on without it")
-        return out
     except InvalidProviderAddress as exc:
         # A redirect that led off the local network. Refused mid-request, and
         # said plainly, because it is the user's network that just behaved oddly.
-        out["error"] = str(exc)
-        return out
-    except urllib.error.URLError as exc:
-        out["error"] = f"Spoolman did not answer: {getattr(exc, 'reason', exc)}"
+        return _address_error(out, exc)
+    except _ProviderTransportError as exc:
+        out["error"] = _transport_error_sentence("Spoolman", exc)
         return out
     except Exception as exc:  # noqa: BLE001
-        out["error"] = f"Spoolman answered with something unexpected: {type(exc).__name__}"
+        if _is_timeout(exc):
+            out["error"] = _timeout_sentence("Spoolman", timeout)
+        elif isinstance(exc, urllib.error.URLError):
+            out["error"] = f"Spoolman did not answer: {_host_free_reason(exc)}"
+        else:
+            out["error"] = f"Spoolman answered with something unexpected: {type(exc).__name__}"
         return out
 
     if not isinstance(spools, list):
@@ -482,11 +812,15 @@ def _attach_slots(out: dict, source: str, slot_map: dict | None,
     what makes that true rather than hoped for.
     """
     name = PROVIDER_NAMES.get(source, source)
-    by_id = {s["id"]: s for s in out["spools"]}
+    # str() on both sides: SpoolEase spool ids are decimal strings while
+    # Spoolman/Bambuddy ids are numbers, and a persisted slot map may hold
+    # either shape depending on when it was saved — comparing as text means
+    # neither provider needs the map to have been written in its own idiom.
+    by_id = {str(s["id"]): s for s in out["spools"]}
     mapped, base = _mapped_slots(slot_map, slot_base)
     out["slot_base"] = base
     for slot_index, spool_id in mapped:
-        spool = by_id.get(spool_id)
+        spool = by_id.get(str(spool_id))
         if not spool:
             out["slots"].append(_slot(slot_index, present=False, source=source,
                                       confidence=UNKNOWN, confirmed_by=BY_PROVIDER,
@@ -531,8 +865,7 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     try:
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        return out
+        return _address_error(out, exc)
     try:
         # Archived spools are left out of the default listing, exactly as
         # Spoolman leaves them out of its own — measured against a real instance,
@@ -540,13 +873,8 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         # somebody archived last week should read as archived, not as missing.
         spools = _get_json(f"{root}/api/v1/inventory/spools?include_archived=true",
                            timeout=timeout)
-    except TimeoutError:
-        out["error"] = (f"Bambuddy did not answer within {timeout:g} seconds — Studio carried "
-                        "on without it")
-        return out
     except InvalidProviderAddress as exc:
-        out["error"] = str(exc)
-        return out
+        return _address_error(out, exc)
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             # Bambuddy can be run with authentication on, and then every route
@@ -558,11 +886,16 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
             return out
         out["error"] = f"Bambuddy did not answer: HTTP {exc.code}"
         return out
-    except urllib.error.URLError as exc:
-        out["error"] = f"Bambuddy did not answer: {getattr(exc, 'reason', exc)}"
+    except _ProviderTransportError as exc:
+        out["error"] = _transport_error_sentence("Bambuddy", exc)
         return out
     except Exception as exc:  # noqa: BLE001
-        out["error"] = f"Bambuddy answered with something unexpected: {type(exc).__name__}"
+        if _is_timeout(exc):
+            out["error"] = _timeout_sentence("Bambuddy", timeout)
+        elif isinstance(exc, urllib.error.URLError):
+            out["error"] = f"Bambuddy did not answer: {_host_free_reason(exc)}"
+        else:
+            out["error"] = f"Bambuddy answered with something unexpected: {type(exc).__name__}"
         return out
 
     if not isinstance(spools, list):
@@ -659,6 +992,271 @@ def _text(value) -> str | None:
     return text or None
 
 
+# --- SpoolEase -----------------------------------------------------------------
+#
+# Status: PROTOCOL VERIFIED (SpoolEase 3532f8d962dd1a95c7d4ebb37beddca5bbefd39a +
+# esp-hal-app-framework 0.6.1 = 43daad9d1795b21a7f4ea3ef610b328cabbfeda1,
+# source-read) / REAL SPOOLEASE USER TEST PENDING.
+#
+# Read-only, same as every other provider here: `/api/spools` is the only
+# route this ever calls, and it is a GET. The wire itself is encrypted — a
+# security key the person copies from the SpoolEase screen, never persisted
+# anywhere Studio keeps state (library.db, settings, logs, diagnostics), only
+# ever held in memory for the request that needs it.
+
+#: The one sentence every SpoolEase-fed spool with a remaining weight carries.
+#: SpoolEase weighs a spool once and subtracts what it has seen a *Bambu*
+#: print consume since; it cannot see anything a U1 has used, so the figure is
+#: always DERIVED, never TRACKED — the caveat says why in the person's own
+#: terms rather than the internal word "derived" (plan-39 O-2/§3.4).
+SPOOLEASE_WEIGHT_NOTE = (
+    "SpoolEase does not record when this spool was weighed and cannot see what your "
+    "U1 has used since, so treat this as an estimate.")
+
+_SPOOLEASE_BAD_CONSUMPTION_NOTE = (
+    "SpoolEase recorded a consumption figure Studio could not read for this spool")
+
+#: §4.2 rows 9-12 — the sentence for each `SpoolEaseWireError.code`. Never
+#: contains the key, the derived key, the response body or any address.
+_SPOOLEASE_WIRE_SENTENCES = {
+    "framing": ("Studio could not understand what SpoolEase sent back. Check the "
+               "address points at a SpoolEase device."),
+    "authentication_failed": (
+        "Studio could not read what SpoolEase sent back — either the security key is "
+        "wrong or the response was damaged. Check the key shown on the SpoolEase "
+        "screen and try again."),
+    "not_text": "SpoolEase sent something Studio could not read as text.",
+    "csv": ("SpoolEase answered, but its spool list is in a form Studio does not "
+           "recognise. Studio may need an update for this SpoolEase version."),
+}
+
+
+def _spoolease_material(record: dict) -> tuple[str | None, str | None]:
+    family = _text(record.get("material_type"))
+    return (family.upper() if family else None), _text(record.get("material_subtype"))
+
+
+def _spoolease_weight(record: dict) -> tuple[float | None, str, list[str]]:
+    """§2.6/§3.4: both computation paths are DERIVED, never TRACKED — a
+    SpoolEase remaining weight is always arithmetic Studio performed from a
+    scale reading and a consumption counter, never a figure SpoolEase itself
+    calls settled. A negative value in *either* consumption column disqualifies
+    the spool (plan-39 addendum S-N1), even though only one of them appears in
+    the formula below — a device reporting a negative anywhere in its own
+    bookkeeping is a device Studio should not trust the rest of the row from.
+    """
+    notes: list[str] = []
+    try:
+        consumed_add = spoolease_wire.decode_f32(record.get("consumed_since_add") or "")
+        consumed_weight = spoolease_wire.decode_f32(record.get("consumed_since_weight") or "")
+    except spoolease_wire.F32DecodeError:
+        notes.append(_SPOOLEASE_BAD_CONSUMPTION_NOTE)
+        return None, UNTRACKED, notes
+    if consumed_add < 0 or consumed_weight < 0:
+        notes.append(_SPOOLEASE_BAD_CONSUMPTION_NOTE)
+        return None, UNTRACKED, notes
+
+    weight_current = record.get("weight_current")
+    weight_core = record.get("weight_core")
+    if weight_core is not None and weight_current is not None:
+        core = weight_core
+    elif (weight_current is not None and record.get("weight_new") is not None
+          and record.get("weight_advertised") is not None):
+        core = record["weight_new"] - record["weight_advertised"]
+    else:
+        notes.append(_no_quantity_note(SPOOLEASE))
+        return None, UNTRACKED, notes
+
+    value = round(weight_current - core - consumed_weight, 1)
+    if value < 0:
+        notes.append("SpoolEase's figures for this spool do not add up to a usable "
+                     "weight, so Studio cannot use it")
+        return None, UNTRACKED, notes
+    if value > IMPLAUSIBLE_GRAMS:
+        notes.append(f"SpoolEase reports {value:g} g on this spool, which is not a "
+                     "weight of filament — check the spool in SpoolEase")
+        return None, UNTRACKED, notes
+    notes.append(SPOOLEASE_WEIGHT_NOTE)
+    return value, DERIVED, notes
+
+
+def _spoolease_registered(record: dict) -> str | None:
+    """`added_time` (epoch seconds) -> ISO-8601 UTC, or None when absent or
+    out of the range a real clock can express."""
+    added_time = record.get("added_time")
+    if added_time is None:
+        return None
+    try:
+        stamp = datetime.datetime.fromtimestamp(added_time, datetime.timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return None
+    return stamp.isoformat().replace("+00:00", "Z")
+
+
+#: S-2 (Opus L5): stdlib's own TLS verification failure text names the host
+#: the connection was for (`ssl.SSLCertVerificationError.strerror` reads
+#: "...certificate is not valid for 'spoolease.local'...") — that must never
+#: reach a sentence the module otherwise keeps host-free. Only a genuine
+#: certificate-verification failure gets this sentence; every other
+#: `ssl.SSLError` (handshake failure, protocol mismatch, a plaintext server
+#: behind an https:// URL) gets `_TLS_GENERIC_FAILURE_TEXT` instead — both are
+#: host-free, but conflating "the certificate is wrong" with "there was no
+#: TLS to check a certificate on" would misdescribe the second case (Sol r3).
+_TLS_VERIFY_FAILURE_TEXT = "its TLS certificate could not be verified"
+_TLS_GENERIC_FAILURE_TEXT = "it could not set up a secure connection"
+
+
+def _tls_failure_text(reason: BaseException) -> str:
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return _TLS_VERIFY_FAILURE_TEXT
+    return _TLS_GENERIC_FAILURE_TEXT
+
+
+def _transport_reason(exc: BaseException) -> str:
+    """A short, address-free, key-free description of a transport failure —
+    never `str(exc)` on an `HTTPException`, which can carry response bytes."""
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLError):
+            return _tls_failure_text(reason)
+        if isinstance(reason, socket.gaierror):
+            return "name not found"
+        if isinstance(reason, OSError):
+            return reason.strerror or type(reason).__name__
+        return str(reason)
+    if isinstance(exc, ssl.SSLError):
+        return _tls_failure_text(exc)
+    if isinstance(exc, http.client.HTTPException):
+        return type(exc).__name__
+    if isinstance(exc, OSError):
+        return exc.strerror or type(exc).__name__
+    return type(exc).__name__
+
+
+def _host_free_reason(exc: BaseException):
+    """What `spoolman()`/`bambuddy()` show for `exc.reason` (or `exc` itself)
+    on a transport failure — unchanged from the base-95fd031 form for every
+    case except a TLS failure (S-2), which stdlib's own message would
+    otherwise name the host for."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLError):
+        return _tls_failure_text(reason)
+    return reason
+
+
+def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
+             slot_base: int | None = None, key: str | None = None) -> dict:
+    """Read spools from a SpoolEase device on the local network.
+
+    ``key`` is the security key shown on the SpoolEase screen, trimmed exactly
+    as its own reference config page trims one (plan-39 O-3) and never kept
+    anywhere past this call — nothing here writes it to a file, a setting or a
+    log, and the derived key exists only for the one `decrypt()` call that
+    needs it.
+    """
+    out = {"schema_version": SCHEMA_VERSION, "source": SPOOLEASE, "available": False,
+           "slots": [], "spools": [], "error_code": None, "weight_source": None}
+    if not base_url:
+        out["error"] = "no SpoolEase address configured"
+        out["error_code"] = "invalid_address"
+        return out
+
+    # §4.2 rows 2-3: decided before any network call — no name is resolved and
+    # no socket is opened for a key Studio already knows it cannot use.
+    trimmed = spoolease_wire.trim_key(key or "")
+    if not trimmed:
+        out["error"] = ("SpoolEase needs its security key — enter it in Settings → "
+                        "Materials provider. Studio keeps it in memory for this "
+                        "session only.")
+        out["error_code"] = "key_missing"
+        return out
+    try:
+        key_utf8 = trimmed.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        out["error"] = ("That security key contains characters Studio cannot use. "
+                        "Copy it exactly as SpoolEase shows it.")
+        out["error_code"] = "key_invalid"
+        return out
+
+    try:
+        root = validate_provider_url(base_url)
+    except InvalidProviderAddress as exc:
+        return _address_error(out, exc)
+
+    try:
+        body = _get_text(f"{root}/api/spools", timeout=timeout)
+    except InvalidProviderAddress as exc:
+        return _address_error(out, exc)
+    except urllib.error.HTTPError as exc:
+        out["error"] = f"SpoolEase did not answer: HTTP {exc.code}"
+        out["error_code"] = "http_status"
+        return out
+    except _ProviderTransportError as exc:
+        if exc.code == "oversized":
+            out["error"] = ("SpoolEase sent more than Studio will read from a "
+                            "provider (4 MB), so Studio stopped.")
+        else:
+            out["error"] = "SpoolEase did not answer: the response ended before it said it would"
+        out["error_code"] = exc.code
+        return out
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+        if _is_timeout(exc):
+            out["error"] = _timeout_sentence("SpoolEase", timeout)
+        else:
+            out["error"] = f"SpoolEase did not answer: {_transport_reason(exc)}"
+        out["error_code"] = "transport"
+        return out
+
+    if body == "":
+        out["error"] = ("SpoolEase answered with an empty reply — its spool list is "
+                        "not ready or could not be listed. Give it a moment and try "
+                        "again.")
+        out["error_code"] = "empty_body"
+        return out
+
+    try:
+        nonce, ciphertext = spoolease_wire.decode_frame(body)
+        try:
+            plaintext_bytes = spoolease_wire.decrypt(key_utf8, nonce, ciphertext)
+        except ImportError:
+            out["error"] = ("This build of Studio cannot read SpoolEase (its "
+                            "encryption support is missing). Please report this.")
+            out["error_code"] = "unsupported_build"
+            return out
+        plaintext = spoolease_wire.decode_text(plaintext_bytes)
+        records = spoolease_wire.parse_csv(plaintext)
+    except spoolease_wire.SpoolEaseWireError as exc:
+        out["error"] = _SPOOLEASE_WIRE_SENTENCES.get(exc.code, str(exc))
+        out["error_code"] = exc.code
+        return out
+
+    out["available"] = True
+    out["weight_source"] = "scale"
+    for record in records:
+        family, subtype = _spoolease_material(record)
+        remaining, quality, notes = _spoolease_weight(record)
+        out["spools"].append({
+            "id": record["id"],
+            "material": family,
+            "subtype": subtype,
+            "color": _colour(record.get("color_code")),
+            "vendor": _text(record.get("brand")),
+            "remaining_g": remaining,
+            "remaining_quality": quality,
+            # Always undated: a DERIVED SpoolEase figure never carries a
+            # "this was true as of" moment (plan-39 O-2).
+            "remaining_as_of": None,
+            "registered": _spoolease_registered(record),
+            "notes": notes,
+            "name": None,
+            "archived": False,
+        })
+    out["remaining_known"] = any(s["remaining_g"] is not None for s in out["spools"])
+
+    _attach_slots(out, SPOOLEASE, slot_map, slot_base)
+    return out
+
+
 # --- local / manual spools ----------------------------------------------------
 #
 # For a printer with no Spoolman and no Bambuddy — or for a slot neither of them
@@ -707,23 +1305,45 @@ def local_spools(rows: list[dict]) -> dict:
 
 #: Every provider Studio can read, by the name the app sends. Adding one here is
 #: the whole registration: nothing downstream looks the provider up again.
-READERS = {SPOOLMAN: spoolman, BAMBUDDY: bambuddy}
+READERS = {SPOOLMAN: spoolman, BAMBUDDY: bambuddy, SPOOLEASE: spoolease}
 
 
 def read(kind: str, base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
-         slot_base: int | None = None) -> dict:
+         slot_base: int | None = None, key: str | None = None) -> dict:
     """Read whichever provider the user configured, in one shape.
 
     The only place in Studio that turns a provider's name into a decision. Past
     this call the name is provenance — a label on a fact — and nothing branches
-    on it.
+    on it. ``error_code`` (string|None) and ``weight_source`` (``"scale"``|None)
+    are normalised onto every return here, so every caller can rely on both
+    keys existing whichever reader answered (plan-39 Astra-5/§5.1).
+
+    ``key`` is passed through only to a reader that actually takes one
+    (SpoolEase, today); Spoolman and Bambuddy are called exactly as before —
+    neither of them has anywhere safe to keep a credential, and this seam does
+    not invent one for them just because a sibling provider needed it.
     """
-    reader = READERS.get((kind or "").strip().lower())
+    normalised_kind = (kind or "").strip().lower()
+    reader = READERS.get(normalised_kind)
     if reader is None:
         return {"schema_version": SCHEMA_VERSION, "source": kind or "unknown",
                 "available": False, "slots": [], "spools": [],
-                "error": f"Studio does not know how to read a provider called {kind!r}."}
-    return reader(base_url, slot_map, timeout=timeout, slot_base=slot_base)
+                "error": f"Studio does not know how to read a provider called {kind!r}.",
+                "error_code": "unknown_provider", "weight_source": None}
+    try:
+        if normalised_kind == SPOOLEASE:
+            state = reader(base_url, slot_map, timeout=timeout, slot_base=slot_base, key=key)
+        else:
+            state = reader(base_url, slot_map, timeout=timeout, slot_base=slot_base)
+    except Exception as exc:  # noqa: BLE001 — a reader must never raise past this seam
+        return {"schema_version": SCHEMA_VERSION, "source": kind or "unknown",
+                "available": False, "slots": [], "spools": [],
+                "error": f"{PROVIDER_NAMES.get(normalised_kind, kind)} answered with "
+                         f"something Studio could not handle: {type(exc).__name__}",
+                "error_code": "internal", "weight_source": None}
+    state.setdefault("error_code", None)
+    state.setdefault("weight_source", None)
+    return state
 
 
 def _mapped_slots(slot_map: dict | None,

@@ -562,6 +562,9 @@ Orca detection on Windows and Linux, an opt-in update check, the engine and CLI
 engine bundled, and a self-contained Linux `.deb`.
 
 **Next:**
+- SpoolEase material provider (protocol-verified against source and fixtures;
+  real SpoolEase device validation pending — unreleased, see
+  [CHANGELOG.md](CHANGELOG.md))
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input
 - More printer targets beyond the U1

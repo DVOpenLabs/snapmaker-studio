@@ -2,7 +2,7 @@
 # stage it for Tauri's externalBin (target-triple-suffixed name).
 #
 # Requires: Python with the backend installed (pip install -e backend) plus
-# pyinstaller + lxml (pip install -r backend/requirements-build.txt).
+# pyinstaller + lxml + cryptography (pip install -r backend/requirements-build.txt).
 #
 # Usage (from anywhere):  desktop/scripts/build-sidecar.ps1
 $ErrorActionPreference = "Stop"
@@ -19,11 +19,11 @@ foreach ($candidate in @(@("python", @()), @("python3", @()), @("py", @("-3.13")
     $found = (Get-Command $candidate[0] -ErrorAction SilentlyContinue)?.Source
     if (-not $found) { continue }
     # An interpreter only counts if it can actually import the build dependencies.
-    & $found @($candidate[1]) -c "import PyInstaller, lxml" 2>$null
+    & $found @($candidate[1]) -c "import PyInstaller, lxml, cryptography" 2>$null
     if ($LASTEXITCODE -eq 0) { $python = $found; $pythonArgs = $candidate[1]; break }
 }
 if (-not $python) {
-    throw "No Python with pyinstaller + lxml found. Run: pip install -r backend/requirements-build.txt"
+    throw "No Python with pyinstaller + lxml + cryptography found. Run: pip install -r backend/requirements-build.txt"
 }
 Write-Host "Using interpreter: $python $pythonArgs"
 

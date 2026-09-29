@@ -1335,6 +1335,58 @@ PRINT_END
         "HTTP " + out.status + " " + body.slice(0, 90));
     }
 
+  } else if (phase === "provider-spoolease") {
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/settings");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await page.waitForTimeout(1200);
+    await page.getByRole("button", { name: /^SpoolEase$/ }).first().click();
+    await page.waitForTimeout(300);
+    const address = process.env.SNAPSTUDIO_SPOOLEASE_URL;
+    await page.getByPlaceholder("192.168.1.50").fill(address);
+    await page.getByLabel("SpoolEase security key").fill(process.env.SNAPSTUDIO_SPOOLEASE_KEY);
+    await page.getByRole("button", { name: /Test connection/i }).first().click();
+    await page.waitForTimeout(1500);
+    record("SpoolEase reports safe connection facts",
+      await page.getByText(/Connected\. 3 spools\. 2 with usable remaining weights\./).count() > 0);
+    const stored = await page.evaluate((typedKey) => {
+      const entries = (storage) => [...Array(storage.length)].map((_, i) => {
+        const key = storage.key(i) ?? "";
+        return [key, storage.getItem(key) ?? ""];
+      });
+      const all = [...entries(localStorage), ...entries(sessionStorage)];
+      return {
+      kind: localStorage.getItem("materialProviderKind"),
+      url: localStorage.getItem("materialProviderUrl"),
+      keyFound: all.some(([key, value]) => key.includes(typedKey) || value.includes(typedKey)),
+      };
+    }, process.env.SNAPSTUDIO_SPOOLEASE_KEY);
+    record("The SpoolEase key is never persisted", stored.kind === JSON.stringify("spoolease")
+      && stored.url === JSON.stringify(address) && !stored.keyFound);
+    const out = await callRoute(page, "/send_check", {
+      path: gcodePath, host: "", port: 7125, provider: "spoolease",
+      provider_url: address, provider_key: process.env.SNAPSTUDIO_SPOOLEASE_KEY,
+      slot_map: { "1": "1" }, slot_base: 1,
+    });
+    record("The installed send check carries SpoolEase provider status",
+      out.status === 200 && out.body?.provider_status?.provider === "spoolease"
+        && out.body.provider_status.spools === 3 && out.body.provider_status.with_weight === 2);
+
+  } else if (phase === "provider-spoolease-restored") {
+    const stored = await page.evaluate(() => ({
+      kind: localStorage.getItem("materialProviderKind"),
+      url: localStorage.getItem("materialProviderUrl"),
+      key: localStorage.getItem("materialProviderKey"),
+    }));
+    record("SpoolEase address survives relaunch but its key does not",
+      stored.kind === JSON.stringify("spoolease") && Boolean(stored.url) && stored.key === null);
+    const out = await callRoute(page, "/provider/test", {
+      url: JSON.parse(stored.url ?? '""'), provider: "spoolease",
+    });
+    record("A relaunched Studio does not send an old SpoolEase key",
+      out.status === 200 && out.body?.ok === false && out.body?.error_code === "key_missing");
+
   } else if (phase === "provider-switch") {
     // Switching provider in the installed UI. A spool id means something only to
     // the provider that issued it, so carrying a mapping across would point at

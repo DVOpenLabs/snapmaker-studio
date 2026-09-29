@@ -371,21 +371,30 @@ def _sufficiency(needed, remaining, quality: str = "unknown", as_of=None) -> dic
              if quality == "derived" else
              "a remaining weight you confirmed yourself" if quality == "user_confirmed" else
              "a remaining weight of unstated origin")
-    since = ""
-    if age["state"] not in (fr.UNKNOWN,):
-        since = " " + age["detail"]
-    elif as_of:
-        since = f" Last updated {as_of}."
+    # `freshness.assess` already treats None, "" and whitespace-only alike as
+    # UNKNOWN (blank is an absent date, not an unreadable one) — keying this
+    # caveat on that state, rather than on `as_of is None`, covers all three
+    # the same way instead of letting a whitespace-only value slip past both
+    # branches (plan-39 addendum L-5/N-3).
+    dated = age["state"] != fr.UNKNOWN
+    since = (" " + age["detail"]) if dated else ""
 
     if remaining >= needed * MARGIN:
-        return {"verdict": "enough",
-                "detail": f"{remaining:g} g recorded, {needed:g} g needed." + since,
+        detail = f"{remaining:g} g recorded, {needed:g} g needed." + since
+        if not dated:
+            # A figure that looks sufficient is exactly the case a missing
+            # date is easiest to miss — nothing here is wrong, so there is
+            # nothing else prompting a person to ask how current it is.
+            detail += " Nothing records when this figure was last updated."
+        return {"verdict": "enough", "detail": detail,
                 "source": where, "quality": known, "trusted": trusted,
                 "freshness": age["state"], "age_s": age["age_s"]}
     if remaining >= needed:
-        return {"verdict": "probably_enough",
-                "detail": (f"{remaining:g} g recorded and {needed:g} g needed — enough on paper, "
-                           "with little to spare. Recorded weights are not exact." + since),
+        detail = (f"{remaining:g} g recorded and {needed:g} g needed — enough on paper, "
+                  "with little to spare. Recorded weights are not exact." + since)
+        if not dated:
+            detail += " Nothing records when this figure was last updated."
+        return {"verdict": "probably_enough", "detail": detail,
                 "source": where, "quality": known, "trusted": trusted,
                 "freshness": age["state"], "age_s": age["age_s"]}
 
