@@ -227,7 +227,7 @@ def parse_csv(plaintext: str) -> list[dict]:
     if plaintext == "":
         return []
     try:
-        rows = [row for row in csv.reader(io.StringIO(plaintext), strict=True) if row]
+        rows = list(csv.reader(io.StringIO(plaintext), strict=True))
     except csv.Error as exc:
         raise SpoolEaseWireError("csv", f"malformed CSV: {exc}") from exc
 

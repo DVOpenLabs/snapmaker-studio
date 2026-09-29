@@ -250,6 +250,39 @@ def test_duplicate_spool_ids_are_a_whole_read_failure():
     assert out["available"] is False
 
 
+def test_a_single_trailing_newline_is_allowed():
+    """The frozen contract: one trailing newline is not a blank record —
+    `csv.reader` never emits a phantom empty row for it, and `parse_csv`
+    must not either."""
+    one_row = "1,,PLA,,,,,,1000,250,,900,,,,,,,,,\n"
+    records = wire.parse_csv(one_row)
+    assert len(records) == 1
+    assert records[0]["id"] == "1"
+
+
+def test_a_blank_record_elsewhere_is_a_whole_read_failure():
+    """A genuinely blank CSV record (a blank line between two real rows, not
+    a single trailing newline) must fail the whole read like any other
+    malformed row — not be silently dropped (Sol r3 item 2)."""
+    two_rows_with_blank_between = (
+        "1,,PLA,,,,,,1000,250,,900,,,,,,,,,\n"
+        "\n"
+        "2,,PLA,,,,,,1000,250,,900,,,,,,,,,\n")
+    with pytest.raises(wire.SpoolEaseWireError) as excinfo:
+        wire.parse_csv(two_rows_with_blank_between)
+    assert excinfo.value.code == "csv"
+
+
+def test_fixture_csv_still_parses_after_the_blank_record_fix():
+    """The real captured fixture (a single trailing newline, no blank
+    records) must still parse cleanly with the stricter blank-record
+    handling above."""
+    with SpoolEaseFake(mode="ok") as fake:
+        out = mp.read("spoolease", fake.url, key=FIXTURE_KEY)
+    assert out["available"] is True
+    assert len(out["spools"]) >= 1
+
+
 def test_negative_consumption_disqualifies_the_spool_both_columns():
     """S-N1, through the real `spoolease()` reader against the fake — not
     just `parse_csv`: a negative figure in *either* consumption column must
@@ -602,3 +635,72 @@ def test_status_with_no_content_length_then_close_is_empty_body():
     with SpoolEaseFake(mode="status_no_content_length_then_close") as fake:
         out = mp.read("spoolease", fake.url, key=FIXTURE_KEY, timeout=2.0)
     assert out["error_code"] == "empty_body"
+
+
+# --- Sol r3 item 3: a non-certificate SSLError must not read as a --------
+# --- certificate-verification failure -------------------------------------
+
+def _plaintext_ok_handler():
+    import http.server
+    import json as _json
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = _json.dumps([]).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    return Handler
+
+
+def _plaintext_http_server():
+    import http.server
+    import threading
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _plaintext_ok_handler())
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+@pytest.mark.parametrize("kind,reader_name,make_out", [
+    ("spoolman", "Spoolman", lambda url: mp.spoolman(url, timeout=2.0)),
+    ("bambuddy", "Bambuddy", lambda url: mp.bambuddy(url, timeout=2.0)),
+])
+def test_plaintext_server_on_https_is_not_a_certificate_failure(kind, reader_name, make_out):
+    """A plain HTTP server behind an `https://` URL fails the TLS handshake
+    itself (`WRONG_VERSION_NUMBER` or similar) — a real `ssl.SSLError`, but
+    never an `ssl.SSLCertVerificationError`, because no certificate was ever
+    offered to verify. That must not be described as a certificate problem,
+    and must stay host-free like every other transport sentence here."""
+    server = _plaintext_http_server()
+    port = server.server_address[1]
+    try:
+        out = make_out(f"https://127.0.0.1:{port}")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert out["available"] is False
+    assert "certificate" not in out["error"].lower()
+    assert "127.0.0.1" not in out["error"]
+    assert "secure connection" in out["error"].lower()
+
+
+def test_spoolease_plaintext_server_on_https_is_not_a_certificate_failure():
+    server = _plaintext_http_server()
+    port = server.server_address[1]
+    try:
+        out = mp.read("spoolease", f"https://127.0.0.1:{port}", key=FIXTURE_KEY, timeout=2.0)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert out["available"] is False
+    assert out["error_code"] == "transport"
+    assert "certificate" not in out["error"].lower()
+    assert "127.0.0.1" not in out["error"]
+    assert "secure connection" in out["error"].lower()

@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime
 import os
 import threading
+import urllib.parse
 import uuid
 from snapstudio_core.doctor import diagnose_path
 from snapstudio_core.convert import convert_to_u1
@@ -762,15 +763,47 @@ def _local_spool_rows(host: str) -> tuple[list[dict], list[dict]]:
         return [], []
 
 
-#: S-2: `provider_status.error` must never carry the address the user typed —
-#: unlike `/provider/test`'s `reason`, which is allowed to name it — because
-#: `provider_status` is rendered directly in the app and can end up in a
-#: screenshot. Every reader's other error codes are already host-free at the
-#: source; only `invalid_address` (a `validate_provider_url`/connect-time
-#: refusal, both of which name the host) needs this substitution.
+#: S-2: `provider_status.error` must never carry the address the user typed,
+#: what it resolves to, or a host a redirect named — unlike `/provider/test`'s
+#: `reason`, which is allowed to name any of those — because `provider_status`
+#: is rendered directly in the app and can end up in a screenshot.
+#: `invalid_address` (a `validate_provider_url`/connect-time/redirect refusal,
+#: all of which can name a host) is always replaced with this sentence below.
+#: Every other error code is host-free at its source today, but that is a
+#: property of each reader's current implementation, not something this seam
+#: can rely on staying true — so `_scrub_configured_host` below also checks
+#: every `provider_status.error`, whichever code produced it, for the
+#: configured provider host and replaces the whole error if it is present
+#: (Sol r3, defence in depth).
 _PROVIDER_STATUS_INVALID_ADDRESS_TEXT = (
-    "The address you entered is not on your own network, or resolves only to "
-    "an address that is not. Studio makes no requests off your own network.")
+    "Studio stopped because the address you entered, what it resolves to, or "
+    "where it redirected is not on your own network. Enter the provider's "
+    "local network address instead (for example its 192.168.x.x address). "
+    "Studio makes no requests off your own network.")
+
+
+def _scrub_configured_host(error_text: str | None, provider_url: str | None) -> str | None:
+    """Defence in depth for S-2: if a reader's error text ever names the
+    configured provider host — bracketed or unbracketed IPv6 included —
+    replace the whole error with the host-free sentence, whichever error
+    code produced it. `invalid_address` is already fully replaced above;
+    this is the backstop for any other code that turns out to carry the
+    host too."""
+    if not error_text or not provider_url:
+        return error_text
+    try:
+        host = urllib.parse.urlsplit(provider_url).hostname
+    except ValueError:
+        host = None
+    if not host:
+        return error_text
+    candidates = [host]
+    if ":" in host:
+        candidates.append(f"[{host}]")
+    lowered = error_text.lower()
+    if any(candidate.lower() in lowered for candidate in candidates):
+        return _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+    return error_text
 
 
 def _with_providers(printer: dict, host: str | None, port: int,
@@ -814,12 +847,14 @@ def _with_providers(printer: dict, host: str | None, port: int,
         # the key, and never the host the user typed either (S-2) — this is
         # rendered in the app and can end up in a screenshot. A reader's
         # `error` names the host for `invalid_address` (it is also the
-        # `/provider/test` `reason`, which is allowed to), so that one case is
-        # replaced here with a host-free sentence; every other error code is
-        # already host-free at its source.
+        # `/provider/test` `reason`, which is allowed to), so that case is
+        # always replaced here with a host-free sentence. `_scrub_configured_host`
+        # then re-checks the result against the configured host as a backstop
+        # for any other error code (see the comment on that sentence above).
         error_text = network_state.get("error")
         if network_state.get("error_code") == "invalid_address":
             error_text = _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+        error_text = _scrub_configured_host(error_text, provider_url)
         provider_status = {
             "provider": kind,
             "name": providers.PROVIDER_NAMES.get(kind, kind),

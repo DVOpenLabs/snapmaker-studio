@@ -261,3 +261,123 @@ def test_material_plan_route_a_raising_reader_gives_internal(monkeypatch, gcode_
     assert status["available"] is False
     assert status["error_code"] == "internal"
     assert "192.168.1.50" not in json.dumps(out)
+
+
+# --- Sol r3 item 1 / Opus delta (A)/(B)/(C): a legacy-provider address --------
+# --- refusal must never leak the configured host into provider_status, -------
+# --- through the real service route, for every provider ----------------------
+
+def _provider_kwargs(kind: str, provider_url: str) -> dict:
+    from fixtures.providers.spoolease_fake import FIXTURE_KEY
+
+    kwargs = {"provider": kind, "provider_url": provider_url}
+    if kind == "spoolease":
+        kwargs["provider_key"] = FIXTURE_KEY
+    return kwargs
+
+
+@pytest.mark.parametrize("kind", ["spoolman", "bambuddy", "spoolease"])
+def test_a_public_literal_gives_a_host_free_error_through_the_real_route(kind, gcode_file):
+    """A provider address that is a public IP literal is refused before any
+    connection is attempted — `validate_provider_url` itself — for every
+    provider, through the real `material_plan` route."""
+    out = service.material_plan(gcode_file, **_provider_kwargs(kind, "http://8.8.8.8:7912"))
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "invalid_address"
+    assert "8.8.8.8" not in status["error"]
+    dumped = json.dumps(out)
+    assert "8.8.8.8" not in dumped
+
+
+@pytest.mark.parametrize("kind", ["spoolman", "bambuddy", "spoolease"])
+def test_a_local_name_resolving_only_publicly_gives_a_host_free_error(kind, gcode_file, monkeypatch):
+    """A `.local` name that resolves only to a public address is refused —
+    the name itself, and the address it resolved to, must both stay out of
+    `provider_status.error`, through the real route, for every provider
+    (Sol r3 item 1a)."""
+    import socket
+
+    from snapstudio_core import material_providers as providers
+
+    def fake_resolve(host, port, type=None):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", port))]
+
+    monkeypatch.setattr(providers, "_resolve", fake_resolve)
+
+    out = service.material_plan(
+        gcode_file, **_provider_kwargs(kind, "http://legacy-provider.local:7912"))
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "invalid_address"
+    assert "legacy-provider" not in status["error"]
+    assert "8.8.8.8" not in status["error"]
+    dumped = json.dumps(out)
+    assert "legacy-provider" not in dumped
+    assert "8.8.8.8" not in dumped
+
+
+def _redirect_to_public_host_server():
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(302)
+            self.send_header("Location", "http://example.com/evil")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+@pytest.mark.parametrize("kind", ["spoolman", "bambuddy", "spoolease"])
+def test_an_off_network_redirect_names_neither_host_through_the_real_route(kind, gcode_file):
+    """A provider reachable locally that redirects off-network must be
+    refused, and `provider_status.error` must name neither the address the
+    user typed nor the redirect target (Opus delta B)."""
+    server = _redirect_to_public_host_server()
+    port = server.server_address[1]
+    try:
+        out = service.material_plan(
+            gcode_file, **_provider_kwargs(kind, f"http://127.0.0.1:{port}"))
+    finally:
+        server.shutdown()
+        server.server_close()
+    status = out["provider_status"]
+    assert status["available"] is False
+    assert status["error_code"] == "invalid_address"
+    assert "127.0.0.1" not in status["error"]
+    assert str(port) not in status["error"]
+    assert "example.com" not in status["error"]
+    assert "evil" not in status["error"]
+    dumped = json.dumps(out)
+    assert "127.0.0.1" not in dumped
+    assert "example.com" not in dumped
+
+
+def test_scrub_configured_host_helper_unit():
+    """Direct unit test of the defence-in-depth scrub (Sol r3 item 1b)."""
+    from snapstudio_api.service import _scrub_configured_host, _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    leaking = "Something failed while talking to legacy-host.local:7912"
+    assert _scrub_configured_host(
+        leaking, "http://legacy-host.local:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    leaking_ipv6_bracketed = "Something failed while talking to [::1]:7912"
+    assert _scrub_configured_host(
+        leaking_ipv6_bracketed, "http://[::1]:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    leaking_ipv6_unbracketed = "Something failed while talking to ::1"
+    assert _scrub_configured_host(
+        leaking_ipv6_unbracketed, "http://[::1]:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    clean = "SpoolEase did not answer: HTTP 500"
+    assert _scrub_configured_host(clean, "http://legacy-host.local:7912") == clean
+
+    assert _scrub_configured_host(None, "http://legacy-host.local:7912") is None
+    assert _scrub_configured_host("anything", None) == "anything"

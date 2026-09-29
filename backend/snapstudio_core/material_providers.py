@@ -710,6 +710,7 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
         out["error"] = str(exc)
+        out["error_code"] = "invalid_address"
         return out
     try:
         # Spoolman leaves archived spools out of this list unless asked. Studio
@@ -723,6 +724,7 @@ def spoolman(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         # A redirect that led off the local network. Refused mid-request, and
         # said plainly, because it is the user's network that just behaved oddly.
         out["error"] = str(exc)
+        out["error_code"] = "invalid_address"
         return out
     except _ProviderTransportError as exc:
         out["error"] = _transport_error_sentence("Spoolman", exc)
@@ -838,6 +840,7 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
         root = validate_provider_url(base_url)
     except InvalidProviderAddress as exc:
         out["error"] = str(exc)
+        out["error_code"] = "invalid_address"
         return out
     try:
         # Archived spools are left out of the default listing, exactly as
@@ -848,6 +851,7 @@ def bambuddy(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
                            timeout=timeout)
     except InvalidProviderAddress as exc:
         out["error"] = str(exc)
+        out["error_code"] = "invalid_address"
         return out
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
@@ -1070,8 +1074,20 @@ def _spoolease_registered(record: dict) -> str | None:
 #: S-2 (Opus L5): stdlib's own TLS verification failure text names the host
 #: the connection was for (`ssl.SSLCertVerificationError.strerror` reads
 #: "...certificate is not valid for 'spoolease.local'...") — that must never
-#: reach a sentence the module otherwise keeps host-free.
+#: reach a sentence the module otherwise keeps host-free. Only a genuine
+#: certificate-verification failure gets this sentence; every other
+#: `ssl.SSLError` (handshake failure, protocol mismatch, a plaintext server
+#: behind an https:// URL) gets `_TLS_GENERIC_FAILURE_TEXT` instead — both are
+#: host-free, but conflating "the certificate is wrong" with "there was no
+#: TLS to check a certificate on" would misdescribe the second case (Sol r3).
 _TLS_VERIFY_FAILURE_TEXT = "its TLS certificate could not be verified"
+_TLS_GENERIC_FAILURE_TEXT = "it could not set up a secure connection"
+
+
+def _tls_failure_text(reason: BaseException) -> str:
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return _TLS_VERIFY_FAILURE_TEXT
+    return _TLS_GENERIC_FAILURE_TEXT
 
 
 def _transport_reason(exc: BaseException) -> str:
@@ -1080,14 +1096,14 @@ def _transport_reason(exc: BaseException) -> str:
     if isinstance(exc, urllib.error.URLError):
         reason = exc.reason
         if isinstance(reason, ssl.SSLError):
-            return _TLS_VERIFY_FAILURE_TEXT
+            return _tls_failure_text(reason)
         if isinstance(reason, socket.gaierror):
             return "name not found"
         if isinstance(reason, OSError):
             return reason.strerror or type(reason).__name__
         return str(reason)
     if isinstance(exc, ssl.SSLError):
-        return _TLS_VERIFY_FAILURE_TEXT
+        return _tls_failure_text(exc)
     if isinstance(exc, http.client.HTTPException):
         return type(exc).__name__
     if isinstance(exc, OSError):
@@ -1098,11 +1114,11 @@ def _transport_reason(exc: BaseException) -> str:
 def _host_free_reason(exc: BaseException):
     """What `spoolman()`/`bambuddy()` show for `exc.reason` (or `exc` itself)
     on a transport failure — unchanged from the base-95fd031 form for every
-    case except a TLS verification failure (S-2), which stdlib's own message
-    would otherwise name the host for."""
+    case except a TLS failure (S-2), which stdlib's own message would
+    otherwise name the host for."""
     reason = getattr(exc, "reason", exc)
     if isinstance(reason, ssl.SSLError):
-        return _TLS_VERIFY_FAILURE_TEXT
+        return _tls_failure_text(reason)
     return reason
 
 

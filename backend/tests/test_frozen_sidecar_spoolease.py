@@ -14,9 +14,10 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import queue
 import subprocess
 import sys
-import time
+import threading
 
 import pytest
 
@@ -56,14 +57,30 @@ def sidecar():
         [_EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env=env, text=True, bufsize=1)
     try:
-        deadline = time.monotonic() + 15
-        line = ""
-        while time.monotonic() < deadline:
-            line = proc.stdout.readline()
-            if line.strip():
-                break
+        # `proc.stdout.readline()` itself has no timeout, so calling it
+        # directly inside a "while time.monotonic() < deadline" loop does not
+        # make the deadline effective: a sidecar that never writes a line and
+        # never closes stdout hangs the test past 15s regardless of the loop
+        # condition. A reader thread that never blocks the main thread does —
+        # and works the same on Windows and Linux, unlike a `select()`/
+        # `signal.alarm` approach, neither of which is available on both.
+        lines: "queue.Queue[str]" = queue.Queue()
+
+        def _read_handshake_line():
+            try:
+                lines.put(proc.stdout.readline())
+            except (ValueError, OSError):
+                pass  # the pipe closed under us — the main thread times out
+
+        reader = threading.Thread(target=_read_handshake_line, daemon=True)
+        reader.start()
+        try:
+            line = lines.get(timeout=15)
+        except queue.Empty:
+            line = ""
         if not line.strip():
             proc.kill()
+            proc.wait(10)
             raise AssertionError("the sidecar never printed a handshake line")
         handshake = json.loads(line)
         yield handshake["port"], handshake["token"]

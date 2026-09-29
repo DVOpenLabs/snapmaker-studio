@@ -520,7 +520,7 @@ jobs:
           # here, not added to the freeze environment above — `cryptography`
           # is already present there as a runtime dependency of the backend
           # package itself (plan-39 v3.4 L-5).
-          python3.13 -m pip install pytest
+          python3.13 -m pip install pytest==9.1.1
           (cd backend && SNAPSTUDIO_SIDECAR_EXE="$exe" python3.13 -m pytest tests/test_frozen_sidecar_spoolease.py -q -p no:cacheprovider)
           echo "PACKAGE VERIFIED: extracted, packaged sidecar starts and answers /health with 200."
 
