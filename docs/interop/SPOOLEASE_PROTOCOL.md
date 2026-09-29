@@ -19,8 +19,11 @@ it does not vendor, modify or redistribute their code.
 ## Read-only, one endpoint
 
 Studio calls exactly one route: `GET {your SpoolEase address}/api/spools`,
-`Accept: text/plain`, no body, no cookies, no other header. It never calls
-anything else SpoolEase exposes — no write, no configuration, no upload.
+`Accept: text/plain`, no body, no cookies, no credentials. Studio adds no
+header beyond `Accept`; Python's standard HTTP client (`urllib`) adds its own
+usual headers on top of that (`Host`, `User-Agent`, `Accept-Encoding:
+identity`, `Connection: close`). It never calls anything else SpoolEase
+exposes — no write, no configuration, no upload.
 
 ## The security key
 

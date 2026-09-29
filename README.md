@@ -555,15 +555,16 @@ compare it against the printer, prepare a copy, prove what survived, hand it to
 Snapmaker Orca, then read the sliced G-code back and check what the printer will
 actually execute against the printer as it is right now, with cost from the
 figures the slicer measured. Plus Batch, Design Library, Printer Hub (monitor and
-user-confirmed control/send), Spoolman, Bambuddy and SpoolEase material
-providers (SpoolEase protocol-verified against source and fixtures, real
-SpoolEase device validation pending), your own spool notes and per-toolhead
-nozzle confirmation in the desktop app, Snapmaker
+user-confirmed control/send), Spoolman and Bambuddy material providers, your own
+spool notes and per-toolhead nozzle confirmation in the desktop app, Snapmaker
 Orca detection on Windows and Linux, an opt-in update check, the engine and CLI
 (including `u1convert verify-printer`), a one-click Windows installer with the
 engine bundled, and a self-contained Linux `.deb`.
 
 **Next:**
+- SpoolEase material provider (protocol-verified against source and fixtures;
+  real SpoolEase device validation pending — unreleased, see
+  [CHANGELOG.md](CHANGELOG.md))
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input
 - More printer targets beyond the U1
