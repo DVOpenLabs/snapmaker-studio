@@ -242,6 +242,19 @@ only a general "did not answer" for their own network failures. Giving
 Spoolman and Bambuddy the same granularity SpoolEase has is recorded as
 follow-up work — no behaviour changes because of it today.
 
+**L-6 (Sol r3, #39):** the `invalid_address` unification above was true of the
+*text* of the message but not of `error_code` — Spoolman's and Bambuddy's own
+readers set `error` on an address refusal (including an off-network redirect)
+without ever setting `error_code` to `"invalid_address"`, so
+`service._with_providers`'s host-free substitution (keyed on that code) never
+ran for them, and a Spoolman/Bambuddy address that resolves only publicly, or
+a redirect off-network, could put the configured host straight into
+`provider_status.error`. Fixed: both readers now set `error_code` on every
+`InvalidProviderAddress` they catch, exactly as SpoolEase already did.
+`_with_providers` also now re-checks the resulting error text against the
+configured host as a backstop, whichever error code produced it — defence in
+depth, not a reason to skip fixing the readers themselves.
+
 **U1Hub** was re-examined on 2026-08-25 and is deliberately **not** integrated. It
 does expose `/api/spools` and `/api/slots`, but they carry no version or schema,
 are undocumented for use by other tools, sit behind its own password gate, and are
