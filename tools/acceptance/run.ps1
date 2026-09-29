@@ -531,19 +531,6 @@ try {
         Add-Check "Provider settings survive a restart and reach the send decision" ($code -eq 0)
     }
 
-    if ($env:SNAPSTUDIO_SPOOLEASE_KEY) {
-        $code = Invoke-Phase "provider-spoolease" $sampleWork $gcodeWork
-        Add-Check "SpoolEase can be configured and read in the installed build" ($code -eq 0)
-
-        Stop-Tracked
-        $script:started = @()
-        $spooleaseAgain = Start-Process -FilePath $appExe -PassThru
-        $script:started += $spooleaseAgain.Id
-        Start-Sleep -Seconds 8
-        $code = Invoke-Phase "provider-spoolease-restored" $sampleWork $gcodeWork
-        Add-Check "SpoolEase settings restore without the session key" ($code -eq 0)
-    }
-
     # Only now, with the first provider's persistence proved, is it safe to
     # switch. Doing it earlier cleared the Spoolman configuration that the
     # restart check above exists to find - which is what the first run of this
@@ -564,6 +551,21 @@ try {
 
         $code = Invoke-Phase "provider-switch-restored" $sampleWork $gcodeWork
         Add-Check "The second provider survives a restart and can then be turned off" ($code -eq 0)
+    }
+
+    # SpoolEase runs last so the provider-switch phases above still measure a
+    # clean Spoolman -> Bambuddy switch, not a switch away from SpoolEase.
+    if ($env:SNAPSTUDIO_SPOOLEASE_KEY) {
+        $code = Invoke-Phase "provider-spoolease" $sampleWork $gcodeWork
+        Add-Check "SpoolEase can be configured and read in the installed build" ($code -eq 0)
+
+        Stop-Tracked
+        $script:started = @()
+        $spooleaseAgain = Start-Process -FilePath $appExe -PassThru
+        $script:started += $spooleaseAgain.Id
+        Start-Sleep -Seconds 8
+        $code = Invoke-Phase "provider-spoolease-restored" $sampleWork $gcodeWork
+        Add-Check "SpoolEase settings restore without the session key" ($code -eq 0)
     }
 
     Stop-Tracked

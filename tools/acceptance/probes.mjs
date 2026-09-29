@@ -72,8 +72,14 @@ createServer((req, res) => {
     res.end(JSON.stringify({ provider: "spoolease" }));
     return;
   }
+  const parsed = new URL(req.url, "http://127.0.0.1");
+  if (req.method !== "GET" || parsed.pathname !== "/api/spools") {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("not found");
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/plain" });
-  const mode = new URL(req.url, "http://127.0.0.1").searchParams.get("mode");
+  const mode = parsed.searchParams.get("mode");
   res.end(encryptedCsv(mode));
 }).listen(Number(spooleasePort), "127.0.0.1", () => {
   console.log(`SpoolEase fake on ${spooleasePort}`);
