@@ -81,9 +81,11 @@
     Attestation = @{
         SchemaVersion = 1
         Kind          = 'snapmaker-studio-acceptance-rewrap-attestation'
-        # sha256 (64 hex) of the vendored NSIS template (tauri-bundler 2.11.3). TASK B FILLS THIS SLOT
-        # when it vendors the template. Empty = no attestation can validate (fail closed).
-        PinnedTemplateSha256 = ''
+        # sha256 (64 hex) of the vendored NSIS template bundle in tools/release/nsis/template: derived from
+        # tauri-bundler 2.9.3 (the version locked by tauri-cli 2.11.3), modified as listed in
+        # tools/release/nsis/PROVENANCE.md, which also defines exactly which bytes are hashed.
+        # Empty = no attestation can validate (fail closed).
+        PinnedTemplateSha256 = 'd30f5f9d4bc40902addbc895e4211498612c6f0c567a54738c47fe3403ce1028'
     }
 
     # M8: the installed file set must be EXACTLY these (uninstall.exe is installer machinery, excluded).

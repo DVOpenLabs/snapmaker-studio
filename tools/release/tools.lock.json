@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "comment": "Pinned portable tools for the acceptance rewrap (issue #55). Every download is sha256-verified before it is unpacked. Each run works from a private and verified snapshot: the whole 7-Zip folder and the whole NSIS tree are copied into a fresh per-run directory, the COPY is hashed against the pins below, and the tools are launched from that copy. Private and verified is not immutable; the exact residual (a writer to the harness root who races a run with change-and-restore, and compile-time side effects of a hostile include) is an accident-control limit. See tools/release/nsis/PROVENANCE.md for what each checksumSource means (no upstream-signed checksum is claimed anywhere).",
+  "sevenZip": {
+    "version": "26.03",
+    "downloads": {
+      "bootstrap": {
+        "fileName": "7zr.exe",
+        "url": "https://github.com/ip7z/7zip/releases/download/26.03/7zr.exe",
+        "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d",
+        "checksumSource": "GitHub release-asset digest (sha256) reported by the GitHub API for ip7z/7zip tag 26.03; not a publisher-signed checksum"
+      },
+      "extra": {
+        "fileName": "7z2603-extra.7z",
+        "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-extra.7z",
+        "sha256": "191894e6acb3647ffb69ce630479ff318523b2e2b9890aa7f05c1127c2e59b8f",
+        "checksumSource": "GitHub release-asset digest (sha256) reported by the GitHub API for ip7z/7zip tag 26.03; not a publisher-signed checksum"
+      },
+      "msi": {
+        "fileName": "7z2603-x64.msi",
+        "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-x64.msi",
+        "sha256": "c0680064d698a62dd4a5a47f403db356a6531a5473e4c4b1d090ea2590513926",
+        "checksumSource": "GitHub release-asset digest (sha256) reported by the GitHub API for ip7z/7zip tag 26.03; not a publisher-signed checksum. The MSI is only UNPACKED with 7za.exe (never executed or installed)."
+      }
+    },
+    "bootstrapBinaries": {
+      "7zr.exe": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d",
+      "7za.exe": "e0b1d095d464c1051381a775a166e9650e74a95529dc4274a5adfd5515b406b0"
+    },
+    "binaries": {
+      "7z.exe": "6ee3c0ed0b27663c1b948ae85a7c0bb073aed1498983182f3f0df1f6a8c30b2f",
+      "7z.dll": "65e4c1f855f9ef6e8f0f5df8e3f27d9eb5f07311408639da0a1ca0b8f4871b0d"
+    },
+    "treeSha256": "5c5465809f3c224d2d97b061137309a3292e4b57d22af121f6ce8e154e9e27c3",
+    "treeFileCount": 4,
+    "treeNote": "tree hash (same algorithm as nsis.treeSha256) of the whole unpacked 7-Zip folder: 7zr.exe, 7za.exe, 7z.exe, 7z.dll. Recorded from the first unpack (trust-on-first-use of the unpack step); any extra file (Codecs, Formats, a planted dll) changes it.",
+    "binariesNote": "7z.exe and 7z.dll are _7z.exe and _7z.dll from the MSI, renamed. Their hashes were recorded from the first unpack (trust-on-first-use of the unpack step; the MSI itself is pinned above)."
+  },
+  "nsis": {
+    "version": "3.11",
+    "download": {
+      "fileName": "nsis-3.11.zip",
+      "url": "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip",
+      "sha256": "c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1",
+      "checksumSource": "SourceForge files listing for NSIS 3/3.11 reports sha256 c7d27f78...94fa1 (and sha1 ef7ff767...b10d, which equals the NSIS_SHA1 pinned by tauri-bundler 2.9.3 for the same file); SourceForge-hosted metadata, not a publisher-signed checksum"
+    },
+    "innerDir": "nsis-3.11",
+    "treeSha256": "1bb762bd3f7143f57283329617356f8964a6b08f5199febcebb712f9f6d9bcec",
+    "treeFileCount": 441,
+    "makensisSha256": "42850802704ecb11163f7e0329d35ee54bd288953200d4966e226d572848cfc5",
+    "makensisNote": "sha256 of Bin/makensis.exe inside the pinned tree (recorded from the same first unpack; it is also covered by treeSha256)",
+    "treeNote": "treeSha256 = sha256 over sorted lines '<lowercase relative path>:<file sha256>' (LF-terminated) of the unpacked tree with the leading nsis-3.11/ stripped; recorded from the first unpack (trust-on-first-use of the unpack step; the zip itself is pinned above)"
+  },
+  "tauriUtilsDll": {
+    "fileName": "nsis_tauri_utils.dll",
+    "sha256": "5ba143b5db4a87d32d6e7802e033330aae56cbceabe0d1e3ba41948385ad4709",
+    "source": "extracted from the released v1.2.0 installer ($PLUGINSDIR); this is the only installer-machinery file kept, as a compile-time plugin input"
+  }
+}
