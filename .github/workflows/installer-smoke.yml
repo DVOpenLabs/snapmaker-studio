@@ -1,0 +1,188 @@
+name: Disposable installer smoke
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        required: true
+        type: string
+      previous-tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CI_UNINSTALL_PARENT: 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+  CI_UNINSTALL_KEY_NAME: 'Snapmaker Studio'
+  CI_REMEMBERED_KEY: 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker Studio'
+  CI_MANUFACTURER_KEY: 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio'
+  CI_MAIN_EXE: 'snapmaker-studio-desktop.exe'
+
+jobs:
+  real-identity:
+    if: github.repository == 'DVOpenLabs/snapmaker-studio'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Check out helper scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download target installer and verify live SHA256SUMS
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          if($env:RELEASE_TAG -notmatch '^v?\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$'){throw 'Invalid release tag.'}
+          $asset="Snapmaker.Studio_$($env:RELEASE_TAG.TrimStart('v'))_x64-setup.exe";$dir=Join-Path $env:RUNNER_TEMP 'snapmaker-smoke-target';New-Item -ItemType Directory -Force $dir|Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Target release download failed.' }
+          $path=Join-Path $dir $asset;if(!(Test-Path -LiteralPath $path)){throw "Missing exact target asset $asset"};pwsh -NoProfile -File .github/scripts/ci-assert-sha256sums.ps1 -Tag $env:RELEASE_TAG -InstallerPath $path
+          if ($LASTEXITCODE -ne 0) { throw 'Target checksum assertion failed.' }
+          "TARGET_INSTALLER=$path`nRELEASE_TAG=$env:RELEASE_TAG`nTARGET_SHA256=$((Get-FileHash $path -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
+
+      - name: Download previous installer and verify live SHA256SUMS
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_TAG: ${{ inputs.previous-tag }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          if($env:PREVIOUS_TAG -notmatch '^v?\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$'){throw 'Invalid previous tag.'};
+          $asset="Snapmaker.Studio_$($env:PREVIOUS_TAG.TrimStart('v'))_x64-setup.exe";
+          $dir=Join-Path $env:RUNNER_TEMP 'snapmaker-smoke-previous';
+          New-Item -ItemType Directory -Force $dir|Out-Null;
+          gh release download $env:PREVIOUS_TAG --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber;
+          if($LASTEXITCODE -ne 0){throw 'Previous release download failed.'};
+          $path=Join-Path $dir $asset;
+          if(!(Test-Path -LiteralPath $path)){throw "Missing exact previous asset $asset"};
+          pwsh -NoProfile -File .github/scripts/ci-assert-sha256sums.ps1 -Tag $env:PREVIOUS_TAG -InstallerPath $path;
+          if($LASTEXITCODE -ne 0){throw 'Previous checksum assertion failed.'};
+          "PREVIOUS_INSTALLER=$path`nPREVIOUS_TAG=$env:PREVIOUS_TAG" >> $env:GITHUB_ENV
+
+      - name: Preflight and install previous release at the exact default path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $u=Join-Path $env:CI_UNINSTALL_PARENT $env:CI_UNINSTALL_KEY_NAME;
+          $default=Join-Path $env:LOCALAPPDATA 'Snapmaker Studio';
+          if((Test-Path $u)-or(Test-Path $env:CI_REMEMBERED_KEY)-or(Test-Path $env:CI_MANUFACTURER_KEY)-or(Test-Path $default)){throw 'Initial exact production state is not clean.'};
+          $p=Start-Process -FilePath $env:PREVIOUS_INSTALLER -ArgumentList '/S','/NCRC' -PassThru -Wait;
+          if($p.ExitCode-ne 0){throw 'Previous install failed.'};
+          Start-Sleep 2;
+          if(!(Test-Path $u)){throw 'Previous registration is absent.'};
+          $props=Get-ItemProperty $u;
+          $owned=([string]$props.InstallLocation).Trim('"');
+          if($owned -ne $default){throw 'Previous install did not use exact default path.'};
+          $un=Join-Path $owned 'uninstall.exe';
+          if(([string]$props.UninstallString-replace '"','') -ne $un){throw 'Previous uninstall ownership mismatch.'};
+          if($props.DisplayVersion -ne $env:PREVIOUS_TAG.TrimStart('v')){throw 'Previous DisplayVersion mismatch.'};
+          "OWNED_INSTALL_DIR=$owned`nOWNED_UNINSTALL=$un`nOWNED_UNINSTALL_SHA256=$((Get-FileHash $un -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
+
+      - name: Assert previous install exact surfaces
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\previous-registry.json;
+          if($LASTEXITCODE -ne 0){throw 'Registry assertion failed.'};
+          pwsh -NoProfile -File .github/scripts/ci-assert-shortcuts.ps1 -ExpectedAumid com.snapmakerstudio.desktop -StartMenuDir "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -DesktopDir `
+          ([Environment]::GetFolderPath('Desktop')) -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\previous-shortcuts.json;
+          if($LASTEXITCODE -ne 0){throw 'Shortcut assertion failed.'}
+
+      - name: Preflight and upgrade target in place
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $u=Join-Path $env:CI_UNINSTALL_PARENT $env:CI_UNINSTALL_KEY_NAME;
+          $props=Get-ItemProperty $u;
+          $current=([string]$props.InstallLocation).Trim('"');
+          if($current-ne $env:OWNED_INSTALL_DIR-or([string]$props.UninstallString-replace '"','')-ne $env:OWNED_UNINSTALL){throw 'Recorded ownership mismatch.'};
+          if((Get-FileHash -LiteralPath $env:TARGET_INSTALLER -Algorithm SHA256).Hash -ne $env:TARGET_SHA256){throw 'Target installer bytes changed.'};
+          $p=Start-Process -FilePath $env:TARGET_INSTALLER -ArgumentList '/S','/NCRC' -PassThru -Wait;
+          if($p.ExitCode-ne 0){throw 'Target upgrade failed.'};
+          Start-Sleep 2;
+          $after=Get-ItemProperty $u;
+          if($after.DisplayVersion-ne $env:RELEASE_TAG.TrimStart('v')){throw 'Target DisplayVersion mismatch.'};
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\target-registry.json;
+          if($LASTEXITCODE -ne 0){throw 'Registry assertion failed.'};
+          "OWNED_UNINSTALL_SHA256=$((Get-FileHash $env:OWNED_UNINSTALL -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
+
+      - name: Assert target shortcuts and capture installed-tree manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-shortcuts.ps1 -ExpectedAumid com.snapmakerstudio.desktop -StartMenuDir "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -DesktopDir `
+          ([Environment]::GetFolderPath('Desktop')) -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\target-shortcuts.json;
+          if($LASTEXITCODE -ne 0){throw 'Shortcut assertion failed.'};
+          pwsh -NoProfile -File .github/scripts/ci-assert-manifest.ps1 -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\installed-tree.json;
+          if($LASTEXITCODE -ne 0){throw 'Manifest assertion failed.'}
+
+      - name: Upload installed-tree reference manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: disposable-installed-tree-${{ inputs.release-tag }}
+          path: ${{ runner.temp }}/installed-tree.json
+          if-no-files-found: error
+
+      - name: Preflight and launch smoke without CDP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $app=Join-Path $env:OWNED_INSTALL_DIR $env:CI_MAIN_EXE;
+          $p=Start-Process $app -PassThru;
+          Start-Sleep 2;
+          if(!(Get-Process -Id $p.Id -ErrorAction SilentlyContinue)){throw 'App exited during launch smoke.'};
+          Stop-Process -Id $p.Id -Force;
+          Write-Host 'CDP unproven on runner.'
+
+      - name: Preflight and uninstall only the recorded owned path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $u=Join-Path $env:CI_UNINSTALL_PARENT $env:CI_UNINSTALL_KEY_NAME;
+          $props=Get-ItemProperty $u;
+          $resolved=([string]$props.UninstallString-replace '"','');
+          if($resolved-ne $env:OWNED_UNINSTALL-or $resolved-ne(Join-Path $env:OWNED_INSTALL_DIR 'uninstall.exe')){throw 'Exact owned uninstaller mismatch.'};
+          if((Get-FileHash $env:OWNED_UNINSTALL -Algorithm SHA256).Hash-ne $env:OWNED_UNINSTALL_SHA256){throw 'Owned uninstaller hash changed.'};
+          $p=Start-Process $env:OWNED_UNINSTALL -ArgumentList '/S' -PassThru -Wait;
+          if($p.ExitCode-ne 0){throw 'Uninstall failed.'};
+          Start-Sleep 2;
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -AfterUninstall -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\post-uninstall.json;
+          if($LASTEXITCODE -ne 0){throw 'Post-uninstall registry assertion failed.'};
+          pwsh -NoProfile -File .github/scripts/ci-assert-shortcuts.ps1 -Action AssertAbsent -ExpectedAumid com.snapmakerstudio.desktop -StartMenuDir `
+          "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -DesktopDir ([Environment]::GetFolderPath('Desktop')) -InstallDir $env:OWNED_INSTALL_DIR -OutFile `
+          $env:RUNNER_TEMP\post-uninstall-shortcuts.json;
+          if($LASTEXITCODE -ne 0){throw 'Post-uninstall shortcut assertion failed.'}
+
+      - name: Report final registry state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Report -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\final-registry.json;
+          if($LASTEXITCODE -ne 0){throw 'Final registry report failed.'}
