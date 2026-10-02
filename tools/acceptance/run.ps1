@@ -7,8 +7,8 @@
 #
 # WHAT THIS PROVES, AND WHAT IT DOES NOT (issue #55): these checks prove the shipped payload (exe + frozen
 # sidecar, renamed main binary) under the ACCEPTANCE identity. They do NOT prove the production installer:
-# production registration, shortcut creation, default-path install/upgrade/uninstall are proven only by the
-# disposable CI lanes. Every plumbing step (install, launch, uninstall, cleanup) is the shared fail-closed
+# production registration, shortcut creation, default-path install/upgrade/uninstall are exercised only on
+# disposable GitHub-hosted CI runners. Every plumbing step (install, launch, uninstall, cleanup) is the shared fail-closed
 # lane in tools/harness/HarnessLauncher.psm1; this script keeps only the acceptance checks themselves.
 #
 # Why this exists: every capability check before this ran against the dev server.
@@ -21,7 +21,8 @@
 #    name. A Snapmaker Orca or other user process is never touched.
 #  * The app runs with an isolated WebView2 profile and an isolated engine data directory, passed ONLY
 #    to the child process (never through this session's environment), so the maintainer's own library,
-#    recent files and settings are neither read nor modified.
+#    recent files and settings are never modified by the harness (the one app file it reads is the shared update_check.json,
+#    in the update-check preflight before every launch).
 #  * The production app must not be running and its update auto-check must be off (or its state file
 #    absent); otherwise the lane refuses to start. Production state is read-only here: a tripwire reports
 #    any change and fails the run, it never restores or deletes anything.
@@ -694,6 +695,9 @@ if ($result -and -not $laneSchemaError) {
     try { $laneBlock = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $result -Checks $checks }
     catch {
         $reportWriteFailed = $true
+        # Never an all-pass report without a lane block: record a FAILED check (the run also still exits 1).
+        Add-Check "Lane evidence block could be built" $false "REPORT_WRITE_FAILED"
+        $passed = @($checks | Where-Object ok).Count; $total = $checks.Count
         Write-Host "FAIL  REPORT_WRITE_FAILED: lane evidence could not be built: $(Protect-LaneText -Text $_.Exception.Message -Lane $lane)"
     }
 }

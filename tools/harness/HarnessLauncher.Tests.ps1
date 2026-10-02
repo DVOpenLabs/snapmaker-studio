@@ -1039,7 +1039,7 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
         (@($res.Evidence.reasonCodes | Where-Object { $_.code -eq 'UNCLASSIFIED_ERROR' }) | ForEach-Object { $_.count } | Measure-Object -Sum).Sum | Should -Be 2
         @($res.Evidence.warningCodes | ForEach-Object { $_.code }) | Should -Contain 'UNCLASSIFIED_ERROR'
         $list | Should -Contain 'UNCLASSIFIED_ERROR'
-        foreach ($required in 'INSTALLER_PREFLIGHT_FAILED', 'INSTALL_FAILED', 'INSTALL_TIMEOUT', 'ORPHANED_INSTALL', 'UNINSTALL_FAILED', 'UNINSTALL_HANDOFF_INCOMPLETE', 'UNKNOWN_OUTCOME', 'RECOVERY_PENDING', 'APP_LAUNCH_FAILED', 'WEBVIEW_PREFLIGHT_FAILED', 'PROFILE_CHECK_FAILED', 'CDP_CHECK_FAILED', 'PORT_IN_USE', 'PRODUCTION_RUNNING', 'UPDATE_CHECK_PREFLIGHT_FAILED', 'TRIPWIRE_VIOLATION', 'SHORTCUT_ASSERTION_FAILED', 'PENDING_JOURNAL_BLOCKS_LANE', 'TOOL_NOT_ALLOWED', 'REPORT_WRITE_FAILED', 'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED') { $list | Should -Contain $required }
+        foreach ($required in 'INSTALLER_PREFLIGHT_FAILED', 'INSTALL_FAILED', 'INSTALL_TIMEOUT', 'ORPHANED_INSTALL', 'UNINSTALL_FAILED', 'UNINSTALL_HANDOFF_INCOMPLETE', 'UNKNOWN_OUTCOME', 'RECOVERY_PENDING', 'APP_LAUNCH_FAILED', 'WEBVIEW_PREFLIGHT_FAILED', 'PROFILE_CHECK_FAILED', 'CDP_CHECK_FAILED', 'PORT_IN_USE', 'PRODUCTION_RUNNING', 'UPDATE_CHECK_PREFLIGHT_FAILED', 'TRIPWIRE_VIOLATION', 'SHORTCUT_ASSERTION_FAILED', 'PENDING_JOURNAL_BLOCKS_LANE', 'TOOL_NOT_ALLOWED', 'REPORT_WRITE_FAILED', 'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED', 'SOURCE_VERSION_UNRECOGNISED') { $list | Should -Contain $required }
     }
     It 'CLOSED SCHEMA: real failures map to their codes (orphan, timeout, handoff, tripwire, lock)' {
         $global:SshT.Partial = $true
@@ -1127,6 +1127,29 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
         $file = Join-Path $script:sb.Dir 'ver.json'
         [void](Write-HarnessLaneEvidence -Lane $lane -Evidence $res.Evidence -Path $file)
         (Get-Content -LiteralPath $file -Raw) | Should -Not -Match 'customer|alpha|private'
+    }
+    It '#57-2: a non-numeric source version is a SOURCE_VERSION_UNRECOGNISED warning, not a preflight failure, and the evidence stays schema-valid' {
+        $f = New-FakeInstallerAndAttestation $script:sb -Version 'customer-alpha-private'
+        $lane = New-TestLane $script:sb -Installer $f.Installer -Attestation $f.Attestation
+        @($lane.WarningCodes) | Should -Contain 'SOURCE_VERSION_UNRECOGNISED'
+        @($lane.WarningCodes) | Should -Not -Contain 'INSTALLER_PREFLIGHT_FAILED'
+        $res = Complete-HarnessLane -Lane $lane
+        @($res.Evidence.warningCodes | ForEach-Object { $_.code }) | Should -Contain 'SOURCE_VERSION_UNRECOGNISED'
+        @($res.Evidence.warningCodes | ForEach-Object { $_.code }) | Should -Not -Contain 'INSTALLER_PREFLIGHT_FAILED'
+        @($res.Evidence.reasonCodes | ForEach-Object { $_.code }) | Should -Not -Contain 'INSTALLER_PREFLIGHT_FAILED'
+        Test-HarnessLaneEvidenceSchema -Evidence $res.Evidence | Should -BeNullOrEmpty
+        $res.Evidence.schema | Should -Be 'harness-lane-evidence/3'
+    }
+    It '#57-3: -Sha256SumsPath / -UpgradeFromSha256SumsPath with an already-rewrapped installer is refused, never silently ignored' {
+        $new = New-FakeInstallerAndAttestation $script:sb
+        $old = New-FakeInstallerAndAttestation $script:sb
+        { Resolve-HarnessBuild -InstallerPath $new.Installer -AttestationPath $new.Attestation -Sha256SumsPath 'C:\dl\SHA256SUMS' } | Should -Throw '*-Sha256SumsPath applies only to -RealInstaller*'
+        { Start-HarnessLane -Name 't' -Kind acceptance -InstallerPath $new.Installer -AttestationPath $new.Attestation -Sha256SumsPath 'C:\dl\SHA256SUMS' -HarnessRoot $script:sb.Harness -DebugPort (Get-FreePort) } | Should -Throw '*installer -Sha256SumsPath applies only to -RealInstaller*'
+        { Start-HarnessLane -Name 't' -Kind acceptance -InstallerPath $new.Installer -AttestationPath $new.Attestation -UpgradeFromInstallerPath $old.Installer -UpgradeFromAttestationPath $old.Attestation `
+                -UpgradeFromSha256SumsPath 'C:\dl\OLD-SHA256SUMS' -HarnessRoot $script:sb.Harness -DebugPort (Get-FreePort) } | Should -Throw '*upgrade-from installer -Sha256SumsPath applies only to -RealInstaller*'
+        # the lock was released by the refusals: a plain lane still starts
+        $l = New-TestLane $script:sb
+        [void](Complete-HarnessLane -Lane $l)
     }
     It 'B1b: a strictly numeric attestation version is recorded' {
         $f = New-FakeInstallerAndAttestation $script:sb -Version '0.4.0-beta.20.2'
@@ -2080,6 +2103,18 @@ Describe 'Static checks on the module and the four converted scripts' {
         $t | Should -Match 'Complete-HarnessLane -Lane \$lane'
         $t | Should -Not -Match 'Get-ProductionStateSnapshot|Get-ProductionSurfaceSnapshot|Test-ProductionTripwire'
     }
+    It '#57-5: run.ps1 records a FAILED check when building the acceptance lane block throws (never an all-pass report with no lane block)' {
+        $errs = $null; $tok = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:Files['run'], [ref]$tok, [ref]$errs)
+        $catches = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CatchClauseAst] -and $n.Body.Extent.Text -match 'could not be built' }, $true))
+        $catches.Count | Should -Be 1
+        $adds = @($catches[0].Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Add-Check' }, $true))
+        $adds.Count | Should -Be 1
+        $adds[0].CommandElements[1].Value | Should -Be 'Lane evidence block could be built'
+        $adds[0].CommandElements[2].Extent.Text | Should -Be '$false'
+        $catches[0].Body.Extent.Text | Should -Match '\$reportWriteFailed = \$true'
+        (Get-Content -LiteralPath $script:Files['run'] -Raw) | Should -Match 'reportWriteFailed\) \{ exit 1 \}'
+    }
     It 'run.ps1 builds the persisted lane block through Get-HarnessAcceptanceLaneEvidence and never passes $result.Evidence through' {
         $t = Get-Content -LiteralPath $script:Files['run'] -Raw
         $t | Should -Match 'Get-HarnessAcceptanceLaneEvidence -Lane \$lane -Result \$result -Checks \$checks'
@@ -2123,7 +2158,8 @@ Describe 'Static checks on the module and the four converted scripts' {
         $d | Should -Not -Match 'scrubber guarantees'
         $c = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\RELEASE_CHECKLIST.md') -Raw) -replace '\s+', ' '
         $c | Should -Match 'carries the closed-schema lane block inside it'
-        $c | Should -Match 'for the hardware / demo / capture harnesses, `lane-evidence.json`'
+        $c | Should -Match 'for the hardware and demo harnesses, `lane-evidence.json`'
+        $c | Should -Match 'capture harness .* writes its lane evidence beside the screenshot output path'
         $c | Should -Match 'NOT closed-schema .* human privacy glance'
         $c | Should -Not -Match 'copy what the release record needs from there'
         $v = (Get-Content -LiteralPath $script:Files['verify'] -Raw) -replace '\s+', ' '

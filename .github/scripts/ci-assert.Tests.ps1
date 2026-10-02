@@ -368,3 +368,43 @@ Describe 'CI assertion helper design and behavior' {
         }
     }
 }
+
+Describe 'dot-source guards on the output helpers (#57-4)' -ForEach @(@{ Name = 'ci-assert-manifest.ps1' }, @{ Name = 'ci-assert-registry.ps1' }) {
+    It '<Name>: every top-level Write-CiAssertOutput call sits inside if ($MyInvocation.InvocationName -ne ''.'')' {
+        $path = Join-Path $PSScriptRoot $Name
+        $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        $calls = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Write-CiAssertOutput' }, $true) |
+                Where-Object { $p = $_.Parent; $inFunction = $false; while ($p) { if ($p -is [Management.Automation.Language.FunctionDefinitionAst]) { $inFunction = $true }; $p = $p.Parent }; -not $inFunction })
+        $calls.Count | Should -BeGreaterThan 0
+        foreach ($call in $calls) {
+            $guarded = $false; $p = $call.Parent
+            while ($p) {
+                if ($p -is [Management.Automation.Language.IfStatementAst]) {
+                    foreach ($clause in $p.Clauses) { if ($clause.Item1.Extent.Text -match '^\$MyInvocation\.InvocationName\s+-ne\s+''\.''$') { $guarded = $true } }
+                }
+                $p = $p.Parent
+            }
+            $guarded | Should -BeTrue -Because "${Name}: a top-level writer call must be guarded against dot-sourcing"
+        }
+    }
+    It '<Name>: dot-sourcing it prints nothing and writes nothing (child process, scratch environment only)' {
+        $scratch = Join-Path ([IO.Path]::GetTempPath()) "ci-assert-guard-$([guid]::NewGuid())"
+        New-Item -ItemType Directory -Path $scratch | Out-Null
+        try {
+            $script = Join-Path $PSScriptRoot $Name
+            $outFile = Join-Path $scratch 'must-not-exist.json'
+            # a child process whose LOCALAPPDATA / RUNNER_TEMP are the scratch dir, and whose registry root is a scratch path that does not exist
+            $cmd = ". '$script' -InstallDir '$scratch' -OutFile '$outFile'" + $(if ($Name -like '*registry*') { " -RegistryRoot 'HKCU:\Software\SnapmakerStudioCiAssertTest\guard-probe-$([guid]::NewGuid())'" } else { '' }) + "; 'DOT-SOURCED-OK'"
+            $psi = [Diagnostics.ProcessStartInfo]::new((Get-Command pwsh -CommandType Application).Source)
+            foreach ($a in '-NoProfile', '-NonInteractive', '-Command', $cmd) { $psi.ArgumentList.Add($a) }
+            $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.UseShellExecute = $false
+            $psi.Environment['LOCALAPPDATA'] = $scratch; $psi.Environment['RUNNER_TEMP'] = $scratch
+            $proc = [Diagnostics.Process]::Start($psi)
+            $stdout = $proc.StandardOutput.ReadToEnd(); $stderr = $proc.StandardError.ReadToEnd(); $proc.WaitForExit()
+            $proc.ExitCode | Should -Be 0 -Because $stderr
+            $stdout.Trim() | Should -Be 'DOT-SOURCED-OK'
+            $stderr.Trim() | Should -BeNullOrEmpty
+            Test-Path -LiteralPath $outFile | Should -BeFalse
+        } finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}

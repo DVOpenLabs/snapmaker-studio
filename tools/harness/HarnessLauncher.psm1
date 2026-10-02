@@ -8,7 +8,7 @@
 # copied into the harness tree, hashed against its attestation, installed with /S /NCRC /NS into
 # <harness root>\install\<runId>, driven, and uninstalled. It proves the rewrapped acceptance-identity
 # lane. It does NOT prove the production installer: production registration, shortcut creation,
-# default-path upgrade and uninstall are proven only by the disposable CI lanes.
+# default-path upgrade and uninstall are exercised only on disposable GitHub-hosted CI runners.
 #
 # Scope of the controls: accident / agent-error control, not a defence against a maintainer who
 # deliberately bypasses it. Everything fails closed. Nothing here ever installs, runs, writes or
@@ -47,7 +47,7 @@ $script:ReasonCodes = @(
     'UNINSTALL_HANDOFF_INCOMPLETE', 'UNKNOWN_OUTCOME', 'RECOVERY_PENDING', 'APP_LAUNCH_FAILED', 'WEBVIEW_PREFLIGHT_FAILED',
     'PROFILE_CHECK_FAILED', 'CDP_CHECK_FAILED', 'PORT_IN_USE', 'PRODUCTION_RUNNING', 'UPDATE_CHECK_PREFLIGHT_FAILED',
     'TRIPWIRE_VIOLATION', 'SHORTCUT_ASSERTION_FAILED', 'PENDING_JOURNAL_BLOCKS_LANE', 'TOOL_NOT_ALLOWED', 'REPORT_WRITE_FAILED',
-    'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED', 'JOURNAL_RECORD_FAILED', 'TRIPWIRE_INCOMPLETE', 'UNCLASSIFIED_ERROR'
+    'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED', 'JOURNAL_RECORD_FAILED', 'TRIPWIRE_INCOMPLETE', 'SOURCE_VERSION_UNRECOGNISED', 'UNCLASSIFIED_ERROR'
 )
 $script:UninstallOutcomes = @('NotRun', 'NothingInstalled', 'NotLaunched', 'Success', 'Failed', 'Unknown')
 $script:InstallArgumentsText = '/S /NCRC /NS /D=<install dir>'
@@ -72,7 +72,9 @@ function Get-Hook {
 
 function Start-HarnessChildProcess {
     # THE only place a child process is created. Environment is applied to the CHILD (ProcessStartInfo.Environment);
-    # the session's $env: is never read-modify-written here or anywhere in the harness (L13).
+    # the session's $env: is never read-modify-written here, and the harness launch path never changes it. The one exception is the
+    # on-demand rewrap (tools/release/lib/Rewrap.psm1, Invoke-IsolatedMakensis): around makensis it temporarily sets NSISDIR,
+    # NSISCONFDIR, APPDATA and LOCALAPPDATA in the lane process and restores them in a finally block (L13).
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FilePath,
@@ -990,6 +992,7 @@ function Resolve-HarnessBuild {
     $haveReal = [bool]($RealInstaller -or $ExpectedSha256 -or $SourceVersion)
     if ($haveRewrapped -and $haveReal) { throw "Refused: give $What either -InstallerPath + -AttestationPath (rewrapped) OR -RealInstaller + -ExpectedSha256 + -SourceVersion (rewrap on demand), not both." }
     if ($haveRewrapped) {
+        if ($Sha256SumsPath) { throw "Refused: $What -Sha256SumsPath applies only to -RealInstaller (rewrap on demand); an already-rewrapped installer is authorised by its attestation, so the SHA256SUMS file would be ignored. Remove -Sha256SumsPath." }
         Assert-NoWildcardPath -Path $InstallerPath -What "$What -InstallerPath"
         Assert-NoWildcardPath -Path $AttestationPath -What "$What -AttestationPath"
         return @{ InstallerPath = [IO.Path]::GetFullPath($InstallerPath); AttestationPath = [IO.Path]::GetFullPath($AttestationPath); Rewrapped = $false }
@@ -1072,7 +1075,7 @@ function Start-HarnessLane {
             -Sha256SumsPath $Sha256SumsPath -SourceVersion $SourceVersion -HarnessRoot $HarnessRoot -What 'installer'
         $lane.Builds['Primary'] = @{ Spec = $spec; Staged = (Resolve-AuthorizedBuild -Spec $spec -HarnessRoot $HarnessRoot -What 'installer') }
         if ([string]$lane.Builds['Primary'].Staged.Version -cnotmatch $script:SourceVersionPattern) {
-            Add-LaneWarning -Lane $lane -Text 'the attestation source version is not a strict numeric release version; it is NOT recorded in the evidence' -Code INSTALLER_PREFLIGHT_FAILED
+            Add-LaneWarning -Lane $lane -Text 'the attestation source version is not a strict numeric release version; it is NOT recorded in the evidence' -Code SOURCE_VERSION_UNRECOGNISED
             Write-Host 'NOTE  the attestation source version is not a strict numeric release version; it will not be recorded in the evidence.'
         }
         if ($UpgradeFromInstallerPath -or $UpgradeFromAttestationPath -or $UpgradeFromRealInstaller -or $UpgradeFromExpectedSha256 -or $UpgradeFromSourceVersion -or $UpgradeFromSha256SumsPath) {
