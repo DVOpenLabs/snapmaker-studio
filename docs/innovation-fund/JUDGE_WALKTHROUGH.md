@@ -160,7 +160,8 @@ The tests worth reading are the ones that assert what Studio *will not* say:
 ## Verifying the shipped installer, not the source tree
 
 Everything above runs from a clone. Two harnesses go further and check the build a
-user would actually download.
+user would actually download: they install a rewrapped copy of that build (the same application payload with an isolated
+identity), not the production installer itself.
 
 **The installed application.** Build the installer with `npm run release:windows`
 in `desktop/`. The maintainer then runs `tools/acceptance/run.ps1`. It refuses to

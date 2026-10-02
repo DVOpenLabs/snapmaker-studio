@@ -71,7 +71,7 @@ objects, which is the fact the whole preflight honesty rule rests on.
 | Previously "human" | Now |
 |---|---|
 | Record the 90-second demo | Automated — `tools/demo/record.ps1` |
-| Twelve installed-build acceptance checks | Automated — 21 checks, `tools/acceptance/run.ps1` |
+| Twelve installed-build acceptance checks | Automated — 45 checks in the base shape (up to 63 across all branches), `tools/acceptance/run.ps1` |
 | Real U1 read-only verification | Automated — `tools/hardware/verify.ps1`, 13 checks; the first run found a real bug |
 | Code signing | Researched and prepared; only a form submission remains |
 | Ecosystem outreach | **Posted** 2026-08-23 on the maintainer's explicit instruction — four notes, URLs in [../innovation-fund/ECOSYSTEM_OUTREACH.md](../innovation-fund/ECOSYSTEM_OUTREACH.md). The judgement of *whether* to introduce yourself to a peer is the maintainer's; once they made it, sending the notes was not a human action. |

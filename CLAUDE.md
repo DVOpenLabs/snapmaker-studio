@@ -50,7 +50,7 @@ research the options, prepare the scripts, write the policy page, validate the
 surrounding flow — and hand back only the irreducible action.
 
 What this looks like in practice, from the 2026-08-23 sprint: the installed-build
-acceptance checks became `tools/acceptance/run.ps1` (21 checks, WebView2 remote
+acceptance checks became `tools/acceptance/run.ps1` (45 checks in the base shape, WebView2 remote
 debugging); the demo became `tools/demo/record.ps1` (FFmpeg + CDP); the "needs a
 real printer" item became a read-only LAN session that found a real bug. See
 `docs/internal/AUTOMATION_CAPABILITY_AUDIT.md`.

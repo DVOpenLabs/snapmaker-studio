@@ -121,9 +121,10 @@ against `docs/RELEASE_METADATA.md` before handing it to the lane. The lane refus
 start while the production app is running, while its update auto-check is on, or while
 an earlier run left a journal or an acceptance registration behind. The report
 (`acceptance.json`, which carries the closed-schema lane block inside it), the per-phase
-results (node-written `results-*.json` and logs), the screenshots and, for the hardware /
-demo / capture harnesses, `lane-evidence.json` are written under
-`<harness root>\run\<id>\evidence` (the per-user `SnapmakerStudio-Harness` folder).
+results (node-written `results-*.json` and logs), the screenshots and, for the hardware and demo
+harnesses, `lane-evidence.json` are written under `<harness root>\run\<id>\evidence` (the per-user
+`SnapmakerStudio-Harness` folder). The capture harness (`scripts/capture_embedded.ps1`) is different: it writes its lane
+evidence beside the screenshot output path, as `<screenshot name>.lane-evidence.json` (`-OutFile` with its extension replaced).
 The lane block and `lane-evidence.json` are closed schemas (fixed reason codes, counts,
 generated ids and strict versions; no free-text errors or paths). The node-written files
 and `hardware.json` are NOT closed-schema (they rely on their own scrub and leak scan), so
@@ -135,7 +136,8 @@ install (if any) is untouched: the harness does not intentionally WRITE producti
 application the harness launches under the same user, are the possible writers: if the application's isolation failed, it could
 write production state). It only READS (never writes) the production uninstall, remembered-location and manufacturer registry keys, the Run
 value, the Start Menu and Desktop shortcuts, the default install directories and the three production data folders, as a
-before/after fingerprint, and the tripwire DETECTS a change by either writer (the one allowed transition is the Local `com.snapmakerstudio.desktop`
+before/after fingerprint, and the tripwire DETECTS any fingerprinted change by either writer (attribute and ACL changes are not detected and timestamps are
+ignored; the one allowed transition is the Local `com.snapmakerstudio.desktop`
 data folder going from absent to empty) or any state it cannot read completely, and fails the run. It never restores anything.
 
 This proves the rewrapped acceptance-identity payload only. The real production

@@ -76,7 +76,7 @@ source at the release commit, not from the installer.
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 41/41 |
+| Installed-application acceptance, through the real UI | 41/41 (earlier version of the harness, on the v1.2.0 release run) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | 49/49 each |
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
