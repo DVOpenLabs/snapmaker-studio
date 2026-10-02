@@ -170,7 +170,7 @@ engine folder `%LOCALAPPDATA%\SnapmakerStudio` (detect-only).
 It also fingerprints, read-only and in memory only, the production **install surfaces** that caused #55, using the exact
 names in `tools/lib/HarnessIdentity.psd1`: the production uninstall key, the remembered install-location key and the
 manufacturer key (HKCU and HKLM, including the WOW6432Node views; existence plus a hash over the whole key tree: every value with its kind, and every subkey path, recursively), the production `Run` value, the production Start Menu and Desktop shortcuts (existence plus a hash of the file
-bytes) and the default production install directories (`%LOCALAPPDATA%`, Program Files, Program Files (x86)); every file
+bytes) and the default production install directories (`%LOCALAPPDATA%\Snapmaker Studio`, `%ProgramFiles%\Snapmaker Studio` and `%ProgramFiles(x86)%\Snapmaker Studio`: the `DefaultInstallDirName` constant of `HarnessIdentity.psd1` joined onto each base folder); every file
 in an existing one by relative path, size and sha256, plus every directory entry (so an empty nested directory counts) and the NTFS alternate data streams of every file, directory and the install dir itself (stream name, size, sha256), with a strict enumeration. Entry names are compared with their original casing, so a case-only rename counts as a change.
 Attribute-only changes (hidden, read-only or system flags, ACLs) are NOT detected and timestamps are ignored on purpose (only
 content, names, directory structure and alternate data streams are). Absent must stay absent and existing must

@@ -131,10 +131,11 @@ copying evidence into the release record still needs a human privacy glance; con
 is mostly best-effort scrubbed and is not an evidence boundary.
 Confirm 0 orphan processes, the
 "Production state unchanged (tripwire)" check, and that the maintainer's own real
-install (if any) is untouched: the harness itself never WRITES production state (the installer under test is the only thing
-that could). It only READS (never writes) the production uninstall, remembered-location and manufacturer registry keys, the Run
+install (if any) is untouched: the harness does not intentionally WRITE production state (the installer under test, and the installed
+application the harness launches under the same user, are the possible writers: if the application's isolation failed, it could
+write production state). It only READS (never writes) the production uninstall, remembered-location and manufacturer registry keys, the Run
 value, the Start Menu and Desktop shortcuts, the default install directories and the three production data folders, as a
-before/after fingerprint, and the tripwire DETECTS any change (the one allowed transition is the Local `com.snapmakerstudio.desktop`
+before/after fingerprint, and the tripwire DETECTS a change by either writer (the one allowed transition is the Local `com.snapmakerstudio.desktop`
 data folder going from absent to empty) or any state it cannot read completely, and fails the run. It never restores anything.
 
 This proves the rewrapped acceptance-identity payload only. The real production
