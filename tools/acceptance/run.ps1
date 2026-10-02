@@ -1,27 +1,41 @@
-# Installed-build acceptance for Snapmaker Studio.
+#requires -Version 7.0
+# Installed-build acceptance for Snapmaker Studio - REWRAPPED ACCEPTANCE-IDENTITY lane.
 #
-# Installs the built NSIS installer into an isolated directory, launches the
-# installed application with its WebView2 opened for remote debugging, drives the
-# real UI over CDP, then uninstalls and proves the machine is clean.
+# Installs a REWRAPPED acceptance-identity installer (tools/release/rewrap_installer.ps1) into a
+# harness-owned directory, launches the installed application with its WebView2 opened for remote
+# debugging, drives the real UI over CDP, then uninstalls and proves the harness left nothing behind.
+#
+# WHAT THIS PROVES, AND WHAT IT DOES NOT (issue #55): these checks prove the shipped payload (exe + frozen
+# sidecar, renamed main binary) under the ACCEPTANCE identity. They do NOT prove the production installer:
+# production registration, shortcut creation, default-path install/upgrade/uninstall are proven only by the
+# disposable CI lanes. Every plumbing step (install, launch, uninstall, cleanup) is the shared fail-closed
+# lane in tools/harness/HarnessLauncher.psm1; this script keeps only the acceptance checks themselves.
 #
 # Why this exists: every capability check before this ran against the dev server.
 # That proves the feature works; it does not prove the installer ships it. This
 # runs the shipped exe and the frozen sidecar.
 #
 # SAFETY, and these are not negotiable:
-#  * Every process this script starts is tracked by PID and only those are ever
-#    stopped. A Snapmaker Orca or other user process is never touched.
-#  * The app runs with an isolated WebView2 profile and an isolated engine data
-#    directory, so the maintainer's own library, recent files and settings are
-#    neither read nor modified - which also keeps private model names out of the
-#    screenshots this produces.
-#  * If another Snapmaker Studio is already installed, its uninstall registry key
-#    is exported first and restored afterwards.
-#  * Nothing is installed to a shared location and nothing needs administrator.
+#  * Every process this script starts is tracked by PID and start time. Close is graceful first; a
+#    force-kill only ever targets a tracked pid whose start time and image path still match. Never by
+#    name. A Snapmaker Orca or other user process is never touched.
+#  * The app runs with an isolated WebView2 profile and an isolated engine data directory, passed ONLY
+#    to the child process (never through this session's environment), so the maintainer's own library,
+#    recent files and settings are neither read nor modified.
+#  * The production app must not be running and its update auto-check must be off (or its state file
+#    absent); otherwise the lane refuses to start. Production state is read-only here: a tripwire reports
+#    any change and fails the run, it never restores or deletes anything.
+#  * The installer is /S /NCRC /NS only (no shortcuts, never /P, no app-data flag) into
+#    <harness root>\install\<runId>. Nothing needs administrator.
 #
-# Usage:
-#   pwsh -File tools/acceptance/run.ps1 [-Installer <path>] [-KeepInstall]
-#        [-SpoolmanUrl host:port] [-BambuddyUrl host:port] [-SpoolEasePort 9403]
+# Usage (the installer is always a REWRAPPED acceptance installer; there is no auto-discovery):
+#   pwsh -File tools/acceptance/run.ps1 -InstallerPath <rewrapped installer> -AttestationPath <its attestation>
+#        [-UpgradeFromInstallerPath <rewrapped OLD installer> -UpgradeFromAttestationPath <its attestation>]
+#        [-KeepInstall] [-SpoolmanUrl host:port] [-BambuddyUrl host:port] [-SpoolEasePort 9403]
+#   or let the lane rewrap a verified real installer first:
+#        -RealInstaller <path> -ExpectedSha256 <sha256> -SourceVersion <semver> [-Sha256SumsPath <path>]
+#   An upgrade here is rewrapped OLD -> rewrapped NEW under the acceptance identity; it is NOT a
+#   production upgrade claim.
 #
 # v1.2: this run now also drives the spool-note and nozzle-confirmation phases
 # in checks.mjs (W1-W9), no extra parameter needed - they run against the U1's
@@ -31,14 +45,23 @@
 
 [CmdletBinding()]
 param(
-    [string]$Installer,
-    [string]$WorkDir = (Join-Path $env:TEMP "snapstudio-acceptance"),
+    # A REWRAPPED acceptance-identity installer and its attestation (both required together).
+    [string]$InstallerPath,
+    [string]$AttestationPath,
+    # Or: a verified real installer to rewrap first (tools/release/rewrap_installer.ps1 is the only thing that touches it).
+    [string]$RealInstaller,
+    [string]$ExpectedSha256,
+    [string]$Sha256SumsPath,
+    [string]$SourceVersion,
     [int]$DebugPort = 9333,
     [switch]$KeepInstall,
-    # A previous installer. When given, it is installed first and its settings and
-    # library are checked for survival across the upgrade - the path every existing
-    # user actually takes to a new release.
-    [string]$UpgradeFrom,
+    # A previous REWRAPPED installer (acceptance identity). When given, it is installed first and its settings and
+    # library are checked for survival across the upgrade. This proves rewrapped-OLD -> rewrapped-NEW only.
+    [string]$UpgradeFromInstallerPath,
+    [string]$UpgradeFromAttestationPath,
+    [string]$UpgradeFromRealInstaller,
+    [string]$UpgradeFromExpectedSha256,
+    [string]$UpgradeFromSourceVersion,
     # A material provider on this network, when one is available to test against.
     # Optional: without it the provider checks still prove the frozen build carries
     # the route, refuses an address that is not local, and claims nothing about
@@ -60,7 +83,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$started = @()          # every PID this script created
+Import-Module (Join-Path $PSScriptRoot "..\harness\HarnessLauncher.psm1") -Force -DisableNameChecking
 $checks = @()
 
 function Add-Check($name, $ok, $detail = "") {
@@ -69,42 +92,46 @@ function Add-Check($name, $ok, $detail = "") {
     Write-Host ("{0}  {1}{2}" -f $tag, $name, $(if ($detail) { "  - $detail" } else { "" }))
 }
 
-function Resolve-Installer {
-    if ($Installer) { return (Resolve-Path $Installer).Path }
-    $bundle = Join-Path $repo "desktop\src-tauri\target\release\bundle\nsis"
-    $newest = Get-ChildItem $bundle -Filter "*_x64-setup.exe" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $newest) { throw "No installer found in $bundle - run `npm run release:windows` first." }
-    return $newest.FullName
+# Lane start: lock, preflights (production idle, update auto-check off/absent, WebView2 present, port free),
+# tripwire baseline, and authorisation of every installer. Installs nothing. Throws (lock released) on any refusal.
+$laneArgs = @{
+    InstallerPath = $InstallerPath; AttestationPath = $AttestationPath
+    RealInstaller = $RealInstaller; ExpectedSha256 = $ExpectedSha256; Sha256SumsPath = $Sha256SumsPath; SourceVersion = $SourceVersion
+    UpgradeFromInstallerPath = $UpgradeFromInstallerPath; UpgradeFromAttestationPath = $UpgradeFromAttestationPath
+    UpgradeFromRealInstaller = $UpgradeFromRealInstaller; UpgradeFromExpectedSha256 = $UpgradeFromExpectedSha256; UpgradeFromSourceVersion = $UpgradeFromSourceVersion
 }
+$lane = Start-HarnessLane -Name "acceptance" -Kind acceptance @laneArgs -DebugPort $DebugPort -KeepInstall:$KeepInstall
+$laneLabel = if ($lane.Upgrade) { "rewrapped OLD -> rewrapped NEW acceptance-identity installers (not a production upgrade)" } else { "rewrapped acceptance-identity installer" }
+Write-Host "Lane: $laneLabel"
+
+# --- prepare -----------------------------------------------------------------
+# From here on the harness lane owns an install and a lock: everything runs inside try/finally so the
+# uninstall / recovery / tripwire cleanup ALWAYS runs (including with -KeepInstall, which skips the uninstall and the recovery).
+
+$WorkDir    = $lane.RunDir
+$installDir = $lane.InstallDir
+$profileDir = $lane.ProfileDir
+$dataDir    = $lane.DataDir
+$outDir     = $lane.EvidenceDir
+$appExe     = $lane.AppExe
+$sidecarExe = Join-Path $installDir "snapstudio-api.exe"
+$sample     = Join-Path $repo "examples\demo_u1_showcase.3mf"
+$sampleWork = Join-Path $WorkDir "demo_u1_showcase.3mf"
+$result     = $null
+$probeHandle = $null
 
 function Stop-Tracked {
-    foreach ($procId in $script:started) {
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-    }
+    # Graceful close first, then a VERIFIED force-kill of tracked pids only (never by name).
+    Stop-HarnessApp -Lane $script:lane | Out-Null
     Start-Sleep -Seconds 3
 }
 
-# --- prepare -----------------------------------------------------------------
-
-$installer = Resolve-Installer
-Write-Host "Installer: $installer"
-
-$installDir = Join-Path $WorkDir "app"
-$profileDir = Join-Path $WorkDir "webview-profile"
-$dataDir    = Join-Path $WorkDir "engine-data"
-$outDir     = Join-Path $WorkDir "evidence"
-$sample     = Join-Path $repo "examples\demo_u1_showcase.3mf"
-$sampleWork = Join-Path $WorkDir "demo_u1_showcase.3mf"
-
-foreach ($d in @($WorkDir, $outDir)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
-# Start from nothing. A WebView2 profile or engine data directory left by an
-# earlier run carries recent-file names into the screenshots this produces, which
-# is both a privacy problem and a reproducibility one.
-foreach ($stale in @($installDir, $profileDir, $dataDir)) {
-    if (Test-Path $stale) { Remove-Item $stale -Recurse -Force -ErrorAction SilentlyContinue }
+function Start-App([string[]]$AppArgs = @(), [double]$Settle = 0, [string]$Label = "app") {
+    # The one launch path: warm-up, relaunches and every phase use it (fail-closed launcher).
+    return Start-HarnessApp -Lane $script:lane -Arguments $AppArgs -SettleSeconds $Settle -Label $Label
 }
 
+try {
 # Work on a copy so the repository fixture is provably never written to.
 Copy-Item $sample $sampleWork -Force
 $sampleHashBefore = (Get-FileHash $sampleWork -Algorithm SHA256).Hash
@@ -187,122 +214,104 @@ PRINT_END
 '@ | Set-Content $gcodeWork -Encoding utf8
 $gcodeHashBefore = (Get-FileHash $gcodeWork -Algorithm SHA256).Hash
 
-# An existing install of the same app shares the uninstall registry key. Save it.
-$existing = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-    Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-$backupReg = Join-Path $WorkDir "backup-uninstall.reg"
-if ($existing) {
-    reg export $existing.Name $backupReg /y | Out-Null
-    Write-Host "Existing install detected; its registry entry was exported to $backupReg"
-}
-
 # Two throwaway servers this run owns. Started before the app so the provider
-# checks can reach them, tracked by pid like everything else here, and stopped by
-# the same Stop-Tracked that stops the app.
-# The repository path contains a space, and an unquoted argument array hands
-# node half a path. The first run of this failed with a connection refused that
-# looked like a product defect and was this line.
-$probeScript = '"' + (Join-Path $PSScriptRoot "probes.mjs") + '"'
-$probes = Start-Process -FilePath "node" `
-    -ArgumentList $probeScript, $ProbePort, $RedirectPort, $SpoolEasePort `
-    -PassThru -WindowStyle Hidden
-# Deliberately not in $started. That list is stopped and emptied every time the
-# app is restarted with a different project, and the probes have to outlive
-# those restarts - they are instruments for the whole run, not part of the app.
-# They are stopped in the finally block instead, and only ever by their own pid.
-$script:probePid = $probes.Id
-Start-Sleep -Seconds 2
+# checks can reach them, tracked by pid + start time like everything else here.
+# The repository path contains a space; the launcher passes each argument as its
+# own element, so the path reaches node intact. (The first run of an earlier
+# version of this failed with a connection refused that looked like a product
+# defect and was an unquoted path.)
 $probeUrl = "127.0.0.1:$ProbePort"
 $redirectUrl = "127.0.0.1:$RedirectPort"
-$env:SNAPSTUDIO_PROBE_URL = $probeUrl
-$env:SNAPSTUDIO_REDIRECT_URL = $redirectUrl
-$env:SNAPSTUDIO_BAMBUDDY_URL = $BambuddyUrl
-$env:SNAPSTUDIO_SPOOLEASE_URL = "127.0.0.1:$SpoolEasePort"
-$env:SNAPSTUDIO_SPOOLEASE_KEY = "Fx7-tEsT"
+$spooleaseKey = "Fx7-tEsT"
+# These go to the node child processes ONLY (probes and check phases); this session's environment is never changed.
+$probeEnv = @{
+    SNAPSTUDIO_PROBE_URL     = $probeUrl
+    SNAPSTUDIO_REDIRECT_URL  = $redirectUrl
+    SNAPSTUDIO_SPOOLEASE_URL = "127.0.0.1:$SpoolEasePort"
+    SNAPSTUDIO_SPOOLEASE_KEY = $spooleaseKey
+}
+if ($BambuddyUrl) { $probeEnv.SNAPSTUDIO_BAMBUDDY_URL = $BambuddyUrl }
+# Deliberately not stopped when the app is restarted with a different project (Stop-HarnessApp only stops
+# the app and its children): the probes are instruments for the whole run. They are stopped in the finally
+# block, and only ever by their own tracked pid.
+$probeHandle = Start-HarnessTool -Lane $lane -Tool node -Hidden -Label "probes" `
+    -ArgumentList @((Join-Path $PSScriptRoot "probes.mjs"), "$ProbePort", "$RedirectPort", "$SpoolEasePort") `
+    -Environment $probeEnv
+Start-Sleep -Seconds 2
 try {
     $probeAlive = (Invoke-WebRequest "http://$probeUrl/__hits" -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200
 } catch { $probeAlive = $false }
 Add-Check "Probe servers this run owns are up" $probeAlive "count $ProbePort, redirect $RedirectPort"
 
-try {
+    $acceptanceIdentity = (Import-PowerShellDataFile (Join-Path $PSScriptRoot "..\lib\HarnessIdentity.psd1")).Acceptance
+    $acceptanceUninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($acceptanceIdentity.ProductName)"
+
     # --- upgrade path --------------------------------------------------------
-    if ($UpgradeFrom) {
-        $old = (Resolve-Path $UpgradeFrom).Path
-        Write-Host "Upgrading from $old"
-        $prev = Start-Process -FilePath $old -ArgumentList '/S', '/NCRC', "/D=$installDir" -PassThru -Wait
+    # Rewrapped OLD -> rewrapped NEW (acceptance identity). Real production upgrade proof lives only in the disposable CI lane.
+    if ($lane.Upgrade) {
+        Write-Host "Upgrading from the previous rewrapped acceptance installer"
+        $prev = Install-HarnessBuild -Lane $lane -Which UpgradeFrom
         Add-Check "Previous version installs" ($prev.ExitCode -eq 0) "exit code $($prev.ExitCode)"
 
         # Give the old build a run so it creates the state a real user would have.
-        $env:SNAPSTUDIO_DATA_DIR = $dataDir
-        $warm = Start-Process -FilePath (Join-Path $installDir "snapmaker-studio-desktop.exe") -PassThru
-        Start-Sleep -Seconds 12
-        Stop-Process -Id $warm.Id -Force -ErrorAction SilentlyContinue
+        $warm = Start-App -Settle 12 -Label "warm-up-previous"
+        Stop-HarnessApp -Lane $lane -App $warm | Out-Null
         Start-Sleep -Seconds 4
-        Remove-Item Env:SNAPSTUDIO_DATA_DIR -ErrorAction SilentlyContinue
 
-        Add-Check "Previous version left state to migrate" (Test-Path $dataDir) $dataDir
+        Add-Check "Previous version left state to migrate" (Test-Path $dataDir) "engine-data under the harness run directory"
         $script:stateBefore = @(Get-ChildItem $dataDir -Recurse -File -ErrorAction SilentlyContinue).Count
     }
 
     # --- install -------------------------------------------------------------
-    $proc = Start-Process -FilePath $installer -ArgumentList '/S', '/NCRC', "/D=$installDir" -PassThru -Wait
+    $proc = Install-HarnessBuild -Lane $lane -Which Primary
     Add-Check "Scripted install completes" ($proc.ExitCode -eq 0) "exit code $($proc.ExitCode)"
 
-    if ($UpgradeFrom) {
+    if ($lane.Upgrade) {
         $stateAfter = @(Get-ChildItem $dataDir -Recurse -File -ErrorAction SilentlyContinue).Count
         Add-Check "Upgrade keeps the user's data" ($stateAfter -ge $script:stateBefore) `
             "$script:stateBefore file(s) before, $stateAfter after"
-        $installs = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' })
-        Add-Check "Upgrade does not leave two installations" ($installs.Count -le 1) `
-            "$($installs.Count) registration(s)"
+        # Exact acceptance uninstall key only: no display-name wildcard discovery. (The old "not two installations"
+        # count could never fail against one exact key, so it is gone; these checks can.)
+        $regPresent = Test-Path -LiteralPath $acceptanceUninstallKey
+        Add-Check "Upgrade leaves the acceptance registration in place" $regPresent "exact acceptance uninstall key"
 
         # v1.0.0 release-prep: proves the registration was REPLACED, not
-        # merely left alone (e.g. a broken upgrade that silently no-ops
-        # would still leave exactly one registration, passing the check
-        # above, but with the OLD version still recorded).
-        if ($installs.Count -eq 1) {
-            $newVersion = if ((Split-Path $installer -Leaf) -match '_([0-9]+\.[0-9]+\.[0-9]+[^_]*)_') { $matches[1] } else { $null }
-            $regVersion = (Get-ItemProperty $installs[0].PSPath -ErrorAction SilentlyContinue).DisplayVersion
-            Add-Check "Upgrade registration reports the new version" `
-                ($null -ne $newVersion -and $regVersion -eq $newVersion) `
-                "registry says $regVersion, installer filename says $newVersion"
-        }
+        # merely left alone (a broken upgrade that silently no-ops would still
+        # leave the registration, but with the OLD version still recorded).
+        $newVersion = $lane.Builds["Primary"].Staged.Version
+        $regVersion = if ($regPresent) { (Get-ItemProperty -LiteralPath $acceptanceUninstallKey -ErrorAction SilentlyContinue).DisplayVersion } else { $null }
+        Add-Check "Upgrade registration reports the new version" `
+            ($null -ne $newVersion -and $regVersion -eq $newVersion) `
+            "registry says $regVersion, attestation source version says $newVersion"
     }
 
-    $appExe = Join-Path $installDir "snapmaker-studio-desktop.exe"
-    $sidecarExe = Join-Path $installDir "snapstudio-api.exe"
     Add-Check "Application installed" (Test-Path $appExe)
     Add-Check "Frozen engine sidecar installed" (Test-Path $sidecarExe) `
         ("{0:N1} MB" -f ((Get-Item $sidecarExe -ErrorAction SilentlyContinue).Length / 1MB))
     Add-Check "Uninstaller installed" (Test-Path (Join-Path $installDir "uninstall.exe"))
 
     # --- launch --------------------------------------------------------------
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort --remote-allow-origins=*"
-    $env:WEBVIEW2_USER_DATA_FOLDER = $profileDir
-    $env:SNAPSTUDIO_DATA_DIR = $dataDir
-
-    # Hand the project to the app the same way a file association would.
-    $app = Start-Process -FilePath $appExe -ArgumentList $sampleWork -PassThru
-    $script:started += $app.Id
-    Start-Sleep -Seconds 10
+    # Hand the project to the app the same way a file association would. Isolation variables
+    # (WebView2 profile, debug port, engine data dir) reach ONLY the child, inside Start-HarnessApp.
+    $appHandle = Start-App -AppArgs @($sampleWork) -Settle 10 -Label "app"
+    $app = $appHandle.Process
 
     $alive = $null -ne (Get-Process -Id $app.Id -ErrorAction SilentlyContinue)
     Add-Check "Application launches" $alive "pid $($app.Id)"
     Add-Check "Window title" (( Get-Process -Id $app.Id).MainWindowTitle -eq "Snapmaker Studio")
 
-    $sidecars = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe'" |
-        Where-Object { $_.ExecutablePath -like "$installDir*" })
+    $sidecars = @(Get-HarnessSidecarProcesses -Lane $lane)
     Add-Check "Sidecar boots from the install directory" ($sidecars.Count -ge 1) `
         "$($sidecars.Count) process(es)"
 
-    $cdp = "http://127.0.0.1:$DebugPort"
+    $cdp = $appHandle.CdpUrl
     $node = Join-Path $PSScriptRoot "checks.mjs"
 
     function Invoke-Phase($phase, $arg = "", $arg2 = "", $arg3 = "") {
-        $out = & node $node $phase $cdp $outDir $arg $arg2 $arg3 $SpoolmanUrl 2>&1
-        $out | ForEach-Object { Write-Host "    $_" }
-        return $LASTEXITCODE
+        $r = Invoke-HarnessNode -Lane $script:lane -Environment $script:probeEnv `
+            -ArgumentList @($node, $phase, $cdp, $outDir, $arg, $arg2, $arg3, $SpoolmanUrl)
+        $r.Output | ForEach-Object { Write-Host "    $_" }
+        return $r.ExitCode
     }
 
     Add-Check "CDP reachable on the installed webview" `
@@ -394,13 +403,10 @@ try {
     # is opened from the command line, which is the same path a file association
     # takes.
     Stop-Tracked
-    $script:started = @()
-    $paintedApp = Start-Process -FilePath $appExe -ArgumentList $paintedWork -PassThru
-    $script:started += $paintedApp.Id
-    Start-Sleep -Seconds 12
+    $paintedHandle = Start-App -AppArgs @($paintedWork) -Settle 12 -Label "painted"
+    $paintedApp = $paintedHandle.Process
     $code = Invoke-Phase "painted"
     Add-Check "Painted colour is shown in the installed build" ($code -eq 0)
-
     # --- v1.2: the same relaunch proves persistence, then destructive removal -
     #
     # The app was just closed (Stop-Tracked above) and started again with a
@@ -470,7 +476,7 @@ try {
 
     # --- close the real window, prove that alone exits the app cleanly -------
     # Every orphan check below this point (and previously, every "close"
-    # check in this script's history) used Stop-Process -Force - a kill, not
+    # check in this script's history) used a forced kill - a kill, not
     # a close. That measures a different, easier path: Windows' Job Object
     # binding and the app's plain kill()+wait() both fire on any process
     # death, killed or not. It never proved that clicking the X button (or
@@ -484,7 +490,7 @@ try {
     # never fired for the main window either). This check is what actually
     # exercises that fix, and what the "No orphan sidecar after close" check
     # below should have been testing all along.
-    $sidecarBeforeClose = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe' AND ParentProcessId=$($paintedApp.Id)" |
+    $sidecarBeforeClose = @(Get-HarnessSidecarProcesses -Lane $lane -ParentPid $paintedApp.Id |
         Select-Object -ExpandProperty ProcessId)
     $paintedApp.Refresh()
     $realCloseWorked = $false
@@ -506,25 +512,21 @@ try {
     }
     if (-not $realCloseWorked) {
         # Don't let a failed close leave the rest of the script blocked on a
-        # process that should already be gone - force-stop whatever remains
-        # so later phases still run, but the FAIL above already recorded it.
-        Stop-Process -Id $paintedApp.Id -Force -ErrorAction SilentlyContinue
-        foreach ($sc in $sidecarBeforeClose) { Stop-Process -Id $sc -Force -ErrorAction SilentlyContinue }
+        # process that should already be gone - stop whatever remains (tracked
+        # pids only, start time and image verified) so later phases still run,
+        # but the FAIL above already recorded it.
+        Stop-HarnessApp -Lane $lane -App $paintedHandle -GraceSeconds 1 | Out-Null
     }
 
-    # --- close (by kill, the pre-existing check) and prove no orphan --------
+    # --- close (the pre-existing check) and prove no orphan ------------------
     Stop-Tracked
-    $script:started = @()
-    $orphans = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe'" |
-        Where-Object { $_.ExecutablePath -like "$installDir*" })
+    $orphans = @(Get-HarnessSidecarProcesses -Lane $lane)
     Add-Check "No orphan sidecar after close" ($orphans.Count -eq 0) `
         "$($orphans.Count) left running"
 
     # --- reopen ---------------------------------------------------------------
-    $again = Start-Process -FilePath $appExe -PassThru
-    $script:started += $again.Id
-    Start-Sleep -Seconds 8
-    Add-Check "Reopens cleanly" ($null -ne (Get-Process -Id $again.Id -ErrorAction SilentlyContinue))
+    $againHandle = Start-App -Settle 8 -Label "reopen"
+    Add-Check "Reopens cleanly" ($null -ne (Get-Process -Id $againHandle.Pid -ErrorAction SilentlyContinue))
 
     if ($SpoolmanUrl) {
         $code = Invoke-Phase "provider-restored" $sampleWork $gcodeWork
@@ -542,12 +544,9 @@ try {
         # A second restart, so the second provider's persistence is measured the
         # same way the first one's was rather than assumed from it.
         Stop-Tracked
-        $script:started = @()
-        $third = Start-Process -FilePath $appExe -PassThru
-        $script:started += $third.Id
-        Start-Sleep -Seconds 8
+        $thirdHandle = Start-App -Settle 8 -Label "reopen-after-switch"
         Add-Check "Reopens again after switching provider" `
-            ($null -ne (Get-Process -Id $third.Id -ErrorAction SilentlyContinue))
+            ($null -ne (Get-Process -Id $thirdHandle.Pid -ErrorAction SilentlyContinue))
 
         $code = Invoke-Phase "provider-switch-restored" $sampleWork $gcodeWork
         Add-Check "The second provider survives a restart and can then be turned off" ($code -eq 0)
@@ -555,70 +554,63 @@ try {
 
     # SpoolEase runs last so the provider-switch phases above still measure a
     # clean Spoolman -> Bambuddy switch, not a switch away from SpoolEase.
-    if ($env:SNAPSTUDIO_SPOOLEASE_KEY) {
+    if ($spooleaseKey) {
         $code = Invoke-Phase "provider-spoolease" $sampleWork $gcodeWork
         Add-Check "SpoolEase can be configured and read in the installed build" ($code -eq 0)
 
         Stop-Tracked
-        $script:started = @()
-        $spooleaseAgain = Start-Process -FilePath $appExe -PassThru
-        $script:started += $spooleaseAgain.Id
-        Start-Sleep -Seconds 8
+        $spooleaseAgainHandle = Start-App -Settle 8 -Label "reopen-spoolease"
         $code = Invoke-Phase "provider-spoolease-restored" $sampleWork $gcodeWork
         Add-Check "SpoolEase settings restore without the session key" ($code -eq 0)
     }
 
     Stop-Tracked
-    $script:started = @()
+}
+catch {
+    # A lane step threw. Record it as a failed check so the report still gets written; the finally block
+    # below runs the uninstall / recovery / tripwire cleanup regardless.
+    Add-Check "Harness lane step aborted" $false (Protect-LaneText -Text $_.Exception.Message -Lane $lane)
 }
 finally {
-    Stop-Tracked
-    if ($script:probePid) {
-        Stop-Process -Id $script:probePid -Force -ErrorAction SilentlyContinue
-    }
-    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-    Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue
-    Remove-Item Env:SNAPSTUDIO_DATA_DIR -ErrorAction SilentlyContinue
-    foreach ($name in @("SNAPSTUDIO_PROBE_URL", "SNAPSTUDIO_REDIRECT_URL",
-                        "SNAPSTUDIO_BAMBUDDY_URL", "SNAPSTUDIO_SPOOLEASE_URL",
-                        "SNAPSTUDIO_SPOOLEASE_KEY")) {
-        Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-    }
+    # Always runs: stop tracked processes (graceful, then verified), uninstall unless -KeepInstall,
+    # journal recovery, production tripwire, lock release. The probe servers are stopped only by their own tracked pid.
+    try { if ($probeHandle) { [void](Stop-HarnessTool -Lane $lane -Handle $probeHandle) } } catch { Write-Host "NOTE  probe stop failed: $(Protect-LaneText -Text $_.Exception.Message -Lane $lane)" }
+    $result = Complete-HarnessLane -Lane $lane
 }
 
-# --- uninstall ---------------------------------------------------------------
+# --- uninstall and cleanup verdicts (the work itself ran in Complete-HarnessLane) -----------
 if (-not $KeepInstall) {
-    $uninstaller = Join-Path $installDir "uninstall.exe"
-    if (Test-Path $uninstaller) {
-        $u = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -Wait
-        Start-Sleep -Seconds 3
-        Add-Check "Uninstall completes" ($u.ExitCode -eq 0) "exit code $($u.ExitCode)"
-        $leftovers = @(Get-ChildItem $installDir -Recurse -File -ErrorAction SilentlyContinue)
-        Add-Check "Install directory removed" ($leftovers.Count -eq 0) "$($leftovers.Count) file(s) left"
-        $stillRunning = @(Get-CimInstance Win32_Process -Filter "Name='snapstudio-api.exe'" |
-            Where-Object { $_.ExecutablePath -like "$installDir*" })
+    if ($lane.Phases.Count -gt 0) {
+        $u = $result.Uninstall
+        $uExit = if ($u -and $u.Attempted) { $u.ExitCode } else { $null }
+        # Based on the install dir state and the hand-off wait (the NSIS parent exit code alone proves nothing).
+        $uDone = [bool]($u -and $u.Attempted -and $u.HandoffComplete -and $u.DirFiles -eq 0 -and $uExit -eq 0)
+        Add-Check "Uninstall completes" $uDone $(if ($u -and $u.Attempted) { "exit code $uExit; $($u.DirFiles) file(s) left; $($u.HandoffProcesses) hand-off process(es) still running" } else { "uninstall was not run (see harness errors)" })
+        # Strict enumeration: an ambiguous directory state ($null) is a FAIL, never "zero files".
+        $leftN = Get-InstallDirFileCount -Dir $installDir
+        Add-Check "Install directory removed" ($null -ne $leftN -and $leftN -eq 0) $(if ($null -eq $leftN) { "install dir state could not be determined" } else { "$leftN file(s) left" })
+        $stillRunning = @(Get-HarnessSidecarProcesses -Lane $lane)
         Add-Check "No sidecar survives uninstall" ($stillRunning.Count -eq 0)
     }
-    # Put the maintainer's own uninstall entry back exactly as it was.
-    if ($existing -and (Test-Path $backupReg)) {
-        reg import $backupReg 2>&1 | Out-Null
-        $restored = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-        Add-Check "Pre-existing install registration restored" ($null -ne $restored)
-    }
+    $unfinalised = @($lane.Phases | Where-Object { -not $_.Finalized })
+    Add-Check "Harness journal finalised (nothing left to recover)" ($unfinalised.Count -eq 0) "$($lane.Phases.Count) journal(s)"
+} else {
+    Write-Host "NOTE  -KeepInstall: the acceptance install and its journal(s) were KEPT (not uninstalled, not recovered). Uninstall it yourself, then for EACH journal run: tools/harness/Repair-Harness.ps1 -RunId <id> -ShortcutDir $($lane.ShortcutDir)   (journal ids: $((@($lane.Phases | ForEach-Object { $_.RunId })) -join ', '))"
 }
+Add-Check "Production state unchanged (tripwire)" ($lane.Findings.Count -eq 0) $(if ($lane.Findings.Count) { ($lane.Findings -join " | ") } else { "no change in the production data folders or real Start Menu/Desktop" })
+Add-Check "Harness cleanup reported no errors" ($lane.Errors.Count -eq 0) $(if ($lane.Errors.Count) { ($lane.Errors -join " | ") } else { "" })
 
 # --- report -------------------------------------------------------------------
+# PERSISTED report = CLOSED STRUCTURE: fixed check names (string literals in this script) + pass/fail, integer totals, fixed
+# literals, and the closed-schema lane block (fixed codes and counts only). The free-text check DETAILS stay on the console
+# only (most of it best-effort scrubbed); they are never written to acceptance.json. Write-HarnessAcceptanceReport assembles
+# the file from those closed parts (scrubbing touches ONLY the check-name values, before the lane block is inserted), then
+# re-reads the FINAL on-disk file and validates it; a mismatch deletes it and fails the run. The scrubbing and the leak scan
+# below are secondary checks, not the privacy boundary.
+$laneSchemaError = if ($result) { Test-HarnessLaneEvidenceSchema -Evidence $result.Evidence } else { "no result" }
+if ($laneSchemaError) { Add-Check "Lane evidence conforms to the closed schema" $false "REPORT_WRITE_FAILED" }
 $passed = @($checks | Where-Object ok).Count
 $total = $checks.Count
-$report = [pscustomobject]@{
-    schema_version = "acceptance/1"
-    installer      = $installer
-    checks         = $checks
-    passed         = $passed
-    total          = $total
-    evidence       = $outDir
-}
 $reportPath = Join-Path $outDir "acceptance.json"
 
 # The repository's own rules forbid local paths and usernames in tracked files,
@@ -677,6 +669,7 @@ function Scrub-EvidenceText([string]$text) {
 $literalRedactionPairs = @(
     @{ from = $repo;         to = "<repo>" },
     @{ from = $WorkDir;      to = "<workdir>" },
+    @{ from = $lane.Root;    to = "<harness-root>" },
     @{ from = $env:TEMP;     to = "<temp>" },
     @{ from = $env:USERNAME; to = "<user>" },
     @{ from = $SpoolmanUrl;  to = "<provider-on-lan>" },
@@ -684,8 +677,15 @@ $literalRedactionPairs = @(
     @{ from = "Fx7-tEsT";    to = "<fixture-key>" }
 ) | Where-Object { $_.from }
 
-$json = Scrub-EvidenceText ($report | ConvertTo-Json -Depth 5)
-$json | Set-Content $reportPath -Encoding utf8
+$reportWriteFailed = $false
+try {
+    [void](Write-HarnessAcceptanceReport -Path $reportPath -Checks $checks `
+        -LaneEvidence $(if ($result -and -not $laneSchemaError) { $result.Evidence } else { $null }) `
+        -ScrubName { param($n) Scrub-EvidenceText $n })
+} catch {
+    $reportWriteFailed = $true
+    Write-Host "FAIL  REPORT_WRITE_FAILED: acceptance.json was not written or failed validation: $(Protect-LaneText -Text $_.Exception.Message -Lane $lane)"
+}
 
 $textExtensions = @(".json", ".log", ".txt")
 foreach ($file in @(Get-ChildItem $outDir -File -Recurse -ErrorAction SilentlyContinue)) {
@@ -757,4 +757,4 @@ if ($leaked.Count -gt 0) {
 Write-Host ""
 Write-Host "$passed/$total checks passed"
 Write-Host "Evidence and screenshots: $outDir"
-if ($passed -ne $total -or $leaked.Count -gt 0) { exit 1 }
+if ($passed -ne $total -or $leaked.Count -gt 0 -or ($result -and $result.ExitCode -ne 0) -or $reportWriteFailed) { exit 1 }

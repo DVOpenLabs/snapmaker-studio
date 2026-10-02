@@ -1,55 +1,69 @@
-# Record the 90-second demo from the running application.
+#requires -Version 7.0
+# Record the 90-second demo from the running application - REWRAPPED ACCEPTANCE-IDENTITY lane.
 #
-# Nothing here is synthetic. The installed Snapmaker Studio is launched with the
-# sample project, driven through the documented beats over the Chrome DevTools
-# Protocol (the same mechanism the acceptance harness uses), and the real window
-# is captured with FFmpeg's gdigrab. Every frame is the application.
+# Nothing here is synthetic. A REWRAPPED acceptance-identity build of Snapmaker Studio (the same shipped payload,
+# installed through tools/harness/HarnessLauncher.psm1) is launched with the sample project, driven through the
+# documented beats over the Chrome DevTools Protocol (the same mechanism the acceptance harness uses), and the real
+# window is captured with FFmpeg's gdigrab. Every frame is the application.
 #
-# Requires: ffmpeg on PATH or passed with -FFmpeg, and the built NSIS installer.
-# Uses the same isolation as tools/acceptance/run.ps1 — an isolated WebView2
-# profile and engine data directory — so no personal library or recent-file names
-# can appear in the recording.
+# The window title and UI are the production ones (the acceptance build carries the production app); the install
+# identity is not, and this lane does not prove the production installer.
+#
+# Requires: ffmpeg on PATH or passed with -FFmpeg, and a REWRAPPED acceptance installer + its attestation
+# (or a verified real installer for the lane to rewrap). There is no installer auto-discovery.
+# Uses the same isolation as tools/acceptance/run.ps1 - an isolated WebView2 profile and engine data directory,
+# passed only to the child process - so no personal library or recent-file names can appear in the recording.
+# The production app must not be running and its update auto-check must be off (or its state file absent).
 #
 # Usage:
-#   pwsh -File tools/demo/record.ps1 [-FFmpeg <path>] [-Out <mp4>]
+#   pwsh -File tools/demo/record.ps1 -InstallerPath <rewrapped installer> -AttestationPath <its attestation>
+#        [-FFmpeg <path>] [-Out <mp4>] [-Short] [-KeepInstall]
+#   or: -RealInstaller <path> -ExpectedSha256 <sha256> -SourceVersion <semver> [-Sha256SumsPath <path>]
 
 [CmdletBinding()]
 param(
-    [string]$Installer,
+    [string]$InstallerPath,
+    [string]$AttestationPath,
+    [string]$RealInstaller,
+    [string]$ExpectedSha256,
+    [string]$Sha256SumsPath,
+    [string]$SourceVersion,
     [string]$FFmpeg = "ffmpeg",
     [string]$Out,
-    [string]$WorkDir = (Join-Path $env:TEMP "snapstudio-demo"),
     [switch]$Short,
+    [switch]$KeepInstall,
     [int]$DebugPort = 9355
 )
 
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-if (-not $Out) { $Out = Join-Path $WorkDir "snapmaker-studio-demo.mp4" }
-$started = @()
+Import-Module (Join-Path $PSScriptRoot "..\harness\HarnessLauncher.psm1") -Force -DisableNameChecking
 
-function Resolve-Installer {
-    if ($Installer) { return (Resolve-Path $Installer).Path }
-    $bundle = Join-Path $repo "desktop\src-tauri\target\release\bundle\nsis"
-    $newest = Get-ChildItem $bundle -Filter "*_x64-setup.exe" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $newest) { throw "No installer found in $bundle" }
-    return $newest.FullName
+$laneArgs = @{
+    InstallerPath = $InstallerPath; AttestationPath = $AttestationPath
+    RealInstaller = $RealInstaller; ExpectedSha256 = $ExpectedSha256; Sha256SumsPath = $Sha256SumsPath; SourceVersion = $SourceVersion
 }
-
-$installDir = Join-Path $WorkDir "app"
+$lane = Start-HarnessLane -Name "demo" -Kind demo @laneArgs -DebugPort $DebugPort -KeepInstall:$KeepInstall
+$WorkDir = $lane.RunDir
+if (-not $Out) { $Out = Join-Path $lane.EvidenceDir "snapmaker-studio-demo.mp4" }
 $sample     = Join-Path $repo "examples\demo_u1_showcase.3mf"
 $sampleWork = Join-Path $WorkDir "demo_u1_showcase.3mf"
-New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+$demoWatch = Join-Path $WorkDir "orca-output"
+$demoJob = Join-Path $WorkDir "demo_job.gcode"
+$result = $null
+$failure = $null
+$recorder = $null
+
+try {
 Copy-Item $sample $sampleWork -Force
 
 # A sliced job for the second half of the demo. Studio does not slice, so this is
 # the one thing the recording cannot produce on camera; everything Studio then
 # does with it is real, and this file is shaped exactly like Snapmaker Orca output.
-$demoWatch = Join-Path $WorkDir "orca-output"
-Remove-Item $demoWatch -Recurse -Force -ErrorAction SilentlyContinue
+# The engine data directory and WebView2 profile are fresh in every run (a new run
+# directory), so the fix ledger in the recording shows this run's work rather than every
+# previous take stacked on top of it.
 New-Item -ItemType Directory -Force -Path $demoWatch | Out-Null
-$demoJob = Join-Path $WorkDir "demo_job.gcode"
 @'
 ; HEADER_BLOCK_START
 ; generated by Snapmaker Orca 2.3.4 on 2026-08-23 at 10:00:00
@@ -83,29 +97,18 @@ PRINT_END
 ; printer_model = Snapmaker U1
 ; CONFIG_BLOCK_END
 '@ | Set-Content $demoJob -Encoding utf8
-# Start from an empty engine data directory so the fix ledger in the recording
-# shows this run's work rather than every previous take stacked on top of it.
-Remove-Item (Join-Path $WorkDir "engine-data") -Recurse -Force -ErrorAction SilentlyContinue
 
-# Always install fresh. Reusing whatever was left in the work directory once
-# produced a demo of the previous release — the status bar in the recording named
-# a version that was no longer the one being shipped.
-if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue }
-$inst = Resolve-Installer
-Write-Host "Installing $inst"
-Start-Process -FilePath $inst -ArgumentList '/S', '/NCRC', "/D=$installDir" -Wait
+# Always install fresh into this run's own install directory. (Reusing whatever was left in a work
+# directory once produced a demo of the previous release - the status bar in the recording named a
+# version that was no longer the one being shipped.)
+Write-Host "Installing the rewrapped acceptance-identity build"
+$inst = Install-HarnessBuild -Lane $lane -Which Primary
+if ($inst.ExitCode -ne 0) { throw "install failed with exit code $($inst.ExitCode)" }
 
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort --remote-allow-origins=*"
-$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $WorkDir "webview-profile"
-$env:SNAPSTUDIO_DATA_DIR = Join-Path $WorkDir "engine-data"
-
-$recorder = $null
+# Isolation variables reach ONLY the app child process, inside Start-HarnessApp.
+$appHandle = Start-HarnessApp -Lane $lane -Arguments @($sampleWork) -SettleSeconds 10 -Label "app"
+$app = $appHandle.Process
 try {
-    $app = Start-Process -FilePath (Join-Path $installDir "snapmaker-studio-desktop.exe") `
-        -ArgumentList $sampleWork -PassThru
-    $started += $app.Id
-    Start-Sleep -Seconds 10
-
     # Put the window somewhere predictable so the capture is a consistent size.
     Add-Type @"
 using System;
@@ -163,42 +166,37 @@ public static class Win {
     # file is remuxed to MP4 once the stream has been closed cleanly.
     $raw = [System.IO.Path]::ChangeExtension($Out, ".mkv")
     $log = Join-Path $WorkDir "ffmpeg.log"
-    $recorder = Start-Process -FilePath $FFmpeg -PassThru -WindowStyle Hidden `
-        -RedirectStandardError $log -ArgumentList @(
-        "-y", "-f", "gdigrab", "-framerate", "30", "-draw_mouse", "1",
+    # ffmpeg is started through the launcher (tracked by pid + start time, stdin kept open so it can be told
+    # to quit). Each argument is its own element, so an output path containing a space needs no manual quoting.
+    # stderr is drained into a log so a full pipe can never stall the recorder.
+    $recorder = Start-HarnessTool -Lane $lane -Tool $FFmpeg -Hidden -RedirectInput -RedirectOutput -Label "ffmpeg" -ArgumentList @(
+        "-y", "-loglevel", "warning", "-nostats", "-f", "gdigrab", "-framerate", "30", "-draw_mouse", "1",
         "-offset_x", "$x", "-offset_y", "$y", "-video_size", "${w}x${h}",
         "-i", "desktop",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        # Quoted: Start-Process joins the argument list with spaces and does not
-        # quote for you, so an output path containing a space becomes two
-        # arguments and ffmpeg writes nothing.
-        "-pix_fmt", "yuv420p", "`"$raw`""
+        "-pix_fmt", "yuv420p", $raw
     )
-    $started += $recorder.Id
+    $ffErr = $recorder.Process.StandardError.ReadToEndAsync()
+    $ffOut = $recorder.Process.StandardOutput.ReadToEndAsync()
     Start-Sleep -Seconds 3
 
-    Write-Host "Recording — driving the demo beats"
+    Write-Host "Recording - driving the demo beats"
     $cut = if ($Short) { "short" } else { "full" }
-    & node (Join-Path $PSScriptRoot "beats.mjs") "http://127.0.0.1:$DebugPort" $cut $demoJob $demoWatch
-    if ($LASTEXITCODE -ne 0) { throw "the demo beats failed" }
+    $r = Invoke-HarnessNode -Lane $lane -ArgumentList @((Join-Path $PSScriptRoot "beats.mjs"), $appHandle.CdpUrl, $cut, $demoJob, $demoWatch)
+    $r.Output | ForEach-Object { Write-Host $_ }
+    if ($r.ExitCode -ne 0) { throw "the demo beats failed" }
 
     Start-Sleep -Seconds 2
 }
 finally {
-    # Let ffmpeg close the stream itself. A hard kill mid-write leaves a file
-    # that will not play, which is indistinguishable from not recording at all.
-    if ($recorder -and -not $recorder.HasExited) {
-        try {
-            & taskkill /PID $recorder.Id 2>&1 | Out-Null      # WM_CLOSE, not /F
-        } catch { }
-        $recorder.WaitForExit(15000) | Out-Null
-        if (-not $recorder.HasExited) { Stop-Process -Id $recorder.Id -Force -ErrorAction SilentlyContinue }
+    # Let ffmpeg close the stream itself ('q' on its stdin). A hard kill mid-write leaves a file
+    # that will not play, which is indistinguishable from not recording at all. Only if it does not
+    # quit in time is it force-stopped - by its tracked pid and start time, never by name.
+    if ($recorder) {
+        [void](Stop-HarnessTool -Lane $lane -Handle $recorder -QuitOnStdin -GraceSeconds 15)
+        try { if ($ffErr.Wait(3000)) { Set-Content -LiteralPath $log -Value ($ffErr.Result + $ffOut.Result) -Encoding utf8 } } catch { }
         Start-Sleep -Seconds 2
     }
-    foreach ($procId in $started) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
-    Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-    Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue
-    Remove-Item Env:SNAPSTUDIO_DATA_DIR -ErrorAction SilentlyContinue
 }
 
 $raw = [System.IO.Path]::ChangeExtension($Out, ".mkv")
@@ -209,10 +207,26 @@ if (-not (Test-Path $raw)) {
 }
 
 # Remux (no re-encode) into a normal MP4 with the index at the front.
-& $FFmpeg -hide_banner -loglevel error -y -i $raw -c copy -movflags +faststart $Out
+$remux = Invoke-HarnessTool -Lane $lane -Tool $FFmpeg -ArgumentList @("-hide_banner", "-loglevel", "error", "-y", "-i", $raw, "-c", "copy", "-movflags", "+faststart", $Out)
 if (-not (Test-Path $Out)) { throw "the recording could not be remuxed to MP4" }
 
 $mb = [math]::Round((Get-Item $Out).Length / 1MB, 2)
 Write-Host "Recorded $Out ($mb MB)"
-& $FFmpeg -hide_banner -i $Out 2>&1 | Select-String "Duration|Stream #0"
+$info = Invoke-HarnessTool -Lane $lane -Tool $FFmpeg -ArgumentList @("-hide_banner", "-i", $Out)
+$info.Output | Select-String "Duration|Stream #0"
 Remove-Item $raw -ErrorAction SilentlyContinue
+}
+catch {
+    $failure = $_
+    Write-Host "FAIL  demo recording aborted: $(Protect-LaneText -Text $_.Exception.Message -Lane $lane)"
+}
+finally {
+    # Always runs, including with -KeepInstall (which skips the uninstall and the recovery): processes, uninstall, journal
+    # recovery, production tripwire, lock release.
+    $result = Complete-HarnessLane -Lane $lane
+}
+
+# Closed-schema lane evidence (fixed codes and counts only); a writer failure FAILS the lane (scrubbed findings/errors are still printed first).
+$rc = Publish-HarnessLaneReport -Lane $lane -Result $result -EvidencePath (Join-Path $lane.EvidenceDir "lane-evidence.json") -Failed:([bool]$failure)
+if ($KeepInstall) { Write-Host "NOTE  -KeepInstall: the acceptance install and its journal(s) were KEPT (not uninstalled, not recovered). Uninstall it yourself, then for EACH journal run: tools/harness/Repair-Harness.ps1 -RunId <id> -ShortcutDir $($lane.ShortcutDir)   (journal ids: $((@($lane.Phases | ForEach-Object { $_.RunId })) -join ', '))" }
+if ($rc -ne 0) { exit 1 }
