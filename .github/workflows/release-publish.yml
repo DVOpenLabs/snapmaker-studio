@@ -48,24 +48,23 @@ name: Publish release
 # timeout-minutes is a ceiling on everything in it together, so a slow
 # earlier gate could otherwise eat into the time meant for post-publish
 # verification. Splitting it into its own job gives it its own, disjoint
-# timeout budget instead. `verify` runs in exactly two cases: a verify-only
+# timeout budget instead. The job graph is publish -> flip -> verify (#50):
+# `publish` gates and creates the draft and ends with an "arm" step
+# (`attempted=true`, non-dry-run only); the irreversible flip-to-public runs
+# in its own `flip` job (`needs: publish`, only when `attempted == 'true'`);
+# `verify` needs both. `verify` runs in exactly two cases: a verify-only
 # dispatch (whether or not `publish` even ran — it is skipped by its own
 # `if:` in that case, which is why `verify`'s condition uses `!cancelled()`
 # rather than plain success/failure logic — see below), or whenever
 # publication was actually ATTEMPTED (`needs.publish.outputs.attempted ==
-# 'true'`, set by an "arm" step that runs immediately before the flip-to-
-# public step, on the same non-dry-run-only `if:` — see that step). This is
-# deliberately NOT "the flip succeeded": if `gh release edit --draft=false`
-# itself fails, or the flip step's own job then times out or otherwise
-# fails after a server-side-successful edit, `attempted` is still 'true'
-# (a failed or timed-out job still exports its outputs) and `verify` still
-# runs — it is read-only, so running it is always safe, and it is the only
-# way to learn, from the read side, whether the release actually went
-# public or is still a draft. Limitation: if the runner machine itself is
-# lost after the flip but before the job finishes, GitHub never receives
-# this job's outputs and `verify` is skipped. In that case (the publish job
-# shows as failed/lost with no verify job), run a `verify_only` dispatch
-# for the tag (see docs/RELEASE_CHECKLIST.md §9). `!cancelled()` (not `always()`):
+# 'true'`). `attempted` is the output of the COMPLETED gating job, so it is
+# already delivered before the flip starts: even if the flip's runner is lost
+# after GitHub accepts the flip, `verify` still runs. This is deliberately NOT
+# "the flip succeeded": if `gh release edit --draft=false` itself fails or the
+# flip job is lost or times out, `verify` still runs — it is read-only, so
+# running it is always safe, and it is the only way to learn, from the read
+# side, whether the release actually went public or is still a draft.
+# `!cancelled()` (not `always()`):
 # if the WHOLE workflow run is cancelled, `verify` should NOT force itself
 # to run — cancelling is supposed to stop everything; re-check a cancelled
 # run's actual state with a `verify_only` dispatch instead (see
@@ -138,33 +137,29 @@ jobs:
   publish:
     if: github.event_name == 'push' || inputs.verify_only != true
     runs-on: ubuntu-latest
-    # Post-publish verification no longer runs in this job (see the `verify`
-    # job below), so this only has to cover checkout + the gates + draft
-    # creation/publish themselves.
+    # This is the gating/draft job: checkout + the gates + draft creation. It
+    # does NOT flip the draft to public (#50): the flip lives in the separate
+    # `flip` job below, so this job's outputs are already delivered, as a
+    # completed job's, before the one irreversible step is taken.
     timeout-minutes: 20
     permissions:
       contents: write
       actions: read
     outputs:
       tag: ${{ steps.input.outputs.tag }}
-      # 'true' as soon as this run has committed to a REAL (non-dry-run)
-      # publish attempt -- set by the "arm" step, which runs immediately
-      # before the flip-to-public step and on the identical `if:`. This is
-      # what the `verify` job's `if:` actually keys off (see the header
-      # comment and that step's own comment): it must be true even if the
-      # flip itself then fails or the job times out before `published`
-      # below gets written, so a read-only check still happens for a
-      # publish that was genuinely attempted. Limitation: if the runner
-      # machine itself is lost before the job finishes, this output is
-      # never delivered and `verify` is skipped -- recover with a
-      # `verify_only` dispatch (see docs/RELEASE_CHECKLIST.md §9).
+      # 'true' once this run has committed to a REAL (non-dry-run) publish
+      # attempt -- set by the "arm" step, which is the LAST step of this job
+      # and runs on the non-dry-run-only `if:`. Because the job completes
+      # right after it, the output is delivered to GitHub before the `flip`
+      # job (which `needs` this one) can even start, so a lost runner during
+      # the flip can no longer hide it: `verify` reads this already-delivered
+      # value (#50).
       attempted: ${{ steps.arm.outputs.attempted }}
-      # 'true' only once the "Publish" step's `gh release edit` call itself
-      # has returned success. NOT used by `verify`'s `if:` (see `attempted`
-      # above) -- kept only for a human glancing at this run's job summary
-      # to see, without opening logs, whether the flip itself reported
-      # success from here.
-      published: ${{ steps.publish.outputs.published }}
+      # Whether the new release should become /releases/latest (decided by
+      # the "Decide whether this tag should become /releases/latest" step,
+      # fail-closed, before any draft exists). The `flip` job passes it to
+      # `gh release edit --latest=`.
+      latest: ${{ steps.latest.outputs.latest }}
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -498,31 +493,51 @@ jobs:
           echo "Dry run complete: every gate passed, a draft was created and verified, nothing was published. Draft deleted. If this rehearsal used a tag name that did not exist before it ran, verify no stray tag was left behind (git ls-remote origin refs/tags/<tag>) and delete it by hand if so."
 
       - name: Arm post-publish verification (records that a real publish is about to be attempted)
-        # Written BEFORE the flip below, not after: `verify`'s `if:` keys
-        # off this output specifically so an uncertain outcome (the flip
-        # succeeds server-side but this job then fails or times out before
-        # recording anything else) still gets a read-only check afterwards,
-        # rather than the release silently sitting there unverified.
-        # Limitation: if the runner machine itself is lost after the flip
-        # but before the job finishes, this output is never delivered to
-        # GitHub and `verify` is skipped -- recover with a `verify_only`
-        # dispatch (see docs/RELEASE_CHECKLIST.md §9). Same `if:` as the
-        # flip step itself -- never armed for a dry run.
+        # The LAST step of this job (#50): once it has run the job completes,
+        # so `attempted=true` is delivered to GitHub as a finished job's
+        # output BEFORE the `flip` job can start. The flip itself happens in
+        # that separate job, so losing the flip's runner can no longer lose
+        # this output; `verify` reads it from here. Never armed for a dry
+        # run (the `flip` job's own `if:` then never fires either).
         if: steps.input.outputs.dry_run != 'true'
         id: arm
         run: echo "attempted=true" >> "$GITHUB_OUTPUT"
 
-      - name: Publish — flip the draft to public (the one moment this becomes real)
-        if: steps.input.outputs.dry_run != 'true'
-        id: publish
+  flip:
+    name: Flip the verified draft to public (the one moment this becomes real)
+    needs: publish
+    # Only a REAL (non-dry-run) publish arms `attempted`; a dry run, a
+    # verify-only dispatch (where `publish` is skipped) and any failed gate
+    # never reach this job.
+    if: needs.publish.outputs.attempted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ needs.publish.outputs.tag }}
+      LATEST: ${{ needs.publish.outputs.latest }}
+    steps:
+      - name: Flip the draft to public
         run: |
           set -euo pipefail
+          # Both values come from the gating job's already-validated outputs;
+          # re-check their shape here because this is the irreversible step.
+          if ! [[ "$TAG" =~ ^v[0-9A-Za-z.+-]+$ ]]; then
+            echo "Refusing to flip: tag '$TAG' does not match ^v[0-9A-Za-z.+-]+\$." >&2
+            exit 1
+          fi
+          case "$LATEST" in
+            true|false) : ;;
+            *) echo "Refusing to flip: latest='$LATEST' is neither true nor false." >&2; exit 1 ;;
+          esac
           gh release edit "$TAG" --repo "$REPO" --draft=false --latest="$LATEST"
-          echo "published=true" >> "$GITHUB_OUTPUT"
 
   verify:
     name: Verify a release's live state (read-only)
-    needs: publish
+    needs: [publish, flip]
     # See the header comment's "Post-publish verification" note for what
     # each branch of this condition covers. `!cancelled()` (not `always()`)
     # is required because a verify-only dispatch makes `publish` SKIP itself
