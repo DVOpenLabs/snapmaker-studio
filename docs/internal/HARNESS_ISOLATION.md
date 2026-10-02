@@ -167,6 +167,20 @@ following reparse points: `%APPDATA%\com.snapmakerstudio.desktop` and `%LOCALAPP
 (names, sizes, modification times, plus a share-read hash of the Local Storage leveldb files), and the production
 engine folder `%LOCALAPPDATA%\SnapmakerStudio` (detect-only).
 
+It also fingerprints, read-only and in memory only, the production **install surfaces** that caused #55, using the exact
+names in `tools/lib/HarnessIdentity.psd1`: the production uninstall key, the remembered install-location key and the
+manufacturer key (HKCU and HKLM, including the WOW6432Node views; existence plus a hash over the whole key tree: every value with its kind, and every subkey path, recursively), the production `Run` value, the production Start Menu and Desktop shortcuts (existence plus a hash of the file
+bytes) and the default production install directories (`%LOCALAPPDATA%`, Program Files, Program Files (x86)); every file
+in an existing one by relative path, size and sha256, plus every directory entry (so an empty nested directory counts) and the NTFS alternate data streams of every file, directory and the install dir itself (stream name, size, sha256), with a strict enumeration. Entry names are compared with their original casing, so a case-only rename counts as a change.
+Attribute-only changes (hidden, read-only or system flags, ACLs) are NOT detected and timestamps are ignored on purpose (only
+content, names, directory structure and alternate data streams are). Absent must stay absent and existing must
+stay byte-identical. A read error, access denial, reparse point or enumeration failure is never treated as unchanged: at
+the baseline it refuses the lane before anything is installed (this applies to the install SURFACES). The three data folders behave differently:
+their snapshot records a sentinel when it cannot read something instead of throwing, so a sentinel is accepted at the start and
+is recorded as an error (`TRIPWIRE_INCOMPLETE`) at the final check. At the final check any unknown state records that error
+and the lane's evidence says `tripwire.completed: false`. The acceptance harness check
+"Production state unchanged (tripwire)" passes only when the baseline and the final check both completed with no finding.
+
 | Folder | Expectation |
 |---|---|
 | Roaming `com.snapmakerstudio.desktop` | Stays absent if it was absent; if it existed it is unchanged |
@@ -176,7 +190,10 @@ engine folder `%LOCALAPPDATA%\SnapmakerStudio` (detect-only).
 Any other difference is reported in the evidence and the lane exits non-zero. Findings are **counts and categories only**
 (for example "Local entries ADDED: 2", "leveldb files hash-CHANGED: 1"): a file or directory name from a production folder
 is never written by the tripwire (the persisted evidence carries only the integer counts, as a closed schema), because
-those folders can hold private model names. The tripwire never restores, repairs or deletes anything.
+those folders can hold private model names. For the install surfaces the evidence carries only `tripwire.completed` and
+one integer change count per category (`uninstallKey`, `rememberedKey`, `manufacturerKey`, `runValue`,
+`startMenuShortcut`, `desktopShortcut`, `installDir`): no key, value, path, file name or hash (lane evidence schema
+`harness-lane-evidence/3`). The tripwire never restores, repairs or deletes anything.
 
 ## Recovery
 
