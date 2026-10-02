@@ -601,7 +601,12 @@ if (-not $KeepInstall) {
 } else {
     Write-Host "NOTE  -KeepInstall: the acceptance install and its journal(s) were KEPT (not uninstalled, not recovered). Uninstall it yourself, then for EACH journal run: tools/harness/Repair-Harness.ps1 -RunId <id> -ShortcutDir $($lane.ShortcutDir)   (journal ids: $((@($lane.Phases | ForEach-Object { $_.RunId })) -join ', '))"
 }
-Add-Check "Production state unchanged (tripwire)" ($lane.Findings.Count -eq 0) $(if ($lane.Findings.Count) { ($lane.Findings -join " | ") } else { "no change in the production data folders or real Start Menu/Desktop" })
+# Passes only when the tripwire COMPLETED (baseline and final fingerprint both taken) and found nothing. A tripwire-step exception is
+# recorded as a lane error with TripwireCompleted = $false, so it can no longer pass here.
+Add-Check "Production state unchanged (tripwire)" (($lane.Findings.Count -eq 0) -and $lane.TripwireCompleted) $(
+    if ($lane.Findings.Count) { ($lane.Findings -join " | ") }
+    elseif (-not $lane.TripwireCompleted) { "the tripwire did not complete (baseline or final fingerprint unavailable): production state is UNVERIFIED" }
+    else { "no change in the production data folders (Roaming/Local <bundle id>, engine data), the production uninstall, remembered-location and manufacturer registry keys, the Run value, the production Start Menu and Desktop shortcuts and the production install directories (detection only); no acceptance shortcut in the real Start Menu/Desktop" })
 Add-Check "Harness cleanup reported no errors" ($lane.Errors.Count -eq 0) $(if ($lane.Errors.Count) { ($lane.Errors -join " | ") } else { "" })
 
 # --- report -------------------------------------------------------------------
