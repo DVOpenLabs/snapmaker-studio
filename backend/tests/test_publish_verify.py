@@ -1128,7 +1128,8 @@ def test_workflow_tag_validation_rejects_crlf_and_enforces_the_format():
     # Both jobs reject an embedded CR/LF before any write, and both require
     # the same ^v[0-9A-Za-z.+-]+$ shape.
     assert text.count("*$'\\n'*|*$'\\r'*)") == 2
-    # the gating job, the verify job and (#50) the flip job's re-check of the tag it is handed\n    assert text.count('=~ ^v[0-9A-Za-z.+-]+$') == 3
+    # the gating job, the verify job and (#50) the flip job's re-check of the tag it is handed
+    assert text.count('=~ ^v[0-9A-Za-z.+-]+$') == 3
 
 
 def test_workflow_metadata_whole_blob_crlf_check_precedes_both_writes():
@@ -1160,13 +1161,11 @@ def _checklist_text() -> str:
     return CHECKLIST_PATH.read_text(encoding="utf-8")
 
 
-def test_docs_do_not_claim_verify_survives_a_lost_runner():
-    """Sol r4 HIGH: the arm step and the flip step run in the same job, so
-    if the runner machine itself is lost after a server-side-successful
-    flip but before the job finishes, its outputs are never delivered to
-    GitHub and `verify` is skipped -- this is a real gap, not covered by
-    `attempted`. Neither the workflow nor the checklist may claim
-    otherwise."""
+def test_docs_do_not_use_the_old_runner_dies_wording():
+    """Historical guard (kept): neither the workflow nor the checklist may use
+    the old "runner dies" phrasing. Since #50 the arm step and the flip are in
+    different jobs, so a lost flip runner no longer skips `verify`; that is
+    asserted by the flip-job and checklist tests above, not here."""
     workflow_text = _workflow_text()
     checklist_text = _checklist_text()
     assert "runner dies" not in workflow_text

@@ -283,11 +283,17 @@ always printed even if its own 480s end-to-end deadline is hit.
 publish was attempted**: the flip itself did not complete — nothing new
 went live. Inspect with `gh release view vX.Y.Z` before doing anything
 else; do not re-dispatch blindly (the refuse-if-exists check makes a
-re-dispatch safe regardless, but understand what happened first).
+re-dispatch safe regardless, but understand what happened first). A draft
+that is confirmed to remain must be cleaned up (deleted) before the tag is
+dispatched again.
 
-**If `publish` succeeds and `verify` then fails for any other reason (or is
-cancelled)**: the release **IS public** — a failed/cancelled `verify` job
-never un-publishes anything — but it is **unverified**. Re-run the same
+**If the `flip` job succeeded and `verify` then fails for any other reason (or
+is cancelled)**: the release **IS public** — a failed/cancelled `verify` job
+never un-publishes anything — but it is **unverified**. (`publish` succeeding
+is NOT enough to say that: the flip is its own job now. If `flip` failed or
+was lost and `verify` then also fails, the release may still be a draft —
+check `gh release view vX.Y.Z` by hand first; a draft that remains must be
+cleaned up before any re-dispatch, see below.) Re-run the same
 check, read-only, with no rebuild and nothing else touched, via
 `workflow_dispatch` with `verify_only: true`:
 ```
@@ -313,7 +319,7 @@ have published nothing and left no draft behind if it was cancelled
 **before** the "Create the release as a DRAFT" step started (pending, or
 still in an earlier gate) — re-dispatch it; do not re-tag. If it was
 cancelled **during or after** draft creation (including during or after the
-publish step, or during the separate `verify` job), do not assume either
+`flip` job, or during the separate `verify` job), do not assume either
 way: check the release state by hand first (`gh release view vX.Y.Z` —
 present but still a draft means clean up the draft; present and public
 means the release actually went out, cancellation only interrupted
