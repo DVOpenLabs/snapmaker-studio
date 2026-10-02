@@ -1,4 +1,4 @@
-﻿# Start here — session restart, 2026-08-28
+# Start here — session restart, 2026-08-28
 
 The single file a fresh session should read first. Everything below is current as
 of the commit that carries it.
@@ -126,7 +126,7 @@ alive before the checks that depend on them.
 docker run -d --name <yours> -p 18912:8000 ghcr.io/donkie/spoolman:latest
 docker run -d --name <yours> -p 18000:8000 -e PORT=8000 ghcr.io/maziggy/bambuddy:latest
 # seed both, then export SNAPSTUDIO_SPOOL_* and SNAPSTUDIO_BB_* with the ids
-pwsh -File tools/acceptance/run.ps1 -SpoolmanUrl 127.0.0.1:18912 -BambuddyUrl 127.0.0.1:18000
+pwsh -File tools/acceptance/run.ps1 -InstallerPath <rewrapped installer> -AttestationPath <its attestation> -SpoolmanUrl 127.0.0.1:18912 -BambuddyUrl 127.0.0.1:18000
 ```
 
 Both provider addresses and the seeded spool ids arrive as environment variables,
@@ -142,7 +142,7 @@ unavailable and nothing is claimed — but it will stop a seeding script dead.
 ## Real U1 hardware — done, 57/57
 
 Run 2026-08-28 through the installed application and its frozen sidecar against a
-physical Snapmaker U1, pinned to the accepted installer with `-Installer` rather
+physical Snapmaker U1, pinned to the accepted installer rather
 than whatever was newest in the bundle directory.
 
 **Read-only, and the gate is printed before the first request.** Seven routes,
@@ -184,7 +184,7 @@ there is no version to name it after.
 **How to re-run it:**
 
 ```
-pwsh -File tools/hardware/verify.ps1 -PrinterHost <ipv4> -Installer <the exact exe>
+pwsh -File tools/hardware/verify.ps1 -PrinterHost <ipv4> -InstallerPath <rewrapped installer> -AttestationPath <its attestation>
 ```
 
 Two things that cost time and will again:

@@ -163,28 +163,31 @@ Everything above runs from a clone. Two harnesses go further and check the build
 user would actually download.
 
 **The installed application.** Build the installer with `npm run release:windows`
-in `desktop/`, then:
+in `desktop/`. The maintainer then runs `tools/acceptance/run.ps1`. It refuses to
+run without a rewrapped acceptance-identity installer and its attestation (see
+[../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)), and it never
+modifies the production installation; a tripwire fails the run if production state
+changes.
 
-```powershell
-pwsh -File tools/acceptance/run.ps1
-```
-
-It installs into an isolated directory with its own WebView2 profile and engine
-data directory, drives the real application window over the Chrome DevTools
-Protocol, and uninstalls. 41 checks, including that the input file is byte-identical
-afterwards and that uninstalling leaves nothing behind. It stops only processes it
-started, and restores any pre-existing installation's registry entry. Last result:
-**41/41** — [../internal/acceptance-1.2.0.json](../internal/acceptance-1.2.0.json).
+It installs the rewrapped build into an isolated directory with its own WebView2
+profile and engine data directory, drives the real application window over the
+Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
+is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
+only processes it started. For the v1.2.0 release, the earlier version of this
+harness scored **41/41** on the then-current build —
+[../internal/acceptance-1.2.0.json](../internal/acceptance-1.2.0.json). The harness
+has since changed (isolated acceptance identity, a different check set), so that
+record is not a result for the current harness.
 An earlier release-candidate build of this same version scored lower here — a
 race in the harness's own test code, reading a spool-notes row before it had
 redrawn after a save or a confirmed filament use; a defect in the test, not the
 product, fixed and reverified (see [../TRUST_STATUS.md](../TRUST_STATUS.md)).
 
-**A real printer.** With a Snapmaker U1 on the same network:
-
-```powershell
-pwsh -File tools/hardware/verify.ps1 -PrinterHost <printer-ip>
-```
+**A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
+`tools/hardware/verify.ps1 -PrinterHost <printer-ip>`. Like the acceptance harness,
+it refuses to run without a rewrapped acceptance-identity installer and its
+attestation (see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md))
+and never modifies the production installation; a tripwire fails the run if production state changes.
 
 Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no

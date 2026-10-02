@@ -98,7 +98,7 @@ source at the release commit, not from the installer.
 
 | What | Result | How to reproduce |
 |---|---|---|
-| Installed-application acceptance | **41/41** | `pwsh -File tools/acceptance/run.ps1` |
+| Installed-application acceptance (v1.2.0 release run, earlier version of the harness) | **41/41** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | **58/58** | see [../internal/hardware-1.2.0.json](../internal/hardware-1.2.0.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
