@@ -1173,13 +1173,16 @@ def test_docs_do_not_claim_verify_survives_a_lost_runner():
     assert "runner dies" not in checklist_text
 
 
-def test_checklist_documents_verify_only_as_the_lost_runner_recovery():
-    """The checklist must state the actual recovery for a lost runner: a
-    manual `verify_only` dispatch for the tag."""
+def test_checklist_documents_the_flip_job_and_verify_only_as_the_manual_recheck():
+    """#50: the checklist describes the publish -> flip -> verify graph, says
+    `attempted` is delivered before the flip starts (so a lost flip runner no
+    longer skips `verify`), and keeps `verify_only` as the manual re-check."""
     checklist_text = _checklist_text()
-    assert (
-        "**Limitation**: if the runner machine itself is lost\n"
-        "after the flip but before the job finishes, GitHub never receives that\n"
-        "job's outputs and `verify` is skipped."
-    ) in checklist_text
-    assert "run a `verify_only` dispatch" in checklist_text
+    flat = " ".join(checklist_text.split())
+    assert "`publish` (gates + the draft), `flip`" in flat
+    assert "(`needs: [publish, flip]`)" in flat
+    assert "that output is delivered **before** the `flip` job can start" in flat
+    assert "its runner is lost after GitHub accepted the flip, `verify` still runs" in flat
+    # the old single-job limitation is gone
+    assert "GitHub never receives that job's outputs and `verify` is skipped" not in flat
+    assert "`verify_only` dispatch" in flat
