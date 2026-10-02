@@ -333,7 +333,7 @@ function Read-HarnessJournal {
     if ($j['processes'] -isnot [System.Collections.IList]) { & $bad 'processes malformed' }
     foreach ($p in $j['processes']) {
         if ($p -isnot [System.Collections.IDictionary] -or -not $p.Contains('pid') -or -not $p.Contains('startTicks') -or -not $p.Contains('path') -or
-            $p['pid'] -isnot [int] -or ($p['startTicks'] -isnot [long] -and $p['startTicks'] -isnot [int]) -or $p['path'] -isnot [string]) { & $bad 'process record malformed' }
+            ($p['pid'] -isnot [int] -and $p['pid'] -isnot [long]) -or ($p['startTicks'] -isnot [long] -and $p['startTicks'] -isnot [int]) -or $p['path'] -isnot [string]) { & $bad 'process record malformed' }
     }
     if ($j['restored'].Count -ne $allowed.Count) { & $bad 'restored flags do not match allow-list' }
     foreach ($id in $j['surfaces'].Keys) { if ($allowed -cnotcontains $id) { & $bad "surface $id is not in the allow-list" } }
