@@ -59,14 +59,14 @@ _DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar("_DEADL
 #: timeout can: dripped status lines and headers, the body of a redirect that
 #: urllib drains for itself, and chunk-size lines / trailers inside one
 #: `read1()`. `None` outside a `_fetch()` call.
-_LIVE_SOCKETS: contextvars.ContextVar["list[socket.socket] | None"] = contextvars.ContextVar(
+_LIVE_SOCKETS: contextvars.ContextVar["_Watchdog | None"] = contextvars.ContextVar(
     "_LIVE_SOCKETS", default=None)
 
 
 def _register_live_socket(sock) -> None:
-    live = _LIVE_SOCKETS.get()
-    if live is not None and sock is not None:
-        live.append(sock)
+    watchdog = _LIVE_SOCKETS.get()
+    if watchdog is not None and sock is not None:
+        watchdog.register(sock)
 
 
 class InvalidProviderAddress(ValueError):
@@ -623,13 +623,18 @@ class _LocalOnlyHTTPSConnection(_LocalOnlyHTTPConnection, http.client.HTTPSConne
     def connect(self):
         super().connect()
         try:
-            self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+            # #53: wrap WITHOUT the implicit handshake, register the TLS socket
+            # (wrapping detaches the plain one `super().connect()` registered),
+            # and only then handshake -- so a peer that stalls the handshake can
+            # still be cut off by the overall-deadline watchdog.
+            self.sock = self._context.wrap_socket(
+                self.sock, server_hostname=self.host, do_handshake_on_connect=False)
+            _register_live_socket(self.sock)
+            self.sock.do_handshake()
         except Exception:
             self.sock.close()
             self.sock = None
             raise
-        # wrapping detaches the plain socket registered by `super().connect()`
-        _register_live_socket(self.sock)
 
 
 class _LocalOnlyHTTPHandler(urllib.request.HTTPHandler):
@@ -706,16 +711,33 @@ class _Watchdog:
     def __init__(self, seconds: float):
         self.fired = threading.Event()
         self.sockets: list = []
+        self._lock = threading.Lock()
         self._timer = threading.Timer(max(seconds, 0.0), self._trip)
         self._timer.daemon = True
 
+    @staticmethod
+    def _shutdown(sock) -> None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except (OSError, ValueError):
+            pass
+
+    def register(self, sock) -> None:
+        """Track a live socket. Registration and the trip are serialised by
+        one lock, so a socket that connects just as the deadline passes is
+        shut down at once instead of being missed by the one-shot timer."""
+        with self._lock:
+            self.sockets.append(sock)
+            already_fired = self.fired.is_set()
+        if already_fired:
+            self._shutdown(sock)
+
     def _trip(self) -> None:
-        self.fired.set()
-        for sock in list(self.sockets):
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except (OSError, ValueError):
-                pass
+        with self._lock:
+            self.fired.set()
+            sockets = list(self.sockets)
+        for sock in sockets:
+            self._shutdown(sock)
 
     def start(self) -> None:
         self._timer.start()
@@ -736,12 +758,12 @@ def _fetch(url: str, *, timeout: float = 4.0, accept: str = "application/json",
     deadline = time.monotonic() + timeout
     token = _DEADLINE.set(deadline)
     watchdog = _Watchdog(timeout)
-    live_token = _LIVE_SOCKETS.set(watchdog.sockets)
+    live_token = _LIVE_SOCKETS.set(watchdog)
     watchdog.start()
     try:
         try:
             return _read_bounded(request, timeout, deadline, watchdog, limit)
-        except BaseException:
+        except Exception:
             # #53: once the deadline has passed and the watchdog has shut a
             # socket down, whatever error that caused (EOF, a reset, a short
             # chunk) is a timeout, not a transport fault.

@@ -152,3 +152,33 @@ def test_a_prompt_body_is_read_in_full(serve):
     server = serve(0.0, prefix=headers, total=300)
     body = mp._fetch(f"http://127.0.0.1:{server.port}/", timeout=3.0)
     assert body == b"x" * 300
+
+
+def test_a_socket_registered_after_the_deadline_fired_is_shut_down_at_once():
+    """The timer is one-shot: a connect that completes just after it fired must
+    not escape it (registration and the trip are serialised by one lock)."""
+    watchdog = mp._Watchdog(60.0)
+    watchdog._trip()
+    left, right = socket.socketpair()
+    try:
+        watchdog.register(left)
+        right.settimeout(2)
+        assert right.recv(1) == b""  # the peer sees EOF: `left` was shut down
+    finally:
+        left.close()
+        right.close()
+
+
+def test_a_stalled_tls_handshake_is_cut_off_at_the_overall_deadline(serve):
+    # the peer accepts the TCP connection and never speaks TLS.
+    server = serve(1.0, prefix=b"", payload=b"\x16", total=3)
+    started = time.monotonic()
+    with pytest.raises((TimeoutError, OSError)):
+        mp._fetch(f"https://127.0.0.1:{server.port}/", timeout=1.0)
+    assert time.monotonic() - started < 3.5
+
+
+def test_the_deadline_conversion_does_not_swallow_keyboard_interrupt():
+    import inspect
+    source = inspect.getsource(mp._fetch)
+    assert "except BaseException" not in source
