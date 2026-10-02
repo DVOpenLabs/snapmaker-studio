@@ -127,6 +127,41 @@ Describe 'Journal persistence' {
         $j2['state'] | Should -Be 'installed'
         $j2['generation'] | Should -Be $j['generation']
     }
+    It 'Set-JournalOwnedAfter works when the journal module is imported inside another module (the launcher import model)' {
+        # Regression (first real lane run): the Update-HarnessJournal -Mutate closure called Get-SnapshotFingerprint, a function of
+        # THIS module, from a GetNewClosure() scriptblock. That resolves only when the module's functions are visible from the
+        # global session, which is true in this Pester session but NOT in the real launcher, where HarnessJournal.psm1 is imported
+        # from inside HarnessLauncher.psm1. A fresh child process imports both modules from inside a dynamic module and checks
+        # that the journal functions are NOT globally visible there, then runs the real function.
+        $j = New-J $script:e
+        Set-InstalledState $script:e $script:e.InstallDir '1.2.0'
+        [IO.File]::WriteAllBytes((Join-Path $script:e.InstallDir 'uninstall.exe'), [byte[]](1, 2, 3))
+        $child = Join-Path $script:e.Dir 'nested-import-child.ps1'
+        Set-Content -LiteralPath $child -Encoding utf8 -Value @'
+param($Repo, $RunId, $Reg, $Shortcuts, $JournalDir, $Harness)
+$ErrorActionPreference = 'Stop'
+New-Module -Name NestedLauncherModel -ScriptBlock {
+    param($Repo)
+    Import-Module (Join-Path $Repo 'tools\lib\InstallGuard.psm1') -DisableNameChecking
+    Import-Module (Join-Path $Repo 'tools\harness\HarnessJournal.psm1') -DisableNameChecking
+    function Invoke-Under($RunId, $Reg, $Sc, $Jd, $H) {
+        $j = Read-HarnessJournal -RunId $RunId -JournalDir $Jd -HarnessRoot $H
+        Set-JournalOwnedAfter -Journal $j -RegistryRoot $Reg -ShortcutDir $Sc -JournalDir $Jd -HarnessRoot $H
+    }
+    Export-ModuleMember -Function Invoke-Under
+} -ArgumentList $Repo | Import-Module
+"GLOBALLY-VISIBLE=$([bool](Get-Command Get-SnapshotFingerprint -ErrorAction SilentlyContinue))"
+$r = Invoke-Under $RunId $Reg $Shortcuts $JournalDir $Harness
+"STATE=$($r['state'])"
+"FINGERPRINT=$($r['surfaces']['UninstallKey']['ownedAfterFingerprint'])"
+'@
+        $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+        $out = & (Get-Process -Id $PID).Path -NoProfile -File $child $repo $script:e.RunId $script:e.Reg $script:e.Shortcuts $script:e.Journal $script:e.Harness 2>&1
+        $text = ($out | Out-String)
+        $text | Should -Match 'GLOBALLY-VISIBLE=False'
+        $text | Should -Match 'STATE=installed'
+        $text | Should -Match 'FINGERPRINT=[0-9a-f]{64}'
+    }
     It 'Update-HarnessJournal refuses when the generation token changed underneath' {
         $j = New-J $script:e
         $raw = Get-Content (Get-JournalPath -RunId $script:e.RunId -JournalDir $script:e.Journal) -Raw | ConvertFrom-Json -AsHashtable
