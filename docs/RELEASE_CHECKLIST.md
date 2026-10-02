@@ -109,15 +109,38 @@ cd backend  && python -m pytest -q
 cd desktop  && npm run test && npx tsc --noEmit && npx vite build && cargo check --all-targets
 ```
 
-**Windows, full UI-driven acceptance + real upgrade proof:**
-```
-pwsh -File tools/acceptance/run.ps1 -Installer <RC exe> -UpgradeFrom <previous published exe>
-```
-Download the previous published installer first and verify its SHA256 against
-`docs/RELEASE_METADATA.md`'s "Previous release" row. Writes
-`docs/internal/acceptance-X.Y.Z.json` and screenshots. Confirm 0 orphan
-processes and that the maintainer's own real install (if any) is untouched —
-the harness backs up and restores its registry entry, never deletes it.
+**Windows, full UI-driven acceptance (rewrapped acceptance-identity lane):**
+
+`tools/acceptance/run.ps1` no longer installs the production installer. It takes a
+REWRAPPED acceptance-identity installer plus its attestation (`-InstallerPath` /
+`-AttestationPath`), or a verified real installer for it to rewrap first
+(`-RealInstaller` / `-ExpectedSha256` / `-SourceVersion` / `-Sha256SumsPath`), and
+the matching `-UpgradeFrom*` parameters for a rewrapped OLD -> rewrapped NEW upgrade.
+There is no installer auto-discovery. Verify the SHA256 of every real installer
+against `docs/RELEASE_METADATA.md` before handing it to the lane. The lane refuses to
+start while the production app is running, while its update auto-check is on, or while
+an earlier run left a journal or an acceptance registration behind. The report
+(`acceptance.json`, which carries the closed-schema lane block inside it), the per-phase
+results (node-written `results-*.json` and logs), the screenshots and, for the hardware /
+demo / capture harnesses, `lane-evidence.json` are written under
+`<harness root>\run\<id>\evidence` (the per-user `SnapmakerStudio-Harness` folder).
+The lane block and `lane-evidence.json` are closed schemas (fixed reason codes, counts,
+generated ids and strict versions; no free-text errors or paths). The node-written files
+and `hardware.json` are NOT closed-schema (they rely on their own scrub and leak scan), so
+copying evidence into the release record still needs a human privacy glance; console detail
+is mostly best-effort scrubbed and is not an evidence boundary.
+Confirm 0 orphan processes, the
+"Production state unchanged (tripwire)" check, and that the maintainer's own real
+install (if any) is untouched: the lane never reads or writes the production
+registration, and its tripwire reports any change to the production data folders.
+
+This proves the rewrapped acceptance-identity payload only. The real production
+installer's registration, shortcuts, default-path install, upgrade and uninstall are
+exercised only on disposable GitHub-hosted runners, not here: `release-candidate.yml` job `windows-upgrade-smoke` is the standing
+gate for the candidate build. `installer-smoke.yml` is a reusable disposable lane with no permanent caller and is not part of
+release gating (its first controlled run passed: https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37019477486).
+See `docs/internal/HARNESS_ISOLATION.md` for the design, the recovery procedure and
+what is not proven locally.
 
 **Real Snapmaker U1, read-only hardware verification (the one genuinely
 human-gated step in this whole checklist):**
@@ -130,11 +153,14 @@ $env:SNAPSTUDIO_HW_SP_AGREE = "<spool id that agrees with what the U1 reports lo
 $env:SNAPSTUDIO_HW_SP_CONFLICT = "<spool id that conflicts with it>"
 $env:SNAPSTUDIO_HW_BB_AGREE = "<same, for Bambuddy>"
 $env:SNAPSTUDIO_HW_BB_CONFLICT = "<same, for Bambuddy>"
-pwsh -File tools/hardware/verify.ps1 -PrinterHost <U1 LAN IP> -Installer <RC exe>
+pwsh -File tools/hardware/verify.ps1 -PrinterHost <U1 LAN IP> -InstallerPath <rewrapped acceptance installer> -AttestationPath <its attestation>
 ```
+(Same rewrapped acceptance-identity lane and refusals as above; `-RealInstaller` /
+`-ExpectedSha256` / `-SourceVersion` can be given instead to rewrap a verified real
+installer first.)
 Needs the printer powered on and its LAN IP (Moonraker, port 7125 — hostnames
-do not resolve). Writes `docs/internal/hardware-X.Y.Z.json`, IP redacted by
-the harness itself. If the printer is unreachable, this step blocks — nothing
+do not resolve). Writes `hardware.json` (IP redacted by the harness itself) and
+`lane-evidence.json` under `<harness root>\run\<id>\evidence`. If the printer is unreachable, this step blocks — nothing
 downstream substitutes for it; wait for the printer rather than skip it.
 
 **The env vars above are not optional decoration.** `tools/hardware/checks.mjs`

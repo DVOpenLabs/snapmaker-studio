@@ -29,16 +29,29 @@ concurrency:
 jobs:
   windows:
     uses: ./.github/workflows/release.yml
+    permissions:
+      contents: read
 
   linux:
     uses: ./.github/workflows/release-linux.yml
+    permissions:
+      contents: read
 
   windows-upgrade-smoke:
     name: Windows upgrade smoke test (default install path)
+    if: github.repository == 'DVOpenLabs/snapmaker-studio'
     needs: windows
     runs-on: windows-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
+      # Helper integrity assumes the checked-out repository is the source of these scripts.
+      - name: Check out helper scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download the release-candidate installer
         uses: actions/download-artifact@v4
         with:
@@ -49,6 +62,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
           $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v1.1.0/Snapmaker.Studio_1.1.0_x64-setup.exe"
           $dest = "old\Snapmaker.Studio_1.1.0_x64-setup.exe"
           New-Item -ItemType Directory -Force -Path old | Out-Null
@@ -64,14 +79,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $userKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          $machine64Key = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          $machine32Key = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          $rememberedKey = 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker Studio'
+          $manufacturerKey = 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio'
+          $defaultExe = Join-Path $env:LOCALAPPDATA 'Snapmaker Studio\snapmaker-studio-desktop.exe'
+          if ((Test-Path -LiteralPath $userKey) -or (Test-Path -LiteralPath $machine64Key) -or (Test-Path -LiteralPath $machine32Key) -or (Test-Path -LiteralPath $rememberedKey) -or (Test-Path `
+          -LiteralPath $manufacturerKey) -or (Test-Path -LiteralPath $defaultExe) -or (Get-Process -Name 'snapmaker-studio-desktop' -ErrorAction SilentlyContinue)) { throw `
+          'Initial exact production state is not clean.' }
           $old = (Resolve-Path "old\Snapmaker.Studio_1.1.0_x64-setup.exe").Path
           $p = Start-Process -FilePath $old -ArgumentList '/S', '/NCRC' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "v1.1.0 silent install failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
-          $before = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-          if (@($before).Count -ne 1) { throw "Expected exactly one v1.1.0 registration, found $(@($before).Count)" }
-          $beforeProps = Get-ItemProperty $before.PSPath
+          $beforePath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          if (-not (Test-Path -LiteralPath $beforePath)) { throw 'Exact v1.1.0 registration is absent' }
+          $beforeProps = Get-ItemProperty -LiteralPath $beforePath
           if ($beforeProps.DisplayVersion -ne "1.1.0") { throw "v1.1.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 1.1.0" }
           # NSIS can write InstallLocation wrapped in literal quote
           # characters (part of the string value itself, not just how it
@@ -80,27 +105,56 @@ jobs:
           # value with no quotes is untouched by Trim.
           $installLocation = $beforeProps.InstallLocation.Trim('"')
           "install_location=$installLocation" >> $env:GITHUB_ENV
+          "owned_install_dir=$installLocation" >> $env:GITHUB_ENV
+          $ownedUninstaller = Join-Path $installLocation 'uninstall.exe'
+          if (-not (Test-Path -LiteralPath $ownedUninstaller)) { throw "Owned uninstaller not found at $ownedUninstaller" }
+          if (([string]$beforeProps.UninstallString -replace '"', '') -ne $ownedUninstaller) { throw 'Recorded uninstall string does not equal the owned uninstaller path.' }
+          if ($installLocation -ne (Join-Path $env:LOCALAPPDATA 'Snapmaker Studio')) { throw 'First install did not use the exact default path.' }
+          "owned_uninstaller=$ownedUninstaller" >> $env:GITHUB_ENV
+          "owned_uninstaller_sha256=$((Get-FileHash -LiteralPath $ownedUninstaller -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
           Write-Host "v1.1.0 installed at $installLocation, DisplayVersion 1.1.0"
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -InstallDir $installLocation -OutFile $env:RUNNER_TEMP\rc-before.json
+          if ($LASTEXITCODE -ne 0) { throw 'Registry assertion failed.' }
+
+      - name: Assert previous install shortcuts
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-shortcuts.ps1 -Action Assert -ExpectedAumid com.snapmakerstudio.desktop -StartMenuDir "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" `
+          -DesktopDir ([Environment]::GetFolderPath('Desktop')) -InstallDir $env:owned_install_dir -OutFile $env:RUNNER_TEMP\rc-before-shortcuts.json
+          if ($LASTEXITCODE -ne 0) { throw 'Shortcut assertion failed.' }
 
       - name: Install the release candidate over it (default path, same key)
         shell: pwsh
+        env:
+          EXPECTED_RC_SHA256: ${{ needs.windows.outputs.installer_sha256 }}
+          EXPECTED_RC_INSTALLER_NAME: ${{ needs.windows.outputs.installer_name }}
         run: |
           $ErrorActionPreference = "Stop"
-          $rc = Get-ChildItem "rc\*_x64-setup.exe" | Select-Object -First 1
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          if ($env:EXPECTED_RC_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Missing needs.windows installer digest.' }
+          $rc = Get-Item (Join-Path 'rc' $env:EXPECTED_RC_INSTALLER_NAME)
           $rcVersion = if ($rc.Name -match '_([0-9]+\.[0-9]+\.[0-9]+[^_]*)_') { $matches[1] } else { $null }
           if ($null -eq $rcVersion) { throw "Could not parse a version out of RC installer filename $($rc.Name)" }
+          if ((Get-FileHash -LiteralPath $rc.FullName -Algorithm SHA256).Hash -ne $env:EXPECTED_RC_SHA256) { throw 'Downloaded RC bytes do not match needs.windows.outputs.installer_sha256.' }
+          $beforeRcProps = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          $beforeRcLocation = ([string]$beforeRcProps.InstallLocation).Trim('"')
+          $beforeRcUninstall = ([string]$beforeRcProps.UninstallString -replace '"', '')
+          if ($beforeRcLocation -ne $env:owned_install_dir -or $beforeRcUninstall -ne $env:owned_uninstaller) { throw 'Recorded ownership changed before RC install.' }
           $p = Start-Process -FilePath $rc.FullName -ArgumentList '/S', '/NCRC' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "RC silent install failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
-          $after = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-          if (@($after).Count -ne 1) { throw "Expected exactly ONE registration after the upgrade (no duplicate), found $(@($after).Count)" }
-          $afterProps = Get-ItemProperty $after.PSPath
+          $afterPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          if (-not (Test-Path -LiteralPath $afterPath)) { throw 'Exact RC registration is absent' }
+          $afterProps = Get-ItemProperty -LiteralPath $afterPath
           if ($afterProps.DisplayVersion -ne $rcVersion) {
             throw "Registration says DisplayVersion=$($afterProps.DisplayVersion) after installing the RC, expected $rcVersion"
           }
           $afterLocation = $afterProps.InstallLocation.Trim('"')
-          if ($afterLocation -ne $env:install_location) {
+          if (([string]$afterProps.UninstallString -replace '"', '') -ne $env:owned_uninstaller) { throw 'RC upgrade changed recorded uninstall ownership.' }
+          if ($afterLocation -ne $env:owned_install_dir) {
             throw "InstallLocation changed from $env:install_location to $afterLocation — should be the SAME location (in-place upgrade)"
           }
           $legacyKey = 'HKCU:\Software\DeadlyVirusIn / Snapmaker Studio\Snapmaker Studio'
@@ -114,45 +168,86 @@ jobs:
           $ver = (Get-Item $exe).VersionInfo.FileVersion
           Write-Host "Installed exe FileVersion: $ver"
           Write-Host "Upgrade verified: one registration, DisplayVersion $rcVersion, same InstallLocation ($afterLocation), legacy publisher key present."
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -InstallDir $afterLocation -OutFile $env:RUNNER_TEMP\rc-after.json
+          if ($LASTEXITCODE -ne 0) { throw 'Post-upgrade registry assertion failed.' }
+          "owned_uninstaller_sha256=$((Get-FileHash -LiteralPath $env:owned_uninstaller -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
+
+      - name: Capture release-candidate installed-tree manifest
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-manifest.ps1 -InstallDir $env:owned_install_dir -OutFile $env:RUNNER_TEMP\release-candidate-installed-tree.json
+          if ($LASTEXITCODE -ne 0) { throw 'Manifest assertion failed.' }
+
+      - name: Upload release-candidate installed-tree manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-installed-tree
+          path: ${{ runner.temp }}/release-candidate-installed-tree.json
+          if-no-files-found: error
 
       - name: Uninstall, verify the machine is clean
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $reg = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-          $props = Get-ItemProperty $reg.PSPath
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
+          if (-not (Test-Path -LiteralPath $regPath)) { throw 'Exact uninstall registration is absent' }
+          $props = Get-ItemProperty -LiteralPath $regPath
           $uninstallString = $props.UninstallString -replace '"', ''
-          $p = Start-Process -FilePath $uninstallString -ArgumentList '/S' -PassThru -Wait
+          if ($uninstallString -ne $env:owned_uninstaller -or $uninstallString -ne (Join-Path $env:owned_install_dir 'uninstall.exe')) { throw 'Uninstaller is not the recorded owned path.' }
+          if ((Get-FileHash -LiteralPath $env:owned_uninstaller -Algorithm SHA256).Hash -ne $env:owned_uninstaller_sha256) { throw 'Owned uninstaller hash changed.' }
+          $p = Start-Process -FilePath $env:owned_uninstaller -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Uninstall failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
-          $remaining = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like '*Snapmaker Studio*' }
-          if (@($remaining).Count -ne 0) { throw "Uninstall left $(@($remaining).Count) registration(s) behind" }
-          if (Test-Path $env:install_location) { throw "Uninstall left $env:install_location behind" }
+          if (Test-Path -LiteralPath $regPath) { throw 'Uninstall left the exact registration behind' }
+          if (Test-Path $env:owned_install_dir) { throw "Uninstall left $env:owned_install_dir behind" }
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -AfterUninstall -InstallDir $env:owned_install_dir -OutFile $env:RUNNER_TEMP\rc-after-uninstall.json
+          if ($LASTEXITCODE -ne 0) { throw 'Post-uninstall registry assertion failed.' }
+          pwsh -NoProfile -File .github/scripts/ci-assert-shortcuts.ps1 -Action AssertAbsent -ExpectedAumid com.snapmakerstudio.desktop -StartMenuDir `
+          "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -DesktopDir ([Environment]::GetFolderPath('Desktop')) -InstallDir $env:owned_install_dir -OutFile `
+          $env:RUNNER_TEMP\rc-after-uninstall-shortcuts.json
+          if ($LASTEXITCODE -ne 0) { throw 'Post-uninstall shortcut assertion failed.' }
           Write-Host "Uninstalled cleanly: no registration, no install directory."
 
   manifest:
     name: Release-candidate manifest
     needs: [windows, linux, windows-upgrade-smoke]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Write the manifest
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WINDOWS_INSTALLER: ${{ needs.windows.outputs.installer_name }}
+          WINDOWS_SIZE: ${{ needs.windows.outputs.installer_size }}
+          WINDOWS_SHA256: ${{ needs.windows.outputs.installer_sha256 }}
+          LINUX_DEB: ${{ needs.linux.outputs.deb_name }}
+          LINUX_SIZE: ${{ needs.linux.outputs.deb_size }}
+          LINUX_SHA256: ${{ needs.linux.outputs.deb_sha256 }}
         run: |
-          {
-            echo "# Release-candidate manifest"
-            echo "source_commit: ${{ github.sha }}"
-            echo "source_ref: ${{ github.ref }}"
-            echo "run_id: ${{ github.run_id }}"
-            echo "run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo ""
-            echo "windows_installer: ${{ needs.windows.outputs.installer_name }}"
-            echo "windows_size: ${{ needs.windows.outputs.installer_size }}"
-            echo "windows_sha256: ${{ needs.windows.outputs.installer_sha256 }}"
-            echo ""
-            echo "linux_deb: ${{ needs.linux.outputs.deb_name }}"
-            echo "linux_size: ${{ needs.linux.outputs.deb_size }}"
-            echo "linux_sha256: ${{ needs.linux.outputs.deb_sha256 }}"
-          } | tee RELEASE_CANDIDATE.txt
+            @(
+              '# Release-candidate manifest'
+              "source_commit: $env:SOURCE_COMMIT"
+              "source_ref: $env:SOURCE_REF"
+              "run_id: $env:RUN_ID"
+              "run_url: $env:RUN_URL"
+              ''
+              "windows_installer: $env:WINDOWS_INSTALLER"
+              "windows_size: $env:WINDOWS_SIZE"
+              "windows_sha256: $env:WINDOWS_SHA256"
+              ''
+              "linux_deb: $env:LINUX_DEB"
+              "linux_size: $env:LINUX_SIZE"
+              "linux_sha256: $env:LINUX_SHA256"
+            ) | Tee-Object -FilePath RELEASE_CANDIDATE.txt
 
       - name: Upload the manifest
         uses: actions/upload-artifact@v4
