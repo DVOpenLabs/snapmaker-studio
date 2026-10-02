@@ -33,6 +33,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Record and assert runner identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
+          -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          $observed = @("USERNAME=$env:USERNAME", "USERPROFILE=$env:USERPROFILE", "LOCALAPPDATA=$env:LOCALAPPDATA", "Desktop=$desktop", "RUNNER_OS=$env:RUNNER_OS", "RUNNER_ENVIRONMENT=$env:RUNNER_ENVIRONMENT", "ImageOS=$env:ImageOS", "Elevated=$elevated")
+          $observed | ForEach-Object { Write-Host $_ }
+          (@('### Runner identity (non-secret)', '') + @($observed | ForEach-Object { "- $_" })) >> $env:GITHUB_STEP_SUMMARY
+          $profileRoot = $env:USERPROFILE.TrimEnd('\') + '\'
+          $problems = @()
+          if ($env:USERNAME -ne 'runneradmin') { $problems += 'USERNAME is not runneradmin' }
+          if (-not $env:LOCALAPPDATA.StartsWith($profileRoot, [StringComparison]::OrdinalIgnoreCase)) { $problems += 'LOCALAPPDATA is not under USERPROFILE' }
+          if ([string]::IsNullOrWhiteSpace($desktop) -or -not $desktop.StartsWith($profileRoot, [StringComparison]::OrdinalIgnoreCase)) { $problems += 'Desktop folder is not under USERPROFILE' }
+          if (-not [string]::IsNullOrWhiteSpace($desktop) -and -not (Test-Path -LiteralPath $desktop)) { $problems += 'Desktop folder does not exist' }
+          if ($problems.Count) { throw "Unexpected runner identity: $($problems -join '; '). Observed: $($observed -join ', ')" }
       - name: Download target installer and verify live SHA256SUMS
         shell: pwsh
         env:

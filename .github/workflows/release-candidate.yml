@@ -15,6 +15,12 @@ name: Release candidate (Windows + Linux)
 # file, release.yml's and release-linux.yml's workflow_call additions, and
 # release-publish.yml all land on main together in one PR before any
 # release/vX.Y.Z branch tries to dispatch this.
+#
+# TEMPORARY (#55 first controlled run): the 'installer-smoke' job below is a
+# throwaway caller of the reusable disposable installer smoke. While it is
+# present, release-publish.yml Gate 2 (RC run overall success) would depend on
+# it, so it MUST be removed before any release is cut. It is not part of the
+# release-gate design; remove it after the first successful run.
 
 on:
   workflow_dispatch: {}
@@ -211,6 +217,15 @@ jobs:
           $env:RUNNER_TEMP\rc-after-uninstall-shortcuts.json
           if ($LASTEXITCODE -ne 0) { throw 'Post-uninstall shortcut assertion failed.' }
           Write-Host "Uninstalled cleanly: no registration, no install directory."
+
+  installer-smoke:   # TEMPORARY (#55 first controlled run): remove after the first successful run; not part of the release gate design
+    if: github.repository == 'DVOpenLabs/snapmaker-studio'
+    uses: ./.github/workflows/installer-smoke.yml
+    permissions:
+      contents: read
+    with:
+      release-tag: v1.2.0
+      previous-tag: v1.1.0
 
   manifest:
     name: Release-candidate manifest

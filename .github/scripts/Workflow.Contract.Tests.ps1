@@ -106,7 +106,7 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
     function Assert-WorkflowMutatingPreflights {
         param([string] $Path, [ValidateSet('InstallerSmoke','ReleaseCandidate')][string] $Kind)
         $names = if ($Kind -eq 'InstallerSmoke') {
-            @('Download target installer and verify live SHA256SUMS', 'Download previous installer and verify live SHA256SUMS',
+            @('Record and assert runner identity', 'Download target installer and verify live SHA256SUMS', 'Download previous installer and verify live SHA256SUMS',
                 'Preflight and install previous release at the exact default path', 'Assert previous install exact surfaces',
                 'Preflight and upgrade target in place', 'Assert target shortcuts and capture installed-tree manifest',
                 'Preflight and launch smoke without CDP', 'Preflight and uninstall only the recorded owned path', 'Report final registry state')
@@ -128,7 +128,7 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
 
     $script:WorkflowStepNames = @{
         InstallerSmoke = @{
-            'real-identity' = @('Check out helper scripts','Download target installer and verify live SHA256SUMS','Download previous installer and verify live SHA256SUMS',
+            'real-identity' = @('Check out helper scripts','Record and assert runner identity','Download target installer and verify live SHA256SUMS','Download previous installer and verify live SHA256SUMS',
                 'Preflight and install previous release at the exact default path','Assert previous install exact surfaces','Preflight and upgrade target in place',
                 'Assert target shortcuts and capture installed-tree manifest','Upload installed-tree reference manifest','Preflight and launch smoke without CDP',
                 'Preflight and uninstall only the recorded owned path','Report final registry state')
@@ -142,8 +142,8 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
         }
     }
     $script:WorkflowPins = @{
-        'installer-smoke.yml' = '75611ccd5a0597b29d6b63e03a33124ead90762582397fa1943db5c3c0a0dd87'
-        'release-candidate.yml' = '5fa258ea21ae34d794bd2bdf203cb0255340102ee01292274c7ee09ec7223040'
+        'installer-smoke.yml' = '7020b9580d3ebc915746e952255144a247f674c11dc21b648158e88280052d3c'
+        'release-candidate.yml' = 'c61e9f0648f11869756ba2433e532f654b1d11621df5e4d476660cec4f8f0f91'
     }
 
     function Get-WorkflowJobBlocks([string] $Path) {
@@ -203,7 +203,7 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
         }
         $blocks = Get-WorkflowJobBlocks $Path
         if ($raw -match '(?m)^\s*permissions:\s*\{') { throw 'flow-style permissions are not accepted without exact map equality' }
-        $expectedJobs = if ($Kind -eq 'InstallerSmoke') { @('real-identity') } else { @('windows','linux','windows-upgrade-smoke','manifest') }
+        $expectedJobs = if ($Kind -eq 'InstallerSmoke') { @('real-identity') } else { @('windows','linux','windows-upgrade-smoke','installer-smoke','manifest') }
         if ((@($blocks.Keys) -join "`n") -cne ($expectedJobs -join "`n")) { throw 'job list changed or contains an unguarded extra job' }
         foreach ($job in $blocks.Keys) {
             $body = @($blocks[$job]); $perm = Get-YamlMapAtIndent $body 4 'permissions'
@@ -251,6 +251,14 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
             if (-not $manifestStep) { throw 'manifest Write the manifest step is missing' }
             if ($manifestStep -notmatch '(?m)^        shell:\s*pwsh\s*$') { throw 'manifest step shell must be pwsh' }
             if ($manifestStep -notmatch '(?i)Tee-Object\s+-FilePath\s+RELEASE_CANDIDATE\.txt') { throw 'manifest output file rule requires Tee-Object RELEASE_CANDIDATE.txt' }
+            # TEMPORARY (#55 first controlled run) caller of the reusable installer smoke: its exact shape is pinned (inputs, guard,
+            # permissions) and nothing else is allowed on it (no needs, secrets, runs-on, steps, timeout, outputs). Remove with the job.
+            if (-not $blocks.Contains('installer-smoke')) { throw 'installer-smoke caller job is missing' }
+            $callerBody = @($blocks['installer-smoke'] | Where-Object { $_.Trim() -and $_.Trim() -notmatch '^#' })
+            $callerExpected = @("    if: github.repository == 'DVOpenLabs/snapmaker-studio'", '    uses: ./.github/workflows/installer-smoke.yml', '    permissions:',
+                '      contents: read', '    with:', '      release-tag: v1.2.0', '      previous-tag: v1.1.0')
+            if (($callerBody -join "`n") -cne ($callerExpected -join "`n")) { throw 'installer-smoke caller job must be exactly the pinned guard, uses, contents: read and the v1.2.0/v1.1.0 inputs' }
+            if ($raw -match '(?m)^\s*secrets:') { throw 'secrets forwarding is not allowed in the release-candidate workflow' }
             $upgrade = @($blocks['windows-upgrade-smoke']) -join "`n"
             if ($upgrade -notmatch '(?m)^    needs:\s*windows\s*$') { throw 'windows-upgrade-smoke dependency rule requires windows' }
             if ($raw -notmatch '(?m)^          EXPECTED_RC_SHA256: \$\{\{ needs\.windows\.outputs\.installer_sha256 \}\}') { throw 'RC output wiring changed' }
@@ -277,13 +285,14 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
         $expectedUses = if ($Kind -eq 'InstallerSmoke') {
             @('actions/checkout@v4', 'actions/upload-artifact@v4')
         } else {
-            @('./.github/workflows/release.yml', './.github/workflows/release-linux.yml',
+            @('./.github/workflows/release.yml', './.github/workflows/release-linux.yml', './.github/workflows/installer-smoke.yml',
                 'actions/checkout@v4', 'actions/download-artifact@v4', 'actions/upload-artifact@v4')
         }
         foreach ($use in $expectedUses) { if ($raw -notmatch [regex]::Escape("uses: $use")) { throw "Action ref changed: $use" } }
         $steps = @(Get-WorkflowRunTexts $Path)
         $stepCount = @(Get-Content -LiteralPath $Path | Where-Object { $_ -match '^      - name:' }).Count
-        if ($stepCount -ne 11) { throw "Workflow step count changed: $stepCount" }
+        $expectedStepCount = if ($Kind -eq 'InstallerSmoke') { 12 } else { 11 }   # smoke: 11 + the runner-identity step; RC: 9 + 2 (the TEMPORARY caller job has no steps)
+        if ($stepCount -ne $expectedStepCount) { throw "Workflow step count changed: $stepCount" }
         $destructive = if ($Kind -eq 'InstallerSmoke') {
             @('Preflight and install previous release at the exact default path', 'Preflight and upgrade target in place',
                 'Preflight and launch smoke without CDP', 'Preflight and uninstall only the recorded owned path')
@@ -513,6 +522,57 @@ Describe 'workflow shape and regression checks' {
         } finally { Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'pins the TEMPORARY installer-smoke caller job: exact inputs, guard and contents: read; rejects secrets, needs, writable permissions, other inputs and a missing caller' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $source = Get-Content (Join-Path $root '.github/workflows/release-candidate.yml') -Raw
+        $blocks = Get-WorkflowJobBlocks (Join-Path $root '.github/workflows/release-candidate.yml')
+        @($blocks.Keys) | Should -Be @('windows', 'linux', 'windows-upgrade-smoke', 'installer-smoke', 'manifest')
+        $caller = @($blocks['installer-smoke']) -join "`n"
+        $caller | Should -Match '(?m)^    uses: \./\.github/workflows/installer-smoke\.yml\s*$'
+        $caller | Should -Match '(?m)^      release-tag: v1\.2\.0\s*$'
+        $caller | Should -Match '(?m)^      previous-tag: v1\.1\.0\s*$'
+        $caller | Should -Not -Match '(?m)^    (needs|secrets|runs-on|steps|timeout-minutes|outputs):'
+        $source | Should -Not -Match '(?m)^\s*secrets:'
+        ((@($blocks['manifest']) -join "`n") -match '(?m)^    needs:\s*\[windows, linux, windows-upgrade-smoke\]\s*$') | Should -BeTrue
+        $mutations = @(
+            @{ Name = 'secrets inherit'; Edit = { param($s) Replace-First $s "    with:`n      release-tag: v1.2.0" "    secrets: inherit`n    with:`n      release-tag: v1.2.0" } }
+            @{ Name = 'contents write'; Edit = { param($s) Replace-First $s "    uses: ./.github/workflows/installer-smoke.yml`n    permissions:`n      contents: read" "    uses: ./.github/workflows/installer-smoke.yml`n    permissions:`n      contents: write" } }
+            @{ Name = 'needs added'; Edit = { param($s) Replace-First $s "    uses: ./.github/workflows/installer-smoke.yml`n" "    needs: windows`n    uses: ./.github/workflows/installer-smoke.yml`n" } }
+            @{ Name = 'other release tag'; Edit = { param($s) Replace-First $s '      release-tag: v1.2.0' '      release-tag: v9.9.9' } }
+            @{ Name = 'other previous tag'; Edit = { param($s) Replace-First $s '      previous-tag: v1.1.0' '      previous-tag: v1.0.0' } }
+            @{ Name = 'repository guard removed'; Edit = { param($s) Replace-First $s "    if: github.repository == 'DVOpenLabs/snapmaker-studio'`n    uses: ./.github/workflows/installer-smoke.yml" '    uses: ./.github/workflows/installer-smoke.yml' } }
+            @{ Name = 'caller removed'; Edit = { param($s) $s -replace '(?ms)^  installer-smoke:.*?(?=^  manifest:)', '' } }
+        )
+        foreach ($mutation in $mutations) {
+            $candidate = Join-Path ([IO.Path]::GetTempPath()) "$([guid]::NewGuid()).yml"
+            try {
+                Set-Content -LiteralPath $candidate -Value (& $mutation.Edit $source)
+                { Assert-WorkflowContract $candidate ReleaseCandidate -SkipHash } | Should -Throw -Because $mutation.Name
+            } finally { Remove-Item -LiteralPath $candidate -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    It 'pins the read-only runner-identity step: first after checkout, pinned preflight, no process start, no registry write, asserts runneradmin, profile-relative LOCALAPPDATA/Desktop and Desktop existence with observed values in the message' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $path = Join-Path $root '.github/workflows/installer-smoke.yml'
+        $names = @((Get-WorkflowRunTexts $path).Name)
+        $names[0] | Should -Be 'Record and assert runner identity'
+        $step = @(Get-WorkflowRunTexts $path | Where-Object { $_.Name -eq 'Record and assert runner identity' })
+        $step.Count | Should -Be 1
+        $text = [string]$step[0].Text
+        $text | Should -Not -Match '(?i)Start-Process|Invoke-Expression|Invoke-Item|New-Item|Set-Item|Remove-Item|reg\s+add|Invoke-WebRequest|\bgh\s'
+        foreach ($needle in @('$env:USERNAME -ne ''runneradmin''', '$env:LOCALAPPDATA.StartsWith($profileRoot', '$desktop.StartsWith($profileRoot', 'Test-Path -LiteralPath $desktop',
+                'throw "Unexpected runner identity: $($problems -join ''; ''). Observed: $($observed -join '', '')"', '>> $env:GITHUB_STEP_SUMMARY')) {
+            $text.Contains($needle) | Should -BeTrue -Because $needle
+        }
+        foreach ($label in @('USERNAME=', 'USERPROFILE=', 'LOCALAPPDATA=', 'Desktop=', 'RUNNER_OS=', 'RUNNER_ENVIRONMENT=', 'ImageOS=', 'Elevated=')) { $text | Should -Match ([regex]::Escape($label)) }
+        # weakening the identity assertion (dropping the runneradmin check) must be caught by the whole-file pin
+        $mutated = Join-Path ([IO.Path]::GetTempPath()) 'installer-smoke.yml'
+        try {
+            Set-Content -LiteralPath $mutated -Value ((Get-Content $path -Raw).Replace("if (`$env:USERNAME -ne 'runneradmin') { `$problems += 'USERNAME is not runneradmin' }", ''))
+            { Assert-WorkflowContract $mutated InstallerSmoke } | Should -Throw '*whole-file SHA256 pin mismatch*'
+        } finally { Remove-Item -LiteralPath $mutated -Force -ErrorAction SilentlyContinue }
+    }
     It 'rejects a changed RC ownership guard and requires post-uninstall absence' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         $path = Join-Path $root '.github/workflows/release-candidate.yml'
