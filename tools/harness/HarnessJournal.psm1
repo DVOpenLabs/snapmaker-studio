@@ -457,11 +457,16 @@ function Set-JournalOwnedAfter {
     Assert-JournalDestinations -Journal $journalNow -Defs $defs -HarnessRoot $rootForCheck
     $snaps = @{}
     foreach ($d in $defs) { $snaps[$d.Id] = Get-SurfaceSnapshot -Surface $d }
+    # The fingerprints are computed HERE, not inside the closure below: a `GetNewClosure()` scriptblock does not see this
+    # module's own functions when the module is imported inside another module (the launcher's import model), so a
+    # call to `Get-SnapshotFingerprint` from within it fails with "term not recognized" in a real lane run.
+    $fingerprints = @{}
+    foreach ($id in $snaps.Keys) { $fingerprints[$id] = Get-SnapshotFingerprint $snaps[$id] }
     Update-HarnessJournal -Journal $Journal -JournalDir $JournalDir -HarnessRoot $HarnessRoot -Mutate {
         param($j)
         foreach ($id in $snaps.Keys) {
             $j['surfaces'][$id]['ownedAfter'] = $snaps[$id]
-            $j['surfaces'][$id]['ownedAfterFingerprint'] = Get-SnapshotFingerprint $snaps[$id]
+            $j['surfaces'][$id]['ownedAfterFingerprint'] = $fingerprints[$id]
         }
         if ($InstallerSha256) { $j['installerSha256'] = $InstallerSha256.ToLowerInvariant() }
         if ($uninstallerSha) { $j['uninstallerSha256'] = $uninstallerSha }
