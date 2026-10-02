@@ -4,6 +4,11 @@ Status: implemented on branch `fix/55-harness-install-isolation`; nothing here h
 the app on the maintainer workstation. This document describes the design, the four workstation lanes, what the
 controls do and do not cover, and how to recover.
 
+Requirements: PowerShell 7.5 or newer. The scripts and modules declare `#requires -Version 7.0` (the floor they were written
+against, left unchanged), but they call `ConvertFrom-Json -DateKind` and `SHA256.HashData(Stream)`, which need 7.5. On an older
+7.x host those calls fail and the harness refuses to run (the failure can read as an unreadable attestation, a corrupt journal or
+a lock refusal rather than as a version error), so use 7.5+.
+
 ## Why
 
 The workstation harnesses used to install the real production installer (product name `Snapmaker Studio`, publisher key
@@ -45,7 +50,7 @@ discovery (no glob, no "newest in the build folder"), and a wildcard in any inst
 
 | Lane | Script | What it does | What it proves |
 |---|---|---|---|
-| Acceptance | `tools/acceptance/run.ps1` | Install, launch six times (warm-up, relaunches, painted/second/third runs), drive the UI over CDP, run the 21+ acceptance checks, uninstall | The shipped payload (exe plus frozen sidecar) under the acceptance identity. With the upgrade parameters: rewrapped OLD to rewrapped NEW, not a production upgrade |
+| Acceptance | `tools/acceptance/run.ps1` | Install, launch the app four times in the base shape (six at most: an upgrade warm-up and a reopen-after-switch add two), drive the UI over CDP, run the acceptance checks (45 in the base shape, no upgrade and no provider URLs; up to 63 literal checks across all branches), uninstall | The shipped payload (exe plus frozen sidecar) under the acceptance identity. With the upgrade parameters: rewrapped OLD to rewrapped NEW, not a production upgrade |
 | Hardware | `tools/hardware/verify.ps1` | Same plumbing, then read-only questions to a real U1 over the LAN. No print, heat, move, upload or configuration call | The shipped payload talking to a real printer, read-only |
 | Demo | `tools/demo/record.ps1` | Same plumbing, FFmpeg plus CDP recorder; FFmpeg is told to quit through its stdin and force-stopped only by its tracked pid | The recording is the real app window |
 | Capture | `scripts/capture_embedded.ps1` | Same plumbing; finds the window by the tracked process id and captures it with PrintWindow | The screenshot is the tracked app's own window |
@@ -87,7 +92,10 @@ postflight fails, so a failed launch leaves no tracked process behind. No harnes
 
 **Process hygiene.** Every process the lane starts is tracked by pid and start time (and journaled when it is the app).
 Close is graceful first. A forced stop happens only for a tracked pid whose start time still matches and whose image is
-still inside the harness tree (tools such as node and ffmpeg: the exact recorded image). Nothing is ever stopped by name.
+still inside the harness tree (tools such as node and ffmpeg: the exact recorded image). The harness code never stops a process by
+name. The acceptance installer and uninstaller themselves are different: in `/S` mode they silently end current-user processes
+named `snapmaker-studio-acceptance-desktop.exe` (`tools/release/nsis/template/installer.nsi` and `utils.nsh`). That name is
+acceptance-only, never production, Snapmaker Orca or any other process; before a run, check that no process with that name exists.
 Only `node` and `ffmpeg` can be started through the tool path. Snapmaker Orca, printer, slicer and any user GUI process
 are never touched.
 
@@ -123,7 +131,9 @@ Underneath all three is one principle: **any ambiguity means unknown, and unknow
   before anything ran), `Failed` or `Unknown`. Any exception after the uninstaller launched (parent timeout, wait or query
   failure) is `Unknown`. Recovery is an allow-list: it runs only for `Success`, `NothingInstalled` or `NotLaunched` with a
   strictly clean install dir. Anything else keeps the journal pending, exits non-zero and prints the exact
-  `Repair-Harness.ps1 -RunId <id> -ShortcutDir <harness-root>\run\<id>\shortcuts` hint.
+  `Repair-Harness.ps1 -RunId <id> -ShortcutDir <harness-root>\run\<id>\shortcuts` hint. For the `-u2` journal of an upgrade the shortcuts
+  directory is named after the LANE id (the run id without the `-u2` suffix), not after the journal id; the hint the harness
+  prints names the exact directory and is the one to use.
 - **Lane evidence is closed-schema, so its privacy comes from its shape, not from scrubbing.** For the three
   evidence-writing harnesses (`verify.ps1`, `record.ps1`, `capture_embedded.ps1`) the lane evidence is `lane-evidence.json`;
   for the acceptance harness it is the `lane` block INSIDE `acceptance.json` (there is no separate `lane-evidence.json`
@@ -243,9 +253,12 @@ release. The
 workstation lanes prove the rewrapped acceptance-identity payload and nothing about the production installer. The
 synthetic fault barriers in the journal tests validate the recovery state machine only, not OS-crash or power-loss safety.
 Whether the WebView2 profile layout, the CDP port ownership check and the uninstall hand-off behave as designed against
-the real shipped payload has not been exercised on this workstation; the first controlled run must be reviewed.
+the real shipped payload has not been exercised on this workstation; the first controlled workstation run must be reviewed (this is
+not the disposable CI smoke run, which is a separate lane).
 
 ## Tests
+
+Run the Pester suites serially: parallel runs can collide on the shared scratch parent key `HKCU:\Software\SnapmakerStudioHarnessTest`.
 
 `tools/harness/HarnessLauncher.Tests.ps1` (Pester 5) uses fixtures and mocks only: no installer, app or product process is
 started; registry writes are confined to the scratch hive `HKCU:\Software\SnapmakerStudioHarnessTest\<guid>`; files live

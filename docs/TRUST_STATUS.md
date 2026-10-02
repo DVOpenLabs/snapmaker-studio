@@ -5,6 +5,10 @@ Honest, current verification state for the current release. A release is only ma
 published installer, and — from beta.24 onward — read-only verification against a
 real Snapmaker U1 have all passed and are recorded here.
 
+> Note: older entries below show `-Installer` for the acceptance harness. That is historical and no longer valid. The
+> current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
+> see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
+
 ## v1.2.0 — ACCEPTED
 
 **Your spool notes and your nozzle sizes reach the app, and a rebuilt candidate
