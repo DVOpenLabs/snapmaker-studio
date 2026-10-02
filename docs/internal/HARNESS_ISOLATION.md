@@ -34,7 +34,7 @@ inline steps of the disposable GitHub-hosted CI workflows.
 | Journal + recovery | `tools/harness/HarnessJournal.psm1`, `tools/harness/Repair-Harness.ps1` | Per-run recovery journal written before the installer starts; compare-and-swap recovery of the fixed acceptance surfaces |
 | Shared lane | `tools/harness/HarnessLauncher.psm1` | The one fail-closed install / launch / uninstall / cleanup lane used by all four harnesses |
 | Rewrap | `tools/release/**` | Builds the acceptance installer and its attestation |
-| Disposable CI | `.github/workflows/installer-smoke.yml`, `release-candidate.yml` | The only place the real production identity is installed, upgraded or uninstalled |
+| Disposable CI | `release-candidate.yml` (job `windows-upgrade-smoke`); `.github/workflows/installer-smoke.yml` (reusable lane, no permanent caller) | The only places the real production identity is installed, upgraded or uninstalled |
 
 ## The four workstation lanes
 
@@ -217,7 +217,12 @@ Menu and Desktop shortcut) and never the production keys or the shared publisher
 ## What is NOT proven locally
 
 Production registration, shortcut creation and AUMID, default-path install, upgrade and uninstall of the **real**
-installer are proven only by the disposable GitHub-hosted lanes (`installer-smoke.yml`, `release-candidate.yml`). The
+installer are exercised only on disposable GitHub-hosted runners. `release-candidate.yml` job `windows-upgrade-smoke` remains
+the standing gate that tests the candidate build. `.github/workflows/installer-smoke.yml` is a reusable disposable lane
+(GitHub-hosted, `contents: read`) that has no permanent caller and is not part of release gating; its first controlled
+run, through a temporary caller, passed on a disposable runner: https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37019477486 (published v1.1.0 -> v1.2.0
+install, upgrade, launch and uninstall, with exact-key, shortcut, AUMID and clean-machine assertions). It is not run on every
+release. The
 workstation lanes prove the rewrapped acceptance-identity payload and nothing about the production installer. The
 synthetic fault barriers in the journal tests validate the recovery state machine only, not OS-crash or power-loss safety.
 Whether the WebView2 profile layout, the CDP port ownership check and the uninstall hand-off behave as designed against

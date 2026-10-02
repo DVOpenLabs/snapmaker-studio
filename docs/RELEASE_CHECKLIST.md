@@ -136,7 +136,9 @@ registration, and its tripwire reports any change to the production data folders
 
 This proves the rewrapped acceptance-identity payload only. The real production
 installer's registration, shortcuts, default-path install, upgrade and uninstall are
-proven by the disposable CI lanes (`installer-smoke`, `release-candidate`), not here.
+exercised only on disposable GitHub-hosted runners, not here: `release-candidate.yml` job `windows-upgrade-smoke` is the standing
+gate for the candidate build. `installer-smoke.yml` is a reusable disposable lane with no permanent caller and is not part of
+release gating (its first controlled run passed: https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37019477486).
 See `docs/internal/HARNESS_ISOLATION.md` for the design, the recovery procedure and
 what is not proven locally.
 

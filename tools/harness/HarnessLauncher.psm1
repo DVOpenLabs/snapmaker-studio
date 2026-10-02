@@ -27,7 +27,7 @@ $script:Identity = Get-HarnessIdentity
 $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $script:LaneLabel = 'rewrapped acceptance-identity installer'
 $script:UpgradeLaneLabel = 'upgrade between two rewrapped acceptance-identity installers (OLD -> NEW); not a production upgrade'
-$script:NotProven = 'Production registration, shortcut creation, default-path install/upgrade/uninstall of the real installer are NOT proven by this lane; they are proven only by the disposable CI lanes.'
+$script:NotProven = 'Production registration, shortcut creation, default-path install/upgrade/uninstall of the real installer are NOT proven by this lane; they are exercised only on disposable GitHub-hosted CI runners.'
 $script:WebView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 # Only these tools may be started through Start-HarnessTool (image base names, without .exe).
 $script:AllowedTools = @('node', 'ffmpeg')
