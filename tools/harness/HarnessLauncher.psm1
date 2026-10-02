@@ -33,7 +33,8 @@ $script:WebView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 $script:AllowedTools = @('node', 'ffmpeg')
 # Test-only hooks. Never a parameter of any harness script; tests set them through InModuleScope.
 # Keys: RoamingDir, LocalDir, EngineDir, RealStartMenuDir, RealDesktopDir, RegistryRoot, MutexName,
-#       ProductionProcessProvider, WebViewWaitSeconds, CdpWaitSeconds, PortWaitSeconds, ExitWaitSeconds
+#       ProductionProcessProvider, WebViewWaitSeconds, CdpWaitSeconds, PortWaitSeconds, ExitWaitSeconds,
+#       ProductionSoftwareRoots, ProductionRunKeyPath, ProductionInstallDirs (production install surfaces; tests use scratch roots)
 $script:TestHooks = @{}
 
 # PERSISTED EVIDENCE IS A CLOSED SCHEMA (privacy by construction). Evidence files carry only the typed fields of
@@ -46,11 +47,12 @@ $script:ReasonCodes = @(
     'UNINSTALL_HANDOFF_INCOMPLETE', 'UNKNOWN_OUTCOME', 'RECOVERY_PENDING', 'APP_LAUNCH_FAILED', 'WEBVIEW_PREFLIGHT_FAILED',
     'PROFILE_CHECK_FAILED', 'CDP_CHECK_FAILED', 'PORT_IN_USE', 'PRODUCTION_RUNNING', 'UPDATE_CHECK_PREFLIGHT_FAILED',
     'TRIPWIRE_VIOLATION', 'SHORTCUT_ASSERTION_FAILED', 'PENDING_JOURNAL_BLOCKS_LANE', 'TOOL_NOT_ALLOWED', 'REPORT_WRITE_FAILED',
-    'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED', 'JOURNAL_RECORD_FAILED', 'UNCLASSIFIED_ERROR'
+    'LANE_STEP_FAILED', 'LOCK_RELEASE_FAILED', 'JOURNAL_RECORD_FAILED', 'TRIPWIRE_INCOMPLETE', 'UNCLASSIFIED_ERROR'
 )
 $script:UninstallOutcomes = @('NotRun', 'NothingInstalled', 'NotLaunched', 'Success', 'Failed', 'Unknown')
 $script:InstallArgumentsText = '/S /NCRC /NS /D=<install dir>'
-$script:EvidenceSchemaId = 'harness-lane-evidence/2'
+# /3: the tripwire block gained 'completed' (bool) and 'surfaces' (per-category integer change counts) for the production install surfaces.
+$script:EvidenceSchemaId = 'harness-lane-evidence/3'
 # A run id is OPAQUE and generated ('h' + 32 lowercase hex). No human-chosen word can ever be a run id; phase ids add -u<N>.
 $script:RunIdPattern = '^h[0-9a-f]{32}$'
 $script:PhaseIdPattern = '^h[0-9a-f]{32}(-u[2-9])?$'
@@ -313,7 +315,9 @@ function Get-EvidenceSchema {
         warningCount     = $counts
         reasonCodes      = @{ T = 'array'; Item = @{ T = 'object'; Props = @{ code = $code; count = $counts } } }
         warningCodes     = @{ T = 'array'; Item = @{ T = 'object'; Props = @{ code = $code; count = $counts } } }
-        tripwire         = @{ T = 'object'; Props = @{ violations = $counts; added = $counts; changed = $counts; removed = $counts; leveldbChanged = $counts; structural = $counts } }
+        tripwire         = @{ T = 'object'; Props = @{ violations = $counts; added = $counts; changed = $counts; removed = $counts; leveldbChanged = $counts; structural = $counts
+                completed = @{ T = 'bool' }
+                surfaces = @{ T = 'object'; Props = @{ uninstallKey = $counts; rememberedKey = $counts; manufacturerKey = $counts; runValue = $counts; startMenuShortcut = $counts; desktopShortcut = $counts; installDir = $counts } } } }
         shortcutFindings = $counts
         notProven        = @{ T = 'enum'; V = @($script:NotProven) }
     }
@@ -684,11 +688,227 @@ function Compare-ProductionStateSnapshot {
     $v.ToArray()
 }
 
+# --- Production INSTALL surfaces (registration, Run value, shortcuts, install dirs): DETECTION ONLY --------------------
+# Fingerprints are held in memory for the compare and NEVER persisted: only per-category integer change counts reach the
+# evidence. Everything here is read-only (Get-Item / Test-Path style reads, share-read file opens). Any read error, access
+# denial, reparse point or enumeration failure THROWS: an unknown state is never reported as "unchanged".
+
+$script:SurfaceCategories = @('uninstallKey', 'rememberedKey', 'manufacturerKey', 'runValue', 'startMenuShortcut', 'desktopShortcut', 'installDir')
+
+function Get-Sha256HexOfText { param([string]$Text) ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Text))) -replace '-', '').ToLowerInvariant() }
+
+function Get-Sha256HexOfFileShared {
+    param([Parameter(Mandatory)][string]$Path)
+    $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+    try { ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($fs)) -replace '-', '').ToLowerInvariant() } finally { $fs.Dispose() }
+}
+
+function ConvertTo-RegistryValueText {
+    param($Value)
+    if ($Value -is [byte[]]) { return ([BitConverter]::ToString($Value) -replace '-', '') }
+    if ($Value -is [string[]]) { return ($Value -join [string][char]0) }
+    [string]$Value
+}
+
+function Get-RegistryKeyFingerprint {
+    <# Existence + sha256 over the sorted lines of the WHOLE key tree: every value (relative subkey path | name | kind | value) and
+       every subkey path. Recursive, so values beneath an existing subkey are covered. Hash only; no name, value or path is
+       returned. Any error while walking the tree throws (unknown state). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $root = $null
+    try { $root = Get-Item -LiteralPath $Path -ErrorAction Stop }
+    catch [System.Management.Automation.ItemNotFoundException] { return [ordered]@{ Exists = $false; Hash = '' } }
+    catch { throw 'a production registry surface could not be inspected (unknown state)' }
+    $opened = New-Object System.Collections.Generic.List[object]
+    try {
+        $lines = New-Object System.Collections.Generic.List[string]
+        $stack = New-Object System.Collections.Generic.Stack[object]
+        $stack.Push(@($root, ''))
+        while ($stack.Count -gt 0) {
+            $pair = $stack.Pop(); $key = $pair[0]; $rel = [string]$pair[1]
+            foreach ($n in @($key.GetValueNames())) {
+                $kind = $key.GetValueKind($n)
+                $lines.Add("v|$rel|$($n.ToLowerInvariant())|$kind|$(ConvertTo-RegistryValueText -Value $key.GetValue($n, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))")
+            }
+            foreach ($s in @($key.GetSubKeyNames())) {
+                $childRel = if ($rel) { "$rel\$($s.ToLowerInvariant())" } else { $s.ToLowerInvariant() }
+                $lines.Add("k|$childRel")
+                $child = $key.OpenSubKey($s)
+                if ($null -eq $child) { throw 'subkey vanished or is unreadable' }
+                $opened.Add($child)
+                $stack.Push(@($child, $childRel))
+            }
+        }
+        $lines.Sort([StringComparer]::Ordinal)
+        [ordered]@{ Exists = $true; Hash = (Get-Sha256HexOfText -Text ($lines -join "`n")) }
+    } catch { throw 'a production registry surface could not be read (unknown state)' }
+    finally { foreach ($o in $opened) { $o.Dispose() }; $root.Dispose() }
+}
+
+function Get-RegistryValueFingerprint {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$KeyPath, [Parameter(Mandatory)][string]$Name)
+    $key = $null
+    try { $key = Get-Item -LiteralPath $KeyPath -ErrorAction Stop }
+    catch [System.Management.Automation.ItemNotFoundException] { return [ordered]@{ Exists = $false; Hash = '' } }
+    catch { throw 'the production Run key could not be inspected (unknown state)' }
+    try {
+        if ($key.GetValueNames() -notcontains $Name) { return [ordered]@{ Exists = $false; Hash = '' } }
+        $kind = $key.GetValueKind($Name)
+        [ordered]@{ Exists = $true; Hash = (Get-Sha256HexOfText -Text "$kind|$(ConvertTo-RegistryValueText -Value $key.GetValue($Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))") }
+    } catch { throw 'the production Run value could not be read (unknown state)' }
+    finally { $key.Dispose() }
+}
+
+function Get-FileFingerprint {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $attr = $null
+    try { $attr = [IO.File]::GetAttributes($Path) }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] { return [ordered]@{ Exists = $false; Hash = '' } }
+    catch { throw 'a production shortcut could not be inspected (unknown state)' }
+    if (($attr -band [IO.FileAttributes]::ReparsePoint) -or ($attr -band [IO.FileAttributes]::Directory)) { throw 'a production shortcut is not a plain file (unknown state)' }
+    try { [ordered]@{ Exists = $true; Hash = (Get-Sha256HexOfFileShared -Path $Path) } }
+    catch { throw 'a production shortcut could not be read (unknown state)' }
+}
+
+function Get-InstallDirEntryList {
+    # Seam: STRICT enumeration (any error throws) of EVERY entry (files AND directories) under the dir.
+    param([Parameter(Mandatory)][string]$Dir)
+    @(Get-ChildItem -LiteralPath $Dir -Recurse -Force -ErrorAction Stop)
+}
+
+function Get-StreamFingerprints {
+    <# NTFS alternate data streams of one file or directory: key -> len|sha256, for every stream except the default :$DATA (hashed
+       elsewhere). A read error on any stream throws (unknown state). #>
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][AllowEmptyString()][string]$Key, [Parameter(Mandatory)]$Into)
+    foreach ($st in @(Get-Item -LiteralPath $Path -Stream * -Force -ErrorAction Stop)) {
+        if ($st.Stream -ceq ':$DATA') { continue }
+        $raw = Get-Content -LiteralPath $Path -Stream $st.Stream -AsByteStream -ReadCount 0 -ErrorAction Stop
+        # direct assignment on purpose: an if-expression would unroll a 0-byte (null) or 1-byte (scalar) stream and break .Length
+        $bytes = [byte[]]@()
+        if ($null -ne $raw) { $bytes = [byte[]]$raw }
+        $Into["s|$Key|$($st.Stream)"] = "$($bytes.Length)|$(([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($bytes)) -replace '-', '').ToLowerInvariant())"
+    }
+}
+
+function Get-InstallDirFingerprint {
+    <# STRICT recursive enumeration (an error or a reparse point anywhere throws; never "empty"). Recorded in memory only, keyed by
+       the relative path with its ORIGINAL casing, compared ordinally (a case-only rename is a change; attribute-only changes such as
+       hidden/read-only/system flags, ACLs and timestamps are deliberately NOT part of the fingerprint): d|<dir> (every directory entry, so an empty nested directory counts), f|<file> = size|sha256,
+       and s|<entry>|<stream> = len|sha256 for the alternate data streams of every file, directory and the root. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Dir)
+    $attr = $null
+    try { $attr = [IO.File]::GetAttributes($Dir) }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] { return [ordered]@{ Exists = $false; Files = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal) } }
+    catch { throw 'a production install directory could not be inspected (unknown state)' }
+    if (($attr -band [IO.FileAttributes]::ReparsePoint) -or -not ($attr -band [IO.FileAttributes]::Directory)) { throw 'a production install directory is not a plain directory (unknown state)' }
+    $files = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    try {
+        $prefix = [IO.Path]::GetFullPath($Dir).TrimEnd('\') + '\'
+        Get-StreamFingerprints -Path $Dir -Key '' -Into $files
+        foreach ($e in @(Get-InstallDirEntryList -Dir $Dir)) {
+            if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'reparse point' }
+            $rel = $e.FullName.Substring($prefix.Length)   # ORIGINAL casing: NTFS preserves entry casing, so a case-only rename is a change
+            if ($e.Attributes -band [IO.FileAttributes]::Directory) { $files["d|$rel"] = 'dir' }
+            else { $files["f|$rel"] = "$($e.Length)|$(Get-Sha256HexOfFileShared -Path $e.FullName)" }
+            Get-StreamFingerprints -Path $e.FullName -Key $rel -Into $files
+        }
+    } catch { throw 'a production install directory could not be enumerated strictly (unknown state)' }
+    [ordered]@{ Exists = $true; Files = $files }
+}
+
+function Get-DefaultProductionSurfaceLocations {
+    <# The REAL default locations the surface tripwire watches (no hook, no read of any of them): the four Software roots, the HKCU Run
+       key and the default install directories under the three known folders. #>
+    [CmdletBinding()]
+    param()
+    $prod = $script:Identity.Production
+    $dirs = @()
+    foreach ($sf in 'LocalApplicationData', 'ProgramFiles', 'ProgramFilesX86') {
+        $base = [Environment]::GetFolderPath($sf)
+        if (-not [string]::IsNullOrWhiteSpace($base)) { $dirs += (Join-Path $base $prod.DefaultInstallDirName) }
+    }
+    [ordered]@{
+        SoftwareRoots = @('HKCU:\Software', 'HKLM:\Software', 'HKLM:\Software\WOW6432Node', 'HKCU:\Software\WOW6432Node')
+        RunKeyPath    = 'HKCU:\Software\' + $script:Identity.Registry.RunKey
+        InstallDirs   = $dirs
+    }
+}
+
+function Test-DirectorySnapshotUnknown {
+    # True when a data-folder snapshot recorded a SENTINEL (it could not inspect/list/read something) instead of real state.
+    param([Parameter(Mandatory)]$Snapshot)
+    foreach ($k in $Snapshot.Entries.Keys) {
+        if ($k -ceq '<uninspectable>' -or $k.StartsWith('<unlistable>:', [StringComparison]::Ordinal)) { return $true }
+        if (@('inspect-error', 'enum-error', 'gone-or-uninspectable', 'file|unreadable') -ccontains [string]$Snapshot.Entries[$k]) { return $true }
+    }
+    $false
+}
+
+function Get-ProductionSurfaceSnapshot {
+    <# Read-only. Exact keys/paths from HarnessIdentity (Production block); roots, run key and install dirs resolve through
+       the test hooks (scratch roots in tests) or the real defaults. Throws on any unknown state. #>
+    [CmdletBinding()]
+    param()
+    $prod = $script:Identity.Production
+    $reg = $script:Identity.Registry
+    $def = Get-DefaultProductionSurfaceLocations
+    $roots = @(Get-Hook 'ProductionSoftwareRoots' $def.SoftwareRoots)
+    $runKey = [string](Get-Hook 'ProductionRunKeyPath' $def.RunKeyPath)
+    $startMenu = [string](Get-Hook 'RealStartMenuDir' ([Environment]::GetFolderPath('Programs')))
+    $desktop = [string](Get-Hook 'RealDesktopDir' ([Environment]::GetFolderPath('DesktopDirectory')))
+    if ([string]::IsNullOrWhiteSpace($startMenu) -or [string]::IsNullOrWhiteSpace($desktop)) { throw 'a real Start Menu / Desktop known folder could not be resolved' }
+    # A hook that is set (even to an empty array) means exactly that list ('none' stays none); only an unset hook uses the real defaults.
+    $dirs = if ($script:TestHooks.ContainsKey('ProductionInstallDirs') -and $null -ne $script:TestHooks['ProductionInstallDirs']) { @($script:TestHooks['ProductionInstallDirs']) } else { @($def.InstallDirs) }
+    $keyAt = { param($suffix) @($roots | ForEach-Object { Get-RegistryKeyFingerprint -Path ($_.TrimEnd('\') + '\' + $suffix) }) }
+    [ordered]@{
+        uninstallKey      = & $keyAt ($reg.UninstallKeyParent + '\' + $prod.ProductName)
+        rememberedKey     = & $keyAt ($prod.Manufacturer + '\' + $prod.ProductName)
+        manufacturerKey   = & $keyAt $prod.Manufacturer
+        runValue          = @(Get-RegistryValueFingerprint -KeyPath $runKey -Name $prod.ProductName)
+        startMenuShortcut = @(Get-FileFingerprint -Path (Join-Path $startMenu "$($prod.ProductName).lnk"))
+        desktopShortcut   = @(Get-FileFingerprint -Path (Join-Path $desktop "$($prod.ProductName).lnk"))
+        installDir        = @($dirs | ForEach-Object { Get-InstallDirFingerprint -Dir $_ })
+    }
+}
+
+function Compare-ProductionSurfaceSnapshot {
+    <# Per-category INTEGER change counts only (no names, values, paths or hashes). Absent must stay absent; existing must stay
+       byte-identical. Report only: nothing here touches the disk. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Before, [Parameter(Mandatory)]$After)
+    $counts = [ordered]@{}
+    foreach ($c in $script:SurfaceCategories) {
+        $n = 0
+        $b = @($Before[$c]); $a = @($After[$c])
+        if ($b.Count -ne $a.Count) { $n++ } else {
+            for ($i = 0; $i -lt $b.Count; $i++) {
+                if ($b[$i].Contains('Files')) {
+                    if ($b[$i].Exists -ne $a[$i].Exists) { $n++; continue }
+                    foreach ($k in $a[$i].Files.Keys) { if (-not $b[$i].Files.ContainsKey($k) -or $b[$i].Files[$k] -cne $a[$i].Files[$k]) { $n++ } }
+                    foreach ($k in $b[$i].Files.Keys) { if (-not $a[$i].Files.ContainsKey($k)) { $n++ } }
+                } elseif ($b[$i].Exists -ne $a[$i].Exists -or $b[$i].Hash -cne $a[$i].Hash) { $n++ }
+            }
+        }
+        $counts[$c] = $n
+    }
+    $counts
+}
+
 function Test-ProductionTripwire {
     # Snapshot now, compare with the lane baseline, record findings. Report only.
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Lane, [string]$Stage = 'check')
+    # Completed is true ONLY at the very end of a fully successful compare of THIS call; a stale true from an earlier call never survives.
+    $Lane.TripwireCompleted = $false
     $now = Get-ProductionStateSnapshot
+    # The data-folder snapshot records sentinels (it could not inspect/list/read something) instead of throwing: that is an unknown state.
+    $dataUnknown = (Test-DirectorySnapshotUnknown -Snapshot $Lane.Baseline.Roaming) -or (Test-DirectorySnapshotUnknown -Snapshot $Lane.Baseline.Local) -or (Test-DirectorySnapshotUnknown -Snapshot $Lane.Baseline.Engine) -or
+        (Test-DirectorySnapshotUnknown -Snapshot $now.Roaming) -or (Test-DirectorySnapshotUnknown -Snapshot $now.Local) -or (Test-DirectorySnapshotUnknown -Snapshot $now.Engine)
+    if ($dataUnknown) { Add-LaneError -Lane $Lane -Text "[tripwire:$Stage] a production data folder could not be inspected completely (unknown state); the tripwire is INCOMPLETE" -Code 'TRIPWIRE_INCOMPLETE' }
     $viol = @(Compare-ProductionStateSnapshot -Before $Lane.Baseline -After $now)
     foreach ($x in $viol) {
         Add-LaneFinding -Lane $Lane -Text "[tripwire:$Stage] $x" -Code 'TRIPWIRE_VIOLATION'
@@ -699,6 +919,20 @@ function Test-ProductionTripwire {
         elseif ($x -match ': (\d+) entr(?:y|ies) REMOVED') { $tc.removed += [int]$Matches[1] }
         else { $tc.structural += 1 }
     }
+    # Production INSTALL surfaces (detect only). An unreadable/unknown state throws (fail closed): the caller records an Error and
+    # TripwireCompleted stays $false.
+    if ($null -eq $Lane.SurfaceBaseline) { throw 'the production install-surface baseline is missing (the tripwire cannot complete)' }
+    $surfaceNow = Get-ProductionSurfaceSnapshot
+    $changes = Compare-ProductionSurfaceSnapshot -Before $Lane.SurfaceBaseline -After $surfaceNow
+    $labels = [ordered]@{ uninstallKey = 'uninstall registration'; rememberedKey = 'remembered install-location key'; manufacturerKey = 'manufacturer key'; runValue = 'Run value'
+        startMenuShortcut = 'Start Menu shortcut'; desktopShortcut = 'Desktop shortcut'; installDir = 'install directory' }
+    foreach ($c in $script:SurfaceCategories) {
+        if ($changes[$c] -gt 0) {
+            Add-LaneFinding -Lane $Lane -Text "[tripwire:$Stage] production $($labels[$c]) CHANGED ($($changes[$c]) item(s))" -Code 'TRIPWIRE_VIOLATION'
+            $Lane.SurfaceCounts[$c] += [int]$changes[$c]
+        }
+    }
+    if (-not $dataUnknown) { $Lane.TripwireCompleted = $true }
     $viol
 }
 
@@ -823,13 +1057,16 @@ function Start-HarnessLane {
             EvidenceDir = $paths.EvidenceDir; ShortcutDir = $paths.ShortcutDir
             AppExe = (Join-Path $paths.InstallDir $script:Identity.Acceptance.MainBinaryName)
             Lock = $lock; Tracked = [System.Collections.Generic.List[object]]::new(); Phases = [System.Collections.Generic.List[object]]::new()
-            Builds = @{}; Baseline = $null; Findings = [System.Collections.Generic.List[string]]::new()
+            Builds = @{}; Baseline = $null; SurfaceBaseline = $null; TripwireCompleted = $false; SurfaceCounts = [ordered]@{ uninstallKey = 0; rememberedKey = 0; manufacturerKey = 0; runValue = 0; startMenuShortcut = 0; desktopShortcut = 0; installDir = 0 }; Findings = [System.Collections.Generic.List[string]]::new()
             Errors = [System.Collections.Generic.List[string]]::new(); Warnings = [System.Collections.Generic.List[string]]::new()
             Preflight = [ordered]@{}; ErrorCodes = [System.Collections.Generic.List[string]]::new(); FindingCodes = [System.Collections.Generic.List[string]]::new(); WarningCodes = [System.Collections.Generic.List[string]]::new(); TripwireCounts = [ordered]@{ added = 0; changed = 0; removed = 0; leveldbChanged = 0; structural = 0 }; ShortcutFindingCount = 0; Orphan = $null; UninstallLaunched = $false; UninstallOutcome = 'NotRun'; Completed = $false; Result = $null; Upgrade = $false
         }
         Assert-LaunchPreflight -Lane $lane
         Assert-NoAcceptanceShortcutInRealFolders
         $lane.Baseline = Get-ProductionStateSnapshot
+        # Production INSTALL surfaces (registration, shortcuts, install dirs): baseline BEFORE any install. An unknown state refuses the lane.
+        try { $lane.SurfaceBaseline = Get-ProductionSurfaceSnapshot }
+        catch { throw "Refused: the production install surfaces could not be fingerprinted safely, so the tripwire cannot be armed ($($_.Exception.Message)). Nothing was changed." }
 
         $spec = Resolve-HarnessBuild -InstallerPath $InstallerPath -AttestationPath $AttestationPath -RealInstaller $RealInstaller -ExpectedSha256 $ExpectedSha256 `
             -Sha256SumsPath $Sha256SumsPath -SourceVersion $SourceVersion -HarnessRoot $HarnessRoot -What 'installer'
@@ -1327,6 +1564,9 @@ function Get-HarnessLaneEvidence {
         tripwire          = [ordered]@{
             violations = @($finCodes | Where-Object { $_ -eq 'TRIPWIRE_VIOLATION' }).Count; added = [int]$tc.added; changed = [int]$tc.changed
             removed = [int]$tc.removed; leveldbChanged = [int]$tc.leveldbChanged; structural = [int]$tc.structural
+            completed = [bool]$Lane.TripwireCompleted
+            surfaces = [ordered]@{ uninstallKey = [int]$Lane.SurfaceCounts.uninstallKey; rememberedKey = [int]$Lane.SurfaceCounts.rememberedKey; manufacturerKey = [int]$Lane.SurfaceCounts.manufacturerKey
+                runValue = [int]$Lane.SurfaceCounts.runValue; startMenuShortcut = [int]$Lane.SurfaceCounts.startMenuShortcut; desktopShortcut = [int]$Lane.SurfaceCounts.desktopShortcut; installDir = [int]$Lane.SurfaceCounts.installDir }
         }
         shortcutFindings  = [int]$Lane.ShortcutFindingCount
         notProven         = $script:NotProven
@@ -1344,7 +1584,7 @@ function Complete-HarnessLane {
     param([Parameter(Mandatory)]$Lane)
     if ($Lane.Completed) { return $Lane.Result }
     $res = [ordered]@{ ExitCode = 0; Uninstall = $null; Recovery = @(); Errors = $Lane.Errors; Findings = $Lane.Findings; Evidence = $null }
-    $stepCodes = @{ 'stop-processes' = 'LANE_STEP_FAILED'; 'uninstall' = 'UNINSTALL_FAILED'; 'recovery' = 'RECOVERY_PENDING'; 'tripwire' = 'LANE_STEP_FAILED'; 'shortcut-check' = 'SHORTCUT_ASSERTION_FAILED'; 'evidence' = 'REPORT_WRITE_FAILED' }
+    $stepCodes = @{ 'stop-processes' = 'LANE_STEP_FAILED'; 'uninstall' = 'UNINSTALL_FAILED'; 'recovery' = 'RECOVERY_PENDING'; 'tripwire' = 'TRIPWIRE_INCOMPLETE'; 'shortcut-check' = 'SHORTCUT_ASSERTION_FAILED'; 'evidence' = 'REPORT_WRITE_FAILED' }
     $step = { param($name, $sb) try { & $sb } catch { Add-LaneError -Lane $Lane -Text "${name}: $($_.Exception.Message)" -Code $(if ($stepCodes.ContainsKey($name)) { $stepCodes[$name] } else { 'LANE_STEP_FAILED' }) } }
 
     & $step 'stop-processes' {
@@ -1443,7 +1683,7 @@ function Complete-HarnessLane {
 
 Export-ModuleMember -Function Assert-HarnessPathInside, Assert-NoWildcardPath, New-HarnessRunId, Get-HarnessLanePaths, Assert-LaneIsolation, ConvertTo-PublicPath,
     Get-ProductionStatePaths, Assert-ProductionIdle, Assert-UpdateCheckPreflight, Assert-WebView2Runtime, Assert-DebugPortFree, Assert-LaunchPreflight,
-    Get-DirectoryStateSnapshot, Get-ProductionStateSnapshot, Compare-ProductionStateSnapshot, Test-ProductionTripwire,
+    Get-DirectoryStateSnapshot, Get-ProductionStateSnapshot, Compare-ProductionStateSnapshot, Get-ProductionSurfaceSnapshot, Compare-ProductionSurfaceSnapshot, Get-DefaultProductionSurfaceLocations, Test-DirectorySnapshotUnknown, Test-ProductionTripwire,
     Get-AcceptanceShortcutFindings, Assert-NoAcceptanceShortcutInRealFolders, Get-InstallerArguments, Get-UninstallerArguments,
     Resolve-HarnessBuild, Start-HarnessLane, Register-HarnessProcess, Stop-HarnessTrackedProcess, Get-HarnessSidecarProcesses,
     Assert-CdpOwnedByTrackedApp, Start-HarnessApp, Stop-HarnessApp, Resolve-HarnessToolPath, Start-HarnessTool, Stop-HarnessTool, Invoke-HarnessTool, Invoke-HarnessNode,

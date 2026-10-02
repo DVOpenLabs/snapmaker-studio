@@ -31,6 +31,8 @@ BeforeAll {
             Roaming = Join-Path $dir 'prod\Roaming\com.snapmakerstudio.desktop'; Local = Join-Path $dir 'prod\Local\com.snapmakerstudio.desktop'
             Engine = Join-Path $dir 'prod\Local\SnapmakerStudio'
             RealStartMenu = Join-Path $dir 'real\StartMenu'; RealDesktop = Join-Path $dir 'real\Desktop'
+            SoftRoot = "HKCU:\Software\SnapmakerStudioHarnessTest\$guid\prodsoft"; RunKey = "HKCU:\Software\SnapmakerStudioHarnessTest\$guid\prodrun"
+            InstallDirs = @((Join-Path $dir 'prod\install\local'), (Join-Path $dir 'prod\install\pf'), (Join-Path $dir 'prod\install\pf86'))
         }
     }
     function script:Clear-Junctions([string]$dir) {
@@ -50,6 +52,7 @@ BeforeAll {
         $h = @{
             RoamingDir = $s.Roaming; LocalDir = $s.Local; EngineDir = $s.Engine
             RealStartMenuDir = $s.RealStartMenu; RealDesktopDir = $s.RealDesktop
+            ProductionSoftwareRoots = @($s.SoftRoot, "$($s.SoftRoot)\WOW6432Node"); ProductionRunKeyPath = $s.RunKey; ProductionInstallDirs = $s.InstallDirs
             RegistryRoot = $s.RegRoot; MutexName = "Local\ssh-launch-test-$($s.Guid)"
             ProductionProcessProvider = { param($name) @() }
             WebViewWaitSeconds = 1; CdpWaitSeconds = 1; PortWaitSeconds = 0; ExitWaitSeconds = 1
@@ -1071,7 +1074,7 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
         [void](Install-HarnessBuild -Lane $lane -Which Primary)
         $res = Complete-HarnessLane -Lane $lane
         $ev = $res.Evidence
-        $ev.schema | Should -Be 'harness-lane-evidence/2'
+        $ev.schema | Should -Be 'harness-lane-evidence/3'
         $ev.lane | Should -Be 'rewrapped acceptance-identity installer'
         $ev.identity | Should -Be 'acceptance'
         $ev.status | Should -Be 'pass'
@@ -1559,6 +1562,422 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
     }
 }
 
+Describe 'Production install-surface tripwire (detection only; scratch roots and temp dirs ONLY)' {
+    BeforeAll {
+        function script:Assert-ScratchReg([string]$p) { if ($p -notlike 'HKCU:\Software\SnapmakerStudioHarnessTest\*') { throw "test refuses a non-scratch registry path: $p" } }
+        function script:Get-HkcuSub([string]$p) { Assert-ScratchReg $p; $p -replace '^HKCU:\\', '' }
+        function script:Set-RegVal([string]$path, [string]$name, $value) {
+            $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey((Get-HkcuSub $path)); try { $k.SetValue($name, $value) } finally { $k.Dispose() }
+        }
+        function script:New-RegKeyOnly([string]$path) { [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey((Get-HkcuSub $path)).Dispose() }
+        function script:Remove-RegTree([string]$path) { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree((Get-HkcuSub $path), $false) }
+        function script:Remove-RegVal([string]$path, [string]$name) {
+            $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey((Get-HkcuSub $path), $true); try { $k.DeleteValue($name) } finally { $k.Dispose() }
+        }
+        function script:Get-SurfacePaths($s) {
+            [pscustomobject]@{
+                Uninstall = "$($s.SoftRoot)\$($script:Id.Registry.UninstallKeyParent)\$($script:Prod.ProductName)"
+                UninstallWow = "$($s.SoftRoot)\WOW6432Node\$($script:Id.Registry.UninstallKeyParent)\$($script:Prod.ProductName)"
+                Remembered = "$($s.SoftRoot)\$($script:Prod.Manufacturer)\$($script:Prod.ProductName)"
+                Manufacturer = "$($s.SoftRoot)\$($script:Prod.Manufacturer)"
+                RunKey = $s.RunKey; RunName = $script:Prod.ProductName
+                StartMenu = Join-Path $s.RealStartMenu "$($script:Prod.ProductName).lnk"
+                Desktop = Join-Path $s.RealDesktop "$($script:Prod.ProductName).lnk"
+                Install = $s.InstallDirs[0]
+            }
+        }
+        function script:Set-RegValK([string]$path, [string]$name, $value, [Microsoft.Win32.RegistryValueKind]$kind) {
+            $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey((Get-HkcuSub $path)); try { $k.SetValue($name, $value, $kind) } finally { $k.Dispose() }
+        }
+        function script:Assert-InSandbox([string]$path) {
+            # Equivalent of Assert-ScratchReg for files: the path must resolve strictly inside THIS test's own temp sandbox, with no
+            # wildcard, no stream suffix and no reparse point on the existing part of the chain.
+            if ($path -match '[\*\?\[\]]') { throw "test helper refuses a wildcard path: $path" }
+            if ($path.Length -gt 2 -and $path.Substring(2).Contains(':')) { throw "test helper refuses a stream-suffixed path: $path" }
+            $full = [IO.Path]::GetFullPath($path)
+            $root = [IO.Path]::GetFullPath($script:sb.Dir).TrimEnd('\') + '\'
+            if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw "test helper refuses a path outside the test sandbox: $path" }
+            $cur = $full
+            while ($cur -and $cur.Length -ge $root.Length) {
+                if (Test-Path -LiteralPath $cur) { if ((Get-Item -LiteralPath $cur -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "test helper refuses a path through a reparse point: $path" } }
+                $cur = Split-Path -Parent $cur
+            }
+        }
+        function script:Set-AdsBytes([string]$path, [string]$name, [byte[]]$bytes) {
+            Assert-InSandbox $path
+            Set-Content -LiteralPath $path -Stream $name -Value $bytes -AsByteStream
+            if (@(Get-Item -LiteralPath $path -Stream * -Force | Where-Object { $_.Stream -eq $name }).Count -ne 1) { throw "alternate data streams could not be created in this environment ($name)" }
+        }
+        function script:Set-Ads([string]$path, [string]$name, [string]$value) {
+            Assert-InSandbox $path
+            Set-Content -LiteralPath $path -Stream $name -Value $value
+            # an environment that cannot create alternate data streams must FAIL these tests, never skip them silently
+            if (@(Get-Item -LiteralPath $path -Stream * -Force | Where-Object { $_.Stream -eq $name }).Count -ne 1) { throw "alternate data streams could not be created in this environment ($name)" }
+        }
+        function script:Remove-Ads([string]$path, [string]$name) { Assert-InSandbox $path; Remove-Item -LiteralPath $path -Stream $name }
+        function script:Write-Bytes([string]$path, [string]$text) { Assert-InSandbox $path; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null; [IO.File]::WriteAllBytes($path, [Text.Encoding]::UTF8.GetBytes($text)) }
+    }
+    BeforeEach { $script:sb = New-Sandbox; Set-Hooks $script:sb; Set-DefaultMocks }
+    AfterEach { Remove-Sandbox $script:sb }
+
+    It 'detects a mutation to <Cat> (<Name>) as a tripwire finding with a closed per-category count, completed = true, nothing restored' -ForEach @(
+        @{ Name = 'added'; Cat = 'uninstallKey'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'x' } }
+        @{ Name = 'value changed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'a' }; Mutate = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'b' } }
+        @{ Name = 'removed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'a' }; Mutate = { param($s, $p) Remove-RegTree $p.Uninstall } }
+        @{ Name = 'added in the WOW6432Node view'; Cat = 'uninstallKey'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Set-RegVal $p.UninstallWow 'DisplayName' 'x' } }
+        @{ Name = 'added'; Cat = 'rememberedKey'; Also = 'manufacturerKey'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Set-RegVal $p.Remembered '' 'C:\x' } }
+        @{ Name = 'value changed'; Cat = 'rememberedKey'; Also = 'manufacturerKey'; Setup = { param($s, $p) Set-RegVal $p.Remembered '' 'C:\a' }; Mutate = { param($s, $p) Set-RegVal $p.Remembered '' 'C:\b' } }
+        @{ Name = 'removed'; Cat = 'rememberedKey'; Also = 'manufacturerKey'; Setup = { param($s, $p) Set-RegVal $p.Remembered '' 'C:\a' }; Mutate = { param($s, $p) Remove-RegTree $p.Remembered } }
+        @{ Name = 'parent appears'; Cat = 'manufacturerKey'; Setup = { param($s, $p) }; Mutate = { param($s, $p) New-RegKeyOnly $p.Manufacturer } }
+        @{ Name = 'parent removed'; Cat = 'manufacturerKey'; Setup = { param($s, $p) New-RegKeyOnly $p.Manufacturer }; Mutate = { param($s, $p) Remove-RegTree $p.Manufacturer } }
+        @{ Name = 'added'; Cat = 'runValue'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Set-RegVal $p.RunKey $p.RunName 'C:\x.exe' } }
+        @{ Name = 'changed'; Cat = 'runValue'; Setup = { param($s, $p) Set-RegVal $p.RunKey $p.RunName 'C:\a.exe' }; Mutate = { param($s, $p) Set-RegVal $p.RunKey $p.RunName 'C:\b.exe' } }
+        @{ Name = 'removed'; Cat = 'runValue'; Setup = { param($s, $p) Set-RegVal $p.RunKey $p.RunName 'C:\a.exe' }; Mutate = { param($s, $p) Remove-RegVal $p.RunKey $p.RunName } }
+        @{ Name = 'added'; Cat = 'startMenuShortcut'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Write-Bytes $p.StartMenu 'lnk1' } }
+        @{ Name = 'changed'; Cat = 'startMenuShortcut'; Setup = { param($s, $p) Write-Bytes $p.StartMenu 'lnk1' }; Mutate = { param($s, $p) Write-Bytes $p.StartMenu 'lnk2' } }
+        @{ Name = 'removed'; Cat = 'startMenuShortcut'; Setup = { param($s, $p) Write-Bytes $p.StartMenu 'lnk1' }; Mutate = { param($s, $p) [IO.File]::Delete($p.StartMenu) } }
+        @{ Name = 'added'; Cat = 'desktopShortcut'; Setup = { param($s, $p) }; Mutate = { param($s, $p) Write-Bytes $p.Desktop 'lnk1' } }
+        @{ Name = 'changed'; Cat = 'desktopShortcut'; Setup = { param($s, $p) Write-Bytes $p.Desktop 'lnk1' }; Mutate = { param($s, $p) Write-Bytes $p.Desktop 'lnk2' } }
+        @{ Name = 'removed'; Cat = 'desktopShortcut'; Setup = { param($s, $p) Write-Bytes $p.Desktop 'lnk1' }; Mutate = { param($s, $p) [IO.File]::Delete($p.Desktop) } }
+        @{ Name = 'file added'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) Write-Bytes (Join-Path $p.Install 'sub\b.bin') 'b' } }
+        @{ Name = 'file changed (same size)'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'b' } }
+        @{ Name = 'file removed'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) [IO.File]::Delete((Join-Path $p.Install 'a.bin')) } }
+        @{ Name = 'dir appears (empty)'; Cat = 'installDir'; Setup = { param($s, $p) }; Mutate = { param($s, $p) New-Item -ItemType Directory -Force -Path $p.Install | Out-Null } }
+        @{ Name = 'dir disappears'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) [IO.Directory]::Delete($p.Install, $true) } }
+        @{ Name = 'file added in a second default dir'; Cat = 'installDir'; Setup = { param($s, $p) New-Item -ItemType Directory -Force -Path $s.InstallDirs[1] | Out-Null }; Mutate = { param($s, $p) Write-Bytes (Join-Path $s.InstallDirs[1] 'x.bin') 'x' } }
+        @{ Name = 'empty nested dir added'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub\empty') | Out-Null } }
+        @{ Name = 'empty nested dir removed'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub\empty') | Out-Null }; Mutate = { param($s, $p) [IO.Directory]::Delete((Join-Path $p.Install 'sub\empty')) } }
+        @{ Name = 'ADS added on a file'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }; Mutate = { param($s, $p) Set-Ads (Join-Path $p.Install 'a.bin') 'zone' 'x' } }
+        @{ Name = 'ADS changed on a file (same size)'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; Set-Ads (Join-Path $p.Install 'a.bin') 'zone' 'x' }; Mutate = { param($s, $p) Set-Ads (Join-Path $p.Install 'a.bin') 'zone' 'y' } }
+        @{ Name = 'ADS removed from a file'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; Set-Ads (Join-Path $p.Install 'a.bin') 'zone' 'x' }; Mutate = { param($s, $p) Remove-Ads (Join-Path $p.Install 'a.bin') 'zone' } }
+        @{ Name = 'ADS added on a nested directory'; Cat = 'installDir'; Setup = { param($s, $p) New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub') | Out-Null }; Mutate = { param($s, $p) Set-Ads (Join-Path $p.Install 'sub') 'dz' 'x' } }
+        @{ Name = 'ADS changed on a nested directory'; Cat = 'installDir'; Setup = { param($s, $p) New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub') | Out-Null; Set-Ads (Join-Path $p.Install 'sub') 'dz' 'x' }; Mutate = { param($s, $p) Set-Ads (Join-Path $p.Install 'sub') 'dz' 'y' } }
+        @{ Name = 'ADS removed from a nested directory'; Cat = 'installDir'; Setup = { param($s, $p) New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub') | Out-Null; Set-Ads (Join-Path $p.Install 'sub') 'dz' 'x' }; Mutate = { param($s, $p) Remove-Ads (Join-Path $p.Install 'sub') 'dz' } }
+        @{ Name = 'ADS added on the install dir itself'; Cat = 'installDir'; Setup = { param($s, $p) New-Item -ItemType Directory -Force -Path $p.Install | Out-Null }; Mutate = { param($s, $p) Set-Ads $p.Install 'rootz' 'x' } }
+        @{ Name = 'nested subkey value added'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'a'; New-RegKeyOnly "$($p.Uninstall)\Sub" }; Mutate = { param($s, $p) Set-RegVal "$($p.Uninstall)\Sub" 'v' 'x' } }
+        @{ Name = 'nested subkey value changed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal "$($p.Uninstall)\Sub\Deeper" 'v' 'a' }; Mutate = { param($s, $p) Set-RegVal "$($p.Uninstall)\Sub\Deeper" 'v' 'b' } }
+        @{ Name = 'nested subkey value removed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal "$($p.Uninstall)\Sub" 'v' 'a' }; Mutate = { param($s, $p) Remove-RegVal "$($p.Uninstall)\Sub" 'v' } }
+        @{ Name = 'a subkey name appears under it'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegVal $p.Uninstall 'DisplayName' 'a' }; Mutate = { param($s, $p) New-RegKeyOnly "$($p.Uninstall)\NewSub" } }
+        @{ Name = 'value KIND only (same data, REG_SZ to REG_EXPAND_SZ)'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegValK $p.Uninstall 'V' 'same' ([Microsoft.Win32.RegistryValueKind]::String) }; Mutate = { param($s, $p) Set-RegValK $p.Uninstall 'V' 'same' ([Microsoft.Win32.RegistryValueKind]::ExpandString) } }
+        @{ Name = 'REG_BINARY value changed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegValK $p.Uninstall 'V' ([byte[]](1, 2, 3)) ([Microsoft.Win32.RegistryValueKind]::Binary) }; Mutate = { param($s, $p) Set-RegValK $p.Uninstall 'V' ([byte[]](1, 2, 4)) ([Microsoft.Win32.RegistryValueKind]::Binary) } }
+        @{ Name = 'REG_MULTI_SZ value changed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegValK $p.Uninstall 'V' ([string[]]('a', 'b')) ([Microsoft.Win32.RegistryValueKind]::MultiString) }; Mutate = { param($s, $p) Set-RegValK $p.Uninstall 'V' ([string[]]('a', 'c')) ([Microsoft.Win32.RegistryValueKind]::MultiString) } }
+        @{ Name = 'REG_DWORD value changed'; Cat = 'uninstallKey'; Setup = { param($s, $p) Set-RegValK $p.Uninstall 'V' 1 ([Microsoft.Win32.RegistryValueKind]::DWord) }; Mutate = { param($s, $p) Set-RegValK $p.Uninstall 'V' 2 ([Microsoft.Win32.RegistryValueKind]::DWord) } }
+        @{ Name = 'case-only rename of a file'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'Foo.dll') 'a' }; Mutate = { param($s, $p) [IO.File]::Move((Join-Path $p.Install 'Foo.dll'), (Join-Path $p.Install 'foo.dll')) } }
+        @{ Name = 'case-only rename of a directory (with a file inside)'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'Sub\a.bin') 'a' }; Mutate = { param($s, $p) [IO.Directory]::Move((Join-Path $p.Install 'Sub'), (Join-Path $p.Install 'sub')) } }
+        @{ Name = 'case-only rename of a nested file'; Cat = 'installDir'; Setup = { param($s, $p) Write-Bytes (Join-Path $p.Install 'sub\Inner.dll') 'a' }; Mutate = { param($s, $p) [IO.File]::Move((Join-Path $p.Install 'sub\Inner.dll'), (Join-Path $p.Install 'sub\inner.dll')) } }
+        @{ Name = 'an unrelated subkey appears under the manufacturer parent (subkey names hashed independently of the remembered key)'; Cat = 'manufacturerKey'; Setup = { param($s, $p) New-RegKeyOnly $p.Manufacturer }; Mutate = { param($s, $p) New-RegKeyOnly "$($p.Manufacturer)\SomethingElse" } }
+    ) {
+        $p = Get-SurfacePaths $script:sb
+        & $Setup $script:sb $p
+        $lane = New-TestLane $script:sb
+        try {
+            & $Mutate $script:sb $p
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'final')
+            $lane.SurfaceCounts[$Cat] | Should -BeGreaterThan 0
+            # the manufacturer key's subkey list also changes when the remembered key is added or removed (parent fingerprint)
+            foreach ($other in @($lane.SurfaceCounts.Keys | Where-Object { $_ -ne $Cat -and $_ -ne $Also })) { $lane.SurfaceCounts[$other] | Should -Be 0 -Because "only $Cat changed ($other)" }
+            @($lane.Findings).Count | Should -BeGreaterThan 0
+            @($lane.FindingCodes) | Should -Contain 'TRIPWIRE_VIOLATION'
+            $lane.TripwireCompleted | Should -BeTrue
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+
+    It 'negative controls: all surfaces absent stays clean; all surfaces present and unchanged stays clean (both complete)' -ForEach @(@{ Present = $false }, @{ Present = $true }) {
+        $p = Get-SurfacePaths $script:sb
+        if ($Present) {
+            Set-RegVal $p.Uninstall 'DisplayName' 'a'; Set-RegVal $p.UninstallWow 'DisplayName' 'a'; Set-RegVal $p.Remembered '' 'C:\a'
+            Set-RegVal $p.RunKey $p.RunName 'C:\a.exe'; Write-Bytes $p.StartMenu 'l1'; Write-Bytes $p.Desktop 'l2'
+            Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; Write-Bytes (Join-Path $p.Install 'sub\b.bin') 'b'
+            Write-Bytes (Join-Path $p.Install 'Sub2\Mixed.DLL') 'm'
+        }
+        $lane = New-TestLane $script:sb
+        try {
+            @(Test-ProductionTripwire -Lane $lane -Stage 'final').Count | Should -Be 0
+            @($lane.Findings).Count | Should -Be 0
+            @($lane.SurfaceCounts.Values | Where-Object { $_ -ne 0 }).Count | Should -Be 0
+            $lane.TripwireCompleted | Should -BeTrue
+        } finally { $res = Complete-HarnessLane -Lane $lane }
+        $res.Evidence.tripwire.completed | Should -BeTrue
+        $res.Evidence.status | Should -Be 'pass'
+    }
+
+    It 'a reparse point under a production install dir at the BASELINE refuses the lane (unknown state is never empty)' {
+        $p = Get-SurfacePaths $script:sb
+        $target = Join-Path $script:sb.Dir 'junction-target'; New-Item -ItemType Directory -Force -Path $target | Out-Null
+        New-Item -ItemType Directory -Force -Path $p.Install | Out-Null
+        New-Item -ItemType Junction -Path (Join-Path $p.Install 'link') -Target $target | Out-Null
+        { New-TestLane $script:sb } | Should -Throw '*could not be fingerprinted safely*'
+        # the lock was released: once the junction is gone a lane starts again
+        [IO.Directory]::Delete((Join-Path $p.Install 'link'))
+        $l = New-TestLane $script:sb
+        [void](Complete-HarnessLane -Lane $l)
+    }
+
+    It 'an unreadable / reparse state at the FINAL fingerprint is an Error (TRIPWIRE_INCOMPLETE), completed = false, never a pass' -ForEach @(
+        @{ Name = 'a reparse point appears'; Arm = { param($s, $p) $t = Join-Path $s.Dir 'jt'; New-Item -ItemType Directory -Force -Path $t | Out-Null; New-Item -ItemType Directory -Force -Path $p.Install | Out-Null; New-Item -ItemType Junction -Path (Join-Path $p.Install 'link') -Target $t | Out-Null; $null } }
+        @{ Name = 'a file is locked exclusively'; Arm = { param($s, $p) Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; $null } ; Lock = $true }
+        @{ Name = 'a shortcut path is a directory'; Arm = { param($s, $p) New-Item -ItemType Directory -Force -Path $p.StartMenu | Out-Null; $null } }
+    ) {
+        $p = Get-SurfacePaths $script:sb
+        if ($Lock) { Write-Bytes (Join-Path $p.Install 'a.bin') 'a' }
+        $lane = New-TestLane $script:sb
+        $stream = $null
+        try {
+            if ($Lock) { $stream = [IO.File]::Open((Join-Path $p.Install 'a.bin'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+            else { [void](& $Arm $script:sb $p) }
+            { Test-ProductionTripwire -Lane $lane -Stage 'final' } | Should -Throw '*unknown state*'
+            $lane.TripwireCompleted | Should -BeFalse
+            # through the always-run cleanup the same condition becomes a recorded Error, not a silent pass
+            $res = Complete-HarnessLane -Lane $lane
+            $res.ExitCode | Should -Be 1
+            $lane.TripwireCompleted | Should -BeFalse
+            @($lane.ErrorCodes) | Should -Contain 'TRIPWIRE_INCOMPLETE'
+            $res.Evidence.tripwire.completed | Should -BeFalse
+            $res.Evidence.status | Should -Be 'fail'
+        } finally {
+            if ($stream) { $stream.Dispose() }
+            if (-not $lane.Completed) { [void](Complete-HarnessLane -Lane $lane) }
+        }
+    }
+
+    It 'a lane without a surface baseline cannot complete the tripwire' {
+        $lane = New-TestLane $script:sb
+        try {
+            $lane.SurfaceBaseline = $null
+            { Test-ProductionTripwire -Lane $lane -Stage 'final' } | Should -Throw '*baseline is missing*'
+            $lane.TripwireCompleted | Should -BeFalse
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+
+    It 'persisted evidence carries only integer counts and a bool for the surfaces: no value, path, name or hash (closed schema)' {
+        $p = Get-SurfacePaths $script:sb
+        $secretName = 'zz-private-model-name.bin'; $secretValue = 'C:\zz-private-user-path\app.exe'
+        Write-Bytes (Join-Path $p.Install $secretName) 'a'
+        Set-RegVal $p.RunKey $p.RunName $secretValue
+        $lane = New-TestLane $script:sb
+        try {
+            Write-Bytes (Join-Path $p.Install $secretName) 'changed'
+            Set-RegVal $p.RunKey $p.RunName 'C:\zz-private-user-path\other.exe'
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'final')
+        } finally { $res = Complete-HarnessLane -Lane $lane }
+        $json = $res.Evidence | ConvertTo-Json -Depth 10
+        $json | Should -Not -Match 'zz-private|Snapmaker Studio|DeadlyVirusIn|HKCU|ssh-launch-test|prodsoft|prodrun'
+        foreach ($c in 'uninstallKey', 'rememberedKey', 'manufacturerKey', 'runValue', 'startMenuShortcut', 'desktopShortcut', 'installDir') { $res.Evidence.tripwire.surfaces[$c] | Should -BeOfType [int] }
+        # counts accumulate over the stages (the always-run final check repeats the compare), so assert presence, not an exact number
+        $res.Evidence.tripwire.surfaces.runValue | Should -BeGreaterThan 0
+        $res.Evidence.tripwire.surfaces.installDir | Should -BeGreaterThan 0
+        $res.Evidence.tripwire.completed | Should -BeTrue
+        $res.Evidence.status | Should -Be 'fail'
+        Test-HarnessLaneEvidenceSchema -Evidence $res.Evidence | Should -BeNullOrEmpty
+        # closed-schema negatives: a missing field, an extra field and a non-integer count are all rejected
+        $bad = $res.Evidence | ConvertTo-Json -Depth 10 | ConvertFrom-Json -AsHashtable
+        $bad.tripwire.Remove('completed'); Test-HarnessLaneEvidenceSchema -Evidence $bad | Should -Not -BeNullOrEmpty
+        $bad = $res.Evidence | ConvertTo-Json -Depth 10 | ConvertFrom-Json -AsHashtable
+        $bad.tripwire.surfaces['runValueName'] = 'x'; Test-HarnessLaneEvidenceSchema -Evidence $bad | Should -Not -BeNullOrEmpty
+        $bad = $res.Evidence | ConvertTo-Json -Depth 10 | ConvertFrom-Json -AsHashtable
+        $bad.tripwire.surfaces.installDir = 'C:\x'; Test-HarnessLaneEvidenceSchema -Evidence $bad | Should -Not -BeNullOrEmpty
+    }
+
+    It 'the three production data-folder tripwires still behave as before (absent stays absent; a new Roaming folder is a violation)' {
+        $lane = New-TestLane $script:sb
+        try {
+            New-Item -ItemType Directory -Force -Path $script:sb.Roaming | Out-Null
+            @(Test-ProductionTripwire -Lane $lane -Stage 'final').Count | Should -BeGreaterThan 0
+            $lane.TripwireCompleted | Should -BeTrue
+            $lane.SurfaceCounts.installDir | Should -Be 0
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+
+    It 'negative control: an install dir with an empty nested dir, files and alternate data streams (file, dir, root) stays clean when unchanged' {
+        $p = Get-SurfacePaths $script:sb
+        Write-Bytes (Join-Path $p.Install 'a.bin') 'a'; Set-Ads (Join-Path $p.Install 'a.bin') 'zone' 'x'
+        New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub\empty') | Out-Null; Set-Ads (Join-Path $p.Install 'sub') 'dz' 'y'; Set-Ads $p.Install 'rootz' 'z'
+        $lane = New-TestLane $script:sb
+        try {
+            @(Test-ProductionTripwire -Lane $lane -Stage 'final').Count | Should -Be 0
+            @($lane.Findings).Count | Should -Be 0
+            $lane.SurfaceCounts.installDir | Should -Be 0
+            $lane.TripwireCompleted | Should -BeTrue
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+
+    It 'B2: TripwireCompleted is reset at the ENTRY of every call: a successful call followed by a failing final call is never completed (Error TRIPWIRE_INCOMPLETE, evidence false, the acceptance check condition fails)' {
+        $p = Get-SurfacePaths $script:sb
+        $lane = New-TestLane $script:sb
+        try {
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'mid')
+            $lane.TripwireCompleted | Should -BeTrue
+            $t = Join-Path $script:sb.Dir 'jt'; New-Item -ItemType Directory -Force -Path $t | Out-Null
+            New-Item -ItemType Directory -Force -Path $p.Install | Out-Null
+            New-Item -ItemType Junction -Path (Join-Path $p.Install 'link') -Target $t | Out-Null
+            { Test-ProductionTripwire -Lane $lane -Stage 'final' } | Should -Throw '*unknown state*'
+            $lane.TripwireCompleted | Should -BeFalse -Because 'a stale true from the earlier call must not survive'
+            $res = Complete-HarnessLane -Lane $lane
+            $lane.TripwireCompleted | Should -BeFalse
+            @($lane.ErrorCodes) | Should -Contain 'TRIPWIRE_INCOMPLETE'
+            $res.Evidence.tripwire.completed | Should -BeFalse
+            $res.ExitCode | Should -Be 1
+            (($lane.Findings.Count -eq 0) -and $lane.TripwireCompleted) | Should -BeFalse -Because 'this is the run.ps1 tripwire check condition'
+        } finally { if (-not $lane.Completed) { [void](Complete-HarnessLane -Lane $lane) } }
+    }
+
+    It 'O-F2: Test-DirectorySnapshotUnknown flags every sentinel the data-folder snapshot can record, and nothing else' {
+        InModuleScope HarnessLauncher {
+            $mk = { param($k, $v) [ordered]@{ Exists = $true; Entries = [ordered]@{ $k = $v } } }
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk '<uninspectable>' 'inspect-error') | Should -BeTrue
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk '<unlistable>:sub' 'enum-error') | Should -BeTrue
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk 'a.bin' 'file|unreadable') | Should -BeTrue
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk 'a.bin' 'gone-or-uninspectable') | Should -BeTrue
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk 'a.bin' 'file|3|123') | Should -BeFalse
+            Test-DirectorySnapshotUnknown -Snapshot (& $mk 'sub' 'dir') | Should -BeFalse
+            Test-DirectorySnapshotUnknown -Snapshot ([ordered]@{ Exists = $false; Entries = [ordered]@{} }) | Should -BeFalse
+        }
+    }
+
+    It 'O-F2: a data-folder sentinel in the BASELINE or in the FINAL snapshot makes the tripwire incomplete (Error TRIPWIRE_INCOMPLETE), never "no change"' -ForEach @(@{ Where = 'baseline' }, @{ Where = 'final' }) {
+        # a regular FILE where a data folder is expected cannot be listed: the snapshot records an enum-error sentinel
+        $notDir = Join-Path $script:sb.Dir 'not-a-dir.txt'; [IO.File]::WriteAllText($notDir, 'x')
+        if ($Where -eq 'baseline') { Set-Hooks $script:sb @{ RoamingDir = $notDir } }
+        $lane = New-TestLane $script:sb
+        try {
+            if ($Where -eq 'final') { Set-Hooks $script:sb @{ RoamingDir = $notDir } }
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'final')
+            $lane.TripwireCompleted | Should -BeFalse
+            @($lane.ErrorCodes) | Should -Contain 'TRIPWIRE_INCOMPLETE'
+        } finally { $res = Complete-HarnessLane -Lane $lane }
+        $res.Evidence.tripwire.completed | Should -BeFalse
+        $res.Evidence.status | Should -Be 'fail'
+        $res.ExitCode | Should -Be 1
+    }
+
+    It 'the REAL default surface locations are pinned without reading them: four Software roots, the HKCU Run key and the three default install dirs' {
+        $loc = InModuleScope HarnessLauncher { Get-DefaultProductionSurfaceLocations }
+        @($loc.SoftwareRoots) | Should -Be @('HKCU:\Software', 'HKLM:\Software', 'HKLM:\Software\WOW6432Node', 'HKCU:\Software\WOW6432Node')
+        $loc.RunKeyPath | Should -Be ('HKCU:\Software\' + $script:Id.Registry.RunKey)
+        $expected = @(foreach ($sf in 'LocalApplicationData', 'ProgramFiles', 'ProgramFilesX86') { Join-Path ([Environment]::GetFolderPath($sf)) $script:Prod.DefaultInstallDirName })
+        @($loc.InstallDirs) | Should -Be $expected
+        @($loc.InstallDirs).Count | Should -Be 3
+        # the snapshot builder takes its defaults from that function and carries no registry-root literal of its own
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:LauncherPath, [ref]$null, [ref]$null)
+        $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq 'Get-ProductionSurfaceSnapshot' }, $true)
+        @($fn.FindAll({ param($x) $x -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() }) | Should -Contain 'Get-DefaultProductionSurfaceLocations'
+        @($fn.FindAll({ param($x) $x -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | Where-Object { $_.Value -match '^HK(CU|LM):' }) | Should -BeNullOrEmpty
+    }
+
+    It 'ProductionInstallDirs = @() means NONE (it does not fall back to the real default directories)' {
+        Set-Hooks $script:sb @{ ProductionInstallDirs = @() }
+        $snap = InModuleScope HarnessLauncher { Get-ProductionSurfaceSnapshot }
+        @($snap.installDir).Count | Should -Be 0
+        Write-Bytes (Join-Path $script:sb.InstallDirs[0] 'a.bin') 'a'
+        $lane = New-TestLane $script:sb
+        try {
+            Write-Bytes (Join-Path $script:sb.InstallDirs[0] 'a.bin') 'changed'
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'final')
+            $lane.SurfaceCounts.installDir | Should -Be 0
+            $lane.TripwireCompleted | Should -BeTrue
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+    It 'the file helpers refuse a path outside the test sandbox, a wildcard path and a path through a reparse point (<Name>)' -ForEach @(
+        @{ Name = 'Write-Bytes'; Call = { param($p) Write-Bytes $p 'x' } }
+        @{ Name = 'Set-Ads'; Call = { param($p) Set-Ads $p 'z' 'x' } }
+        @{ Name = 'Set-AdsBytes'; Call = { param($p) Set-AdsBytes $p 'z' ([byte[]](65)) } }
+        @{ Name = 'Remove-Ads'; Call = { param($p) Remove-Ads $p 'z' } }
+    ) {
+        $outsideDir = Join-Path (Split-Path -Parent $script:sb.Dir) "outside-$([guid]::NewGuid().ToString('N'))"
+        { & $Call (Join-Path $outsideDir 'x.bin') } | Should -Throw '*outside the test sandbox*'
+        Test-Path -LiteralPath $outsideDir | Should -BeFalse -Because 'nothing may be created outside the sandbox'
+        { & $Call (Join-Path $script:sb.Dir '*.bin') } | Should -Throw '*wildcard*'
+        { & $Call (Join-Path $script:sb.Dir 'a.bin:zone') } | Should -Throw '*stream-suffixed*'
+        $target = Join-Path $script:sb.Dir 'jt'; New-Item -ItemType Directory -Force -Path $target | Out-Null
+        New-Item -ItemType Junction -Path (Join-Path $script:sb.Dir 'jl') -Target $target | Out-Null
+        { & $Call (Join-Path $script:sb.Dir 'jl\x.bin') } | Should -Throw '*reparse point*'
+        Test-Path -LiteralPath (Join-Path $target 'x.bin') | Should -BeFalse
+    }
+
+    It 'tiny ADS (<Size> byte(s)) on a <Target>: the baseline does not false-refuse, the fingerprint is stable, and a change in the tiny stream is detected' -ForEach @(
+        @{ Target = 'file'; Size = 0; Before = [byte[]]@(); After = [byte[]](65) }
+        @{ Target = 'file'; Size = 1; Before = [byte[]](65); After = [byte[]](66) }
+        @{ Target = 'file'; Size = 2; Before = [byte[]](65, 66); After = [byte[]](66, 65) }
+        @{ Target = 'nested dir'; Size = 0; Before = [byte[]]@(); After = [byte[]](65) }
+        @{ Target = 'nested dir'; Size = 1; Before = [byte[]](65); After = [byte[]](66) }
+        @{ Target = 'nested dir'; Size = 2; Before = [byte[]](65, 66); After = [byte[]](66, 65) }
+        @{ Target = 'install dir root'; Size = 0; Before = [byte[]]@(); After = [byte[]](65) }
+        @{ Target = 'install dir root'; Size = 1; Before = [byte[]](65); After = [byte[]](66) }
+        @{ Target = 'install dir root'; Size = 2; Before = [byte[]](65, 66); After = [byte[]](66, 65) }
+    ) {
+        $p = Get-SurfacePaths $script:sb
+        Write-Bytes (Join-Path $p.Install 'a.bin') 'a'
+        New-Item -ItemType Directory -Force -Path (Join-Path $p.Install 'sub') | Out-Null
+        $path = switch ($Target) { 'file' { Join-Path $p.Install 'a.bin' } 'nested dir' { Join-Path $p.Install 'sub' } default { $p.Install } }
+        Set-AdsBytes $path 'tiny' $Before
+        $lane = New-TestLane $script:sb
+        try {
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'stable')
+            @($lane.Findings).Count | Should -Be 0
+            $lane.SurfaceCounts.installDir | Should -Be 0
+            $lane.TripwireCompleted | Should -BeTrue
+            Set-AdsBytes $path 'tiny' $After
+            [void](Test-ProductionTripwire -Lane $lane -Stage 'changed')
+            $lane.SurfaceCounts.installDir | Should -BeGreaterThan 0
+            $lane.TripwireCompleted | Should -BeTrue
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+
+    It 'strictness: an error while enumerating the install dir (<Where>) makes the fingerprint THROW (unknown state), never a silent skip' -ForEach @(
+        @{ Where = 'recursive listing'; Fn = 'Get-ChildItem'; Params = '[string]$LiteralPath, [switch]$Recurse, [switch]$Force'; Cond = '$Recurse' }
+        @{ Where = 'alternate data stream listing'; Fn = 'Get-Item'; Params = '[string]$LiteralPath, [string[]]$Stream, [switch]$Force'; Cond = '$Stream' }
+    ) {
+        $p = Get-SurfacePaths $script:sb
+        Write-Bytes (Join-Path $p.Install 'a.bin') 'a'
+        # a real advanced function shadows the cmdlet inside the module: it emits a NON-terminating error, so only an explicit
+        # -ErrorAction Stop in the production code turns it into a throw (a SilentlyContinue there would swallow it)
+        $shadow = @"
+function $Fn { [CmdletBinding()] param($Params)
+    if ($Cond) { `$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([System.UnauthorizedAccessException]::new('simulated access denied'), 'sim', [System.Management.Automation.ErrorCategory]::PermissionDenied, `$null)); return }
+    Microsoft.PowerShell.Management\$Fn @PSBoundParameters }
+"@
+        InModuleScope HarnessLauncher -Parameters @{ D = $p.Install; Shadow = $shadow; Fn = $Fn } {
+            . ([scriptblock]::Create($Shadow))
+            try { { Get-InstallDirFingerprint -Dir $D } | Should -Throw '*unknown state*' } finally { Remove-Item -LiteralPath "function:\$Fn" }
+            (Get-InstallDirFingerprint -Dir $D).Exists | Should -BeTrue
+        }
+    }
+
+    It 'strictness (real access error): a scratch subdirectory the user may not list makes the install-dir fingerprint THROW, and the lane baseline refuses' {
+        $p = Get-SurfacePaths $script:sb
+        $locked = Join-Path $p.Install 'locked'
+        Write-Bytes (Join-Path $locked 'f.bin') 'a'
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
+        $rule = [Security.AccessControl.FileSystemAccessRule]::new($me, [Security.AccessControl.FileSystemRights]::ListDirectory, [Security.AccessControl.AccessControlType]::Deny)
+        $acl = Get-Acl -LiteralPath $locked; $acl.AddAccessRule($rule); Set-Acl -LiteralPath $locked -AclObject $acl
+        try {
+            InModuleScope HarnessLauncher -Parameters @{ D = $p.Install } { { Get-InstallDirFingerprint -Dir $D } | Should -Throw '*unknown state*' }
+            { New-TestLane $script:sb } | Should -Throw '*could not be fingerprinted safely*'
+        } finally {
+            $acl = Get-Acl -LiteralPath $locked; [void]$acl.RemoveAccessRule($rule); Set-Acl -LiteralPath $locked -AclObject $acl
+        }
+        # once readable again the lane starts normally
+        $l = New-TestLane $script:sb
+        [void](Complete-HarnessLane -Lane $l)
+    }
+    It 'the new surface code never calls a mutating cmdlet or method on production surfaces (AST of the new functions)' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:LauncherPath, [ref]$null, [ref]$null)
+        $names = 'Get-Sha256HexOfText', 'Get-Sha256HexOfFileShared', 'ConvertTo-RegistryValueText', 'Get-RegistryKeyFingerprint', 'Get-RegistryValueFingerprint',
+            'Get-FileFingerprint', 'Get-InstallDirFingerprint', 'Get-InstallDirEntryList', 'Get-StreamFingerprints', 'Get-DefaultProductionSurfaceLocations', 'Test-DirectorySnapshotUnknown', 'Get-ProductionSurfaceSnapshot', 'Compare-ProductionSurfaceSnapshot', 'Test-ProductionTripwire'
+        $badCmd = 'Set-Item', 'Set-ItemProperty', 'New-Item', 'New-ItemProperty', 'Remove-Item', 'Remove-ItemProperty', 'Copy-Item', 'Copy-ItemProperty', 'Move-Item', 'Move-ItemProperty',
+            'Rename-Item', 'Rename-ItemProperty', 'Clear-Item', 'Clear-ItemProperty', 'Set-Content', 'Add-Content', 'Clear-Content', 'Out-File', 'Start-Process', 'Stop-Process', 'Invoke-Expression', 'Set-Acl'
+        $badMember = 'SetValue', 'DeleteValue', 'DeleteSubKey', 'DeleteSubKeyTree', 'CreateSubKey', 'WriteAllText', 'WriteAllBytes', 'Delete', 'Move', 'Copy', 'Create', 'CreateDirectory', 'Kill', 'Replace', 'SetAttributes', 'Write'
+        foreach ($n in $names) {
+            $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }, $true)
+            $fn | Should -Not -BeNullOrEmpty -Because $n
+            $cmds = @($fn.FindAll({ param($x) $x -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
+            $cmds | Where-Object { $_ -in $badCmd } | Should -BeNullOrEmpty -Because "$n must not mutate"
+            $members = @($fn.FindAll({ param($x) $x -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true) | ForEach-Object { $_.Member.Extent.Text })
+            $members | Where-Object { $_ -in $badMember } | Should -BeNullOrEmpty -Because "$n must not mutate"
+        }
+    }
+}
+
 Describe 'Static checks on the module and the four converted scripts' {
     BeforeAll {
         $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -1646,6 +2065,20 @@ Describe 'Static checks on the module and the four converted scripts' {
         $t = Get-Content -LiteralPath $script:Files['run'] -Raw
         $t | Should -Match '\[string\]\$UpgradeFromSha256SumsPath'
         $t | Should -Match 'UpgradeFromSha256SumsPath = \$UpgradeFromSha256SumsPath'
+    }
+    It 'run.ps1: the tripwire check requires the tripwire to have COMPLETED and states exactly what is checked' {
+        $t = Get-Content -LiteralPath $script:Files['run'] -Raw
+        $t | Should -Match 'Add-Check "Production state unchanged \(tripwire\)" \(\(\$lane\.Findings\.Count -eq 0\) -and \$lane\.TripwireCompleted\)'
+        $t | Should -Match 'the tripwire did not complete'
+        foreach ($phrase in 'uninstall, remembered-location and manufacturer registry keys', 'Run value', 'production Start Menu and Desktop shortcuts', 'production install directories', 'no acceptance shortcut in the real Start Menu/Desktop') { $t | Should -Match ([regex]::Escape($phrase)) }
+        $t | Should -Not -Match 'no change in the production data folders or real Start Menu/Desktop"'
+        $t | Should -Match 'Add-Check "Harness cleanup reported no errors"'
+    }
+    It 'verify, record and capture get the install-surface tripwire through the shared lane (Start-HarnessLane + Complete-HarnessLane), with no tripwire of their own' -ForEach 'verify', 'record', 'capture' {
+        $t = Get-Content -LiteralPath $script:Files[$_] -Raw
+        $t | Should -Match 'Start-HarnessLane'
+        $t | Should -Match 'Complete-HarnessLane -Lane \$lane'
+        $t | Should -Not -Match 'Get-ProductionStateSnapshot|Get-ProductionSurfaceSnapshot|Test-ProductionTripwire'
     }
     It 'run.ps1 builds the persisted lane block through Get-HarnessAcceptanceLaneEvidence and never passes $result.Evidence through' {
         $t = Get-Content -LiteralPath $script:Files['run'] -Raw
