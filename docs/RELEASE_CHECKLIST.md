@@ -254,21 +254,23 @@ does.
 
 ## 9. Post-publish verification (live, not assumed)
 
-Post-publish verification runs as its **own `verify` job** (`needs:
-publish`), never inside the `publish` job itself — a job's `timeout-minutes`
-is a ceiling on everything in it together, so giving verification its own
-job gives it its own, disjoint time budget instead of sharing one with every
-earlier gate. It runs automatically whenever a real (non-dry-run) publish
-was **attempted** — not only once it is known to have *succeeded*: an "arm"
-step writes that fact down immediately before the flip-to-public step, so
-even if `gh release edit --draft=false` itself fails or the job then times
-out before it can record its own result, `verify` still runs afterwards
-and reports the true live state from the read side — no separate action
-needed either way. **Limitation**: if the runner machine itself is lost
-after the flip but before the job finishes, GitHub never receives that
-job's outputs and `verify` is skipped. In that case (the `publish` job
-shows as failed/lost with no `verify` job), run a `verify_only` dispatch
-for the tag by hand (see below) to check the actual state. It runs
+The release workflow is three jobs: `publish` (gates + the draft), `flip`
+(`needs: publish`; the one `gh release edit --draft=false`), and `verify`
+(`needs: [publish, flip]`). Post-publish verification runs as its **own
+`verify` job**, never inside the `publish` job itself — a job's
+`timeout-minutes` is a ceiling on everything in it together, so giving
+verification its own job gives it its own, disjoint time budget instead of
+sharing one with every earlier gate. It runs automatically whenever a real
+(non-dry-run) publish was **attempted** — not only once it is known to have
+*succeeded*: the last step of `publish` (the "arm" step) records
+`attempted=true`, and because the job completes right after it, that output
+is delivered **before** the `flip` job can start. So even if the flip fails,
+times out, or its runner is lost after GitHub accepted the flip, `verify`
+still runs afterwards and reports the true live state from the read side —
+no separate action needed. If `publish` itself fails before the arm step,
+no flip happens and `verify` does not run (nothing was attempted); a
+`verify_only` dispatch (below) is always available to re-check a tag by
+hand. It runs
 `tools/release/publish_verify.py verify` (tested in
 `backend/tests/test_publish_verify.py`): whether the tag should be
 `/releases/latest` (SemVer precedence against every other non-draft,
@@ -281,11 +283,17 @@ always printed even if its own 480s end-to-end deadline is hit.
 publish was attempted**: the flip itself did not complete — nothing new
 went live. Inspect with `gh release view vX.Y.Z` before doing anything
 else; do not re-dispatch blindly (the refuse-if-exists check makes a
-re-dispatch safe regardless, but understand what happened first).
+re-dispatch safe regardless, but understand what happened first). A draft
+that is confirmed to remain must be cleaned up (deleted) before the tag is
+dispatched again.
 
-**If `publish` succeeds and `verify` then fails for any other reason (or is
-cancelled)**: the release **IS public** — a failed/cancelled `verify` job
-never un-publishes anything — but it is **unverified**. Re-run the same
+**If the `flip` job succeeded and `verify` then fails for any other reason (or
+is cancelled)**: the release **IS public** — a failed/cancelled `verify` job
+never un-publishes anything — but it is **unverified**. (`publish` succeeding
+is NOT enough to say that: the flip is its own job now. If `flip` failed or
+was lost and `verify` then also fails, the release may still be a draft —
+check `gh release view vX.Y.Z` by hand first; a draft that remains must be
+cleaned up before any re-dispatch, see below.) Re-run the same
 check, read-only, with no rebuild and nothing else touched, via
 `workflow_dispatch` with `verify_only: true`:
 ```
@@ -311,7 +319,7 @@ have published nothing and left no draft behind if it was cancelled
 **before** the "Create the release as a DRAFT" step started (pending, or
 still in an earlier gate) — re-dispatch it; do not re-tag. If it was
 cancelled **during or after** draft creation (including during or after the
-publish step, or during the separate `verify` job), do not assume either
+`flip` job, or during the separate `verify` job), do not assume either
 way: check the release state by hand first (`gh release view vX.Y.Z` —
 present but still a draft means clean up the draft; present and public
 means the release actually went out, cancellation only interrupted
