@@ -475,3 +475,22 @@ def test_scrub_configured_host_scheme_less_inputs_and_extra_cases():
     assert _scrub_configured_host(
         "Something failed talking to spoolman-nas",
         "http://spoolman-nas:7912") == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+
+def test_scrub_configured_host_matches_a_host_before_a_sentence_final_full_stop():
+    """#54: a host followed by the full stop that ends a sentence is still the host."""
+    from snapstudio_api.service import _scrub_configured_host, _PROVIDER_STATUS_INVALID_ADDRESS_TEXT
+
+    for text in ("Could not reach 192.168.1.50.",
+                 "Could not reach legacy-host.local.",
+                 "Could not reach legacy-host.local. Try again.",
+                 "Could not reach 192.168.1.50: refused."):
+        url = "http://192.168.1.50" if "192.168" in text else "http://legacy-host.local"
+        assert _scrub_configured_host(text, url) == _PROVIDER_STATUS_INVALID_ADDRESS_TEXT, text
+
+    # a longer address or name that merely STARTS with the host is not the host
+    for text, url in (("Could not reach 192.168.1.500.", "http://192.168.1.50"),
+                      ("Could not reach 192.168.1.50.7", "http://192.168.1.50"),
+                      ("Could not reach legacy-host.local.example", "http://legacy-host.local"),
+                      ("Could not reach legacy-host.localx.", "http://legacy-host.local")):
+        assert _scrub_configured_host(text, url) == text, text

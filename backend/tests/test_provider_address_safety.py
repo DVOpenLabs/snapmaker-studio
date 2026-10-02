@@ -125,8 +125,11 @@ def test_a_huge_response_is_bounded():
 
     from snapstudio_core import material_providers
 
-    source = inspect.getsource(material_providers._fetch)
-    assert "limit" in source and "read(" in source
+    # #53: `_fetch` now delegates the bounded body read to `_read_bounded`
+    # (still the one shared path every reader routes through).
+    assert "_read_bounded" in inspect.getsource(material_providers._fetch)
+    source = inspect.getsource(material_providers._read_bounded)
+    assert "limit" in source and "read1(" in source
     assert "1024" in inspect.getsource(material_providers)
 
 
@@ -491,3 +494,34 @@ def test_a_redirect_to_a_6to4_address_is_refused():
     assert out["available"] is False
     assert "not on your own network" in out["error"]
     assert server.hits, "the local server was never reached, so nothing was proved"
+
+
+def test_the_credentialed_cross_host_redirect_refusal_names_no_host():
+    """#54: the refusal is host-free, like every other provider_status message."""
+    from snapstudio_core import material_providers as mp
+
+    req = _request("http://127.0.0.1:1234/api", authorization="Bearer secret-token")
+    with pytest.raises(mp.InvalidProviderAddress) as caught:
+        mp._LocalOnlyRedirects().redirect_request(
+            req, None, 302, "Found", {}, "http://127.0.0.2:1234/api")
+    text = str(caught.value)
+    assert "127.0.0.2" not in text and "127.0.0.1" not in text
+    assert "carried credentials" in text
+
+
+@pytest.mark.parametrize("address", ["http://8.8.8.8:notaport", "http://example.com:notaport"])
+def test_a_bad_port_on_a_public_host_gets_the_bad_port_message(address):
+    """#54: the port is validated before locality, so the more specific message wins."""
+    from snapstudio_core import material_providers as mp
+
+    with pytest.raises(mp.InvalidProviderAddress) as caught:
+        mp.validate_provider_url(address)
+    assert "port" in str(caught.value)
+    assert not isinstance(caught.value, mp.OffNetworkAddress)
+
+
+def test_a_good_port_on_a_public_host_is_still_off_network():
+    from snapstudio_core import material_providers as mp
+
+    with pytest.raises(mp.OffNetworkAddress):
+        mp.validate_provider_url("http://8.8.8.8:7912")
