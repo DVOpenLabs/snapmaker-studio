@@ -830,7 +830,9 @@ def _scrub_configured_host(error_text: str | None, provider_url: str | None) -> 
     if ":" in host:
         candidates.append(re.escape(f"[{host}]"))
     pattern = re.compile(
-        r"(?<![A-Za-z0-9.-])(?:" + "|".join(candidates) + r")(?![A-Za-z0-9.-])",
+        # #54: a sentence-final full stop is not part of the host — only a dot
+        # followed by another host character continues it.
+        r"(?<![A-Za-z0-9._-])(?:" + "|".join(candidates) + r")(?![A-Za-z0-9_-]|\.[A-Za-z0-9_-])",
         re.IGNORECASE)
     if pattern.search(error_text):
         return _PROVIDER_STATUS_INVALID_ADDRESS_TEXT

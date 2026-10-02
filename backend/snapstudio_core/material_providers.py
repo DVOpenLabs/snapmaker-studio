@@ -36,6 +36,7 @@ import re
 import socket
 import ssl
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -51,6 +52,21 @@ SCHEMA_VERSION = "materials/2"
 #: `finally`; read by `_LocalOnlyHTTPConnection._left()`. `None` outside a
 #: `_fetch()` call — production code never leaves it set.
 _DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar("_DEADLINE", default=None)
+
+#: #53: the live sockets of the provider read in progress (every hop, every
+#: candidate that connected), so a watchdog timer can shut them down at the
+#: overall deadline. That is what bounds the parts of a read that no per-read
+#: timeout can: dripped status lines and headers, the body of a redirect that
+#: urllib drains for itself, and chunk-size lines / trailers inside one
+#: `read1()`. `None` outside a `_fetch()` call.
+_LIVE_SOCKETS: contextvars.ContextVar["_Watchdog | None"] = contextvars.ContextVar(
+    "_LIVE_SOCKETS", default=None)
+
+
+def _register_live_socket(sock) -> None:
+    watchdog = _LIVE_SOCKETS.get()
+    if watchdog is not None and sock is not None:
+        watchdog.register(sock)
 
 
 class InvalidProviderAddress(ValueError):
@@ -188,15 +204,17 @@ def validate_provider_url(value: str) -> str:
         raise InvalidProviderAddress("That doesn't look like a server address.")
     if not _HOSTNAME_RE.match(host) and ":" not in host:
         raise InvalidProviderAddress("That doesn't look like a server address.")
+    # #54: parse the port BEFORE classifying locality, so a malformed port on a
+    # public address gets the more specific bad-port message.
+    try:
+        port = parts.port
+    except ValueError as exc:
+        raise InvalidProviderAddress("That port is not a number.") from exc
     if not _host_is_local(host):
         raise OffNetworkAddress(
             f"{host} is not an address on your own network. Studio reads material "
             "providers running on your network only — it makes no requests to the "
             "internet.")
-    try:
-        port = parts.port
-    except ValueError as exc:
-        raise InvalidProviderAddress("That port is not a number.") from exc
     authority = f"[{host}]" if ":" in host else host
     return f"{parts.scheme}://{authority}" + (f":{port}" if port else "")
 
@@ -462,7 +480,7 @@ class _LocalOnlyRedirects(urllib.request.HTTPRedirectHandler):
         new_host = (parts.hostname or "").lower()
         if new_host != original_host and any(name.lower() == "authorization" for name in req.headers):
             raise InvalidProviderAddress(
-                f"That provider redirected Studio to a different host ({parts.hostname}) on a "
+                "That provider redirected Studio to a different host on a "
                 "request that carried credentials. Studio does not forward credentials to a "
                 "host that never received them directly, so it stopped rather than following "
                 "the redirect.")
@@ -574,6 +592,7 @@ class _LocalOnlyHTTPConnection(http.client.HTTPConnection):
                 last = exc
                 continue
             self.sock = sock
+            _register_live_socket(sock)
             return
         raise last or OSError(f"could not connect to {self.host}")
 
@@ -604,7 +623,14 @@ class _LocalOnlyHTTPSConnection(_LocalOnlyHTTPConnection, http.client.HTTPSConne
     def connect(self):
         super().connect()
         try:
-            self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+            # #53: wrap WITHOUT the implicit handshake, register the TLS socket
+            # (wrapping detaches the plain one `super().connect()` registered),
+            # and only then handshake -- so a peer that stalls the handshake can
+            # still be cut off by the overall-deadline watchdog.
+            self.sock = self._context.wrap_socket(
+                self.sock, server_hostname=self.host, do_handshake_on_connect=False)
+            _register_live_socket(self.sock)
+            self.sock.do_handshake()
         except Exception:
             self.sock.close()
             self.sock = None
@@ -674,6 +700,52 @@ def _transport_error_sentence(name: str, exc: "_ProviderTransportError") -> str:
     return f"{name} did not answer: the response ended before it said it would"
 
 
+class _Watchdog:
+    """#53: at the overall deadline, shut down every live socket of the read in
+    progress. A per-read socket timeout is an inactivity timeout, so a peer
+    that keeps dripping bytes (status line, headers, a redirect body urllib
+    drains for itself, chunk framing) can outlive it; shutting the socket down
+    makes whatever read is blocked return at once, and `_fetch` then reports a
+    plain timeout. Needs no private stdlib attribute."""
+
+    def __init__(self, seconds: float):
+        self.fired = threading.Event()
+        self.sockets: list = []
+        self._lock = threading.Lock()
+        self._timer = threading.Timer(max(seconds, 0.0), self._trip)
+        self._timer.daemon = True
+
+    @staticmethod
+    def _shutdown(sock) -> None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except (OSError, ValueError):
+            pass
+
+    def register(self, sock) -> None:
+        """Track a live socket. Registration and the trip are serialised by
+        one lock, so a socket that connects just as the deadline passes is
+        shut down at once instead of being missed by the one-shot timer."""
+        with self._lock:
+            self.sockets.append(sock)
+            already_fired = self.fired.is_set()
+        if already_fired:
+            self._shutdown(sock)
+
+    def _trip(self) -> None:
+        with self._lock:
+            self.fired.set()
+            sockets = list(self.sockets)
+        for sock in sockets:
+            self._shutdown(sock)
+
+    def start(self) -> None:
+        self._timer.start()
+
+    def stop(self) -> None:
+        self._timer.cancel()
+
+
 def _fetch(url: str, *, timeout: float = 4.0, accept: str = "application/json",
           limit: int = _MAX_RESPONSE_BYTES) -> bytes:
     """GET `url`, bounded by one deadline shared across every connect attempt
@@ -683,30 +755,65 @@ def _fetch(url: str, *, timeout: float = 4.0, accept: str = "application/json",
     those into their own error vocabulary.
     """
     request = urllib.request.Request(url, headers={"Accept": accept})
-    token = _DEADLINE.set(time.monotonic() + timeout)
+    deadline = time.monotonic() + timeout
+    token = _DEADLINE.set(deadline)
+    watchdog = _Watchdog(timeout)
+    live_token = _LIVE_SOCKETS.set(watchdog)
+    watchdog.start()
     try:
-        with _OPENER.open(request, timeout=timeout) as response:
-            body = response.read(limit + 1)
-            if len(body) > limit:
-                raise _ProviderTransportError(
-                    "oversized", "response exceeded the size Studio will read")
-            declared = response.getheader("Content-Length")
-            if declared is not None:
-                try:
-                    declared_n = int(declared)
-                except ValueError:
-                    raise _ProviderTransportError(
-                        "transport", "the response's Content-Length was not a number")
-                if declared_n != len(body):
-                    # `resp.read(limit + 1)` can return a short body at EOF
-                    # without raising (plan-39 v3.3 C-4b) — an early close
-                    # after a partial body must be caught explicitly, not
-                    # treated as a complete-but-short answer.
-                    raise _ProviderTransportError(
-                        "transport", "the response ended before it said it would")
-            return body
+        try:
+            return _read_bounded(request, timeout, deadline, watchdog, limit)
+        except Exception:
+            # #53: once the deadline has passed and the watchdog has shut a
+            # socket down, whatever error that caused (EOF, a reset, a short
+            # chunk) is a timeout, not a transport fault.
+            if watchdog.fired.is_set():
+                raise TimeoutError("the provider read ran out of time") from None
+            raise
     finally:
+        watchdog.stop()
+        _LIVE_SOCKETS.reset(live_token)
         _DEADLINE.reset(token)
+
+
+def _read_bounded(request, timeout: float, deadline: float, watchdog: "_Watchdog",
+                  limit: int) -> bytes:
+    """The body of `_fetch`. #53: the overall deadline (`time.monotonic()`) is
+    checked between every body read, and the watchdog shuts the sockets down
+    at the deadline so a read blocked inside the stdlib — headers, a redirect
+    body, chunk framing — cannot outlive it either."""
+    with _OPENER.open(request, timeout=timeout) as response:
+        chunks: list[bytes] = []
+        received = 0
+        while received <= limit:
+            if deadline - time.monotonic() <= 0:
+                raise TimeoutError("the provider read ran out of time")
+            chunk = response.read1(min(65536, limit + 1 - received))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            received += len(chunk)
+        if watchdog.fired.is_set():
+            raise TimeoutError("the provider read ran out of time")
+        body = b"".join(chunks)
+        if len(body) > limit:
+            raise _ProviderTransportError(
+                "oversized", "response exceeded the size Studio will read")
+        declared = response.getheader("Content-Length")
+        if declared is not None:
+            try:
+                declared_n = int(declared)
+            except ValueError:
+                raise _ProviderTransportError(
+                    "transport", "the response's Content-Length was not a number")
+            if declared_n != len(body):
+                # `resp.read(limit + 1)` can return a short body at EOF
+                # without raising (plan-39 v3.3 C-4b) — an early close
+                # after a partial body must be caught explicitly, not
+                # treated as a complete-but-short answer.
+                raise _ProviderTransportError(
+                    "transport", "the response ended before it said it would")
+        return body
 
 
 def _get_json(url: str, timeout: float = 4.0):
