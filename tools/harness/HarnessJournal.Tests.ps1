@@ -114,7 +114,7 @@ Describe 'Journal persistence' {
     It 'refuses to overwrite an existing journal and an install dir outside the harness install tree' {
         [void](New-J $script:e)
         { New-J $script:e } | Should -Throw '*already exists*'
-        { New-HarnessJournal -RunId 'run-other-0001' -InstallDir (Join-Path $script:e.Dir 'SnapmakerStudio-Harness\work\x') -RegistryRoot $script:e.Reg -ShortcutDir $script:e.Shortcuts -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness } | Should -Throw
+        { New-HarnessJournal -RunId 'run-other-0001' -InstallDir (Join-Path $script:e.Dir 'SnapmakerStudio-Harness\work\x') -InstallVersion '1.2.0' -RegistryRoot $script:e.Reg -ShortcutDir $script:e.Shortcuts -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness } | Should -Throw '*install dir is not inside the harness-owned tree*'
     }
     It 'Set-JournalOwnedAfter records owned-after fingerprints and hashes' {
         $j = New-J $script:e

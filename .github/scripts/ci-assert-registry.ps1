@@ -116,8 +116,10 @@ function Assert-CiRegistryState {
     $state
 }
 
-if ($Action -eq 'Assert') {
+if ($MyInvocation.InvocationName -ne '.') {
+    if ($Action -eq 'Assert') {
         Write-CiAssertOutput (Assert-CiRegistryState -Root $RegistryRoot -Dir $InstallDir -AfterUninstall:$AfterUninstall) $OutFile
-} elseif ($Action -eq 'Report') {
-    Write-CiAssertOutput (Get-CiRegistrySnapshot -Root $RegistryRoot -Dir $InstallDir) $OutFile
+    } elseif ($Action -eq 'Report') {
+        Write-CiAssertOutput (Get-CiRegistrySnapshot -Root $RegistryRoot -Dir $InstallDir) $OutFile
+    }
 }

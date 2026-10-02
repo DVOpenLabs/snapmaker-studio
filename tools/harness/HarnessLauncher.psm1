@@ -422,7 +422,13 @@ function Test-HarnessAcceptanceReportFile {
         if ($c['ok']) { $ok++ }
     }
     if ($j['total'] -ne $j['checks'].Count -or $j['passed'] -ne $ok) { return 'totals do not match the checks' }
-    if ($null -ne $j['lane']) { $r = Test-HarnessLaneEvidenceSchema -Evidence $j['lane']; if ($r) { return "the lane block: $r" } }
+    if ($null -ne $j['lane']) {
+        $r = Test-HarnessLaneEvidenceSchema -Evidence $j['lane']; if ($r) { return "the lane block: $r" }
+        # Verdict invariants: any failed check => the lane block says fail; and a lane block that says fail always carries at
+        # least one fixed reason code, independent of the checks (a lane-level failure may occur with every check passing).
+        if ($ok -lt $j['checks'].Count -and $j['lane']['status'] -cne 'fail') { return 'a check failed but the lane block does not say fail' }
+        if ($j['lane']['status'] -ceq 'fail' -and @($j['lane']['reasonCodes']).Count -lt 1) { return 'the lane block says fail but carries no reason code' }
+    }
     $null
 }
 
@@ -456,6 +462,17 @@ function Write-HarnessAcceptanceReport {
     $Path
 }
 
+function Get-HarnessAcceptanceLaneEvidence {
+    <# The lane block for acceptance.json. Built through the same closed-schema path as the other harnesses
+       (Get-HarnessLaneEvidence), with the RUN verdict: any failed check (an aborted lane step is recorded as one), or a
+       non-zero lane result, makes it status fail with at least one fixed reason code (LANE_STEP_FAILED when the lane itself
+       recorded none). Returns $null when there is no lane result. No free text is read or persisted. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Lane, $Result, [Parameter(Mandatory)]$Checks)
+    if (-not $Result) { return $null }
+    $failed = (@($Checks | Where-Object { -not $_.ok }).Count -gt 0) -or ($Result.ExitCode -ne 0)
+    Get-HarnessLaneEvidence -Lane $Lane -Failed:$failed
+}
 function Publish-HarnessLaneReport {
     <# Shared tail of the three evidence-writing scripts. Prints the scrubbed findings and errors, persists the lane evidence
        through the closed-schema writer and returns the exit code to use (0 only when the lane and the evidence write both
@@ -776,7 +793,7 @@ function Start-HarnessLane {
         [string]$InstallerPath, [string]$AttestationPath,
         [string]$RealInstaller, [string]$ExpectedSha256, [string]$Sha256SumsPath, [string]$SourceVersion,
         [string]$UpgradeFromInstallerPath, [string]$UpgradeFromAttestationPath,
-        [string]$UpgradeFromRealInstaller, [string]$UpgradeFromExpectedSha256, [string]$UpgradeFromSourceVersion,
+        [string]$UpgradeFromRealInstaller, [string]$UpgradeFromExpectedSha256, [string]$UpgradeFromSourceVersion, [string]$UpgradeFromSha256SumsPath,
         [string]$HarnessRoot, [string]$RunId, [int]$DebugPort = 9333, [switch]$KeepInstall
     )
     if (-not $RunId) { $RunId = New-HarnessRunId }
@@ -821,9 +838,9 @@ function Start-HarnessLane {
             Add-LaneWarning -Lane $lane -Text 'the attestation source version is not a strict numeric release version; it is NOT recorded in the evidence' -Code INSTALLER_PREFLIGHT_FAILED
             Write-Host 'NOTE  the attestation source version is not a strict numeric release version; it will not be recorded in the evidence.'
         }
-        if ($UpgradeFromInstallerPath -or $UpgradeFromAttestationPath -or $UpgradeFromRealInstaller -or $UpgradeFromExpectedSha256 -or $UpgradeFromSourceVersion) {
+        if ($UpgradeFromInstallerPath -or $UpgradeFromAttestationPath -or $UpgradeFromRealInstaller -or $UpgradeFromExpectedSha256 -or $UpgradeFromSourceVersion -or $UpgradeFromSha256SumsPath) {
             $old = Resolve-HarnessBuild -InstallerPath $UpgradeFromInstallerPath -AttestationPath $UpgradeFromAttestationPath -RealInstaller $UpgradeFromRealInstaller `
-                -ExpectedSha256 $UpgradeFromExpectedSha256 -Sha256SumsPath $Sha256SumsPath -SourceVersion $UpgradeFromSourceVersion -HarnessRoot $HarnessRoot -What 'upgrade-from installer'
+                -ExpectedSha256 $UpgradeFromExpectedSha256 -Sha256SumsPath $UpgradeFromSha256SumsPath -SourceVersion $UpgradeFromSourceVersion -HarnessRoot $HarnessRoot -What 'upgrade-from installer'
             $lane.Builds['UpgradeFrom'] = @{ Spec = $old; Staged = (Resolve-AuthorizedBuild -Spec $old -HarnessRoot $HarnessRoot -What 'upgrade-from installer') }
             $lane.Upgrade = $true
         }
@@ -1430,4 +1447,4 @@ Export-ModuleMember -Function Assert-HarnessPathInside, Assert-NoWildcardPath, N
     Get-AcceptanceShortcutFindings, Assert-NoAcceptanceShortcutInRealFolders, Get-InstallerArguments, Get-UninstallerArguments,
     Resolve-HarnessBuild, Start-HarnessLane, Register-HarnessProcess, Stop-HarnessTrackedProcess, Get-HarnessSidecarProcesses,
     Assert-CdpOwnedByTrackedApp, Start-HarnessApp, Stop-HarnessApp, Resolve-HarnessToolPath, Start-HarnessTool, Stop-HarnessTool, Invoke-HarnessTool, Invoke-HarnessNode,
-    Install-HarnessBuild, Invoke-HarnessUninstall, Get-HarnessLaneEvidence, Complete-HarnessLane, Write-HarnessLaneEvidence, Write-HarnessAcceptanceReport, Test-HarnessAcceptanceReportFile, Test-HarnessLaneEvidenceSchema, Assert-HarnessLaneEvidenceSchema, Protect-LaneText, Publish-HarnessLaneReport, Get-InstallDirFileCount
+    Install-HarnessBuild, Invoke-HarnessUninstall, Get-HarnessLaneEvidence, Get-HarnessAcceptanceLaneEvidence, Complete-HarnessLane, Write-HarnessLaneEvidence, Write-HarnessAcceptanceReport, Test-HarnessAcceptanceReportFile, Test-HarnessLaneEvidenceSchema, Assert-HarnessLaneEvidenceSchema, Protect-LaneText, Publish-HarnessLaneReport, Get-InstallDirFileCount

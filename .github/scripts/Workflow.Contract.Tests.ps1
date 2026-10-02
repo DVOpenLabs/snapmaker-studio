@@ -142,7 +142,7 @@ if (`$env:GITHUB_ACTIONS -ne 'true' -or `$env:RUNNER_ENVIRONMENT -ne 'github-hos
         }
     }
     $script:WorkflowPins = @{
-        'installer-smoke.yml' = '64650bfa07b00c48c7ac94abcd28a5444390c175082f56a5ab6cb17cd6002d04'
+        'installer-smoke.yml' = '75611ccd5a0597b29d6b63e03a33124ead90762582397fa1943db5c3c0a0dd87'
         'release-candidate.yml' = '5fa258ea21ae34d794bd2bdf203cb0255340102ee01292274c7ee09ec7223040'
     }
 
@@ -524,7 +524,17 @@ Describe 'workflow shape and regression checks' {
         try {
             Set-Content $mutated ($raw -replace '(?m)^\s*if \(\$beforeRcLocation -ne .*\r?\n', '')
             (Get-Content $mutated -Raw) | Should -Not -Match 'beforeRcLocation.*owned_install_dir'
+            { Assert-WorkflowContract $mutated ReleaseCandidate -SkipHash } | Should -Throw '*Literal process body pin mismatch for Install the release candidate over it*'
         } finally { Remove-Item $mutated -Force }
+    }
+
+    It 'gives the always-run final registry report the exact default install dir when OWNED_INSTALL_DIR is unset' {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        $step = @(Get-WorkflowRunTexts (Join-Path $root '.github/workflows/installer-smoke.yml') | Where-Object { $_.Name -eq 'Report final registry state' })
+        $step.Count | Should -Be 1
+        $step[0].Text | Should -Match ([regex]::Escape('$reportDir = if ($env:OWNED_INSTALL_DIR) { $env:OWNED_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA ''Snapmaker Studio'' };'))
+        $step[0].Text | Should -Match ([regex]::Escape('-Action Report -InstallDir $reportDir -OutFile'))
+        $step[0].Text | Should -Not -Match ([regex]::Escape('-InstallDir $env:OWNED_INSTALL_DIR'))
     }
 
     It 'requires a check after every helper call in the two target workflows' {
@@ -637,12 +647,6 @@ Describe 'workflow shape and regression checks' {
         }
     }
 
-    It 'fails on a first nonzero native result and passes on a second zero result' {
-        $lastExitCode = 7
-        { if ($lastExitCode -ne 0) { throw 'first call failed' } } | Should -Throw
-        $lastExitCode = 0
-        { if ($lastExitCode -ne 0) { throw 'second call failed' } } | Should -Not -Throw
-    }
 
     It 'requires canonical helper invocation and a throwing LASTEXITCODE check' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent

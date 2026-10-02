@@ -591,6 +591,40 @@ Describe 'Installer lane: rewrapped acceptance installers only' {
         { Resolve-HarnessBuild -RealInstaller 'C:\dl\real.exe' -ExpectedSha256 'nothex' -SourceVersion '1.2.0' } | Should -Throw '*64-hex*'
         { Resolve-HarnessBuild -RealInstaller 'C:\dl\real.exe' -ExpectedSha256 ('a' * 64) } | Should -Throw '*SourceVersion*'
     }
+    It 'passing ONLY -UpgradeFromSha256SumsPath activates upgrade validation and fails closed (never silently ignored), releasing the lock' {
+        $f = New-FakeInstallerAndAttestation $script:sb
+        { Start-HarnessLane -Name 't' -Kind acceptance -InstallerPath $f.Installer -AttestationPath $f.Attestation -UpgradeFromSha256SumsPath 'C:\dl\OLD-SHA256SUMS' `
+                -HarnessRoot $script:sb.Harness -DebugPort (Get-FreePort) } | Should -Throw '*upgrade-from installer*'
+        $l = New-TestLane $script:sb
+        try { $l.Upgrade | Should -BeFalse } finally { [void](Complete-HarnessLane -Lane $l) }
+    }
+    It 'upgrade-from rewrap uses its OWN -UpgradeFromSha256SumsPath, and never silently reuses the primary SUMS file' -ForEach @(
+        @{ Case = 'both'; UpSums = 'C:\dl\OLD-SHA256SUMS' }
+        @{ Case = 'primary only'; UpSums = $null }
+    ) {
+        $new = New-FakeInstallerAndAttestation $script:sb
+        $old = New-FakeInstallerAndAttestation $script:sb
+        $global:SshT.RewrapNew = [pscustomobject]@{ InstallerPath = $new.Installer; AttestationPath = $new.Attestation }
+        $global:SshT.RewrapOld = [pscustomobject]@{ InstallerPath = $old.Installer; AttestationPath = $old.Attestation }
+        Mock -ModuleName HarnessLauncher Invoke-RewrapScript { if ($Parameters.InstallerPath -eq 'C:\dl\new-setup.exe') { $global:SshT.RewrapNew } else { $global:SshT.RewrapOld } }
+        $extra = @{}
+        if ($UpSums) { $extra.UpgradeFromSha256SumsPath = $UpSums }
+        $lane = Start-HarnessLane -Name 't' -Kind acceptance -RealInstaller 'C:\dl\new-setup.exe' -ExpectedSha256 ('a' * 64) -SourceVersion '1.2.0' -Sha256SumsPath 'C:\dl\NEW-SHA256SUMS' `
+            -UpgradeFromRealInstaller 'C:\dl\old-setup.exe' -UpgradeFromExpectedSha256 ('b' * 64) -UpgradeFromSourceVersion '1.1.0' @extra `
+            -HarnessRoot $script:sb.Harness -DebugPort (Get-FreePort)
+        try {
+            $lane.Upgrade | Should -BeTrue
+            Should -Invoke -ModuleName HarnessLauncher Invoke-RewrapScript -Times 1 -Exactly -ParameterFilter {
+                $Parameters.InstallerPath -eq 'C:\dl\new-setup.exe' -and $Parameters.Sha256SumsPath -eq 'C:\dl\NEW-SHA256SUMS' }
+            if ($UpSums) {
+                Should -Invoke -ModuleName HarnessLauncher Invoke-RewrapScript -Times 1 -Exactly -ParameterFilter {
+                    $Parameters.InstallerPath -eq 'C:\dl\old-setup.exe' -and $Parameters.Sha256SumsPath -eq 'C:\dl\OLD-SHA256SUMS' }
+            } else {
+                Should -Invoke -ModuleName HarnessLauncher Invoke-RewrapScript -Times 1 -Exactly -ParameterFilter {
+                    $Parameters.InstallerPath -eq 'C:\dl\old-setup.exe' -and -not $Parameters.ContainsKey('Sha256SumsPath') }
+            }
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
     It 'a second concurrent run is refused by the machine-wide lock; the first keeps working' {
         $l1 = New-TestLane $script:sb
         try {
@@ -1104,7 +1138,8 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
         $checks = @([pscustomobject]@{ name = 'Window title'; ok = $true; detail = 'raw detail must never persist' }, [pscustomobject]@{ name = 'Kind of lane pass ok'; ok = $false; detail = 'x' })
         $f = Join-Path $script:sb.Dir 'acceptance.json'
         $user = $u
-        [void](Write-HarnessAcceptanceReport -Path $f -Checks $checks -LaneEvidence $res.Evidence -ScrubName { param($n) $n -replace [regex]::Escape($user), '<user>' })
+        $laneBlock = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $checks   # one check is deliberately failed => lane block says fail
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $checks -LaneEvidence $laneBlock -ScrubName { param($n) $n -replace [regex]::Escape($user), '<user>' })
         Test-HarnessAcceptanceReportFile -Path $f | Should -BeNullOrEmpty
         $raw = Get-Content -LiteralPath $f -Raw
         $raw | Should -Not -Match 'raw detail'
@@ -1112,12 +1147,75 @@ Describe 'Install / uninstall / journal ordering and the always-run finally path
         @($j.Keys | Sort-Object) | Should -Be @('checks', 'evidence', 'lane', 'passed', 'schema_version', 'total')
         $j.schema_version | Should -BeExactly 'acceptance/3'
         $j.lane.laneKind | Should -BeExactly 'acceptance'
-        $j.lane.status | Should -BeIn 'pass', 'fail'
+        $j.lane.status | Should -BeExactly 'fail'
         $j.lane.lane | Should -BeExactly 'rewrapped acceptance-identity installer'
         $j.total | Should -Be 2
         $j.passed | Should -Be 1
         foreach ($c in $j.checks) { @($c.Keys | Sort-Object) | Should -Be @('name', 'ok') }
         Test-HarnessLaneEvidenceSchema -Evidence $j.lane | Should -BeNullOrEmpty
+    }
+    It 'acceptance lane block: <Case> persists status fail with at least one fixed reason code, still passes the report validator' -ForEach @(
+        @{ Case = 'an aborted lane step (recorded as a failed check)'; Name = 'Harness lane step aborted'; Ok = $false }
+        @{ Case = 'a failed check'; Name = 'Some acceptance check'; Ok = $false }
+    ) {
+        $lane = New-TestLane $script:sb
+        $res = Complete-HarnessLane -Lane $lane
+        $res.Evidence.status | Should -Be 'pass'   # the lane itself had nothing wrong; only the run verdict differs
+        $checks = @([pscustomobject]@{ name = 'A passing check'; ok = $true }, [pscustomobject]@{ name = $Name; ok = $Ok })
+        $block = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $checks
+        $f = Join-Path $script:sb.Dir 'acc-fail.json'
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $checks -LaneEvidence $block)
+        Test-HarnessAcceptanceReportFile -Path $f | Should -BeNullOrEmpty
+        $j = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json -AsHashtable
+        $j.lane.status | Should -Be 'fail'
+        @($j.lane.reasonCodes).Count | Should -BeGreaterThan 0
+        @($j.lane.reasonCodes | ForEach-Object { $_.code }) | Should -Contain 'LANE_STEP_FAILED'
+    }
+    It 'acceptance lane block: a non-zero lane result fails it, and an all-pass run still persists pass' {
+        $lane = New-TestLane $script:sb
+        $res = Complete-HarnessLane -Lane $lane
+        $ok = @([pscustomobject]@{ name = 'A passing check'; ok = $true })
+        (Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $ok).status | Should -Be 'pass'
+        @((Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $ok).reasonCodes).Count | Should -Be 0
+        $bad = [pscustomobject]@{ ExitCode = 1; Evidence = $res.Evidence }
+        $b = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $bad -Checks $ok
+        $b.status | Should -Be 'fail'
+        @($b.reasonCodes).Count | Should -BeGreaterThan 0
+        Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $null -Checks $ok | Should -BeNullOrEmpty
+        $f = Join-Path $script:sb.Dir 'acc-pass.json'
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $ok -LaneEvidence (Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $ok))
+        ((Get-Content -LiteralPath $f -Raw | ConvertFrom-Json -AsHashtable).lane.status) | Should -Be 'pass'
+    }
+    It 'B2 verdict invariant: a failed check with a pass lane block is rejected (file deleted); with a fail lane block + reason it is accepted; all-pass + pass is accepted' {
+        $lane = New-TestLane $script:sb
+        $res = Complete-HarnessLane -Lane $lane
+        $good = @([pscustomobject]@{ name = 'A passing check'; ok = $true })
+        $bad = @([pscustomobject]@{ name = 'A passing check'; ok = $true }, [pscustomobject]@{ name = 'A failing check'; ok = $false })
+        $f = Join-Path $script:sb.Dir 'verdict.json'
+        $passLane = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $good
+        $passLane.status | Should -Be 'pass'
+        { Write-HarnessAcceptanceReport -Path $f -Checks $bad -LaneEvidence $passLane } | Should -Throw '*REPORT_WRITE_FAILED*'
+        Test-Path -LiteralPath $f | Should -BeFalse
+        $failLane = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $res -Checks $bad
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $bad -LaneEvidence $failLane)
+        Test-HarnessAcceptanceReportFile -Path $f | Should -BeNullOrEmpty
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $good -LaneEvidence $passLane)
+        Test-HarnessAcceptanceReportFile -Path $f | Should -BeNullOrEmpty
+        # a fail lane block with NO reason code is also rejected when a check failed
+        $noReason = [ordered]@{}; foreach ($k in $failLane.Keys) { $noReason[$k] = $failLane[$k] }; $noReason['reasonCodes'] = @()
+        { Write-HarnessAcceptanceReport -Path $f -Checks $bad -LaneEvidence $noReason } | Should -Throw '*REPORT_WRITE_FAILED*'
+        Test-Path -LiteralPath $f | Should -BeFalse
+        # a lane that says fail must carry a reason code even when every check passed ...
+        $noReasonAllPass = [ordered]@{}; foreach ($k in $failLane.Keys) { $noReasonAllPass[$k] = $failLane[$k] }; $noReasonAllPass['reasonCodes'] = @()
+        $noReasonAllPass['status'] | Should -Be 'fail'
+        { Write-HarnessAcceptanceReport -Path $f -Checks $good -LaneEvidence $noReasonAllPass } | Should -Throw '*REPORT_WRITE_FAILED*'
+        Test-Path -LiteralPath $f | Should -BeFalse
+        # ... and a lane-level failure with a fixed reason code and all checks passing is accepted
+        $laneOnly = Get-HarnessLaneEvidence -Lane $lane -Failed
+        $laneOnly.status | Should -Be 'fail'
+        @($laneOnly.reasonCodes).Count | Should -BeGreaterThan 0
+        [void](Write-HarnessAcceptanceReport -Path $f -Checks $good -LaneEvidence $laneOnly)
+        Test-HarnessAcceptanceReportFile -Path $f | Should -BeNullOrEmpty
     }
     It 'B2: a deliberately corrupted acceptance.json fails closed (file deleted, REPORT_WRITE_FAILED), and every tamper of the final file is detected' {
         $lane = New-TestLane $script:sb
@@ -1543,6 +1641,18 @@ Describe 'Static checks on the module and the four converted scripts' {
         if ($_ -eq 'verify') { $t | Should -Match 'if \(\$rc -ne 0 -and \$code -eq 0\) \{ \$code = 1 \}' }
         else { $t | Should -Match 'if \(\$rc -ne 0\) \{ exit 1 \}' }
         if ($_ -eq 'capture') { $t.IndexOf('if ($rc -ne 0) { exit 1 }') | Should -BeLessThan $t.IndexOf('Write-Host "done"') }
+    }
+    It 'run.ps1 takes -UpgradeFromSha256SumsPath and hands it to the lane (not the primary SUMS path)' {
+        $t = Get-Content -LiteralPath $script:Files['run'] -Raw
+        $t | Should -Match '\[string\]\$UpgradeFromSha256SumsPath'
+        $t | Should -Match 'UpgradeFromSha256SumsPath = \$UpgradeFromSha256SumsPath'
+    }
+    It 'run.ps1 builds the persisted lane block through Get-HarnessAcceptanceLaneEvidence and never passes $result.Evidence through' {
+        $t = Get-Content -LiteralPath $script:Files['run'] -Raw
+        $t | Should -Match 'Get-HarnessAcceptanceLaneEvidence -Lane \$lane -Result \$result -Checks \$checks'
+        $t | Should -Match '-LaneEvidence \$laneBlock'
+        $t | Should -Not -Match 'LaneEvidence \$\(if \(\$result'
+        $t | Should -Not -Match '-LaneEvidence \$result\.Evidence'
     }
     It 'CLOSED SCHEMA: run.ps1 persists only fixed check names + pass/fail (no detail), and every check name is a string literal' {
         $t = Get-Content -LiteralPath $script:Files['run'] -Raw

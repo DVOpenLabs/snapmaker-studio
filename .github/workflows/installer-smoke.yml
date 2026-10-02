@@ -184,5 +184,6 @@ jobs:
           $ErrorActionPreference='Stop'
           if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
           -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
-          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Report -InstallDir $env:OWNED_INSTALL_DIR -OutFile $env:RUNNER_TEMP\final-registry.json;
+          $reportDir = if ($env:OWNED_INSTALL_DIR) { $env:OWNED_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Snapmaker Studio' };
+          pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Report -InstallDir $reportDir -OutFile $env:RUNNER_TEMP\final-registry.json;
           if($LASTEXITCODE -ne 0){throw 'Final registry report failed.'}

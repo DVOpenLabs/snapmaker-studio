@@ -34,6 +34,8 @@
 #        [-KeepInstall] [-SpoolmanUrl host:port] [-BambuddyUrl host:port] [-SpoolEasePort 9403]
 #   or let the lane rewrap a verified real installer first:
 #        -RealInstaller <path> -ExpectedSha256 <sha256> -SourceVersion <semver> [-Sha256SumsPath <path>]
+#   (upgrade-from real installer: -UpgradeFromRealInstaller/-UpgradeFromExpectedSha256/-UpgradeFromSourceVersion and its own
+#    -UpgradeFromSha256SumsPath; the primary SUMS file is never reused for it)
 #   An upgrade here is rewrapped OLD -> rewrapped NEW under the acceptance identity; it is NOT a
 #   production upgrade claim.
 #
@@ -62,6 +64,8 @@ param(
     [string]$UpgradeFromRealInstaller,
     [string]$UpgradeFromExpectedSha256,
     [string]$UpgradeFromSourceVersion,
+    # SHA256SUMS that lists the OLD installer. Separate from -Sha256SumsPath: the primary SUMS is never reused for upgrade-from.
+    [string]$UpgradeFromSha256SumsPath,
     # A material provider on this network, when one is available to test against.
     # Optional: without it the provider checks still prove the frozen build carries
     # the route, refuses an address that is not local, and claims nothing about
@@ -98,7 +102,7 @@ $laneArgs = @{
     InstallerPath = $InstallerPath; AttestationPath = $AttestationPath
     RealInstaller = $RealInstaller; ExpectedSha256 = $ExpectedSha256; Sha256SumsPath = $Sha256SumsPath; SourceVersion = $SourceVersion
     UpgradeFromInstallerPath = $UpgradeFromInstallerPath; UpgradeFromAttestationPath = $UpgradeFromAttestationPath
-    UpgradeFromRealInstaller = $UpgradeFromRealInstaller; UpgradeFromExpectedSha256 = $UpgradeFromExpectedSha256; UpgradeFromSourceVersion = $UpgradeFromSourceVersion
+    UpgradeFromRealInstaller = $UpgradeFromRealInstaller; UpgradeFromExpectedSha256 = $UpgradeFromExpectedSha256; UpgradeFromSourceVersion = $UpgradeFromSourceVersion; UpgradeFromSha256SumsPath = $UpgradeFromSha256SumsPath
 }
 $lane = Start-HarnessLane -Name "acceptance" -Kind acceptance @laneArgs -DebugPort $DebugPort -KeepInstall:$KeepInstall
 $laneLabel = if ($lane.Upgrade) { "rewrapped OLD -> rewrapped NEW acceptance-identity installers (not a production upgrade)" } else { "rewrapped acceptance-identity installer" }
@@ -678,9 +682,19 @@ $literalRedactionPairs = @(
 ) | Where-Object { $_.from }
 
 $reportWriteFailed = $false
+# The lane block carries the RUN verdict (any failed check, an aborted lane step, or a non-zero lane result => status fail
+# with a fixed reason code), built through the same closed-schema path as the other harnesses; never edited afterwards.
+$laneBlock = $null
+if ($result -and -not $laneSchemaError) {
+    try { $laneBlock = Get-HarnessAcceptanceLaneEvidence -Lane $lane -Result $result -Checks $checks }
+    catch {
+        $reportWriteFailed = $true
+        Write-Host "FAIL  REPORT_WRITE_FAILED: lane evidence could not be built: $(Protect-LaneText -Text $_.Exception.Message -Lane $lane)"
+    }
+}
 try {
     [void](Write-HarnessAcceptanceReport -Path $reportPath -Checks $checks `
-        -LaneEvidence $(if ($result -and -not $laneSchemaError) { $result.Evidence } else { $null }) `
+        -LaneEvidence $laneBlock `
         -ScrubName { param($n) Scrub-EvidenceText $n })
 } catch {
     $reportWriteFailed = $true

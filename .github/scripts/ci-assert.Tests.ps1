@@ -232,7 +232,7 @@ Describe 'CI assertion helper design and behavior' {
         $root = "HKCU:\Software\SnapmakerStudioCiAssertTest\$guid"
         try {
             try { Set-RegistryFixture $guid $dir } catch [System.UnauthorizedAccessException],[System.Security.SecurityException] { Set-ItResult -Skipped -Because $_.Exception.Message; return }
-            . (Join-Path $scriptDir 'ci-assert-registry.ps1') -Action Report -RegistryRoot $root -InstallDir $dir | Out-Null
+            . (Join-Path $scriptDir 'ci-assert-registry.ps1')
             { Assert-CiRegistryState $root $dir } | Should -Not -Throw
             Set-RegistryFixture $guid $dir @{ InstallLocation=(Join-Path $fixtureRoot 'wrong') }
             { Assert-CiRegistryState $root $dir } | Should -Throw
@@ -254,7 +254,7 @@ Describe 'CI assertion helper design and behavior' {
     It 'checks sorted manifests and compares synthetic SHA256SUMS offline' {
         $disk = Join-Path $fixtureRoot 'sorted'; New-Item -ItemType Directory -Force $disk | Out-Null
         Set-Content (Join-Path $disk 'z.txt') 'z'; Set-Content (Join-Path $disk 'a.txt') 'a'
-        . (Join-Path $scriptDir 'ci-assert-manifest.ps1') -InstallDir $disk | Out-Null
+        . (Join-Path $scriptDir 'ci-assert-manifest.ps1')
         $items = @(Get-CiInstalledTreeManifest $disk); @($items.Path) | Should -Be @('a.txt','z.txt')
         . (Join-Path $scriptDir 'ci-assert-sha256sums.ps1')
         $file = Join-Path $disk 'a.txt'; $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()

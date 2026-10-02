@@ -48,4 +48,6 @@ function Get-CiInstalledTreeManifest {
     }
 }
 
-Write-CiAssertOutput (Get-CiInstalledTreeManifest $InstallDir) $OutFile
+if ($MyInvocation.InvocationName -ne '.') {
+    Write-CiAssertOutput (Get-CiInstalledTreeManifest $InstallDir) $OutFile
+}
