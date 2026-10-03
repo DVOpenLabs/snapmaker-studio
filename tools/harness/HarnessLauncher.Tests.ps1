@@ -2180,3 +2180,30 @@ Describe 'Static checks on the module and the four converted scripts' {
         $t | Should -Match '-InstallerPath <rewrapped'
     }
 }
+
+Describe 'Empty-string argv elements (the check-phase helpers)' {
+    BeforeEach { $script:sb = New-Sandbox; Set-Hooks $script:sb }
+    AfterEach { Remove-Sandbox $script:sb }
+
+    It 'Invoke-HarnessNode accepts empty-string elements in ArgumentList and they reach node' {
+        # Regression (second real lane run): run.ps1's Invoke-Phase passes @($node, $phase, $cdp, $outDir, $arg, $arg2, $arg3, $url)
+        # where most optional arguments are '', and a Mandatory [string[]] rejects an empty element without [AllowEmptyString()]:
+        # "Cannot bind argument to parameter 'ArgumentList' because it is an empty string".
+        Set-DefaultMocks
+        $lane = New-TestLane $script:sb
+        try {
+            $r = Invoke-HarnessNode -Lane $lane -ArgumentList @('-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1)))', '', 'x', '', '')
+            $r.ExitCode | Should -Be 0
+            ($r.Output -join '') | Should -Be '["","x","",""]'
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+    It 'Invoke-HarnessTool accepts empty-string elements too' {
+        Set-DefaultMocks
+        $lane = New-TestLane $script:sb
+        try {
+            $r = Invoke-HarnessTool -Lane $lane -Tool 'node' -ArgumentList @('-e', 'process.stdout.write(String(process.argv.length - 1))', '', '')
+            $r.ExitCode | Should -Be 0
+            ($r.Output -join '') | Should -Be '2'
+        } finally { [void](Complete-HarnessLane -Lane $lane) }
+    }
+}
