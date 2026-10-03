@@ -162,6 +162,27 @@ $r = Invoke-Under $RunId $Reg $Shortcuts $JournalDir $Harness
         $text | Should -Match 'STATE=installed'
         $text | Should -Match 'FINGERPRINT=[0-9a-f]{64}'
     }
+    It 'a process record survives the real journal file round-trip (pid reads back from JSON as Int64)' {
+        # Regression (second real lane run): the validator required pid to be [int], but PowerShell reads every JSON integer
+        # back as Int64, so a journal that held a process record failed to load ("process record malformed") and the guarded
+        # uninstall/recovery refused. This writes a real record to disk and reads it back through the real journal path.
+        $j = New-J $script:e
+        Add-JournalProcess -Journal $j -ProcessId $PID -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness
+        $back = Read-HarnessJournal -RunId $script:e.RunId -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness
+        @($back['processes']).Count | Should -Be 1
+        $back['processes'][0]['pid'] | Should -BeOfType [long]
+        $back['processes'][0]['pid'] | Should -Be $PID
+        # a second mutation re-reads and re-validates the file that now contains the record
+        { Add-JournalProcess -Journal $back -ProcessId $PID -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness } | Should -Not -Throw
+        @((Read-HarnessJournal -RunId $script:e.RunId -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness)['processes']).Count | Should -Be 2
+    }
+    It 'a process record with a non-numeric pid is still JournalCorrupt' {
+        $j = New-J $script:e
+        $raw = Get-Content (Get-JournalPath -RunId $script:e.RunId -JournalDir $script:e.Journal) -Raw | ConvertFrom-Json -AsHashtable
+        $raw['processes'] = @([ordered]@{ pid = 'x'; startTicks = 1; path = 'p' })
+        [void](Save-HarnessJournal -Journal $raw -JournalDir $script:e.Journal)
+        { Read-HarnessJournal -RunId $script:e.RunId -JournalDir $script:e.Journal -HarnessRoot $script:e.Harness } | Should -Throw '*process record malformed*'
+    }
     It 'Update-HarnessJournal refuses when the generation token changed underneath' {
         $j = New-J $script:e
         $raw = Get-Content (Get-JournalPath -RunId $script:e.RunId -JournalDir $script:e.Journal) -Raw | ConvertFrom-Json -AsHashtable

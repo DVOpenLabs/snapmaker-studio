@@ -1363,7 +1363,7 @@ function Invoke-HarnessTool {
     <# Runs an allow-listed tool (node, ffmpeg) synchronously, tracked while it runs, output captured. Returns Output +
        ExitCode. Extra environment goes to the CHILD only. #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Lane, [Parameter(Mandatory)][string]$Tool, [Parameter(Mandatory)][string[]]$ArgumentList, [hashtable]$Environment = @{}, [int]$TimeoutSeconds = 900)
+    param([Parameter(Mandatory)]$Lane, [Parameter(Mandatory)][string]$Tool, [Parameter(Mandatory)][AllowEmptyString()][string[]]$ArgumentList, [hashtable]$Environment = @{}, [int]$TimeoutSeconds = 900)
     if ($Lane.Completed) { throw 'Refused: the lane is already completed.' }
     try { $path = Resolve-HarnessToolPath -Name $Tool } catch { Add-LaneError -Lane $Lane -Text "tool: $($_.Exception.Message)" -Code TOOL_NOT_ALLOWED; throw }
     $p = Start-HarnessChildProcess -FilePath $path -ArgumentList $ArgumentList -Environment $Environment -RedirectOutput -Hidden
@@ -1380,9 +1380,10 @@ function Invoke-HarnessTool {
 }
 
 function Invoke-HarnessNode {
-    # A CDP check phase: node, synchronously, tracked, output captured.
+    # A CDP check phase: node, synchronously, tracked, output captured. Empty-string argv elements are legitimate (run.ps1's
+    # Invoke-Phase passes an empty optional argument for most phases), hence [AllowEmptyString()] on the mandatory string[].
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Lane, [Parameter(Mandatory)][string[]]$ArgumentList, [hashtable]$Environment = @{}, [int]$TimeoutSeconds = 900)
+    param([Parameter(Mandatory)]$Lane, [Parameter(Mandatory)][AllowEmptyString()][string[]]$ArgumentList, [hashtable]$Environment = @{}, [int]$TimeoutSeconds = 900)
     Invoke-HarnessTool -Lane $Lane -Tool 'node' -ArgumentList $ArgumentList -Environment $Environment -TimeoutSeconds $TimeoutSeconds
 }
 
