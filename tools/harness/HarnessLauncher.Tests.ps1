@@ -487,11 +487,37 @@ Describe 'Start-HarnessApp: the fail-closed launcher' {
         # a process whose image is outside the harness tree is refused AND never killed (the kill logic only stops harness-owned images)
         Should -Invoke -ModuleName HarnessLauncher Stop-ProcessById -Times 0 -Exactly
     }
+    It 'refuses a retry that reports a different start time (pid reuse) and never kills it' {
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 5 }
+        $global:SshT.PathCalls = 0
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            if ($global:SshT.PathCalls -le 2) { [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]100; Path = $null } }
+            else { [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]200; Path = $global:SshT.Exe } }
+        }
+        { Start-HarnessApp -Lane $script:lane } | Should -Throw '*not found alive*'
+        Should -Invoke -ModuleName HarnessLauncher Stop-ProcessById -Times 0 -Exactly
+    }
+    It 'refuses when the process disappears during the retry' {
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 5 }
+        $global:SshT.PathCalls = 0
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            if ($global:SshT.PathCalls -le 2) { [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]$global:SshT.Start; Path = $null } }
+        }
+        { Start-HarnessApp -Lane $script:lane } | Should -Throw '*not found alive*'
+    }
     It 'does not wait at all when the path is available immediately' {
         Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 30 }
         $sw = [Diagnostics.Stopwatch]::StartNew()
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]$global:SshT.Start; Path = $global:SshT.Exe }
+        }
+        $global:SshT.PathCalls = 0
         $h = Start-HarnessApp -Lane $script:lane
         $h.Pid | Should -Be 4242
+        # no retry at all: Register-HarnessProcess read the live info exactly once (the postflight/children do not use it for this pid)
         $sw.Elapsed.TotalSeconds | Should -BeLessThan 20
     }}
 

@@ -1116,10 +1116,14 @@ function Register-HarnessProcess {
     if (-not $info.Path) {
         $wait = [double](Get-Hook 'ProcessPathWaitSeconds' 5)
         $watch = [Diagnostics.Stopwatch]::StartNew()
+        # The start time read FIRST is frozen: a retry that reports a different start time is a different process that reused the
+        # pid, not the one we launched, so it is refused (fail closed) instead of being adopted and later killed by pid.
+        $frozenTicks = $info.StartTicks
         while (-not $info.Path -and $watch.Elapsed.TotalSeconds -lt $wait) {
             Start-Sleep -Milliseconds 100
             $again = Get-LiveProcessInfo -ProcessId $Process.Id
             if (-not $again) { return $null }
+            if ($again.StartTicks -ne $frozenTicks) { return $null }
             $info = $again
         }
     }
