@@ -450,7 +450,50 @@ Describe 'Start-HarnessApp: the fail-closed launcher' {
         $global:SshT.Exe = Join-Path $script:sb.Dir 'elsewhere\app.exe'
         { Start-HarnessApp -Lane $script:lane } | Should -Throw '*not inside the harness install dir*'
     }
-}
+    It 'waits briefly for an image path that is unavailable right after the start, then accepts it inside the install dir' {
+        # Regression (third real lane run): Get-Process returned no image path for a moment after Process.Start, the null path
+        # was stored, and the relaunch was refused as "not inside the harness install dir".
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 5 }
+        $global:SshT.PathCalls = 0
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]$global:SshT.Start; Path = $(if ($global:SshT.PathCalls -ge 4) { $global:SshT.Exe } else { $null }) }
+        }
+        $h = Start-HarnessApp -Lane $script:lane
+        $h.Pid | Should -Be 4242
+        $global:SshT.PathCalls | Should -BeGreaterOrEqual 4
+    }
+    It 'still refuses when the image path never becomes available, and does not wait longer than the bound' {
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 0.6 }
+        $global:SshT.PathCalls = 0
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]$global:SshT.Start; Path = $null }
+        }
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        { Start-HarnessApp -Lane $script:lane } | Should -Throw '*not inside the harness install dir*'
+        $sw.Elapsed.TotalSeconds | Should -BeLessThan 5
+        $global:SshT.PathCalls | Should -BeGreaterThan 2
+    }
+    It 'still refuses a path that resolves late but lies outside the install dir' {
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 5 }
+        $global:SshT.PathCalls = 0
+        $outside = Join-Path $script:sb.Dir 'elsewhere\app.exe'
+        Mock -ModuleName HarnessLauncher Get-LiveProcessInfo {
+            $global:SshT.PathCalls++
+            [pscustomobject]@{ Id = $ProcessId; StartTicks = [int64]$global:SshT.Start; Path = $(if ($global:SshT.PathCalls -ge 3) { $outside } else { $null }) }
+        }
+        { Start-HarnessApp -Lane $script:lane } | Should -Throw '*not inside the harness install dir*'
+        # a process whose image is outside the harness tree is refused AND never killed (the kill logic only stops harness-owned images)
+        Should -Invoke -ModuleName HarnessLauncher Stop-ProcessById -Times 0 -Exactly
+    }
+    It 'does not wait at all when the path is available immediately' {
+        Set-Hooks $script:sb @{ ProcessPathWaitSeconds = 30 }
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $h = Start-HarnessApp -Lane $script:lane
+        $h.Pid | Should -Be 4242
+        $sw.Elapsed.TotalSeconds | Should -BeLessThan 20
+    }}
 
 Describe 'The child-process seam' {
     It 'the real child-process seam applies environment to the CHILD only' {
