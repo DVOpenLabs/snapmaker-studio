@@ -12,8 +12,11 @@ import secrets
 import sys
 import threading
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
+from snapstudio_core import paths as _paths
+from snapstudio_core.errors import SnapStudioError
 from . import _lifeline
 from . import service
 from . import request_validation as rv
@@ -111,6 +114,48 @@ def cors_allow_origin(origin: str | None) -> str | None:
     return None
 
 
+_ENGINE_LOG_NAME = "engine-errors.log"
+_ENGINE_LOG_MAX_BYTES = 256 * 1024
+_ENGINE_LOG_ENTRY_MAX = 4096
+_engine_log_lock = threading.Lock()
+
+
+def _log_unexpected(exc: BaseException) -> None:
+    """Record WHERE an unexpected fault happened in the LOCAL engine log (never sent anywhere).
+
+    Only the exception class and the call sites (file basename, line, function) are written: never the
+    exception message, never an absolute path, never a value, so a path, address or credential that an
+    exception happens to carry cannot reach disk. Each entry is capped, the file is rotated before an
+    append could pass the cap, and the whole step is serialized. Best effort: logging must never be the
+    reason a request fails.
+    """
+    try:
+        frames = [f"  {os.path.basename(f.filename)}:{f.lineno} in {f.name}"
+                  for f in traceback.extract_tb(exc.__traceback__)]
+        entry = (time.strftime("%Y-%m-%dT%H:%M:%S") + " " + type(exc).__name__ + "\n"
+                 + "\n".join(frames) + "\n")
+        entry = entry.encode("utf-8", "replace")[:_ENGINE_LOG_ENTRY_MAX].decode("utf-8", "ignore")
+        if not entry.endswith("\n"):
+            entry += "\n"
+        data = entry.encode("utf-8")
+        path = os.path.join(_paths.data_dir(), _ENGINE_LOG_NAME)
+        with _engine_log_lock:
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+            mode = "ab"
+            if size + len(data) > _ENGINE_LOG_MAX_BYTES:
+                try:
+                    os.replace(path, path + ".1")
+                except OSError:
+                    mode = "wb"  # cannot rotate: truncate rather than grow past the cap
+            with open(path, mode) as fh:  # binary: the byte count above is exact
+                fh.write(data)
+    except Exception:  # noqa: BLE001 - logging is best effort
+        pass
+
+
 def _make_handler(token: str):
     class Handler(BaseHTTPRequestHandler):
         # HTTP/1.1, so a client can keep one connection and reuse it. The default
@@ -146,6 +191,20 @@ def _make_handler(token: str):
             self._cors()
             self.end_headers()
             self.wfile.write(body)
+
+        def _send_exception(self, exc: BaseException):
+            """The one place a handler's catch-all turns an exception into a response (v1.3.1, #67).
+
+            A SnapStudioError is a DELIBERATE refusal with a message written to be shown to the person (a prepared copy
+            Studio cannot vouch for, a file that cannot be carried over, an archive it will not open): it is answered
+            as 422 with that message, not hidden behind "internal error". Anything else is a genuine fault: it is logged
+            (with its traceback) in the local engine log and answered as 500 with only its class name, so a report can say
+            what failed without anything private leaving the machine."""
+            if isinstance(exc, SnapStudioError):
+                self._send(422, {"error": str(exc), "refusal": type(exc).__name__})
+                return
+            _log_unexpected(exc)
+            self._send(500, {"error": "internal error", "kind": type(exc).__name__})
 
         def do_OPTIONS(self):
             # Preflight for POST requests carrying the X-Auth-Token header.
@@ -195,22 +254,22 @@ def _make_handler(token: str):
                     result = service.doctor(path)
                     service.record_diagnosis(path, result)  # best-effort index
                     self._send(200, result)
-                except Exception:  # adapter must not crash the server
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:  # adapter must not crash the server
+                    self._send_exception(exc)
             elif self.path == "/first_layer_check":
                 try:
                     self._send(200, service.first_layer_check(data.get("symptom", "")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/quality_check":
                 try:
                     self._send(200, service.quality_check(data.get("symptom", ""), data.get("path")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/fix_history":
                 try:
                     self._send(200, service.fix_history(
@@ -218,24 +277,24 @@ def _make_handler(token: str):
                         limit=rv.optional_int(data, "limit", 50)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/fix_original":
                 try:
                     self._send(200, service.fix_original(
                         rv.require_path_string(data, "output")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/fix_history_export":
                 try:
                     self._send(200, service.fix_history_export(
                         limit=rv.optional_int(data, "limit", 50)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/color_plan":
                 try:
                     self._send(200, service.color_plan(
@@ -243,8 +302,8 @@ def _make_handler(token: str):
                         toolheads=(rv.optional_int(data, "toolheads", 0) or None)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/fidelity":
                 try:
                     self._send(200, service.fidelity_audit(
@@ -252,8 +311,8 @@ def _make_handler(token: str):
                         rv.require_path_string(data, "prepared")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/preflight":
                 try:
                     self._send(200, service.preflight(
@@ -265,8 +324,8 @@ def _make_handler(token: str):
                         confirmed_nozzle_at=rv.optional_str(data, "confirmed_nozzle_at", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/watch_folder":
                 try:
                     self._send(200, service.watch_folder(
@@ -274,8 +333,8 @@ def _make_handler(token: str):
                         project_path=rv.optional_str(data, "project_path", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/slice_provenance":
                 try:
                     self._send(200, service.slice_provenance(
@@ -283,15 +342,15 @@ def _make_handler(token: str):
                         rv.require_path_string(data, "gcode_path")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/print_plan":
                 try:
                     self._send(200, service.print_plan(rv.require_path_string(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/provider/test":
                 # Read-only, and the address is validated inside the engine before
                 # anything is opened. A provider that is not there is an answer,
@@ -303,8 +362,8 @@ def _make_handler(token: str):
                         provider_key=rv.optional_str(data, "provider_key", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/local_spools":
                 # A person's own spool notes for a printer with no Spoolman or
                 # Bambuddy configured. Read-only.
@@ -454,8 +513,8 @@ def _make_handler(token: str):
                         slot_base=rv.optional_int(data, "slot_base", 0)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/send_check":
                 try:
                     slot_map = data.get("slot_map")
@@ -473,8 +532,8 @@ def _make_handler(token: str):
                         slot_base=rv.optional_int(data, "slot_base", 0)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/diagnostics_preview":
                 try:
                     from snapstudio_core import diagnostics as diag
@@ -485,8 +544,8 @@ def _make_handler(token: str):
                         port=rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/diagnostics_build":
                 try:
                     from snapstudio_core import diagnostics as diag
@@ -498,15 +557,15 @@ def _make_handler(token: str):
                         port=rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/gcode_facts":
                 try:
                     self._send(200, service.gcode_facts(rv.require_path_string(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/post_slice":
                 try:
                     self._send(200, service.post_slice(
@@ -516,8 +575,8 @@ def _make_handler(token: str):
                         project_path=rv.optional_str(data, "project_path", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/sliced_cost":
                 try:
                     self._send(200, service.sliced_cost(
@@ -526,15 +585,15 @@ def _make_handler(token: str):
                         currency=rv.optional_str(data, "currency", "$") or "$"))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/placement_check":
                 try:
                     self._send(200, service.placement_check(rv.require_path_string(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/prepare_placed":
                 try:
                     self._send(200, service.prepare_placed(
@@ -542,8 +601,8 @@ def _make_handler(token: str):
                         out_dir=data.get("out_dir") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/project_cost":
                 try:
                     prices = data.get("prices")
@@ -554,8 +613,8 @@ def _make_handler(token: str):
                         prices=prices if isinstance(prices, dict) else None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/ecosystem_advice":
                 try:
                     installed = data.get("installed")
@@ -564,15 +623,15 @@ def _make_handler(token: str):
                         installed=installed if isinstance(installed, dict) else None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/project_traits":
                 try:
                     self._send(200, service.project_traits(rv.require_path_string(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/source_compatibility":
                 path = data.get("path")
                 if not path:
@@ -582,8 +641,8 @@ def _make_handler(token: str):
                     self._send(200, service.source_compatibility(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/scale_preview":
                 try:
                     path = rv.require_path_string(data)
@@ -591,8 +650,8 @@ def _make_handler(token: str):
                     self._send(200, service.scale_preview(path, scale))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/scale_options":
                 try:
                     path = rv.require_path_string(data)
@@ -601,8 +660,8 @@ def _make_handler(token: str):
                     self._send(200, service.scale_options(path, printer, margin))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/print_failure_troubleshoot":
                 try:
                     path = rv.require_path_string(data)
@@ -620,16 +679,16 @@ def _make_handler(token: str):
                         rv.optional_str(data, "failure_stage", "unknown")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/model_search":
                 try:
                     self._send(200, service.model_search_query(
                         data.get("query", ""), data.get("filters") or {}))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/compatibility_check":
                 path = data.get("path")
                 if not path:
@@ -639,8 +698,8 @@ def _make_handler(token: str):
                     self._send(200, service.compatibility_check(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/convert":
                 path = data.get("path")
                 if not path:
@@ -663,8 +722,8 @@ def _make_handler(token: str):
                     self._send(200, result)
                 except ValueError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:  # adapter must not crash the server
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:  # adapter must not crash the server
+                    self._send_exception(exc)
             elif self.path == "/prepare_scaled":
                 path = data.get("path")
                 scale = data.get("scale_percent")
@@ -678,8 +737,8 @@ def _make_handler(token: str):
                     self._send(200, result)
                 except ValueError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/diff":
                 a, b = data.get("a"), data.get("b")
                 if not a or not b:
@@ -687,8 +746,8 @@ def _make_handler(token: str):
                     return
                 try:
                     self._send(200, service.diff(a, b))
-                except Exception:  # adapter must not crash the server
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:  # adapter must not crash the server
+                    self._send_exception(exc)
             elif self.path == "/insights":
                 path = data.get("path")
                 if not path:
@@ -698,8 +757,8 @@ def _make_handler(token: str):
                     self._send(200, service.insights(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/report":
                 path = data.get("path")
                 if not path:
@@ -709,8 +768,8 @@ def _make_handler(token: str):
                     self._send(200, service.report(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/canonical":
                 path = data.get("path")
                 if not path:
@@ -720,8 +779,8 @@ def _make_handler(token: str):
                     self._send(200, service.canonical(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/mesh":
                 path = data.get("path")
                 if not path:
@@ -731,15 +790,15 @@ def _make_handler(token: str):
                     self._send(200, service.mesh(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/strategies":
                 try:
                     self._send(200, service.strategies())
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/strategy/recommend":
                 path = data.get("path")
                 if not path:
@@ -749,15 +808,15 @@ def _make_handler(token: str):
                     self._send(200, service.strategy_recommend(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/discover":
                 try:
                     self._send(200, service.printer_discover(data.get("hosts")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/status":
                 host = data.get("host")
                 if not host:
@@ -767,8 +826,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_status(host, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/history":
                 host = data.get("host")
                 if not host:
@@ -778,8 +837,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_history(host, rv.require_port(data), rv.optional_int(data, "limit", 20)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/file_metadata":
                 host = data.get("host"); fn = data.get("filename")
                 if not host or not fn:
@@ -789,8 +848,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_file_metadata(host, fn, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/diagnostics":
                 host = data.get("host")
                 if not host:
@@ -800,8 +859,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_diagnostics(host, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/bed_mesh":
                 host = data.get("host")
                 if not host:
@@ -811,8 +870,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_bed_mesh(host, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path in ("/printer/control/pause", "/printer/control/resume",
                                "/printer/control/cancel", "/printer/control/start",
                                "/printer/control/emergency_stop", "/printer/job_queue",
@@ -868,8 +927,8 @@ def _make_handler(token: str):
                     self._send(200, service.first_layer(path, data.get("host"), rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/toolhead_fit":
                 path = data.get("path")
                 if not path:
@@ -879,8 +938,8 @@ def _make_handler(token: str):
                     self._send(200, service.toolhead_fit(path, data.get("host"), rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/cost_estimate":
                 try:
                     path = rv.require_path_string(data)
@@ -889,8 +948,8 @@ def _make_handler(token: str):
                     self._send(200, service.cost_estimate(path, price, currency))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/batch_pricing":
                 paths = data.get("paths")
                 if not paths or not isinstance(paths, list):
@@ -908,8 +967,8 @@ def _make_handler(token: str):
                         paths, str(data.get("currency", "$")), **factors))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/mm_doctor":
                 path = data.get("path")
                 if not path:
@@ -920,8 +979,8 @@ def _make_handler(token: str):
                         path, data.get("host"), rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/bed_fit":
                 path = data.get("path")
                 if not path:
@@ -932,8 +991,8 @@ def _make_handler(token: str):
                         path, data.get("host"), rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/predict_success":
                 path = data.get("path")
                 if not path:
@@ -944,16 +1003,16 @@ def _make_handler(token: str):
                         path, data.get("host"), rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/community_knowledge":
                 try:
                     self._send(200, service.community_knowledge(
                         str(data.get("query", "")), data.get("risks")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/plate_export":
                 try:
                     path = rv.require_path_string(data)
@@ -964,8 +1023,8 @@ def _make_handler(token: str):
                     self._send(200, service.plate_export(path, ui_plate, from_f, to_f, out_path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/plate_dry_run":
                 try:
                     path = rv.require_path_string(data)
@@ -975,8 +1034,8 @@ def _make_handler(token: str):
                     self._send(200, service.plate_dry_run(path, ui_plate, from_f, to_f))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/plate_inspect":
                 path = data.get("path")
                 if not path:
@@ -986,15 +1045,15 @@ def _make_handler(token: str):
                     self._send(200, service.plate_inspect(path))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/demo_report":
                 try:
                     self._send(200, service.demo_report())
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/intelligence_report":
                 path = data.get("path")
                 if not path:
@@ -1014,8 +1073,8 @@ def _make_handler(token: str):
                         **factors))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path in ("/pricing_doctor", "/profit_doctor"):
                 path = data.get("path")
                 if not path:
@@ -1042,8 +1101,8 @@ def _make_handler(token: str):
                             batch_count=rv.optional_int(data, "batch_count", 10), **factors))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/cost_to_price":
                 path = data.get("path")
                 if not path:
@@ -1063,8 +1122,8 @@ def _make_handler(token: str):
                         **factors))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/capabilities":
                 host = data.get("host")
                 if not host:
@@ -1074,8 +1133,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_capabilities(host, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/firmware":
                 host = data.get("host")
                 if not host:
@@ -1085,8 +1144,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_firmware(host, rv.require_port(data)))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/health":
                 host = data.get("host")
                 if not host:
@@ -1096,8 +1155,8 @@ def _make_handler(token: str):
                     self._send(200, service.printer_health(host, rv.require_port(data), int(data.get("limit", 50))))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/printer/failure_insights":
                 host = data.get("host")
                 if not host:
@@ -1107,16 +1166,16 @@ def _make_handler(token: str):
                     self._send(200, service.printer_failure_insights(host, rv.require_port(data), int(data.get("limit", 50))))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/library":
                 try:
                     self._send(200, service.library_list(
                         data.get("query", ""), data.get("tag")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/library/delete":
                 pid = data.get("id")
                 if pid is None:
@@ -1126,8 +1185,8 @@ def _make_handler(token: str):
                     self._send(200, service.library_delete(pid))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/history":
                 pid = data.get("project_id")
                 if pid is None:
@@ -1137,8 +1196,8 @@ def _make_handler(token: str):
                     self._send(200, service.library_history(pid))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/batch":
                 paths = data.get("paths")
                 if not paths or not isinstance(paths, list):
@@ -1148,8 +1207,8 @@ def _make_handler(token: str):
                     self._send(200, service.batch_start(paths, data.get("out_dir")))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
-                except Exception:
-                    self._send(500, {"error": "internal error"})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/batch/status":
                 job_id = data.get("job_id")
                 if not job_id:

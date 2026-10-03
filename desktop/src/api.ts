@@ -110,7 +110,13 @@ export async function convert(path: string, outDir?: string, prepareMode: Prepar
   });
   if (!r.ok) {
     let msg = `convert failed (${r.status})`;
-    try { const e = await r.json(); if (e?.error) msg = e.error; } catch { /* ignore */ }
+    try {
+      const e = await r.json();
+      if (e?.error) msg = e.error;
+      // v1.3.1 (#67): a genuine engine fault names its class, so a report can say what failed; a deliberate refusal
+      // already carries its own readable message.
+      if (e?.kind && !e?.refusal) msg = `${msg} (${e.kind})`;
+    } catch { /* ignore */ }
     throw new Error(msg);
   }
   return r.json();
