@@ -81,7 +81,7 @@ nozzle); the Linux-installed app against the real printer; only one machine and
 one firmware version.
 
 **Provider network rules and time limits.** The new address-resolution rules and
-the overall time limit on every provider read are covered by automated tests;
+the overall time limit on provider reads (everything after the name lookup) are covered by automated tests;
 they were not exercised against a real provider device on a real network beyond
 the checks above.
 

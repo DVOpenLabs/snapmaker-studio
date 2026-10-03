@@ -36,8 +36,9 @@ reads the other two.
   addresses are no longer accepted as local. The check works by address category,
   so it is a real check but not literal proof that an address is on your own
   network.
-- **Every provider read has an overall time limit.** A slow or hung device can no
-  longer hold a request open.
+- **Provider reads have an overall time limit.** A slow or hung device can no
+  longer hold a request open once Studio has connected to it; looking up the
+  provider's name is not covered by the limit.
 - **Provider status messages never contain the address you configured.**
 - Spoolman's and Bambuddy's "did not answer" message now reads "did not answer in
   time (Studio waited about N seconds)", matching SpoolEase's. Verdicts are

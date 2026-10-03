@@ -162,8 +162,11 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 ## Evidence
 
 Everything below was run against the v1.3.0 release-candidate build — the
-same Windows installer and Linux package published on the release page, checked
-by SHA256 — not against a development build. The installed-application
+same application and Linux package published on the release page, checked by
+SHA256 — not against a development build. The Windows installed-application
+run used an acceptance copy of the release-candidate installer (same application
+files, separate install identity); the real installer itself was exercised only on a
+disposable GitHub-hosted runner. The installed-application
 acceptance run used an acceptance-identity copy of the Windows installer on a
 clean local account; the real installer's own upgrade and uninstall were
 exercised on a disposable GitHub-hosted runner. The backend and desktop test
@@ -217,9 +220,10 @@ tester.**
 now checked by what it actually resolves to, not only how it is spelled: a name
 that resolves only to a public address is refused, and one that resolves to both
 a local and a public address is read on the local one only. Proxies configured
-in your environment or system are ignored for a provider read. Every provider
-read also has an overall time limit, so a slow or hung device can no longer hold
-a request open, and provider status messages never contain the address you
+in your environment or system are ignored for a provider read. Provider
+reads also have an overall time limit, so a slow or hung device can no longer
+hold a request open once Studio has connected to it (looking up the provider's
+name is not covered), and provider status messages never contain the address you
 configured.
 
 **A remaining weight with no date now says so**, even when it looks sufficient —

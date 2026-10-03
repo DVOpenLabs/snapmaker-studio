@@ -209,7 +209,7 @@ simply the machine it is verified against.
 ## Evidence
 
 Everything below was verified against the **v1.3.0 release-candidate build** (the same
-installer published on the release page), not a development build. The backend and desktop test counts come from the
+application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
 

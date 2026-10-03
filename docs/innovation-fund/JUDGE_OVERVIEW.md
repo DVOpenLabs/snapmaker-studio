@@ -91,8 +91,10 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **v1.3.0 release-candidate build** — installed,
-launched, driven through the real window, then uninstalled. Not a development
+Everything below ran against the **v1.3.0 release-candidate build** — an acceptance
+copy of its installer (same application files, separate install identity) was installed,
+launched, driven through the real window, then uninstalled; the real installer itself was
+exercised only on a disposable GitHub-hosted runner. Not a development
 server, not the source tree. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 

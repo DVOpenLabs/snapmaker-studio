@@ -59,9 +59,10 @@ All notable changes to this project are documented here. The format is based on
   an arbitrary IPv4 host — all four are now refused rather than accepted as
   local, for the address a person types and for whatever a name actually
   resolves to.
-- **Every provider read now has an overall time limit.** A slow or hung
-  device can no longer hold a request open, and the limit covers connecting and
-  the secure-connection handshake as well as the read itself.
+- **Provider reads now have an overall time limit.** A slow or hung device can
+  no longer hold a request open: the limit covers connecting, the
+  secure-connection handshake, the response headers, any redirect and the body.
+  Looking up a provider's name is not covered by it.
 - **Provider status messages never contain the address you configured.**
 
 ### Maintenance
