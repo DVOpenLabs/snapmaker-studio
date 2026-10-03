@@ -37,7 +37,7 @@ export const PROVIDERS: Record<Exclude<ProviderKind, "none">, {
   spoolease: {
     label: "SpoolEase",
     placeholder: "192.168.1.50",
-    blurb: "SpoolEase weighs spools on its scale and keeps the reading. Studio reads its spool list only, using the security key shown on the SpoolEase screen; it never writes to SpoolEase.",
+    blurb: "SpoolEase weighs spools on its scale and keeps the reading. Studio reads its spool list only, using its security key (the short key on the SpoolEase screen, not an API key) over the plain http address; it never writes to SpoolEase.",
   },
 };
 

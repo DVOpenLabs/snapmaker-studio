@@ -143,7 +143,7 @@ export default function MaterialProviderSettings() {
                     aria-label="SpoolEase security key"
                     onChange={(e) => { setKeyDraft(e.target.value); invalidate(); }}
                     onBlur={() => setKey(keyDraft)}
-                    placeholder="Security key"
+                    placeholder="Security key (not an API key)"
                     className="h-9 min-w-[180px] flex-1 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   />
                   <p className="basis-full text-[11px] text-muted-foreground">

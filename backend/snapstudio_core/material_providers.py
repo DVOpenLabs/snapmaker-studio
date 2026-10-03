@@ -120,6 +120,21 @@ def _is_internet_transit_tunnel(address: ipaddress.IPv4Address | ipaddress.IPv6A
         or address in _NAT64_WELL_KNOWN_NET or address in _NAT64_LOCAL_NET)
 
 
+def _name_resolves_locally(name: str) -> bool:
+    """True when at least one address the resolver returns for `name` is on the user's own network (`_ip_is_local`).
+    A resolution failure or an answer with only public addresses is not local."""
+    try:
+        answers = _resolve(name, None, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError):
+        return False
+    for answer in answers:
+        try:
+            if _ip_is_local(answer[4][0]):
+                return True
+        except (ValueError, IndexError, TypeError):
+            continue
+    return False
+
 def _host_is_local(host: str) -> bool:
     """Is this address on the user's own network?
 
@@ -137,7 +152,14 @@ def _host_is_local(host: str) -> bool:
     except ValueError:
         if name == "localhost" or "." not in name:
             return True
-        return name.endswith(_LOCAL_SUFFIXES)
+        if name.endswith(_LOCAL_SUFFIXES):
+            return True
+        # v1.3.1 (#39): a private name that is NOT one of the conventional suffixes (a home or office domain such as
+        # `spoolease.example.net` served by the user's own router) is local when what it RESOLVES to is local -- the
+        # same test the connect layer applies to every address it dials. Judging it by a guessed suffix list refused
+        # legitimate private FQDNs. A name that resolves only publicly, or not at all, is still refused here, and the
+        # connect layer still only ever dials the local answers of a mixed result.
+        return _name_resolves_locally(name)
     if address.version == 6 and address.ipv4_mapped:
         address = address.ipv4_mapped
     if _is_internet_transit_tunnel(address):
@@ -1101,9 +1123,10 @@ def _text(value) -> str | None:
 
 # --- SpoolEase -----------------------------------------------------------------
 #
-# Status: PROTOCOL VERIFIED (SpoolEase 3532f8d962dd1a95c7d4ebb37beddca5bbefd39a +
-# esp-hal-app-framework 0.6.1 = 43daad9d1795b21a7f4ea3ef610b328cabbfeda1,
-# source-read) / REAL SPOOLEASE USER TEST PENDING.
+# Status: PROTOCOL VERIFIED (SpoolEase 0.7 line, branch `0.7`
+# 49a8e830a7ada916f2da4b5731f2645b06f3287b, source-read; encryption framing
+# unchanged from 3532f8d962dd1a95c7d4ebb37beddca5bbefd39a + esp-hal-app-framework
+# 0.6.1) / REAL SPOOLEASE USER TEST PENDING.
 #
 # Read-only, same as every other provider here: `/api/spools` is the only
 # route this ever calls, and it is a GET. The wire itself is encrypted — a
@@ -1130,12 +1153,27 @@ _SPOOLEASE_WIRE_SENTENCES = {
                "address points at a SpoolEase device."),
     "authentication_failed": (
         "Studio could not read what SpoolEase sent back — either the security key is "
-        "wrong or the response was damaged. Check the key shown on the SpoolEase "
-        "screen and try again."),
+        "wrong or the response was damaged. Use the security key shown on the SpoolEase "
+        "screen — not an API key — and try again."),
     "not_text": "SpoolEase sent something Studio could not read as text.",
     "csv": ("SpoolEase answered, but its spool list is in a form Studio does not "
            "recognise. Studio may need an update for this SpoolEase version."),
 }
+
+
+#: SpoolEase 0.7 issues API keys (`spe_api_v1.<id>.<secret>`) for its https
+#: port. They are a different credential from the security key and cannot
+#: decrypt the plain-http spool list Studio reads. Never echoes the value.
+SPOOLEASE_API_KEY_PREFIX = "spe_api_v1."
+_SPOOLEASE_API_KEY_SENTENCE = (
+    "That looks like a SpoolEase API key, which Studio does not use. Studio reads "
+    "SpoolEase's spool list with its security key — the short key shown on the "
+    "SpoolEase screen and in its web settings. Enter that instead.")
+_SPOOLEASE_HTTPS_SENTENCE = (
+    "SpoolEase's secure (https) port is its API-key interface and does not offer a "
+    "spool list Studio can read. Use the plain http address of the SpoolEase "
+    "(http://…) with its security key instead. Nothing about its secure setup needs "
+    "to change.")
 
 
 def _spoolease_material(record: dict) -> tuple[str | None, str | None]:
@@ -1271,6 +1309,10 @@ def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     # §4.2 rows 2-3: decided before any network call — no name is resolved and
     # no socket is opened for a key Studio already knows it cannot use.
     trimmed = spoolease_wire.trim_key(key or "")
+    if trimmed.startswith(SPOOLEASE_API_KEY_PREFIX):
+        out["error"] = _SPOOLEASE_API_KEY_SENTENCE
+        out["error_code"] = "key_is_api_key"
+        return out
     if not trimmed:
         out["error"] = ("SpoolEase needs its security key — enter it in Settings → "
                         "Materials provider. Studio keeps it in memory for this "
@@ -1295,7 +1337,10 @@ def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
     except InvalidProviderAddress as exc:
         return _address_error(out, exc)
     except urllib.error.HTTPError as exc:
-        out["error"] = f"SpoolEase did not answer: HTTP {exc.code}"
+        if root.startswith("https://") and exc.code in (401, 404):
+            out["error"] = _SPOOLEASE_HTTPS_SENTENCE
+        else:
+            out["error"] = f"SpoolEase did not answer: HTTP {exc.code}"
         out["error_code"] = "http_status"
         return out
     except _ProviderTransportError as exc:

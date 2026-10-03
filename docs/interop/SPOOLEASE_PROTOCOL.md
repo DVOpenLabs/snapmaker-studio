@@ -9,7 +9,11 @@ carefully reasoned from the source rather than field-tested.
 
 ## What was inspected
 
-- **SpoolEase** — commit `3532f8d962dd1a95c7d4ebb37beddca5bbefd39a`.
+- **SpoolEase** — the `0.7` line, branch `0.7` commit
+  `49a8e830a7ada916f2da4b5731f2645b06f3287b` (v1.3.1). Earlier work read
+  `main` commit `3532f8d962dd1a95c7d4ebb37beddca5bbefd39a`, which is an older
+  line than the 0.7 firmware people now run. The encryption framing is
+  identical in both; the spool list gained columns (below).
 - **esp-hal-app-framework** (the web-app/encryption layer SpoolEase is built
   on) — version `0.6.1`, commit `43daad9d1795b21a7f4ea3ef610b328cabbfeda1`.
 
@@ -24,6 +28,19 @@ header beyond `Accept`; Python's standard HTTP client (`urllib`) adds its own
 usual headers on top of that (`Host`, `User-Agent`, `Accept-Encoding:
 identity`, `Connection: close`). It never calls anything else SpoolEase
 exposes — no write, no configuration, no upload.
+
+## Two ports, two credentials (0.7 firmware)
+
+SpoolEase 0.7 runs two servers. The **plain-http web app on port 80** serves
+`GET /api/spools` — the encrypted list Studio reads — and is unlocked by the
+**security key**. A separate **https API on port 443** (its own certificate
+authority, downloadable from the SpoolEase screen) takes `Authorization:
+Bearer <API key>` where an API key looks like `spe_api_v1.<id>.<secret>`. That
+API has no spool-list route today (only loaded printer slots and a store
+backup), so Studio does not use it. An API key does **not** decrypt the spool
+list, and Studio never disables TLS verification. If an API key is typed into
+the security-key box, or an `https://` address returns 401/404, Studio says so
+and points back to the http address and security key.
 
 ## The security key
 
@@ -68,11 +85,16 @@ order:
 id, tag_id, material_type, material_subtype, color_name, color_code, note,
 brand, weight_advertised, weight_core, weight_new, weight_current,
 slicer_filament, added_time, encode_time, added_full, consumed_since_add,
-consumed_since_weight, ext_has_k, data_origin, tag_type
+consumed_since_weight, ext_has_k, data_origin, tag_type,
+assigned_location, actual_location, spools_count, td
 ```
 
-The first 12 columns are always present. Columns 13–21 default to empty on an
-older SpoolEase's shorter row. An empty plaintext (an encrypted empty list) is
+The first 12 columns are always present. Columns 13–25 default to empty on an
+older SpoolEase's shorter row (columns 22–25 arrived with 0.7). More than 25
+columns is refused rather than guessed at. In 0.7, `tag_id` and `color_code`
+are `;`-joined lists (Studio uses the first colour as the primary colour) and
+`note` escapes line breaks as backslash-n, backslash-r and a doubled
+backslash. An empty plaintext (an encrypted empty list) is
 a successful read with zero spools, not an error.
 
 ### Field codecs

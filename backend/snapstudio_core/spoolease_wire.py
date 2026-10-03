@@ -5,9 +5,10 @@ sent into Python values, or raises :class:`SpoolEaseWireError` with one of the
 frozen ``error_code`` values from the protocol contract — never a raw exception
 message that might carry a fragment of ciphertext or a key.
 
-Status: **PROTOCOL VERIFIED** (SpoolEase `3532f8d962dd1a95c7d4ebb37beddca5bbefd39a`
-+ esp-hal-app-framework `0.6.1` = `43daad9d1795b21a7f4ea3ef610b328cabbfeda1`,
-source-read) / **REAL SPOOLEASE USER TEST PENDING.**
+Status: **PROTOCOL VERIFIED** (SpoolEase `0.7` line, branch `0.7`
+`49a8e830a7ada916f2da4b5731f2645b06f3287b`, source-read; encryption framing
+unchanged from `3532f8d962dd1a95c7d4ebb37beddca5bbefd39a` + esp-hal-app-framework
+`0.6.1`) / **REAL SPOOLEASE USER TEST PENDING.**
 
 The key never leaves process memory and is never written to a log: every
 function here takes it as an argument and returns without keeping a reference
@@ -38,15 +39,16 @@ KDF_SALT = b"example_salt"
 KDF_ITERATIONS = 10_000
 KDF_KEY_LEN = 32
 
-#: `store.rs:171-188` / `spool_record.rs:24-59` — one CSV row per spool, no
-#: header, LF-terminated. Columns 1-12 are always present; 13-21 default to ""
-#: on a legacy (shorter) row.
+#: `store.rs` / `spool_record.rs` — one CSV row per spool, no header,
+#: LF-terminated. Columns 1-12 are always present; 13-25 default to "" on an
+#: older (shorter) row. Columns 22-25 were added in the 0.7 line.
 FIELD_COLUMNS = (
     "id", "tag_id", "material_type", "material_subtype", "color_name",
     "color_code", "note", "brand", "weight_advertised", "weight_core",
     "weight_new", "weight_current", "slicer_filament", "added_time",
     "encode_time", "added_full", "consumed_since_add", "consumed_since_weight",
     "ext_has_k", "data_origin", "tag_type",
+    "assigned_location", "actual_location", "spools_count", "td",
 )
 REQUIRED_COLUMNS = 12
 TOTAL_COLUMNS = len(FIELD_COLUMNS)
@@ -213,12 +215,61 @@ def decode_f32(value: str) -> float:
     return number
 
 
+def decode_list(value: str) -> list[str]:
+    """`deserialize_string_array` (utils.rs): `;`-joined, empty items dropped."""
+    return [item for item in value.split(";") if item]
+
+
+def decode_line_safe(value: str) -> str:
+    """`decode_line_safe_string` (utils.rs): the escapes backslash-n,
+    backslash-r and double backslash; any other backslash pair is kept as
+    written."""
+    out: list[str] = []
+    it = iter(value)
+    for ch in it:
+        if ch != "\\":
+            out.append(ch)
+            continue
+        nxt = next(it, None)
+        if nxt is None:
+            out.append("\\")
+        elif nxt == "n":
+            out.append("\n")
+        elif nxt == "r":
+            out.append("\r")
+        elif nxt == "\\":
+            out.append("\\")
+        else:
+            out.append("\\" + nxt)
+    return "".join(out)
+
+
+def _count(value: str) -> int:
+    n = decode_i32_opt(value)
+    if n is None or n < 1:
+        raise SpoolEaseWireError("csv", "spools_count is not a positive integer")
+    return n
+
+
+def decode_f32_plain_opt(value: str) -> float | None:
+    """`td`: `Option<f32>` written as plain decimal text (`""` -> None)."""
+    if value == "":
+        return None
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise SpoolEaseWireError("csv", "td is not a number") from exc
+    if not math.isfinite(number):
+        raise SpoolEaseWireError("csv", "td is not finite")
+    return number
+
+
 def parse_csv(plaintext: str) -> list[dict]:
     """The decrypted plaintext -> one dict per spool, columns typed except the
     two `consumed_since_*` fields (left as raw strings — see :func:`decode_f32`).
 
     Whole-read failure (raises ``SpoolEaseWireError('csv')``) on: a row with
-    fewer than 12 or more than 21 columns, an empty or duplicate spool id, a
+    fewer than 12 or more than 25 columns, an empty or duplicate spool id, a
     malformed integer or boolean field, or quoting `csv.reader` itself cannot
     parse. An empty plaintext is zero spools, not an error — the encrypted
     empty-CSV vector is a successful read with nothing in it (§4.2, after the
@@ -238,6 +289,13 @@ def parse_csv(plaintext: str) -> list[dict]:
             raise SpoolEaseWireError("csv", "wrong column count")
         padded = row + [""] * (TOTAL_COLUMNS - len(row))
         record = dict(zip(FIELD_COLUMNS, padded))
+        # 0.7 stores several tags and colours per spool as `;`-joined lists and
+        # escapes line breaks in the note. `color_code` stays the PRIMARY colour
+        # (first item) so every consumer keeps reading one string.
+        record["tag_ids"] = decode_list(record["tag_id"])
+        record["color_codes"] = decode_list(record["color_code"])
+        record["color_code"] = record["color_codes"][0] if record["color_codes"] else ""
+        record["note"] = decode_line_safe(record["note"])
         spool_id = record["id"]
         if not spool_id:
             raise SpoolEaseWireError("csv", "empty spool id")
@@ -250,6 +308,8 @@ def parse_csv(plaintext: str) -> list[dict]:
             record[key] = decode_i32_opt(record[key])
         record["added_full"] = decode_bool_opt(record["added_full"])
         record["ext_has_k"] = decode_bool_opt(record["ext_has_k"])
+        record["spools_count"] = 1 if record["spools_count"] == "" else _count(record["spools_count"])
+        record["td"] = decode_f32_plain_opt(record["td"])
         # consumed_since_add / consumed_since_weight stay raw strings here:
         # a bad one is a per-spool weight-unknown, never a whole-read failure.
         records.append(record)
