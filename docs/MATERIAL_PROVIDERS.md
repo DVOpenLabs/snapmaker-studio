@@ -199,8 +199,8 @@ real reason to expect an 87 g job to run out.
 
 ## Your spool notes
 
-![Your spool notes, with two notes recorded](screenshots/v1.2.0/spool-notes.png)
-![Your spool notes, before any note is added](screenshots/v1.2.0/spool-notes-empty.png)
+![Your spool notes, with two notes recorded](screenshots/v1.3.0/spool-notes.png)
+![Your spool notes, before any note is added](screenshots/v1.3.0/spool-notes-empty.png)
 
 Since v1.1.0 the engine has kept your own notes on a spool — material,
 colour, vendor, starting and remaining weight — stored in Studio's local library

@@ -1,7 +1,7 @@
 # Snapmaker Studio Roadmap
 
-Where Studio is today, and what comes next. Status reflects v1.2.0, the current
-release (September 2026). Dates are targets, not commitments. Release-by-release
+Where Studio is today, and what comes next. Status reflects v1.3.0, the current
+release (October 2026). Dates are targets, not commitments. Release-by-release
 detail is in [CHANGELOG.md](../CHANGELOG.md); what was verified, and how, is in
 [TRUST_STATUS.md](TRUST_STATUS.md).
 
@@ -13,7 +13,7 @@ defined in [PRODUCT_VISION.md](PRODUCT_VISION.md) §4.
 
 ---
 
-## Shipped — v1.2.0
+## Shipped — v1.3.0
 
 **Platforms.** A one-click Windows 10/11 installer and a self-contained Linux
 `.deb` for Ubuntu 22.04/24.04 x86_64, each with the engine bundled — no Python,
@@ -50,7 +50,7 @@ printer, and compared toolhead by toolhead where the data carries that order.
 Printer profiles are data; the Snapmaker U1 is hardware-verified and a VORON
 2.4 250 profile ships as a second, profile-only target.
 
-**Materials.** Spoolman and Bambuddy as read-only material providers, with
+**Materials.** Spoolman, Bambuddy and SpoolEase (real-device validation pending) as read-only material providers, with
 freshness rules for remaining weight. Your own spool notes and a nozzle size
 you confirm yourself, both in the desktop app under Settings, each value
 labelled by where it came from and the printer's own reading always winning.

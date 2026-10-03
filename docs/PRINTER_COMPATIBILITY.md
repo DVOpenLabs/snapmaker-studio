@@ -1,6 +1,6 @@
 # Which printers Studio understands, and how well
 
-> **State:** describes v1.2.0, the current release. Printer profiles as data
+> **State:** describes v1.3.0, the current release. Printer profiles as data
 > first shipped in v0.8.0.
 
 Studio's printer intelligence talks to Moonraker, the API server that sits in
@@ -79,8 +79,8 @@ value was used, and removing the note restored the live row. No printer control
 action was made. Offline, the table falls back to the U1 profile's four
 toolheads and confirmations survive a restart.
 
-![Nozzles read live from a real U1](screenshots/v1.2.0/nozzles-live-u1.png)
-![Nozzle sizes confirmed by you, printer offline](screenshots/v1.2.0/nozzles-confirmed-offline.png)
+![Nozzles read live from a real U1](screenshots/v1.3.0/nozzles-live-u1.png)
+![Nozzle sizes confirmed by you, printer offline](screenshots/v1.3.0/nozzles-confirmed-offline.png)
 
 ## What is not claimed
 

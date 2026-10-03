@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-03
+
+**SpoolEase as a third material provider, and stricter provider reads.**
+
 ### Added
 - **SpoolEase as a third material provider.** Settings → Materials provider
   now offers **SpoolEase** alongside Spoolman and Bambuddy: enter its address
@@ -55,6 +59,11 @@ All notable changes to this project are documented here. The format is based on
   an arbitrary IPv4 host — all four are now refused rather than accepted as
   local, for the address a person types and for whatever a name actually
   resolves to.
+- **Provider reads now have an overall time limit.** A slow or hung device can
+  no longer hold a request open: the limit covers connecting, the
+  secure-connection handshake, the response headers, any redirect and the body.
+  Looking up a provider's name is not covered by it.
+- **Provider status messages never contain the address you configured.**
 
 ### Maintenance
 - `desktop/package-lock.json` now records the project's own version (1.2.0)
@@ -72,6 +81,7 @@ All notable changes to this project are documented here. The format is based on
   on a bounded backoff (five attempts, 26 seconds of waiting, each read
   capped at 20 seconds). When it does fail, it says whether the release is
   wrong, only the latest pointer lagged, or the API was unreadable. It only ever reads.
+- Release and build reliability improvements.
 
 ## [1.2.0] - 2026-09-27
 

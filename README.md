@@ -17,7 +17,7 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
 [![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
@@ -67,30 +67,30 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 **Windows 10/11 (x64)** ✅ · **Linux x86_64 (.deb)** ✅ · **macOS** not supported.
 
-**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0)**
+**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)**
 — one click, no Python, runs offline.
-**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0)**
+**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)**
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.2.0 is the current stable release** — not a prerelease, so this is also what
+**v1.3.0 is the current stable release** — not a prerelease, so this is also what
 GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
 points at. Every build ever published is on the
 [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
-- Release: [v1.2.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0)
-- Windows installer: `Snapmaker.Studio_1.2.0_x64-setup.exe`
-  — 18,187,076 bytes — SHA256: `af88020e8a928354638a2e6b67206db288efd39299710482f8b23862d83b9485`
-- Linux package: `snapmaker-studio_1.2.0_amd64_25193d05f979.deb`
-  — 20,775,352 bytes — SHA256: `e0368006e6e38fbbd6b4e05b4258a37828e7d90f7379f60df17a1c99ce47a216`
+- Release: [v1.3.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)
+- Windows installer: `Snapmaker.Studio_1.3.0_x64-setup.exe`
+  — 21,813,591 bytes — SHA256: `6febeb833dd4c7d9603b05d4207ddefeb370df338181516b6566fd2b9f70797e`
+- Linux package: `snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb`
+  — 25,798,922 bytes — SHA256: `6c322687a1aad934f17092a09bb0c8025d853a39886e46bc921af09df370540a`
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.2.0_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.3.0_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.2.0_amd64_25193d05f979.deb
+sha256sum snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -123,11 +123,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.2.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.2.0/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.3.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.3.0/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.2.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.2.0/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.3.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.3.0/what-to-load.png) |
 
-From the v1.2.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.3.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -161,38 +161,39 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was verified against the published v1.2.0 installer, not
-against a development build. The backend and desktop test counts come from the
-source at the release commit, not from the installer. Commands, counts and full reports:
+Everything below was run against the v1.3.0 release-candidate build — the
+same application and Linux package published on the release page, checked by
+SHA256 — not against a development build. The Windows installed-application
+run used an acceptance copy of the release-candidate installer (same application
+files, separate install identity); the real installer itself was exercised only on a
+disposable GitHub-hosted runner. The installed-application
+acceptance run used an acceptance-identity copy of the Windows installer on a
+clean local account; the real installer's own upgrade and uninstall were
+exercised on a disposable GitHub-hosted runner. The backend and desktop test
+counts come from the source at the release commit, not from the installer. Commands, counts and full reports:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, driven through the real UI | **41/41** |
+| Installed-application acceptance, driven through the real UI | **45/45** |
 | Read-only checks against a real Snapmaker U1, from the Windows-installed app | **58/58** |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2082 · 531 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2426 · 554 · clean · clean |
 
-The installed-application acceptance count (41/41) is a different total from
-v1.1.0's 34/34 because this release adds 7 checks for the two new screens —
-see [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md) for exactly which. An
-earlier candidate build of this release scored lower on this same harness: a
-race in the harness's own test code asserted against the spool-notes table
-before it had actually redrawn after "Remove all" — a defect in the test, not
-the product. Fixed and reverified 41/41 on a rebuilt installer before this
-release shipped.
+The installed-application acceptance count (45/45) is a different total from
+v1.2.0's: this release adds two checks for the SpoolEase provider and
+three checks that the test lane itself leaves nothing behind, and drops one
+older bookkeeping check — see [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 The real-U1 verification for this release ran read-only through the
-Windows-installed application itself: all four toolheads' fitted nozzles read
-live and shown as the printer's own reading, an offline-saved conflicting
-nozzle note shown as a conflict once the printer answered again with
-the printer's value used, and a real "Remove my note" action restoring the
-live row — but the Spoolman/Bambuddy-seeded provider-on-hardware checks were
-not re-run, this printer's four toolheads all carry the same 0.4 mm nozzle,
-and the Linux-installed app was not run against the real printer. Full
-detail: [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+Windows-installed application itself, 58/58, with no printer-control action
+called. The Spoolman/Bambuddy-seeded provider-on-hardware checks were not run
+this release, no real SpoolEase device has been tested yet, this printer's four
+toolheads all carry the same 0.4 mm nozzle, and the Linux-installed app was not
+run against the real printer. Full detail:
+[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 Reproduce any of it yourself:
 [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md).
@@ -203,33 +204,40 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
-## What's new in v1.2.0
+## What's new in v1.3.0
 
-**Your spool notes, in the desktop app.** Settings → the Materials provider
-card → **Your spool notes**: record what is loaded in each slot — material,
-subtype, colour, vendor, starting and remaining weight — edit it, clear a
-field, or remove it. The remaining weight says where it came from: entered by
-you, estimated from what you recorded, tracked by your provider, or not
-recorded. A slot the printer reports empty stays empty, whatever a note says.
+**SpoolEase as a third material provider.** Settings → Materials provider now
+offers **SpoolEase** alongside Spoolman and Bambuddy. Enter its address and the
+security key shown on its screen, and Studio reads its spool list the same
+read-only way. The key is kept in memory for the running session only — you
+enter it again after restarting Studio. SpoolEase cannot see what a Snapmaker U1
+has printed, so every remaining-weight figure it supplies is treated as an
+estimate. **Status: protocol verified against SpoolEase's source and test
+fixtures; validation on a real SpoolEase device is pending with a community
+tester.**
 
-**Nozzle sizes you confirm, per printer and per toolhead.** Settings → the
-**Nozzles** card under Printer. When the printer reports its fitted nozzles,
-each toolhead shows the printer's own reading — Source: Printer, Reported
-live — with nothing to type over it. When it does not, or it is offline, you
-can confirm each toolhead yourself, including mixed sizes; a toolhead left as
-"Not sure" stays unknown. If a note you saved earlier disagrees with a live
-reading, both are shown and Studio uses the printer's value.
+**Provider addresses are checked more carefully, for every provider.** A name is
+now checked by what it actually resolves to, not only how it is spelled: a name
+that resolves only to a public address is refused, and one that resolves to both
+a local and a public address is read on the local one only. Proxies configured
+in your environment or system are ignored for a provider read. Provider
+reads also have an overall time limit, so a slow or hung device can no longer
+hold a request open once Studio has connected to it (looking up the provider's
+name is not covered), and provider status messages never contain the address you
+configured.
 
-Also in this release: two printer addresses that mean the same printer
-(different case, a trailing dot, IPv6 forms) are now treated as one, so your
-notes follow the printer; a disagreement between your material provider and
-your own note now names the real source instead of attributing it to the
-printer; and Save / Remove all are hidden in both new cards when there is
-nothing to save or remove.
+**A remaining weight with no date now says so**, even when it looks sufficient —
+Studio adds "Nothing records when this figure was last updated." Verdicts are
+unchanged.
 
-Windows install identity is unchanged, so v1.2.0 installs over v1.1.0 in
-place — verified by a default-path upgrade test from the previous release's
-installer (one registration, new version, same location, clean uninstall).
+Also in this release: release and build reliability improvements.
+
+### And what v1.2.0 brought
+
+**Your spool notes and your nozzle sizes, in the desktop app.** Settings → the
+Materials provider card → **Your spool notes**, and the **Nozzles** card under
+Printer. Each value is labelled by where it came from, and the printer's own
+reading always wins.
 
 ### And what v1.1.0 brought
 
@@ -550,7 +558,7 @@ validation is mandatory and never removed. Full detail in
 
 ## Roadmap
 
-**Shipped (stable, v1.2.0):** the whole loop — read a project, diagnose it,
+**Shipped (stable, v1.3.0):** the whole loop — read a project, diagnose it,
 compare it against the printer, prepare a copy, prove what survived, hand it to
 Snapmaker Orca, then read the sliced G-code back and check what the printer will
 actually execute against the printer as it is right now, with cost from the

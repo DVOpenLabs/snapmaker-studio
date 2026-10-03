@@ -141,9 +141,9 @@ builds real decompression bombs and asserts the reader refuses them.
 ## Run the tests
 
 ```bash
-cd backend  && pytest          # 2082 passed, 7 skipped
+cd backend  && pytest          # 2426 passed, 11 skipped
 cd backend  && u1convert selfcheck   # 27/27 over production code paths
-cd desktop  && npm run test    # 531 passed
+cd desktop  && npm run test    # 554 passed
 cd desktop  && npm run build   # tsc + vite
 ```
 
@@ -174,15 +174,8 @@ It installs the rewrapped build into an isolated directory with its own WebView2
 profile and engine data directory, drives the real application window over the
 Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
 is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
-only processes it started. For the v1.2.0 release, the earlier version of this
-harness scored **41/41** on the then-current build —
-[../internal/acceptance-1.2.0.json](../internal/acceptance-1.2.0.json). The harness
-has since changed (isolated acceptance identity, a different check set), so that
-record is not a result for the current harness.
-An earlier release-candidate build of this same version scored lower here — a
-race in the harness's own test code, reading a spool-notes row before it had
-redrawn after a save or a confirmed filament use; a defect in the test, not the
-product, fixed and reverified (see [../TRUST_STATUS.md](../TRUST_STATUS.md)).
+only processes it started. For the v1.3.0 release candidate, this harness scored **45/45** —
+[../internal/acceptance-1.3.0.json](../internal/acceptance-1.3.0.json).
 
 **A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
 `tools/hardware/verify.ps1 -PrinterHost <printer-ip>`. Like the acceptance harness,
@@ -196,7 +189,7 @@ temperature, motion, homing, pause, resume, cancel, emergency-stop or configurat
 call is made. The printer's address is replaced with a placeholder before anything
 reaches the evidence file. This release's real-U1 check ran through the
 Windows-installed application itself — last result: **58/58** —
-[../internal/hardware-1.2.0.json](../internal/hardware-1.2.0.json).
+[../internal/hardware-1.3.0.json](../internal/hardware-1.3.0.json).
 
 That run is worth reading rather than just counting. It proved the four
 toolheads' fitted nozzles are read live and shown as the printer's own reading,
@@ -208,8 +201,9 @@ records every call. Not run this release: the Spoolman/Bambuddy-seeded
 provider-on-hardware checks; this printer's four toolheads all carry the same
 0.4 mm nozzle, so a genuinely mixed-nozzle setup was exercised only in
 automated tests; and the Linux-installed app was not run against the real
-printer. When no reading is available, Studio still says "check this
-yourself" rather than guessing.
+printer. No SpoolEase check was run against hardware either (its real-device
+validation is pending). When no reading is available, Studio still says "check
+this yourself" rather than guessing.
 
 ---
 
