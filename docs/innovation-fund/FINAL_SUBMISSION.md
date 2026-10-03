@@ -48,7 +48,7 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 ## 3. What is being submitted
 
-**Release:** [v1.2.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.2.0)
+**Release:** [v1.3.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)
 — the current stable build; v0.4.0 was the first verified against a real Snapmaker
 U1, and every release since has been. Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
@@ -71,18 +71,18 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the published v1.2.0 installer, not a development build. The backend and desktop test counts come from the
+Verified against the v1.3.0 release-candidate build (the same installer published on the release page), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 41/41 (earlier version of the harness, on the v1.2.0 release run) |
+| Installed-application acceptance, through the real UI | 45/45 |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | 49/49 each |
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2082 passed, 7 skipped |
-| Desktop tests | 531 passed |
+| Backend tests | 2426 passed, 11 skipped |
+| Desktop tests | 554 passed |
 | TypeScript · production build · Rust | clean |
 
 Reproduce any of it: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).

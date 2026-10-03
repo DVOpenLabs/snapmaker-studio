@@ -9,6 +9,82 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.3.0 — ACCEPTED
+
+**SpoolEase as a third read-only material provider, stricter provider reads,
+and release reliability work.** The Windows installer and the Linux `.deb` on
+the release page are the build recorded here, verified by SHA256. Build:
+[run 37088744561](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37088744561),
+commit `fb758c087e9f2cf646593c09f3609cd1278a1d38` (release candidate 4).
+Canonical values: [RELEASE_METADATA.md](RELEASE_METADATA.md). This release's own
+immutable snapshot: [internal/evidence/1.3.0.json](internal/evidence/1.3.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2426 passed / 11 skipped**, desktop **554** |
+| `u1convert selfcheck` | **27/27** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner, silent install, published v1.1.0 → release candidate) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app | **58/58** |
+| SpoolEase on a real device | **NOT YET VALIDATED** |
+| `tsc`, `cargo check`, production build (both platforms) | clean |
+
+### What is verified, and what is not
+
+**SpoolEase — protocol verified, real-device validation pending.** The
+SpoolEase provider was checked against its published source and test fixtures
+and by the installed Windows application's acceptance checks (SpoolEase can be
+configured and read in the installed build, its settings restore without the
+session key, and the key is never persisted) — none of which involved a real
+SpoolEase device. **No real
+SpoolEase device has been tested yet; validation is pending with a community
+tester.** Notes: [interop/SPOOLEASE_PROTOCOL.md](interop/SPOOLEASE_PROTOCOL.md).
+
+**Windows installed-application acceptance, 45/45.** Run through the real UI on
+a clean local Windows account, using an acceptance-identity copy of the
+installer: install, launch, the UI checks, and the uninstall hand-off all
+passed, and the harness's check that nothing outside its own sandbox changed
+completed and reported no change. The count changed from v1.2.0's 41/41:
+two SpoolEase checks and three checks on the test lane's own bookkeeping were
+added, and one older bookkeeping check was replaced. **This exercised the
+acceptance copy, not the real production installer on this machine** — the real
+installer's own registration, default-path install, upgrade and uninstall were
+exercised only on a disposable GitHub-hosted runner (the upgrade smoke row
+above), not locally.
+
+**Linux — clean-image verified, DESKTOP WORKFLOW VERIFIED, not yet EXTERNAL
+USER VERIFIED.** The `.deb` installed on genuinely clean `ubuntu:22.04` and
+`ubuntu:24.04` containers, driven through 49 checks each, the same checks as
+v1.2.0. One check (L5, a Settings screenshot) is skipped by the harness's own
+convention because it has no in-app route navigation, and counts as a pass in
+the totals above — on Linux, the spool-note and nozzle-confirmation screens are
+proven through the installed app's local interface, not by driving the UI. Zero
+orphaned processes; the clean image has no Python, Node or Rust, and installing
+the package pulls none in.
+
+**Snapmaker U1 — read-only, from the Windows-installed app, 58/58.** A physical
+U1 answered this release's read-only harness through the installed Windows
+build itself. The printer reported its state as *printing* while the checks
+ran; no printer-control route was called — five allow-listed requests were
+observed, and the list of control routes called is empty — and the printer's
+address does not appear in the recorded evidence. Nothing was uploaded,
+started, paused, resumed, cancelled, heated, homed, moved or configured. Full
+report: [internal/hardware-1.3.0.json](internal/hardware-1.3.0.json).
+**Not run this release:** the Spoolman/Bambuddy-seeded provider-on-hardware
+checks (as for v1.1.0 and v1.2.0, no provider containers were configured, so the
+total is the smaller one); any SpoolEase check against hardware; a genuinely
+mixed-nozzle printer (this printer's four toolheads all carry the same 0.4 mm
+nozzle); the Linux-installed app against the real printer; only one machine and
+one firmware version.
+
+**Provider network rules and time limits.** The new address-resolution rules and
+the overall time limit on every provider read are covered by automated tests;
+they were not exercised against a real provider device on a real network beyond
+the checks above.
+
 ## v1.2.0 — ACCEPTED
 
 **Your spool notes and your nozzle sizes reach the app, and a rebuilt candidate
