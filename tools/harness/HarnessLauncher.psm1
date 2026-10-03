@@ -1109,6 +1109,24 @@ function Register-HarnessProcess {
     param([Parameter(Mandatory)]$Lane, [Parameter(Mandatory)]$Process, [ValidateSet('App', 'Tool')][string]$Kind = 'App', [string]$Label = '')
     $info = Get-LiveProcessInfo -ProcessId $Process.Id
     if (-not $info) { return $null }
+    # Windows can refuse a process's image path for a moment right after it starts, which reads back as a null Path (seen on the
+    # second real lane run: the relaunch was refused as "image not inside the install dir"). Retry ONLY while the path is
+    # unavailable, for a few seconds at most; the ownership check against the install dir still happens afterwards, and a path
+    # that never resolves is still refused by it.
+    if (-not $info.Path) {
+        $wait = [double](Get-Hook 'ProcessPathWaitSeconds' 5)
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        # The start time read FIRST is frozen: a retry that reports a different start time is a different process that reused the
+        # pid, not the one we launched, so it is refused (fail closed) instead of being adopted and later killed by pid.
+        $frozenTicks = $info.StartTicks
+        while (-not $info.Path -and $watch.Elapsed.TotalSeconds -lt $wait) {
+            Start-Sleep -Milliseconds 100
+            $again = Get-LiveProcessInfo -ProcessId $Process.Id
+            if (-not $again) { return $null }
+            if ($again.StartTicks -ne $frozenTicks) { return $null }
+            $info = $again
+        }
+    }
     $entry = [ordered]@{ Pid = [int]$Process.Id; StartTicks = $info.StartTicks; Path = $info.Path; Kind = $Kind; Label = $Label; Process = $Process }
     $Lane.Tracked.Add($entry)
     # Journal only app launches with a known image (a null path would make the journal fail validation).
