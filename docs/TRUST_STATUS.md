@@ -9,6 +9,40 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.3.1 — ACCEPTED
+
+**Fixes for v1.3.0 reports: real error messages, private-name SpoolEase
+addresses, and SpoolEase 0.7 spool lists.** The Windows installer and the Linux
+`.deb` on the release page are the build recorded here, verified by SHA256.
+Build: [run 37157885043](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37157885043), commit
+`8daea1f6a027b9182e609a182cc9e918ec74af29`. Canonical values:
+[RELEASE_METADATA.md](RELEASE_METADATA.md). This release's own immutable
+snapshot: [internal/evidence/1.3.1.json](internal/evidence/1.3.1.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2468 passed / 11 skipped**, desktop **554** |
+| `u1convert selfcheck` | **27/27** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.3.1.json](internal/acceptance-1.3.1.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.3.1.json](internal/hardware-1.3.1.json) |
+| 60 sample STL/3MF models converted, v1.3.1 vs v1.2.0 | **60/60 ok on both**; originals byte-identical |
+| SpoolEase on a real device | **NOT YET VALIDATED** |
+| `tsc`, `cargo check`, production build | clean |
+
+### What is verified, and what is not
+
+**SpoolEase — source and fixtures only.** The 0.7 spool-list parsing, the
+private-name acceptance and the credential messages are covered by automated
+tests built from SpoolEase's published 0.7 source. No physical SpoolEase device
+has confirmed them yet. API keys and SpoolEase's https port are not supported.
+
+**The Linux package** has been validated on Ubuntu 22.04 and 24.04 containers,
+not on 26.04 hardware.
+
 ## v1.3.0 — ACCEPTED
 
 **SpoolEase as a third read-only material provider, stricter provider reads,

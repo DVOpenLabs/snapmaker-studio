@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-03
+
+**Fixes for v1.3.0 reports.**
+
+### Fixed
+- **"Internal error" hid the real reason.** A refusal Studio can explain (a
+  missing part, a file it will not rewrite, an unsound result) now reaches you
+  in plain words. A genuine fault shows its kind, and Studio keeps a small local
+  log of where it happened (no file names, no values).
+- **SpoolEase on a private name.** A name that resolves to your own network is
+  accepted; a name that resolves anywhere else is still refused, and no
+  connection is ever made to an off-network address.
+- **SpoolEase 0.7 spool lists** (25 columns) are read. Several colours or tags on
+  one spool, line breaks in a note, spool count and TD are understood.
+- **Clearer SpoolEase messages.** Typing an API key into the security-key box, or
+  using an `https://` address, now explains what Studio needs. TLS checking is
+  unchanged.
+
 ## [1.3.0] - 2026-10-03
 
 **SpoolEase as a third material provider, and stricter provider reads.**
