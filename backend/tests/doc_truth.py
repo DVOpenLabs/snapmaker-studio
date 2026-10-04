@@ -233,6 +233,28 @@ def release_offenders(text: str, evidence: dict, *, name: str = "document") -> l
     return offenders
 
 
+#: Length of the separate real-user rescue example recording (65.17 s, rounded as the docs quote it).
+RESCUE_DEMO_SECONDS = 65
+
+
+def _expected_demo_seconds(text: str, start: int, main_seconds: int) -> int:
+    """The length a single "N seconds" claim is held to.
+
+    The real-user rescue example (docs/media/snapmaker-studio-rescue-demo.mp4) is a second,
+    separate recording with its own length. A claim belongs to it only when a "rescue" reference
+    sits just before the number and no main-demo cue comes between them; everything else is held
+    to the main demo's canonical length, even in a block that also mentions the rescue example.
+    """
+    before = text[max(0, start - 60):start].lower()
+    i = before.rfind("rescue")
+    if i == -1:
+        return main_seconds
+    between = before[i:]
+    if any(cue in between for cue in ("main demo", "watch it work", "snapmaker-studio-demo")):
+        return main_seconds
+    return RESCUE_DEMO_SECONDS
+
+
 def demo_offenders(text: str, evidence: dict, *, name: str = "document") -> list[str]:
     """The demo's length, wherever it is quoted."""
     seconds = (evidence.get("demo") or {}).get("seconds")
@@ -243,9 +265,10 @@ def demo_offenders(text: str, evidence: dict, *, name: str = "document") -> list
         if "demo" not in block.lowered and "watch it work" not in block.lowered:
             continue
         for found in _SECONDS.finditer(block.text):
-            if int(found.group(1)) != seconds:
+            expected = _expected_demo_seconds(block.text, found.start(), seconds)
+            if int(found.group(1)) != expected:
                 offenders.append(f"{name}:{block.line} says the demo is "
-                                 f"{found.group(1)} seconds, canonical is {seconds}")
+                                 f"{found.group(1)} seconds, canonical is {expected}")
     return offenders
 
 
