@@ -4,12 +4,12 @@
 >
 > Snapmaker Studio was submitted to Phase 1 on **24 June 2026** and confirmed by
 > the Innovation Fund team on **29 June 2026**. It is publicly listed among the
-> **41 projects in the running** on <https://www.snapmaker.com/innovation-fund>
+> **among the Phase 1 projects** on <https://www.snapmaker.com/innovation-fund>
 > as *"snapmaker-studio — by Kunal Khurana"*.
 >
 > **There is nothing left to submit.** Do not submit again; a second entry would
-> be a duplicate. Evaluation closes **22 September 2026** and winners — 20 of the
-> 41 — are announced **30 September 2026**.
+> be a duplicate. Community voting ran 22–30 September 2026; **provisional results
+> are due 9 October 2026**, with a review window closing 15 October.
 >
 > Independent open-source project — not affiliated with or endorsed by Snapmaker.
 
@@ -41,8 +41,8 @@ Re-read from the official page on **2026-08-23**. Source:
 
 | | |
 |---|---|
-| Phase 1 | 9 Jun – **7 Sep 2026**; winners announced 30 Sep 2026 |
-| Phase 2 | 1 Oct – 31 Dec 2026; results 22 Jan 2027 |
+| Phase 1 | 9 Jun – **7 Sep 2026**; community voting 22–30 Sep; **provisional results 9 Oct 2026**; review window closes 15 Oct; prizes by 13 Nov |
+| Phase 2 | Submissions 19 Oct – 14 Dec 2026; results 31 Dec; final 14 Jan 2027; prizes by 29 Jan |
 | Scoring | **80%** tech committee (Snapmaker product and engineering staff, invited industry experts, long-standing community members) + **20%** community vote |
 | Community vote | GitHub repository stars, community-channel likes, project-page upvotes |
 | Committee criteria | Innovation & Technical Depth · Openness & Quality · Practicality & Adaptability |
@@ -52,7 +52,7 @@ Re-read from the official page on **2026-08-23**. Source:
 | Form fields | name, email, project name, GitHub/project URL, category, short description. Optional cover image: 640×360, PNG/JPG, max 5 MB |
 | Word limits | None published. The short description below is kept near 40 words so it fits whatever the field allows. |
 | Updating a submission | No self-service editing exists. The page says a browsing-and-voting system is still being built. The confirmation email invites questions at community@snapmaker.com, which is the only documented route to correct a listing. |
-| Evaluation | Ends **22 September 2026**; 20 winners announced 30 September 2026 |
+| Evaluation | Phase 1 provisional results **9 October 2026** (the page also lists a review window to 15 October). The page counts the field as 67 projects in one place and 66 in another. |
 
 ## Project
 
@@ -234,8 +234,11 @@ never controls a printer on its own.
 Measured, not asserted — see
 [innovation-fund/USER_EVIDENCE.md](innovation-fund/USER_EVIDENCE.md) for the
 figures and the date they were taken. Interest (downloads, clones, visitors,
-stars) is reported separately from proven user outcomes, and where the second is
-still zero, it says so.
+stars) is reported separately from external reports and from real-device or real-file
+outcomes, with live figures and the date they were taken. Two outside reporters have
+tested Studio on real hardware or a real public file since the entry — see
+"External validation since submission" in that page. These are reports, not
+testimonials.
 
 ## What funding would be used for
 
@@ -253,9 +256,8 @@ still zero, it says so.
 
 - **Entry is complete.** Submitted, confirmed, and publicly listed. The remaining
   work is competitive, not procedural.
-- The community-vote component is 20% and includes GitHub stars, but the fund's
-  own page says the voting system is still being built, so there is nothing to
-  vote on yet.
+- The community-vote component is 20% and includes GitHub stars; voting ran 22–30
+  September 2026 and is closed.
 - The listed description is a June snapshot. See
   [innovation-fund/LISTING_UPDATE.md](innovation-fund/LISTING_UPDATE.md) for what
   was done about that.

@@ -1,5 +1,9 @@
 # Next moves — what would make Studio elite
 
+> **Status note, 2026-10-04.** This plan was written on 2026-08-23 around a 22 September deadline that has passed.
+> Voting ran 22–30 September and provisional results are due 9 October 2026. Read its "Before / After 22 September"
+> headings as historical. Current facts: [USER_EVIDENCE.md](USER_EVIDENCE.md), [PHASE1_POSITION.md](PHASE1_POSITION.md).
+
 Updated **2026-08-23**, after the beta.24 release sprint. Phase 1 submissions
 close **7 September 2026** — fifteen days from this update.
 
@@ -26,15 +30,14 @@ refusal-to-guess enforced by tests rather than by convention.
 score is community, weighted partly on GitHub stars, and Studio sits at the bottom
 of the measured field. The product no longer has a "nothing to see" problem —
 there are current screenshots, a recorded demo of the running application, and a
-release verified against real hardware. What is still missing is people: one star,
-no issues, and an unsigned installer.
+release verified against real hardware. What was missing in August was people: that has started to change (20 stars and two reports from an outside user on 2026-10-04), but it is small, and the installer is still unsigned.
 
 ---
 
 ## State this plan starts from
 
-**Submitted, confirmed, publicly listed** — one of 41 projects in the running.
-Evaluation closes **22 September 2026**; 20 win. Nothing about entering the fund
+**Submitted, confirmed, publicly listed** — among the Phase 1 projects (the Fund page now counts 66–67).
+Voting ran 22–30 September 2026; provisional results are due **9 October 2026**. Nothing about entering the fund
 is outstanding. See [PHASE1_POSITION.md](PHASE1_POSITION.md) for where Studio
 actually stands against the other 40.
 

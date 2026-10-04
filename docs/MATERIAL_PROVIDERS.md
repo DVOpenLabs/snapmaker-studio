@@ -2,8 +2,7 @@
 
 > **State:** Spoolman, Bambuddy, SpoolEase and the "Your spool notes" screen
 > below all ship in the desktop app. SpoolEase support is
-> **PROTOCOL VERIFIED against source and fixtures; REAL SPOOLEASE DEVICE
-> VALIDATION PENDING** — see
+> **PROTOCOL VERIFIED against source and fixtures. Initial real-device validation passed; detailed value spot-check pending.** — see
 > [interop/SPOOLEASE_PROTOCOL.md](interop/SPOOLEASE_PROTOCOL.md).
 
 A printer knows which spool is in which slot, because it is looking at it. It

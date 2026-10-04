@@ -5,7 +5,7 @@
 
 **Phase 1 entry is submitted and listed.** The current description of the project
 is [INNOVATION_FUND.md](INNOVATION_FUND.md); the competitive position and what is
-worth doing before evaluation closes is
+worth doing before the provisional results is
 [innovation-fund/PHASE1_POSITION.md](innovation-fund/PHASE1_POSITION.md). This
 page is the status record only.
 
@@ -32,9 +32,9 @@ must not be reopened.
 | Submitted | 24 June 2026, 20:53, via the fund's form |
 | Confirmed | 29 June 2026 by community@snapmaker.com |
 | Listed as | "snapmaker-studio — by Kunal Khurana", category *Workflow* |
-| Where | <https://www.snapmaker.com/innovation-fund>, among 41 projects in the running |
-| Evaluation closes | 22 September 2026 |
-| Winners announced | 30 September 2026 — 20 of the 41 |
+| Where | <https://www.snapmaker.com/innovation-fund>, among the Phase 1 projects (the page counts 67 in one place and 66 in another) |
+| Community voting | 22–30 September 2026 (closed) |
+| Provisional results | 9 October 2026; review window closes 15 October |
 
 The exact text submitted is preserved in
 [innovation-fund/SUBMITTED_ENTRY.md](innovation-fund/SUBMITTED_ENTRY.md).

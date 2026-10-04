@@ -1,13 +1,14 @@
 # Final submission package — Snapmaker Innovation Fund, Phase 1
 
 **Status: submitted, confirmed, and publicly listed.** Entry sent 24 June 2026,
-confirmed 29 June, listed as one of the 41 projects in the running. There is
+confirmed 29 June, listed among the Phase 1 projects. There is
 nothing left to enter — see [SUBMITTED_ENTRY.md](SUBMITTED_ENTRY.md) for the exact
 text the committee received.
 
 This page is now the index to the package a judge would read, plus the record of
-what the entry says versus what the project is. Evaluation closes
-**22 September 2026**; 20 of the 41 win. Where Studio stands in that field:
+what the entry says versus what the project is. Community voting ran
+22–30 September 2026; provisional results are due **9 October 2026**. Where Studio
+stands in that field:
 [PHASE1_POSITION.md](PHASE1_POSITION.md).
 
 > Independent open-source project — not affiliated with or endorsed by Snapmaker.
@@ -19,7 +20,7 @@ what the entry says versus what the project is. Evaluation closes
 | Field | As submitted, 24 June 2026 |
 |---|---|
 | Project name | Snapmaker Studio |
-| Project URL | <https://github.com/DeadlyVirusIn/snapmaker-studio> |
+| Project URL | <https://github.com/DeadlyVirusIn/snapmaker-studio> (as submitted; the repository now lives at <https://github.com/DVOpenLabs/snapmaker-studio> and the old address redirects) |
 | Category | Slicer / software (listed on the wall as *Workflow*) |
 | Name, email | Kunal Khurana, kunalkhurana1@gmail.com |
 | Description | The June text, verbatim in [SUBMITTED_ENTRY.md](SUBMITTED_ENTRY.md) |
@@ -102,15 +103,21 @@ Stated here so they cannot creep back in under deadline pressure:
 - **The 112-file corpus is not headline evidence.** It measures structure, not
   print success, and it is dominated by STLs. It stays as historical context.
 
-## 7. What is actually left before 22 September
+## 7. What is left (updated 2026-10-04)
 
-1. **Send the listing correction** — drafted in the maintainer's mailbox, on the
-   fund's own confirmation thread. [LISTING_UPDATE.md](LISTING_UPDATE.md).
-2. **Post the community update** — written, never posted before, and checked to
-   confirm that. [COMMUNITY_POST.md](COMMUNITY_POST.md).
+The original list here ("before 22 September") described the evaluation window as it was
+understood in August; the Fund page now shows voting on 22–30 September, provisional
+results on 9 October and a review window to 15 October. For the entry itself:
 
-That is the whole list. Code signing is prepared but will not land inside the
-evaluation window and does not affect judging; it is tracked separately in
+1. **Fund-listing repository address.** The listing links the project by its old
+   handle (`DeadlyVirusIn/snapmaker-studio`); the repository now lives at
+   `DVOpenLabs/snapmaker-studio` and the old address redirects. A short, factual request
+   to update the listing is drafted in [LISTING_URL_REQUEST.md](LISTING_URL_REQUEST.md).
+   It asks for nothing about judging.
+2. The June description correction is described in [LISTING_UPDATE.md](LISTING_UPDATE.md);
+   this page does not record whether the listing text itself was updated.
+
+Code signing is prepared but does not affect judging; it is tracked separately in
 [../CODE_SIGNING_POLICY.md](../CODE_SIGNING_POLICY.md).
 
 ## 8. Package contents

@@ -31,7 +31,7 @@ snapshot: [internal/evidence/1.3.1.json](internal/evidence/1.3.1.json).
 | Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.3.1.json](internal/hardware-1.3.1.json) |
 | 60 sample STL/3MF models converted, v1.3.1 vs v1.2.0 | **60/60 ok on both**; originals byte-identical |
 | A real P1S project with per-object wall/support settings (MakerWorld "Universal Filament Snag Cutter", 10 mm), prepared by the release-candidate commit | **prepares; original byte-identical; settings kept** |
-| SpoolEase on a real device | **initial view reported working; spot-check of values pending** |
+| SpoolEase on a real device | **Initial real-device validation passed; detailed value spot-check pending** |
 | `tsc`, `cargo check`, production build | clean |
 
 ### What is verified, and what is not

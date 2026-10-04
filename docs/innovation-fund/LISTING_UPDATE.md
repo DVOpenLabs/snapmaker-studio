@@ -1,5 +1,8 @@
 # The public listing is two months out of date — what was done
 
+> **Status note, 2026-10-04.** Written 2026-08-23 for a different evaluation timeline. The listing also still links
+> the project by its old handle; see [LISTING_URL_REQUEST.md](LISTING_URL_REQUEST.md).
+
 **Investigated and acted on 2026-08-23.**
 
 ## The problem

@@ -146,9 +146,11 @@ reach for. Nothing in the architecture is U1-only by construction — capability
 read from the machine, and the bed rectangle is read from a profile, not
 hard-coded into each check.
 
-**Community.** Studio's weakest axis today, and the honest reason is visibility
-rather than substance: the repository has far fewer stars than the leading
-entries. The response is the ecosystem registry — a project that points people at
+**Community.** Studio's weakest axis, and still small on 2026-10-04: 20 stars, one outside
+user with two reports, against projects with 48–75 stars and several outside users. The
+honest reason is partly visibility rather than substance, but the outside reports are
+the evidence that matters (see [USER_EVIDENCE.md](USER_EVIDENCE.md)). The repository has
+fewer stars than the leading entries. The response is the ecosystem registry — a project that points people at
 *other* community tools earns its place in the community, and every project named
 in that registry has a reason to care that Studio exists.
 
@@ -168,3 +170,15 @@ is marketing.
 
 The current answer is strong because Studio occupies the one position that gets
 *more* useful as everything around it improves.
+
+---
+
+## Positioning as of 2026-10-04
+
+Orca slices. Dashboards manage printers. Converters translate files. Studio is the
+intelligence and audit layer around the slicer. It is distinguished by claims the other
+projects' own sources did not show: deterministic graded evidence, a fail-closed prepare,
+a per-project fidelity audit, an original that is never modified, local and no-cloud with
+no AI by default, and a pre-slicer and post-slicer workflow in one product. It does not
+claim to be the only tool that audits files or compares a file with a printer — others do
+(see [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md)).

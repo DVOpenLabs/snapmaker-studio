@@ -21,7 +21,7 @@ Two related facts worth holding together:
 
 - The fund's page says the project **voting system is not built yet**. There is
   nothing to vote on, so there is no urgency to "campaign", and no honest way to.
-- The repository has 1 star and has never had an issue opened. A post that reads
+- (As of this draft, August 2026: 1 star and no issue ever opened. On 2026-10-04: 20 stars and two reports from an outside user.) A post that reads
   as marketing will do more harm than the silence it replaces.
 
 The post below therefore leads with the hardware bug, because that is the only

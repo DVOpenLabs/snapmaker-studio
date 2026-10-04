@@ -1,11 +1,11 @@
 # SpoolEase — the wire protocol Studio reads
 
-**Status: PROTOCOL VERIFIED against source and fixtures; REAL SPOOLEASE DEVICE
-VALIDATION PENDING.** Everything below was read out of SpoolEase's own source
-code and proved against fixtures built from it, and against a local HTTP
-server that speaks the same bytes. Nobody has yet run Studio against a real,
-physical SpoolEase device. Until that happens, treat this integration as
-carefully reasoned from the source rather than field-tested.
+**Status: PROTOCOL VERIFIED against source and fixtures. Initial real-device validation passed; detailed value spot-check pending.** Everything below was
+read out of SpoolEase's own source code and proved against fixtures built from it, and
+against a local HTTP server that speaks the same bytes. One outside user has run the
+v1.3.1 release candidate against a physical SpoolEase on 0.7 firmware (it connected, the
+key was accepted and the list parsed); the detailed check of material, vendor, colour and
+remaining weight is still pending, so treat the value mapping as not yet field-confirmed.
 
 ## What was inspected
 

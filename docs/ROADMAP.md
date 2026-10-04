@@ -50,7 +50,7 @@ printer, and compared toolhead by toolhead where the data carries that order.
 Printer profiles are data; the Snapmaker U1 is hardware-verified and a VORON
 2.4 250 profile ships as a second, profile-only target.
 
-**Materials.** Spoolman, Bambuddy and SpoolEase (real-device validation pending) as read-only material providers, with
+**Materials.** Spoolman, Bambuddy and SpoolEase (initial real-device validation passed; detailed value spot-check pending) as read-only material providers, with
 freshness rules for remaining weight. Your own spool notes and a nozzle size
 you confirm yourself, both in the desktop app under Settings, each value
 labelled by where it came from and the printer's own reading always winning.

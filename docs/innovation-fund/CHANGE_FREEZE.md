@@ -8,7 +8,7 @@ committee reads carefully. The other 40 projects were shipping the whole time. A
 project that stops developing while its field develops does not look careful; it
 looks finished in the wrong sense.
 
-The correct reading: being one of 41 projects in the running is an opportunity to
+The correct reading: being among the Phase 1 projects is an opportunity to
 make Studio genuinely complete — and then to stop calling it a beta.
 
 ## What replaces it

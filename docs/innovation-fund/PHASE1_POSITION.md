@@ -1,5 +1,10 @@
 # Phase 1 competitive position — where Studio actually stands
 
+> **Status note, 2026-10-04.** This analysis was written on 2026-08-23 and its tables are kept
+> as that day's record. Several facts have since changed and are corrected here and in
+> the sections marked *refreshed*. The Fund page (read 2026-10-04) shows Phase 1 submissions closed on 7 September, community voting on 22–30 September, **provisional results on 9 October**, and a review window that closes 15 October; Phase 2 submissions run 19 October – 14 December (results 31 December, final 14 January). The same page counts the Phase 1 field as 67 projects in one place and 66 in another, so this repository does not rely on either number. Studio's repository now has 20 stars, 1 fork
+> and two reports from an outside user; see [USER_EVIDENCE.md](USER_EVIDENCE.md).
+
 Assessed **2026-08-23**, against the live project wall at
 <https://www.snapmaker.com/innovation-fund>. Every number below was read from the
 GitHub API on that date, not carried over from the earlier competitor matrix.
@@ -13,15 +18,13 @@ Khurana"*. There is nothing left to enter. See
 
 | | |
 |---|---|
-| Projects in the running | **41** |
-| Winners | **20** — 3 × $5,000, 7 × $3,000, 10 × $1,500 |
-| Evaluation closes | **22 September 2026** |
-| Winners announced | 30 September 2026 |
+| Projects in the running | 41 when this was written (2026-08-23); the Fund page now shows 66–67 (it states both) |
+| Evaluation / results | Voting ran 22–30 September; **provisional results 9 October 2026**; review window closes 15 October |
 | Weighting | 80% Technical Committee · 20% community vote |
-| Community vote | Not live yet — the fund's page says the voting system is still being built |
+| Community vote | Closed (22–30 September) |
 
-Roughly one entry in two wins something. This is not a long shot; it is a field
-where being unremarkable is the main way to lose.
+The field is larger than when this was written; the odds in this paragraph described the
+41-project field and should not be read as current.
 
 ## The field, grouped by what these projects actually do
 
@@ -36,19 +39,33 @@ where being unremarkable is the main way to lose.
 | **Firmware / platform** — SnapmakerU1 Extended Firmware, bespok3d, U1 Adaptive Pressure Advance | 3 | none |
 | **Planning / verification** — Adaptive Manufacturing Planner, **Snapmaker Studio** | 2 | this is the lane |
 
-**The lane is still uncontested.** Searching GitHub for pre-print validation,
-3MF validation for the U1, or a Moonraker-based readiness check returns nothing in
-this field. No other entry compares a project against the machine it will print
-on. The one conceptual neighbour, Adaptive Manufacturing Planner, describes phase
-one as software-level fuse width and contour verification, and has no findable
-public repository — it is early.
+**The lane is no longer uncontested — refreshed 2026-10-04.** Reading the projects'
+own repositories and sites: u1hub offers an opt-in, LLM-based "AI pre-flight" that
+compares a sliced file with the printer's loaded filament (GO / CHECK / STOP) and a
+"Convert to U1" that writes a copy beside the original; proofprint-u1 audits sliced
+G-code with heuristic findings and an advisory score; orca-auto reads spool state from
+the printer. Adaptive Manufacturing Planner is on the official list (a branch of an Orca
+fork) and works on slicing-side planning. Studio's lane is narrower and still
+distinct: deterministic, graded evidence on the *project*, a fail-closed prepare, a
+per-project fidelity audit of what survived, an original that is never modified, local
+and no-cloud by default, with no AI — covering both before and after the slicer in one
+product. See [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md) for the refreshed table.
 
 **But conversion is not a differentiator.** Five entries convert files. If a judge
 reads Studio as "another converter", it loses to five better-known ones. The June
 submission text opens with pre-print failure but the wall description reduces it
 to a checker, which is close to that failure mode.
 
-## Community traction, measured today
+## Community traction — refreshed 2026-10-04
+
+Read live for the projects whose repositories could be checked: bl2u1 75 stars,
+u1hub 66, makerworld-to-snapmaker-u1 48, PrintProof (3mf-to-glb) 23,
+bambu-to-snapmaker-u1 22, **snapmaker-studio 20**, ChromaMatter 6, proofprint-u1 5,
+btu 2, orca-auto 2. Studio is no longer last among these, and it is not near the top.
+It has two issues from one outside user; u1hub has four different outside issue authors.
+The 2026-08-23 table below is kept as the historical record.
+
+## Community traction, measured 2026-08-23 (historical)
 
 | Project | Stars | Forks | Open issues | Licence | Last push |
 |---|---:|---:|---:|---|---|
@@ -115,19 +132,13 @@ acceptance harness, the read-only real-U1 verification — postdates it. A commi
 scoring the card scores a two-month-old product. This is the highest-leverage item
 because it is pure signal loss, not a product gap.
 
-### 2. Community weakness — one star, zero issues, last in the field
+### 2. Community weakness — small traction (refreshed 2026-10-04)
 **Hits: Community (20%), and Practicality by implication.**
-Nothing suggests anyone has used Studio and had a good outcome. Downloads exist
-(43) and clones exist (57 unique in a fortnight), but no engagement of any kind. A
-committee that reads traction as evidence of usefulness will mark this down, and
-they would not be wrong to.
-
-The earlier claim that this "cannot be earned honestly in four weeks" is also
-withdrawn — it confused *buying* engagement, which is off the table, with
-*earning* it, which has simply never been attempted. The project has never been
-posted about anywhere, has no issue template inviting a report, and had
-Discussions turned off. Those are all things that were never tried, not things
-that were tried and failed. See [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md).
+On 2026-08-23 this section read "one star, zero issues, last in the field". It is now 20
+stars, 1 fork, 155 installer downloads and two reports from an outside user, with one
+real-device check still unfinished. That is real movement and still small: several
+competing projects have more stars and more outside users, and the community vote closed
+on 30 September. See [USER_EVIDENCE.md](USER_EVIDENCE.md).
 
 ### 3. Presentation weakness — the hardest project in the field to explain
 **Hits: Practicality & Adaptability, and Innovation by omission.**
