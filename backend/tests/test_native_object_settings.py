@@ -23,7 +23,7 @@ from snapstudio_core import overrides
 from snapstudio_core.errors import UnsoundOutput
 
 HERE = os.path.dirname(__file__)
-BASE = os.path.join(HERE, "fixtures", "real-world", "bambu-pa-pattern.3mf")
+BASE = os.path.join(HERE, "fixtures", "painted", "bambustudio-2.08.02.61-authored.3mf")  # committed, Bambu Studio-authored
 CONFIG = "Metadata/model_settings.config"
 
 # The shape in the reporter's screenshot, and the shape in the current model file.
