@@ -233,6 +233,10 @@ def release_offenders(text: str, evidence: dict, *, name: str = "document") -> l
     return offenders
 
 
+#: Length of the separate real-user rescue example recording (65.17 s, rounded as the docs quote it).
+RESCUE_DEMO_SECONDS = 65
+
+
 def demo_offenders(text: str, evidence: dict, *, name: str = "document") -> list[str]:
     """The demo's length, wherever it is quoted."""
     seconds = (evidence.get("demo") or {}).get("seconds")
@@ -242,10 +246,13 @@ def demo_offenders(text: str, evidence: dict, *, name: str = "document") -> list
     for block in _live(text, evidence["version"]):
         if "demo" not in block.lowered and "watch it work" not in block.lowered:
             continue
+        # The real-user rescue example (docs/media/snapmaker-studio-rescue-demo.mp4) is a second,
+        # separate recording with its own length; its blocks are held to that length instead.
+        expected = RESCUE_DEMO_SECONDS if "rescue" in block.lowered else seconds
         for found in _SECONDS.finditer(block.text):
-            if int(found.group(1)) != seconds:
+            if int(found.group(1)) != expected:
                 offenders.append(f"{name}:{block.line} says the demo is "
-                                 f"{found.group(1)} seconds, canonical is {seconds}")
+                                 f"{found.group(1)} seconds, canonical is {expected}")
     return offenders
 
 
