@@ -528,9 +528,30 @@ def _override_rows(source: dict, prepared: dict, name: str, index: int,
     """
     from . import overrides as object_overrides
 
-    source_overrides = source.get("overrides") or {}
+    source_overrides = dict(source.get("overrides") or {})
     kept = dict(prepared.get("overrides") or {})
     rows: list[dict] = []
+
+    # Settings that arrive in Snapmaker Orca's own words are kept as they are, not
+    # translated: compare them key for key, before the translation table sees them.
+    for key in sorted(k for k in source_overrides if k in object_overrides.NATIVE_KEPT):
+        said = source_overrides.pop(key)
+        found = kept.pop(key, None)
+        if found == said and object_overrides.NATIVE_KEPT[key](said):
+            rows.append({
+                "object": name, "index": index, "kind": "override",
+                "status": PRESERVED_EXACT,
+                "detail": f"{key} = {said}, in the same words on both sides"})
+        elif found is None:
+            rows.append({
+                "object": name, "index": index, "kind": "override",
+                "status": CHANGED,
+                "detail": f"{key} = {said} is set on this object and the copy states nothing"})
+        else:
+            rows.append({
+                "object": name, "index": index, "kind": "override",
+                "status": CHANGED,
+                "detail": f"{key} = {said} on the source, but the copy states {found}"})
 
     # The same count the writer used. Without it the audit believes a layer
     # height should have crossed on a plate that needs a prime tower, and

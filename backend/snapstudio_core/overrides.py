@@ -211,6 +211,42 @@ CARRIED: dict[str, Carried] = {
 #: carried value in the prepared copy.
 TARGET_KEY = {entry.source_key: entry.target_key for entry in CARRIED.values()}
 
+def _enum_gate(*allowed):
+    def gate(value: str):
+        return isinstance(value, str) and value in allowed
+    return gate
+
+
+def _int_gate(low: int, high: int):
+    def gate(value: str):
+        # ASCII digits, spelled out, no sign, no leading zero: the form Orca writes.
+        if not isinstance(value, str):
+            return False
+        return bool(re.fullmatch(r"0|[1-9][0-9]{0,3}", value or "")) and low <= int(value) <= high
+    return gate
+
+
+#: Per-object settings that already arrive in Snapmaker Orca's OWN words, because a
+#: Bambu Studio or Orca project spells them the same way: the two slicers share
+#: one settings dialect. They are never translated, only kept — and kept only when
+#: the value is one Orca reads, because a value it cannot read costs the object.
+#:
+#: Evidence (Snapmaker Orca v2.4.0 source, `bbs_3mf.cpp` and `PrintConfig.cpp`): every
+#: per-object `<metadata>` key goes straight into the object's own config, and each
+#: key below is a real option there, with exactly this vocabulary:
+#:   wall_generator  classic | arachne
+#:   wall_loops      integer 0..1000
+#:   support_type    normal(auto) | tree(auto) | normal(manual) | tree(manual)
+#:   support_style   default | grid | snug | organic | tree_slim | tree_strong | tree_hybrid
+#: This is an allowlist, not a pass-through: any other key is still refused.
+NATIVE_KEPT = {
+    "wall_generator": _enum_gate("classic", "arachne"),
+    "wall_loops": _int_gate(0, 1000),
+    "support_type": _enum_gate("normal(auto)", "tree(auto)", "normal(manual)", "tree(manual)"),
+    "support_style": _enum_gate("default", "grid", "snug", "organic", "tree_slim",
+                                "tree_strong", "tree_hybrid"),
+}
+
 #: Every key this module knows how to *write*. A prepared copy must never carry
 #: an object-level setting outside this set: Studio would be stating something it
 #: has not measured.
@@ -267,6 +303,13 @@ def validate_emitted(carried: dict, nozzle_mm: float = DEFAULT_NOZZLE_MM,
     faults = []
     reverse = {entry.target_key: entry for entry in CARRIED.values()}
     for key, value in sorted((carried or {}).items()):
+        native = NATIVE_KEPT.get(key)
+        if native is not None:
+            if not native(value):
+                faults.append(f"{key}={value!r} is not a value Snapmaker Orca reads, and "
+                              "it deletes the whole object rather than ignoring one it "
+                              "cannot read")
+            continue
         entry = reverse.get(key)
         if entry is None:
             faults.append(f"{key} is not a setting Studio has proved Snapmaker Orca "
