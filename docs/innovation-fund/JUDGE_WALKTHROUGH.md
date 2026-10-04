@@ -141,7 +141,7 @@ builds real decompression bombs and asserts the reader refuses them.
 ## Run the tests
 
 ```bash
-cd backend  && pytest          # 2426 passed, 11 skipped
+cd backend  && pytest          # 2468 passed, 11 skipped
 cd backend  && u1convert selfcheck   # 27/27 over production code paths
 cd desktop  && npm run test    # 554 passed
 cd desktop  && npm run build   # tsc + vite
@@ -175,7 +175,7 @@ profile and engine data directory, drives the real application window over the
 Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
 is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
 only processes it started. For the v1.3.0 release candidate, this harness scored **45/45** —
-[../internal/acceptance-1.3.0.json](../internal/acceptance-1.3.0.json).
+[../internal/acceptance-1.3.1.json](../internal/acceptance-1.3.1.json).
 
 **A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
 `tools/hardware/verify.ps1 -PrinterHost <printer-ip>`. Like the acceptance harness,
@@ -189,7 +189,7 @@ temperature, motion, homing, pause, resume, cancel, emergency-stop or configurat
 call is made. The printer's address is replaced with a placeholder before anything
 reaches the evidence file. This release's real-U1 check ran through the
 Windows-installed application itself — last result: **58/58** —
-[../internal/hardware-1.3.0.json](../internal/hardware-1.3.0.json).
+[../internal/hardware-1.3.1.json](../internal/hardware-1.3.1.json).
 
 That run is worth reading rather than just counting. It proved the four
 toolheads' fitted nozzles are read live and shown as the printer's own reading,

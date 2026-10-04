@@ -1,6 +1,6 @@
 # Snapmaker Studio Roadmap
 
-Where Studio is today, and what comes next. Status reflects v1.3.0, the current
+Where Studio is today, and what comes next. Status reflects v1.3.1, the current
 release (October 2026). Dates are targets, not commitments. Release-by-release
 detail is in [CHANGELOG.md](../CHANGELOG.md); what was verified, and how, is in
 [TRUST_STATUS.md](TRUST_STATUS.md).

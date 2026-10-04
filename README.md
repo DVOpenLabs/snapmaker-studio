@@ -17,7 +17,7 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
 [![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
@@ -67,30 +67,30 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 **Windows 10/11 (x64)** ✅ · **Linux x86_64 (.deb)** ✅ · **macOS** not supported.
 
-**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)**
+**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1)**
 — one click, no Python, runs offline.
-**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)**
+**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1)**
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.3.0 is the current stable release** — not a prerelease, so this is also what
+**v1.3.1 is the current stable release** — not a prerelease, so this is also what
 GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
 points at. Every build ever published is on the
 [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
-- Release: [v1.3.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0)
-- Windows installer: `Snapmaker.Studio_1.3.0_x64-setup.exe`
-  — 21,813,591 bytes — SHA256: `6febeb833dd4c7d9603b05d4207ddefeb370df338181516b6566fd2b9f70797e`
-- Linux package: `snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb`
-  — 25,798,922 bytes — SHA256: `6c322687a1aad934f17092a09bb0c8025d853a39886e46bc921af09df370540a`
+- Release: [v1.3.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1)
+- Windows installer: `Snapmaker.Studio_1.3.1_x64-setup.exe`
+  — 21,817,159 bytes — SHA256: `5e545c00720d55ee83bd5dc970b5b69a29c5beffcd0136b8b428cb452ed8171e`
+- Linux package: `snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb`
+  — 25,804,666 bytes — SHA256: `4388fcd7ce2fcdbf278d710767bab71d9a90cd9925115fbbf535b321f674d5dc`
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.3.0_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.3.1_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb
+sha256sum snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -123,11 +123,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.3.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.3.0/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.3.1/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.3.1/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.3.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.3.0/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.3.1/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.3.1/what-to-load.png) |
 
-From the v1.3.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.3.1 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -161,7 +161,7 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was run against the v1.3.0 release-candidate build — the
+Everything below was run against the v1.3.1 release-candidate build — the
 same application and Linux package published on the release page, checked by
 SHA256 — not against a development build. The Windows installed-application
 run used an acceptance copy of the release-candidate installer (same application
@@ -180,7 +180,7 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2426 · 554 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2468 · 554 · clean · clean |
 
 The installed-application acceptance count (45/45) is a different total from
 v1.2.0's: this release adds two checks for the SpoolEase provider and
@@ -203,6 +203,21 @@ and it never controls your printer on its own. An earlier internal corpus of 112
 files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
+
+## What's new in v1.3.1
+
+**A fix release for what v1.3.0 users reported.**
+
+- **Real error messages.** When Studio refuses a model for a reason it can
+  explain, it now says so instead of "internal error". A genuine fault names its
+  kind so a report can say what happened.
+- **SpoolEase on a private name.** An address like `spoolease.home.example` that
+  resolves to a device on your own network is now accepted. Anything that
+  resolves off your network is still refused.
+- **SpoolEase 0.7 firmware.** Studio now reads the longer 0.7 spool list. If you
+  enter a SpoolEase *API key* where the security key goes, Studio says which one
+  it needs. Studio still reads SpoolEase over its plain-http address with the
+  security key; API-key support is not part of this release.
 
 ## What's new in v1.3.0
 
