@@ -31,10 +31,10 @@ A small release that fixes three things people hit with v1.3.0.
 
 Studio reads SpoolEase over its plain-http address with its security key,
 read-only. SpoolEase API keys and its secure (https) port are not supported in
-this release, and Studio's certificate checking is untouched. A real-device
-confirmation of SpoolEase is still pending from a user; until then the
-SpoolEase integration is checked against SpoolEase's published source and
-fixtures, not a physical device.
+this release, and Studio's certificate checking is untouched. A user
+running SpoolEase 0.7 firmware has confirmed the connection and that the spool list
+reads; the detailed value spot-check is still pending, so the value mapping is checked
+against SpoolEase's published source and fixtures and one initial real-device view.
 
 ## Verify your download
 

@@ -148,12 +148,56 @@ vendored; every one is listed with its licence in
   still fail on the plate.
 - Not autonomous. Studio never starts, heats, moves or homes a printer on its own.
 
+## External validation since submission
+
+Two checks against things Studio did not control have happened since the entry was
+submitted, both prompted by the same outside user. They are bug reports and test results, not testimonials, and each records
+what failed as well as what worked.
+
+**#39 — SpoolEase (a community-requested integration)**
+
+- A community member asked for the SpoolEase integration (issue #39); it shipped
+  read-only in v1.3.0.
+- Testing v1.3.0 on a real SpoolEase exposed two real defects: an address that is a
+  private name (an FQDN on the user's own network) was refused as off-network, and the
+  SpoolEase 0.7 firmware sends a longer spool list than Studio could read.
+- The v1.3.1 release candidate connected to that user's physical SpoolEase: the
+  security key was accepted, the SpoolEase 0.7 response parsed, **115 spools** were
+  read and **35** had usable remaining weights.
+- Status: **Initial real-device validation passed; detailed value spot-check
+  pending.** Issue #39 stays open until the reporter confirms material, vendor, colour
+  and remaining weight on a few known spools.
+
+**#67 — a public MakerWorld model**
+
+- An external user supplied a public model (the 10 mm "Universal Filament Snag
+  Cutter" on MakerWorld) that Studio could not prepare.
+- v1.3.0 showed only a generic "internal error". The real refusal was identified: the
+  file carries per-object wall and support settings that Studio had not proved
+  Snapmaker Orca acts on.
+- Four native per-object settings — `wall_generator`, `wall_loops`, `support_type`,
+  `support_style` — were verified against Snapmaker Orca's v2.4.0 source and are now
+  kept, each only with a value Orca understands. Every other per-object setting is
+  still refused rather than guessed at.
+- The exact model now prepares through the frozen v1.3.1 release-candidate engine,
+  validation passes, and the original file is byte-identical.
+- This was an **older validator limitation, present since v0.9.0 — not a regression
+  introduced by v1.3.** v1.3.0 made it harder to see; it did not cause it.
+
+What this shows: one outside user found real defects in two separate reports, the
+defects were reproduced and fixed, and the fixes were checked on that user's own device
+or file. What it does not show: how often Studio works for people in general. One
+reporter is not a rate, one SpoolEase is one device, and the SpoolEase value check
+is not finished.
+
 ## Where the project is weak
 
-One star. No issues ever opened. Forty-three installer downloads and no evidence
-of what happened after any of them. The measured figures, and what they do and do
-not support, are in [USER_EVIDENCE.md](USER_EVIDENCE.md) — separated into interest
-and outcome, with the second still empty.
+Traction is small. On 2026-10-04 the repository has 20 stars, 1 fork and one outside
+user filing issues (two reports); 155 installer downloads across all releases. Several
+competing Phase 1 projects have more stars and more outside users. SpoolEase
+validation on a real device is initial, not complete. The figures, and what they do and
+do not support, are in [USER_EVIDENCE.md](USER_EVIDENCE.md), separated into interest,
+external reports and real-device or real-file outcomes.
 
 The installer is unsigned. SmartScreen will show an unknown publisher; verify the
 SHA256 before running it. Why, and what is being done:

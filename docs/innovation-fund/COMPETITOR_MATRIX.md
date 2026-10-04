@@ -1,8 +1,8 @@
 # Competitor & ecosystem matrix
 
 > **Superseded for competitive purposes by
-> [PHASE1_POSITION.md](PHASE1_POSITION.md)**, which reassesses all 41 current
-> Phase 1 entries with metrics read on 2026-08-23. This file remains the deeper
+> [PHASE1_POSITION.md](PHASE1_POSITION.md)**, which reassesses the Phase 1
+> entries (41 when it was written; the Fund page now shows 66–67). This file remains the deeper
 > per-project reference — licences, capability detail, interoperability — and is
 > still accurate on those points.
 
@@ -16,11 +16,38 @@ should Snapmaker Studio exist?* The answer is in
 [DIFFERENTIATION_STRATEGY.md](DIFFERENTIATION_STRATEGY.md); this file is the
 evidence behind it.
 
+## Snapshot 2026-10-04 — verified capabilities only
+
+Read from each project's own repository or site on 2026-10-04. UNKNOWN means not stated
+in a primary source; nothing here is inferred. Studio does not slice; it audits and
+prepares around the slicer.
+
+| Project | What it verifiably is | Slices | Reads the printer | Audits a file | Shows what a conversion lost | Stars |
+|---|---|---|---|---|---|---:|
+| makerworld-to-snapmaker-u1 | Browser extension: MakerWorld profile to U1 3MF, auto-fixes, error report | no | no | error report only | not stated | 48 |
+| Bambu2Orca | Client-side Bambu/Creality/Anycubic 3MF converter, keeps paint | no | UNKNOWN | UNKNOWN | UNKNOWN | no repo found |
+| bambu-to-snapmaker-u1 | Docker web converter, YAML filament rules, diff view (PolyForm Noncommercial licence) | no | no | diff view | partial (diff) | 22 |
+| bl2u1 | Flask converter, keeps paint, pads to 4 filaments (stale since April) | no | no | no | no | 75 |
+| btu | Go CLI: slot planning from paint, verifies a temp 3MF; `--replace` overwrites the source | no | no | own-output check | partial | 2 |
+| Nozzle Buddy | Web converter between 10 slicers | no (not stated) | no | not stated | UNKNOWN | no repo |
+| proofprint-u1 | Browser G-code preflight, heuristic score, read-only Moonraker status | no | status only | **yes, G-code level** | no | 5 |
+| u1hub | Self-hosted fleet dashboard; Convert to U1 beside the original; opt-in LLM pre-flight | no | **yes** | partial, LLM-based | not stated | 66 |
+| orca-auto | Headless Orca automation, queues to U1, reads spools | **yes** | **yes** (spools) | no | no | 2 |
+| ChromaMatter | Colour editor plus an unofficial Orca fork | fork does | no | own export only | no | 6 |
+| SnapCentral | Education/model-info site demo | no | no | no | no | no software |
+| Adaptive Manufacturing Planner | Orca-fork branch: bead-width planning, synthetic benchmarks | **yes** | no | no | no | 0 |
+
+Two cautions that follow from the table. Others do compare a file against the printer
+(u1hub, with an LLM) and others do audit files (proofprint-u1, on G-code), so neither
+is claimed as Studio's alone. And the ChromaMatter entry's Fund-page address is a
+`chatgpt.site` host that could not be independently tied to its author (its GitHub repo
+matches).
+
 ---
 
 ## 1. The Phase 1 field
 
-The Fund's own category counts for the 41 Phase 1 projects
+The Fund's own category counts for the Phase 1 projects (41 when this section was written)
 (source: <https://www.snapmaker.com/innovation-fund>):
 
 | Fund category | Projects |
@@ -211,16 +238,22 @@ Two things Studio adds on top of the same rule set:
 
 ---
 
-## 4. What nobody in this field does
+## 4. Where Studio differs (verified 2026-10-04)
 
-1. Reads a model's real geometry to explain print risk *before* slicing.
-2. Tells a person what a print will cost, using figures already in their file.
-3. Grades its own certainty — Confirmed / Likely / Informational / Unable to determine.
-4. Points a beginner at the *right community tool* for their specific file.
+Not "what nobody does" — others compare files with printers and audit files. What this
+combination offers, and what the 2026-10-04 read of the other projects did not show:
 
-Items 1 and 2 are Studio's existing pillars. Item 3 is how it stays trustworthy.
-Item 4 is new in this cycle and is the subject of
-[OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md).
+1. **Deterministic, graded evidence on the project itself**: every finding is
+   Confirmed / Likely / Informational / Unable to determine, with its evidence.
+2. **A fail-closed prepare**: if Studio cannot vouch for the copy, it refuses and says why.
+3. **A per-project fidelity audit**: what was preserved exactly, preserved in meaning,
+   changed, removed, added or could not be verified.
+4. **An original that is never modified**, as a rule enforced by tests.
+5. **Local and no-cloud by default, with no AI**; nothing is uploaded.
+6. **Before and after the slicer in one product**: the project check and prepare, then
+   the sliced job against the printer.
+7. Points a beginner at the *right community tool* for the file
+   ([OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md)).
 
 ---
 

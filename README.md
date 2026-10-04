@@ -25,7 +25,7 @@ local network. Your original file is never modified.
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.** "Snapmaker" is a trademark of its respective owner.
 
-<sub>Entered in the Snapmaker U1 Innovation Fund, Phase 1 — one of 41 projects in the running. Entry submitted 24 June 2026; being listed is not an endorsement. What the entry says, and how the project has moved since: [docs/innovation-fund/SUBMITTED_ENTRY.md](docs/innovation-fund/SUBMITTED_ENTRY.md).</sub>
+<sub>Entered in the Snapmaker U1 Innovation Fund, Phase 1 (provisional results are due 9 October 2026). Entry submitted 24 June 2026; being listed is not an endorsement. What the entry says, and how the project has moved since: [docs/innovation-fund/SUBMITTED_ENTRY.md](docs/innovation-fund/SUBMITTED_ENTRY.md).</sub>
 
 ## In 30 seconds
 
@@ -590,7 +590,7 @@ engine bundled, and a self-contained Linux `.deb`.
 
 **Next:**
 - SpoolEase material provider (protocol-verified against source and fixtures;
-  real SpoolEase device validation pending — unreleased, see
+  initial real-device validation passed, detailed value spot-check pending — see
   [CHANGELOG.md](CHANGELOG.md))
 - Carry PrusaSlicer per-object extruder assignments through preparation (reading ships today)
 - OBJ and GLB input

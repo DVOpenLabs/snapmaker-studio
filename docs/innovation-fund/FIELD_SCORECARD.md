@@ -1,5 +1,10 @@
 # Phase 1 field scorecard — all 41 projects, one rubric
 
+> **Status note, 2026-10-04.** Compiled 2026-08-23 against the 41 projects then listed; the Fund page now shows
+> 66–67 and new dates (Phase 1 submissions closed on 7 September, community voting on 22–30 September, **provisional results on 9 October**, and a review window that closes 15 October; Phase 2 submissions run 19 October – 14 December (results 31 December, final 14 January)). The tables below are that
+> day's record, not current. Refreshed community figures: [USER_EVIDENCE.md](USER_EVIDENCE.md) and
+> [PHASE1_POSITION.md](PHASE1_POSITION.md).
+
 **Compiled 2026-08-23.** Every repository metric was read from the GitHub API on
 that date. This file replaces the loose language used in earlier reports ("top
 quartile", "borderline") with a stated rubric, per-project scores, and an evidence
@@ -168,8 +173,8 @@ dimension and no amount of engineering before 22 September changes it.
 | BREPcode | 4 | 1 | 0 | — | — | no |
 | **Snapmaker Studio** | **1** | **0** | **0** | **1** | 40 | **no** |
 
-Studio is last on stars, forks, issues and contributors among every project whose
-repository could be found. Its 40 releases are the second-highest count here,
+On 2026-08-23 Studio was last on stars, forks, issues and contributors among every project whose
+repository could be found (refreshed figures: see the note at the top). Its 40 releases are the second-highest count here,
 which says something true and unhelpful: **a great deal of shipping, and nobody
 watching it happen.**
 
@@ -220,15 +225,13 @@ files and a 50 KB README. Studio's verification apparatus is more unusual than
 theirs, but "unusual" is not the same as "further ahead", and their contribution
 health is better.
 
-### 2. Community position — the 20%, observable evidence only
+### 2. Community position — the 20% (2026-08-23 record; refreshed below)
 
-**Last, or joint-last, among every project with a findable repository.** 1 star,
-0 forks, 0 issues ever, 1 contributor, discussions not enabled. No community post
-has ever been made about the project (verified by forum search).
-
-Trajectory over the last fortnight: 43 installer downloads across all releases, 57
-unique cloners, 11 unique visitors, +0 stars. Interest exists; engagement does
-not.
+On 2026-08-23: last or joint-last among every project with a findable repository — 1 star,
+0 forks, 0 issues, 1 contributor, discussions off. **Refreshed 2026-10-04:** 20 stars, 1 fork,
+two issues from one outside user, 155 installer downloads, 484 unique cloners and 180
+unique visitors in 14 days. Still below several projects (bl2u1 75, u1hub 66,
+makerworld-to-snapmaker-u1 48 stars), above others; the vote closed 30 September.
 
 ### 3. Overall scenario model
 
