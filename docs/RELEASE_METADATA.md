@@ -19,12 +19,12 @@ Every *other* document must link here rather than restate these values.
 |---|---|
 | Version | v1.3.1 |
 | Installer | `Snapmaker.Studio_1.3.1_x64-setup.exe` |
-| Size (bytes) | 21,817,159 |
-| SHA256 | `5e545c00720d55ee83bd5dc970b5b69a29c5beffcd0136b8b428cb452ed8171e` |
-| Linux installer | `snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb` |
-| Linux size (bytes) | 25,804,666 |
-| Linux SHA256 | `4388fcd7ce2fcdbf278d710767bab71d9a90cd9925115fbbf535b321f674d5dc` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37157885043 |
+| Size (bytes) | 21,818,042 |
+| SHA256 | `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619` |
+| Linux installer | `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb` |
+| Linux size (bytes) | 25,803,624 |
+| Linux SHA256 | `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37207822226 |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 

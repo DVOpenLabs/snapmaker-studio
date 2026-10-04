@@ -7,6 +7,12 @@ A small release that fixes three things people hit with v1.3.0.
 
 ## What changed
 
+- **Projects with per-object wall or support settings.** A project that sets
+  `wall_generator`, `wall_loops`, `support_type` or `support_style` on individual
+  objects (common in MakerWorld models) is no longer refused: Snapmaker Orca reads
+  those four settings in the same words, so Studio keeps them, only when the value is
+  one Orca understands. Any other per-object setting is still left out and named
+  rather than guessed at.
 - **Real error messages.** When Studio refuses a model for a reason it can
   explain, you now see the reason instead of "internal error". When something
   genuinely goes wrong, the message names its kind so a report can say what
@@ -32,8 +38,8 @@ fixtures, not a physical device.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.3.1_x64-setup.exe` — 21,817,159 bytes — SHA256 `5e545c00720d55ee83bd5dc970b5b69a29c5beffcd0136b8b428cb452ed8171e`
-- Linux: `snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb` — 25,804,666 bytes — SHA256 `4388fcd7ce2fcdbf278d710767bab71d9a90cd9925115fbbf535b321f674d5dc`
+- Windows: `Snapmaker.Studio_1.3.1_x64-setup.exe` — 21,818,042 bytes — SHA256 `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619`
+- Linux: `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb` — 25,803,624 bytes — SHA256 `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64`
 
 Verification for this release is in
 [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.3.1/docs/TRUST_STATUS.md).

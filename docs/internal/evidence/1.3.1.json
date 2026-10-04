@@ -5,7 +5,7 @@
     "total": 45
   },
   "backend": {
-    "passed": 2468,
+    "passed": 2496,
     "skipped": 11
   },
   "demo": {
@@ -22,8 +22,8 @@
   },
   "installer": {
     "name": "Snapmaker.Studio_1.3.1_x64-setup.exe",
-    "sha256": "5e545c00720d55ee83bd5dc970b5b69a29c5beffcd0136b8b428cb452ed8171e",
-    "size_bytes": 21817159,
+    "sha256": "1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619",
+    "size_bytes": 21818042,
     "url": "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1"
   },
   "released": "2026-10-03",

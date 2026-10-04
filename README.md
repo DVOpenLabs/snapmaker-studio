@@ -82,15 +82,15 @@ Verify it before you run it:
 
 - Release: [v1.3.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1)
 - Windows installer: `Snapmaker.Studio_1.3.1_x64-setup.exe`
-  — 21,817,159 bytes — SHA256: `5e545c00720d55ee83bd5dc970b5b69a29c5beffcd0136b8b428cb452ed8171e`
-- Linux package: `snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb`
-  — 25,804,666 bytes — SHA256: `4388fcd7ce2fcdbf278d710767bab71d9a90cd9925115fbbf535b321f674d5dc`
+  — 21,818,042 bytes — SHA256: `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619`
+- Linux package: `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb`
+  — 25,803,624 bytes — SHA256: `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64`
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.3.1_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.3.1_amd64_8daea1f6a027.deb
+sha256sum snapmaker-studio_1.3.1_amd64_e3279da9d861.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -180,7 +180,7 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2468 · 554 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2496 · 554 · clean · clean |
 
 The installed-application acceptance count (45/45) is a different total from
 v1.2.0's: this release adds two checks for the SpoolEase provider and
@@ -208,6 +208,10 @@ stronger evidence.
 
 **A fix release for what v1.3.0 users reported.**
 
+- **Projects with per-object wall or support settings.** These four settings
+  (`wall_generator`, `wall_loops`, `support_type`, `support_style`) now carry across
+  when Snapmaker Orca reads them the same way. Other per-object settings are still
+  left out and named.
 - **Real error messages.** When Studio refuses a model for a reason it can
   explain, it now says so instead of "internal error". A genuine fault names its
   kind so a report can say what happened.

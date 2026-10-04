@@ -121,7 +121,7 @@
     {
       "name": "The send check fingerprints what it looked at",
       "ok": true,
-      "detail": "token 13cf8ee7…"
+      "detail": "token 394d647d…"
     },
     {
       "name": "The fingerprint carries the machine's real loadout",
@@ -691,7 +691,7 @@
         "reachable": true,
         "host": "<printer-on-lan>",
         "port": 7125,
-        "observed_at": 1791073548.7985818,
+        "observed_at": 1791124511.48585,
         "toolhead_count": 4,
         "bed_mm": {
           "x": 271,
@@ -997,7 +997,7 @@
         "reachable": true,
         "host": "<printer-on-lan>",
         "port": 7125,
-        "observed_at": 1791073549.5402403,
+        "observed_at": 1791124512.2511966,
         "toolhead_count": 4,
         "bed_mm": {
           "x": 271,
@@ -1417,7 +1417,7 @@
       "toolhead_count": 4,
       "toolhead_count_source": "printer",
       "revision": 0,
-      "observed_at": "2026-10-04T00:25:54Z",
+      "observed_at": "2026-10-04T14:35:16Z",
       "count_mismatch": false,
       "storage_error": null,
       "toolheads": [
@@ -1473,7 +1473,7 @@
       "toolhead_count": 4,
       "toolhead_count_source": "printer",
       "revision": 1,
-      "observed_at": "2026-10-04T00:25:57Z",
+      "observed_at": "2026-10-04T14:35:19Z",
       "count_mismatch": false,
       "storage_error": null,
       "toolheads": [
@@ -1481,7 +1481,7 @@
           "toolhead": 0,
           "diameter": 0.4,
           "source": "printer",
-          "confirmed_at": "2026-10-04T00:25:55Z",
+          "confirmed_at": "2026-10-04T14:35:18Z",
           "confirmed": 0.6,
           "conflict": true,
           "out_of_range": false
