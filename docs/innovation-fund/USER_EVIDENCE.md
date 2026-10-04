@@ -47,7 +47,7 @@ contributor.
 ## External validation since submission
 
 Two checks against things Studio did not control have happened since the entry was
-submitted. They are bug reports and test results, not testimonials, and each records
+submitted, both prompted by the same outside user. They are bug reports and test results, not testimonials, and each records
 what failed as well as what worked.
 
 **#39 — SpoolEase (a community-requested integration)**
@@ -80,10 +80,10 @@ what failed as well as what worked.
 - This was an **older validator limitation, present since v0.9.0 — not a regression
   introduced by v1.3.** v1.3.0 made it harder to see; it did not cause it.
 
-What this shows: two outside reporters found real defects, the defects were
-reproduced and fixed, and the fixes were checked on the reporter's own device or
-file. What it does not show: how often Studio works for people in general. Two
-reporters is not a rate, one SpoolEase is one device, and the SpoolEase value check
+What this shows: one outside user found real defects in two separate reports, the
+defects were reproduced and fixed, and the fixes were checked on that user's own device
+or file. What it does not show: how often Studio works for people in general. One
+reporter is not a rate, one SpoolEase is one device, and the SpoolEase value check
 is not finished.
 
 ## How to re-measure

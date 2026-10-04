@@ -235,8 +235,8 @@ Measured, not asserted — see
 [innovation-fund/USER_EVIDENCE.md](innovation-fund/USER_EVIDENCE.md) for the
 figures and the date they were taken. Interest (downloads, clones, visitors,
 stars) is reported separately from external reports and from real-device or real-file
-outcomes, with live figures and the date they were taken. Two outside reporters have
-tested Studio on real hardware or a real public file since the entry — see
+outcomes, with live figures and the date they were taken. One outside user has
+tested Studio, in two reports, on real hardware and a real public file since the entry — see
 "External validation since submission" in that page. These are reports, not
 testimonials.
 

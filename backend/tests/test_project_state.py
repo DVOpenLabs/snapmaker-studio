@@ -72,7 +72,9 @@ def test_the_submission_is_recorded_as_complete():
     text = _read(ROOT / "docs" / "INNOVATION_FUND.md")
     assert "Submitted" in text and "24 June 2026" in text, (
         "INNOVATION_FUND.md must record that the entry was submitted, and when")
-    assert "41 projects" in text, (
+    # The fund's own project count is contradictory and changes (41, then 66-67), so the
+    # guard pins the fact that matters: the entry is publicly listed on the fund page.
+    assert "publicly listed" in text and "snapmaker.com/innovation-fund" in text, (
         "INNOVATION_FUND.md must record that the project is publicly listed")
 
 
