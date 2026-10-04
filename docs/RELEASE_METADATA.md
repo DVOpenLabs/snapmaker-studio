@@ -17,15 +17,15 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.3.0 |
-| Installer | `Snapmaker.Studio_1.3.0_x64-setup.exe` |
-| Size (bytes) | 21,813,591 |
-| SHA256 | `6febeb833dd4c7d9603b05d4207ddefeb370df338181516b6566fd2b9f70797e` |
-| Linux installer | `snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb` |
-| Linux size (bytes) | 25,798,922 |
-| Linux SHA256 | `6c322687a1aad934f17092a09bb0c8025d853a39886e46bc921af09df370540a` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37088744561 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0 |
+| Version | v1.3.1 |
+| Installer | `Snapmaker.Studio_1.3.1_x64-setup.exe` |
+| Size (bytes) | 21,818,042 |
+| SHA256 | `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619` |
+| Linux installer | `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb` |
+| Linux size (bytes) | 25,803,624 |
+| Linux SHA256 | `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37207822226 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.
@@ -35,6 +35,19 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 `sha256sum <file>.deb` (Linux).
 
 ## Previous release
+
+| Field | Value |
+|---|---|
+| Version | v1.3.0 |
+| Installer | `Snapmaker.Studio_1.3.0_x64-setup.exe` |
+| Size (bytes) | 21,813,591 |
+| SHA256 | `6febeb833dd4c7d9603b05d4207ddefeb370df338181516b6566fd2b9f70797e` |
+| Linux installer | `snapmaker-studio_1.3.0_amd64_fb758c087e9f.deb` |
+| Linux size (bytes) | 25,798,922 |
+| Linux SHA256 | `6c322687a1aad934f17092a09bb0c8025d853a39886e46bc921af09df370540a` |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.0 |
+
+## Superseded
 
 | Field | Value |
 |---|---|
