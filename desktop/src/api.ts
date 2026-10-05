@@ -1,7 +1,9 @@
 // Talks to the local Python sidecar. Port + token come from the Tauri shell,
 // which spawned `python -m snapstudio_api` and read its handshake line.
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 
 type ApiInfo = { port: number; token: string };
 let cached: ApiInfo | null = null;
@@ -42,6 +44,46 @@ export async function isModelBrowserOpen(): Promise<boolean> {
 // Bring the locked Model Browser window to the front. No-op if it isn't open.
 export async function focusModelBrowser(): Promise<void> {
   await invoke("focus_model_browser");
+}
+
+// Delete the Model Browser's own cookies/cache (its profile is separate from Studio's).
+export async function clearModelBrowserData(): Promise<void> {
+  await invoke("clear_model_browser_data");
+}
+
+// Register a file the user downloaded in the Model Browser into the library, with
+// provenance. The engine validates type, size and content; a failed one adds nothing.
+export async function registerDownloadedModel(
+  path: string, site: string, pageUrl: string,
+): Promise<RegisteredModel> {
+  const { port, token } = await apiInfo();
+  const r = await fetch(`http://127.0.0.1:${port}/library/register_download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+    body: JSON.stringify({ path, site, page_url: pageUrl || undefined }),
+  });
+  if (!r.ok) {
+    // A refusal (422) carries the engine's own path-free sentence in `error`; show exactly that.
+    let detail = "";
+    try { detail = String(((await r.json()) as { error?: string }).error ?? ""); } catch { /* not JSON */ }
+    throw new Error(detail || `register download failed (${r.status})`);
+  }
+  return r.json();
+}
+
+// Listen for downloads captured by the desktop shell. Outside the desktop app (a plain
+// browser in dev) there is no event bus, so this quietly does nothing.
+export async function listenModelDownloads(handlers: {
+  onFinished: (e: ModelDownloadEvent) => void;
+  onRefused: (e: { filename: string }) => void;
+}): Promise<() => void> {
+  try {
+    const off1 = await listen<ModelDownloadEvent>("model-download-finished", (ev) => handlers.onFinished(ev.payload));
+    const off2 = await listen<{ filename: string }>("model-download-refused", (ev) => handlers.onRefused(ev.payload));
+    return () => { off1(); off2(); };
+  } catch {
+    return () => {};
+  }
 }
 
 // Snapmaker Orca handoff. detectOrca() returns the install path (or null); the UI

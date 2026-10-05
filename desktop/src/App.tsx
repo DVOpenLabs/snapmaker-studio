@@ -24,6 +24,7 @@ import ColorsMaterials from "@/routes/ColorsMaterials";
 import BeginnerWorkflow from "@/routes/BeginnerWorkflow";
 import Help from "@/routes/Help";
 import NotFound from "@/routes/NotFound";
+import { ModelDownloadListener } from "@/components/ModelDownloadListener";
 import { useTheme } from "@/store/theme";
 import { useSession } from "@/store/session";
 import { launchFile, maybeAutoCheckUpdate } from "@/api";
@@ -86,6 +87,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ModelDownloadListener />
       <BrowserRouter>
         <Routes>
           <Route element={<AppShell />}>
