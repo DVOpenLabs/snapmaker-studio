@@ -273,3 +273,12 @@ def optional_positive_float_list(data: dict, key: str, max_len: int = 8) -> list
             raise ValidationError(f"Invalid {key}")
         out.append(f)
     return out
+
+
+def ready_now_limit(data: dict, key: str = "limit", maximum: int = 50) -> int:
+    """How many of the newest library projects a Ready Now scan may read: 1 to
+    ``maximum``. Absent means the maximum; asking for more is refused, not trimmed."""
+    n = optional_int(data, key, maximum)
+    if not (1 <= n <= maximum):
+        raise ValidationError(f"Invalid {key}")
+    return n

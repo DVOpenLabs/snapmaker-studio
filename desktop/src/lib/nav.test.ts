@@ -42,6 +42,17 @@ describe("1. sidebar exposes core Doctors directly", () => {
   });
 });
 
+describe("1b. Ready now is reachable in both modes, right after the projects page", () => {
+  it("sits after Projects in the advanced sidebar", () => {
+    expect(primaryLabels.indexOf("Ready now")).toBe(primaryLabels.indexOf("Projects") + 1);
+  });
+  it("sits after My designs in Simple mode", () => {
+    const labels = BEGINNER_NAV.map((n) => n.label);
+    expect(labels.indexOf("Ready now")).toBe(labels.indexOf("My designs") + 1);
+    expect(isKnownRoute("/ready-now")).toBe(true);
+  });
+});
+
 describe("2. Why Studio? is not in primary workflow nav", () => {
   it("lives in secondary, not primary", () => {
     expect(primaryLabels).not.toContain("Why Studio?");
@@ -78,14 +89,14 @@ describe("5. no broken routes / blank pages", () => {
 });
 
 describe("6. Simple mode IA (one clear path for a novice)", () => {
-  it("has at most 5 primary items, in the novice order", () => {
-    expect(BEGINNER_NAV.length).toBeLessThanOrEqual(5);
+  it("has at most 6 primary items, in the novice order", () => {
+    expect(BEGINNER_NAV.length).toBeLessThanOrEqual(6);
     // "This print" replaced "Check my model" in v0.6.0: the cockpit opens on the
     // same findings and then stays with the job through slicing and sending,
     // which is the journey a beginner actually has. The standalone Project
     // Doctor keeps its route and moves to More tools — nothing was removed.
     expect(BEGINNER_NAV.map((n) => n.label)).toEqual([
-      "Home", "This print", "My designs", "Printer", "Help",
+      "Home", "This print", "My designs", "Ready now", "Printer", "Help",
     ]);
   });
   it("keeps every advanced tool reachable (More tools covers the rest of PRIMARY_NAV)", () => {
