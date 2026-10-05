@@ -2188,3 +2188,142 @@ def batch_status(job_id: str) -> dict | None:
         # shallow copy; result dict is already rebuilt fresh on each on_item
         return {"id": job["id"], "status": job["status"],
                 "error": job["error"], "result": job["result"]}
+
+
+# --- Ready Now ("what can I print right now?") ---------------------------------
+# A scan reads the library once, the printer once and the configured material
+# provider once, then classifies each project from those same facts in a background
+# job (the batch pattern above). It only reads: nothing is written to the printer,
+# a slot map, a provider or the library.
+
+READY_NOW_MAX = 50  # newest library projects per scan
+_READY_CACHE: dict[tuple, dict] = {}
+_READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
+_ready_cache_lock = threading.Lock()
+
+
+def _ready_analysis(path: str, bed: dict | None) -> tuple[str, dict | None, dict | None]:
+    """(file_state, traits, placement) for one file, cached by what was read.
+
+    Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
+    file or a different printer bed is analysed again and nothing else is.
+    """
+    from snapstudio_core import plate_placement, project_traits
+
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "missing", None, None
+    bed_key = (bed["max_x"], bed["max_y"]) if bed else None
+    key = (path, st.st_mtime_ns, st.st_size, bed_key)
+    with _ready_cache_lock:
+        hit = _READY_CACHE.get(key)
+    if hit is not None:
+        return hit["state"], hit["traits"], hit["placement"]
+
+    traits = project_traits.extract(path)
+    state = "ok" if traits.get("readable") else "unreadable"
+    placement = None
+    foreign = (traits.get("foreign_printer") or {}).get("value") is True
+    if state == "ok" and bed and not foreign:
+        try:
+            placement = plate_placement.assess(path, bed=bed, bed_name="this printer's")
+        except Exception:
+            placement = None
+    with _ready_cache_lock:
+        if len(_READY_CACHE) >= _READY_CACHE_MAX:
+            _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first
+        _READY_CACHE[key] = {"state": state, "traits": traits, "placement": placement}
+    return state, traits, placement
+
+
+def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
+    from snapstudio_core import preflight as pf
+    from snapstudio_core import readiness
+
+    project = {"path": row.get("source_path"), "name": row.get("name")}
+    try:
+        state, traits, placement = _ready_analysis(project["path"], bed)
+        foreign = ((traits or {}).get("foreign_printer") or {}).get("value") is True
+        pre = (pf.evaluate(traits, printer, placement)
+               if state == "ok" and printer.get("reachable") and not foreign else None)
+        return readiness.classify_project(project, traits, printer, pre, state)
+    except Exception:
+        # One bad file must not sink the scan, and says nothing about the others.
+        return readiness.classify_project(project, None, printer, None, "unreadable")
+
+
+def ready_now_start(host: str | None = None, port: int = 7125, provider: str | None = None,
+                    provider_url: str | None = None, provider_key: str | None = None,
+                    slot_map: dict | None = None, slot_base: int | None = None,
+                    limit: int = READY_NOW_MAX) -> dict:
+    """Start a Ready Now scan in the background. Returns a job handle."""
+    from snapstudio_core import readiness
+
+    limit = max(1, min(int(limit), READY_NOW_MAX))
+    job_id = uuid.uuid4().hex
+    with _jobs_lock:
+        _prune_jobs_locked()
+        _jobs[job_id] = {"id": job_id, "kind": "ready_now", "status": "running",
+                         "error": None, "result": None,
+                         "progress": {"done": 0, "total": None}}
+
+    def publish(**fields) -> None:
+        with _jobs_lock:
+            _jobs[job_id].update(fields)
+
+    def worker() -> None:
+        try:
+            conn = _conn()
+            try:
+                rows = library.list_projects(conn)
+            finally:
+                conn.close()
+            # Newest first; the id breaks a tie between equal timestamps.
+            rows = sorted(rows, key=lambda r: (r.get("updated_at") or "", r.get("id") or 0),
+                          reverse=True)
+            library_total, rows = len(rows), rows[:limit]
+            publish(progress={"done": 0, "total": len(rows)})
+
+            # Exactly one printer read and one provider read serve every project.
+            kind, url = _provider_choice(provider, provider_url, None)
+            printer = printer_facts(host, port) if host else {"reachable": False}
+            printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind,
+                                      provider_key)
+            dims = printer.get("bed_mm") or {}
+            bed = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(dims["x"]),
+                    "max_y": float(dims["y"])} if dims.get("x") and dims.get("y") else None)
+
+            results: list[dict] = []
+            for row in rows:
+                results.append(_ready_one(row, printer, bed))
+                publish(progress={"done": len(results), "total": len(rows)},
+                        result={"results": list(results)})
+            results.sort(key=readiness.sort_key)  # stable: newest first within a bucket
+            publish(status="done", result={
+                "schema_version": readiness.SCHEMA_VERSION,
+                "results": results,
+                "counts": readiness.summarise(results),
+                "scanned": len(results),
+                "library_total": library_total,
+                "printer": {"reachable": bool(printer.get("reachable")),
+                            "print_state": printer.get("print_state")},
+                # Already host-free: see _with_providers.
+                "provider_status": printer.get("provider_status"),
+            })
+        except Exception as exc:
+            # The class name only: the text of an exception can carry an address.
+            publish(status="error", error=type(exc).__name__)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"job_id": job_id, "limit": limit, "schema_version": readiness.SCHEMA_VERSION}
+
+
+def ready_now_status(job_id: str) -> dict | None:
+    """Current snapshot of a scan, or None if the id is not a Ready Now job."""
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None or job.get("kind") != "ready_now":
+            return None
+        return {"id": job["id"], "status": job["status"], "error": job["error"],
+                "progress": dict(job["progress"]), "result": job["result"]}

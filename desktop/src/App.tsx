@@ -6,6 +6,7 @@ import AfterSlicing from "@/routes/AfterSlicing";
 import Cockpit from "@/routes/Cockpit";
 import Dashboard from "@/routes/Dashboard";
 import Projects from "@/routes/Projects";
+import ReadyNow from "@/routes/ReadyNow";
 import Batch from "@/routes/Batch";
 import WorkspaceSwitch from "@/routes/WorkspaceSwitch";
 import Printers from "@/routes/Printers";
@@ -90,6 +91,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/ready-now" element={<ReadyNow />} />
             <Route path="/batch" element={<Batch />} />
             <Route path="/workspace" element={<WorkspaceSwitch />} />
             <Route path="/printers" element={<Printers />} />

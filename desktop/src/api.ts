@@ -2216,3 +2216,69 @@ export function localSpoolsDelete(host: string, slot: number, id?: number): Prom
 export function localSpoolsMarkUsed(host: string, slot: number, usedG: number): Promise<LocalSpoolsList> {
   return post("/local_spools/mark_used", { host, slot, used_g: usedG }, "record filament used");
 }
+
+// ---- Ready now ("what can I print on my U1 right now?") -----------------------
+// A background scan of the newest library projects against the printer's reported
+// state and the configured filament inventory. Read-only: it changes nothing on the
+// printer, in a slot mapping or in an inventory.
+export type ReadyNowBucket =
+  | "ready_now" | "one_change_away" | "needs_preparation" | "needs_attention" | "cant_determine";
+
+export interface ReadyNowSlot {
+  tool: number;
+  required_material: string | null;
+  required_colour: string | null;
+  required_grams: number | null;
+  printer_slot: number | null;
+  loaded_material: string | null;
+  loaded_colour: string | null;
+  state: string;
+  amount: string;
+  colour_differs: boolean;
+  confirmed_by: string | null;
+  detail: string | null;
+}
+
+export interface ReadyNowProject {
+  path: string;
+  name: string;
+  bucket: ReadyNowBucket;
+  top_reason: string;
+  top_action: string | null;
+  confidence: "confirmed" | "likely" | "informational" | "unknown";
+  evidence: string[];
+  unknowns: string[];
+  colour_notes: string[];
+  amount_checked: boolean;
+  slots: ReadyNowSlot[];
+  file_state: "ok" | "missing" | "unreadable";
+}
+
+export interface ReadyNowResult {
+  schema_version?: string;
+  results: ReadyNowProject[];
+  counts?: Record<ReadyNowBucket, number>;
+  scanned?: number;
+  library_total?: number;
+  printer?: { reachable: boolean; print_state: string | null };
+  provider_status?: ProviderStatus | null;
+}
+
+export interface ReadyNowStatus {
+  id: string;
+  status: "running" | "done" | "error";
+  error: string | null;
+  progress: { done: number; total: number | null };
+  /** Partial (results only) while running; complete once done. */
+  result: ReadyNowResult | null;
+}
+
+export function readyNowStart(
+  host?: string, provider: ProviderArgs = {},
+): Promise<{ job_id: string; limit: number }> {
+  return post("/ready_now/start", { host: host ?? "", port: 7125, ...provider }, "ready now");
+}
+
+export function readyNowStatus(jobId: string): Promise<ReadyNowStatus> {
+  return post("/ready_now/status", { job_id: jobId }, "ready now status");
+}

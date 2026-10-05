@@ -1219,6 +1219,32 @@ def _make_handler(token: str):
                     self._send(404, {"error": "unknown job"})
                 else:
                     self._send(200, status)
+            elif self.path == "/ready_now/start":
+                try:
+                    slot_map = data.get("slot_map")
+                    self._send(200, service.ready_now_start(
+                        host=rv.optional_str(data, "host", "") or None,
+                        port=rv.require_port(data),
+                        provider=rv.optional_str(data, "provider", "") or None,
+                        provider_url=rv.optional_str(data, "provider_url", "") or None,
+                        provider_key=rv.optional_str(data, "provider_key", "") or None,
+                        slot_map=slot_map if isinstance(slot_map, dict) else None,
+                        slot_base=rv.optional_int(data, "slot_base", 0),
+                        limit=rv.ready_now_limit(data)))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/ready_now/status":
+                try:
+                    status = service.ready_now_status(rv.require_str(data, "job_id"))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                    return
+                if status is None:
+                    self._send(404, {"error": "unknown job"})
+                else:
+                    self._send(200, status)
             elif self.path == "/shutdown":
                 # Graceful half of the L4 zero-orphan sequence (see
                 # sidecar::shutdown_sidecar): reply first, THEN stop the
