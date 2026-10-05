@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { MODEL_BROWSER_COPY, closedPanel, panelLabel, showPanel } from "./modelBrowser";
+import { MODEL_BROWSER_COPY, MODEL_CONNECT_STEPS, closedPanel, panelLabel, showPanel } from "./modelBrowser";
+
+describe("Model Connect steps", () => {
+  it("are the four steps, in order", () => {
+    expect([...MODEL_CONNECT_STEPS]).toEqual([
+      "Browse or search for a model",
+      "Use the site's normal download button",
+      "Studio adds supported downloads to your Library",
+      "Ready Now checks it against your U1",
+    ]);
+  });
+  it("never claim Studio knows whether you are signed in", () => {
+    const all = MODEL_CONNECT_STEPS.join(" ").toLowerCase();
+    expect(all).not.toMatch(/signed in|connected|logged in/);
+  });
+});
 
 describe("Model Browser control panel", () => {
   it("hides the panel until a site is opened in-app", () => {

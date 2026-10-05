@@ -135,6 +135,17 @@ U1 → Prepare if needed → Snapmaker Orca.
   only on its `/sign-in` path). Popups are denied; sign-in was verified to be same-window.
 - **No IPC.** Only the `main` window has a Tauri capability. The browser window can call no
   Studio command, and Studio never reads its cookies.
+- **Sign-in popup.** Some sites sign in through `window.open` (MakerWorld's Google, Apple and
+  Facebook buttons). Studio opens exactly that popup, and nothing else, as a separate window
+  that inherits the Model Browser's environment, so it shares only the Model Connect profile
+  and the finished sign-in is already there when it closes. It has no Tauri capability and no
+  IPC, is https-only, may visit only the identity providers and the two sites a sign-in
+  returns to (`POPUP_HOSTS`), can open no popup or download of its own, and only one can be
+  open at a time. The main browser's navigation allowlist is unchanged. Blocked popup
+  navigations are logged as hostname only. Google sign-in was verified live; Apple and
+  Facebook use the same path but are not yet verified.
+- **MakerWorld downloads** come from `makerworld.bblmw.com`, read from the blocked-hosts log
+  during the live test, not guessed.
 
 Platform: downloads and "Clear site data" are Windows and Linux only. On macOS wry cannot
 give the browser its own data store or report the finished file path, so both are disabled
@@ -148,8 +159,8 @@ download finishes. A download abandoned part-way can leave a partial file in the
 folder (a v1.4 limitation; a failed download Studio can identify is removed).
 
 ### Not in v1.4.0
-No folder scan, no DOM scraping, no "add current page" button, no authentication popup
-support, no Smart Load Planner. MakerWorld and Printables are the first sites needing live
+No folder scan, no DOM scraping, no "add current page" button, no general popup support
+(only the sign-in popup above), no Smart Load Planner. MakerWorld and Printables are the first sites needing live
 end-to-end verification (sign-in, download, library, Ready Now, restart, clear site data).
 The other approved sites keep browsing and are not claimed to download until verified.
 

@@ -11,6 +11,7 @@
 // granted to the `model-browser` label) and Studio never reads cookies or tokens.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -25,9 +26,10 @@ pub const SITE_HOSTS: &[&str] = &[
     "makerworld.com",
 ];
 
-/// CDN hosts a site hands files out from, observed in the live spike (never guessed):
-/// a Printables "Download" navigates to files.printables.com, which answers with the file.
-pub const DOWNLOAD_HOSTS: &[&str] = &["files.printables.com"];
+/// File hosts a site hands downloads out from, each observed live (never guessed): a Printables
+/// "Download" navigates to files.printables.com; MakerWorld's own download button navigates to
+/// makerworld.bblmw.com (read from the blocked-hosts log, hostname only).
+pub const DOWNLOAD_HOSTS: &[&str] = &["files.printables.com", "makerworld.bblmw.com"];
 
 /// One sign-in host and the paths on it that may be reached. `path_ok` keeps a login
 /// host from becoming general browsing of that company's whole site.
@@ -81,8 +83,13 @@ pub fn is_site(url: &Url) -> bool {
     url.scheme() == "https" && matches_any(url, SITE_HOSTS)
 }
 
+/// A file host is matched EXACTLY, never by suffix: a subdomain of an observed file host is a
+/// different host that nobody observed.
 pub fn is_download_host(url: &Url) -> bool {
-    url.scheme() == "https" && matches_any(url, DOWNLOAD_HOSTS)
+    url.scheme() == "https"
+        && url
+            .host_str()
+            .is_some_and(|h| DOWNLOAD_HOSTS.iter().any(|d| h.eq_ignore_ascii_case(d)))
 }
 
 pub fn is_auth_host(url: &Url) -> bool {
@@ -97,6 +104,48 @@ pub fn is_auth_host(url: &Url) -> bool {
 /// document; everything else must be https and on one of the three lists.
 pub fn navigation_allowed(url: &Url) -> bool {
     url.scheme() == "about" || is_site(url) || is_download_host(url) || is_auth_host(url)
+}
+
+/// Hosts a sign-in POPUP may visit. A popup exists only because the site opened one with
+/// `window.open` (MakerWorld's Google / Apple / Facebook buttons do). It is https-only, has
+/// no Tauri capability and no IPC, shares only the Model Connect browser profile, and may
+/// stay on these hosts: the identity providers, and the two sites a sign-in returns to.
+/// Observed from the real flow, never guessed; a host not listed here is refused and its
+/// hostname alone is recorded in the blocked-hosts log.
+pub const POPUP_HOSTS: &[&str] = &[
+    "accounts.google.com",
+    "appleid.apple.com",
+    "idmsa.apple.com",
+    "facebook.com",
+    "bambulab.com",
+    "makerworld.com",
+];
+
+/// May a popup open at, or navigate to, this URL? `about:blank` is the window's initial
+/// document; everything else must be https on a popup host.
+pub fn popup_allowed(url: &Url) -> bool {
+    url.as_str() == "about:blank" || (url.scheme() == "https" && matches_any(url, POPUP_HOSTS))
+}
+
+/// At most one sign-in popup at a time.
+pub struct PopupGate(AtomicBool);
+
+impl PopupGate {
+    pub const fn new() -> Self {
+        PopupGate(AtomicBool::new(false))
+    }
+    /// True when the caller now owns the one popup slot.
+    pub fn claim(&self) -> bool {
+        !self.0.swap(true, Ordering::SeqCst)
+    }
+    pub fn release(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+pub fn popup_gate() -> &'static PopupGate {
+    static GATE: PopupGate = PopupGate::new();
+    &GATE
 }
 
 const RESERVED: &[&str] = &[
@@ -148,6 +197,7 @@ pub fn supported_extension(name: &str) -> Option<&'static str> {
 }
 
 /// `dir/name`, or `dir/name (1)`, `dir/name (2)` ... so an existing file is never overwritten.
+#[cfg(test)]
 pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
     pick_path(dir, name, &HashSet::new())
 }
@@ -396,12 +446,19 @@ mod tests {
     }
 
     #[test]
-    fn popups_are_denied_and_never_created() {
-        let main = include_str!("main.rs");
+    fn popups_are_denied_except_the_one_sign_in_popup() {
+        let main = include_str!("main.rs").replace("\r\n", "\n");
         let code = main.split("#[cfg(test)]").next().unwrap();
         assert!(code.contains("NewWindowResponse::Deny"));
+        // The default "open it however the page asked" response is never used.
         assert!(!code.contains("NewWindowResponse::Allow"));
-        assert!(!code.contains("NewWindowResponse::Create"));
+        // A popup is created in exactly one place, the sign-in popup function ...
+        assert_eq!(code.matches("NewWindowResponse::Create").count(), 1);
+        let start = code.find("fn auth_popup").expect("auth_popup exists");
+        let end = code[start..].find("\n}\n").map(|i| start + i).unwrap();
+        assert!(code[start..end].contains("NewWindowResponse::Create"));
+        // ... and the Model Browser routes every popup request through it.
+        assert!(code.contains("auth_popup(&app_for_popup"));
     }
 
     #[test]
@@ -498,5 +555,144 @@ mod reservation_tests {
         assert!(!release_path(&a), "already released");
         assert_eq!(reserve_path(&dir, "x.stl"), dir.join("x.stl"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod popup_tests {
+    use super::*;
+
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn a_popup_is_https_only() {
+        assert!(popup_allowed(&u("https://accounts.google.com/o/oauth2/auth")));
+        assert!(!popup_allowed(&u("http://accounts.google.com/o/oauth2/auth")));
+        assert!(!popup_allowed(&u("file:///C:/Windows/win.ini")));
+        assert!(!popup_allowed(&u("javascript:alert(1)")));
+        assert!(!popup_allowed(&u("data:text/html,hi")));
+    }
+
+    #[test]
+    fn about_blank_is_the_only_non_https_popup_url() {
+        assert!(popup_allowed(&u("about:blank")));
+        assert!(!popup_allowed(&u("about:srcdoc")));
+    }
+
+    #[test]
+    fn an_unapproved_popup_host_is_refused() {
+        for bad in [
+            "https://evil.example/login",
+            "https://accounts.google.com.evil.example/",
+            "https://notfacebook.com/",
+            "https://printables.com/",
+            "https://example.com/",
+        ] {
+            assert!(!popup_allowed(&u(bad)), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_identity_providers_and_return_sites_are_allowed() {
+        for ok in [
+            "https://accounts.google.com/signin",
+            "https://appleid.apple.com/auth/authorize",
+            "https://www.facebook.com/login.php",
+            "https://m.facebook.com/dialog/oauth",
+            "https://bambulab.com/en-us/sign-in",
+            "https://makerworld.com/en/",
+        ] {
+            assert!(popup_allowed(&u(ok)), "{ok}");
+        }
+    }
+
+    #[test]
+    fn a_second_simultaneous_popup_is_refused_until_the_first_closes() {
+        let gate = PopupGate::new();
+        assert!(gate.claim(), "first popup gets the slot");
+        assert!(!gate.claim(), "second popup is refused");
+        assert!(!gate.claim());
+        gate.release();
+        assert!(gate.claim(), "a closed popup frees the slot");
+    }
+
+    #[test]
+    fn popup_hosts_do_not_widen_the_main_browsers_navigation() {
+        // Facebook, Apple and the wider bambulab.com site are popup-only: the main model
+        // browser still refuses them, and still refuses anything off its three lists.
+        assert!(!navigation_allowed(&u("https://www.facebook.com/login.php")));
+        assert!(!navigation_allowed(&u("https://appleid.apple.com/auth/authorize")));
+        assert!(!navigation_allowed(&u("https://bambulab.com/en-us/account")));
+        assert!(!navigation_allowed(&u("https://evil.example/")));
+        assert!(!navigation_allowed(&u("http://makerworld.com/")));
+        assert!(navigation_allowed(&u("https://makerworld.com/en/")));
+    }
+
+    #[test]
+    fn the_popup_is_built_without_a_profile_of_its_own_and_without_privileges() {
+        let main_rs = include_str!("main.rs").replace("
+", "
+");
+        let start = main_rs.find("fn auth_popup").expect("auth_popup exists");
+        let body = &main_rs[start..];
+        let end = body.find("
+}
+").map(|i| i + 3).unwrap_or(body.len());
+        let body = &body[..end];
+        // Shares the opener's environment (and so only the Model Connect profile) ...
+        assert!(body.contains(".window_features("), "popup must inherit the opener's environment");
+        // ... and never names a data directory, an invoke handler, a script, or a capability.
+        for forbidden in [".data_directory(", "initialization_script", "invoke_handler", "with_global_tauri", "add_capability", "capabilit"] {
+            assert!(!body.contains(forbidden), "popup must not use {forbidden}");
+        }
+        // Its own popups, downloads and navigation are locked down.
+        assert!(body.contains("NewWindowResponse::Deny"));
+        assert!(body.contains("popup_allowed"));
+        assert!(body.contains("release()"), "closing the popup frees the single slot");
+    }
+
+    #[test]
+    fn only_the_main_window_label_has_a_capability_so_the_popup_has_none() {
+        let caps = include_str!("../capabilities/default.json");
+        let v: serde_json::Value = serde_json::from_str(caps).unwrap();
+        let windows = v["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0], "main");
+        assert!(!caps.contains("model-auth") && !caps.contains('*'));
+    }
+
+    #[test]
+    fn clear_site_data_targets_the_model_browser_profile_and_nothing_of_studio() {
+        let main_rs = include_str!("main.rs").replace("
+", "
+");
+        let start = main_rs.find("fn clear_model_browser_data").unwrap();
+        let body = &main_rs[start..start + 700.min(main_rs.len() - start)];
+        assert!(body.contains("MODEL_BROWSER_LABEL"));
+        assert!(body.contains("clear_all_browsing_data"));
+        assert!(!body.contains("\"main\""), "must never clear the main Studio webview");
+    }
+}
+
+#[cfg(test)]
+mod makerworld_host_tests {
+    use super::*;
+
+    #[test]
+    fn the_observed_makerworld_file_host_is_a_download_host_and_nothing_wider() {
+        let u = |s: &str| Url::parse(s).unwrap();
+        assert!(is_download_host(&u("https://makerworld.bblmw.com/makerworld/model/x.3mf")));
+        assert!(!is_download_host(&u("http://makerworld.bblmw.com/x.3mf")));
+        assert!(!is_download_host(&u("https://bblmw.com/x.3mf")));
+        assert!(!is_download_host(&u("https://evil.makerworld.bblmw.com/x.3mf")));
+        assert!(!is_download_host(&u("https://a.files.printables.com/x.stl")));
+        assert!(is_download_host(&u("https://MakerWorld.BBLMW.com/x.3mf")));
+        assert!(is_download_host(&u("https://files.printables.com/x.stl")));
+        assert!(!is_download_host(&u("https://evilmakerworld.bblmw.com.example/x.3mf")));
+        // A file host is not a place to browse to or sign in at.
+        assert!(navigation_allowed(&u("https://makerworld.bblmw.com/a")));
+        assert!(!popup_allowed(&u("https://makerworld.bblmw.com/a")));
     }
 }

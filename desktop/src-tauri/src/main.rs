@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
-use tauri::webview::{DownloadEvent, NewWindowResponse};
+use tauri::webview::{DownloadEvent, NewWindowFeatures, NewWindowResponse};
 use tauri::{
     Emitter, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
@@ -39,6 +39,57 @@ use sidecar::{shutdown_sidecar, spawn_sidecar, ApiInfo, SidecarProc};
 /// refuses anything not https + on the approved-domain allowlist, and blocks any
 /// later navigation that leaves the allowlist.
 const MODEL_BROWSER_LABEL: &str = "model-browser";
+const AUTH_POPUP_LABEL: &str = "model-auth";
+
+/// A site's own sign-in popup (`window.open`), opened only for the identity providers in
+/// `model_browser::POPUP_HOSTS`, one at a time, https only. It is a separate window that
+/// inherits the opener's browser environment, so it shares the Model Connect profile and
+/// nothing else, and the sign-in the provider completes is already there for the main
+/// Model Browser when the popup closes. It gets no Studio access of any kind.
+fn auth_popup(app: &tauri::AppHandle, base: &Path, url: Url, features: NewWindowFeatures) -> NewWindowResponse<tauri::Wry> {
+    if cfg!(target_os = "macos") || !model_browser::popup_allowed(&url) {
+        model_browser::note_blocked(base, &url);
+        return NewWindowResponse::Deny;
+    }
+    if !model_browser::popup_gate().claim() {
+        return NewWindowResponse::Deny;
+    }
+    let blank = match Url::parse("about:blank") {
+        Ok(u) => u,
+        Err(_) => {
+            model_browser::popup_gate().release();
+            return NewWindowResponse::Deny;
+        }
+    };
+    let nav_base = base.to_path_buf();
+    let built = WebviewWindowBuilder::new(app, AUTH_POPUP_LABEL, WebviewUrl::External(blank))
+        .title("Snapmaker Studio — Sign in")
+        .window_features(features)
+        .on_navigation(move |u| {
+            let ok = model_browser::popup_allowed(u);
+            if !ok {
+                model_browser::note_blocked(&nav_base, u);
+            }
+            ok
+        })
+        .on_new_window(|_url, _features| NewWindowResponse::Deny)
+        .on_download(|_wv, _event| false)
+        .build();
+    match built {
+        Ok(window) => {
+            window.on_window_event(|event| {
+                if matches!(event, WindowEvent::Destroyed) {
+                    model_browser::popup_gate().release();
+                }
+            });
+            NewWindowResponse::Create { window }
+        }
+        Err(_) => {
+            model_browser::popup_gate().release();
+            NewWindowResponse::Deny
+        }
+    }
+}
 
 /// Create the locked Model Browser window, hidden, at about:blank.
 ///
@@ -92,6 +143,8 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
     std::fs::create_dir_all(&downloads).map_err(|e| e.to_string())?;
     let app_for_dl = app.clone();
     let downloads_for_dl = downloads.clone();
+    let app_for_popup = app.clone();
+    let base_for_popup = base.clone();
     let w = WebviewWindowBuilder::new(app, MODEL_BROWSER_LABEL, WebviewUrl::External(blank))
         .title("Snapmaker Studio — Model Browser")
         .inner_size(1100.0, 850.0)
@@ -108,8 +161,8 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
             }
             ok
         })
-        // Sign-in is a same-window redirect on every site observed, so no popup is needed.
-        .on_new_window(|_url, _features| NewWindowResponse::Deny)
+        // A site's sign-in popup is allowed only through `auth_popup`; any other popup is denied.
+        .on_new_window(move |url, features| auth_popup(&app_for_popup, &base_for_popup, url, features))
         .on_document_title_changed(|_wv, title| model_browser::set_title(title))
         .on_download(move |wv, event| match event {
             DownloadEvent::Requested { url, destination } => {

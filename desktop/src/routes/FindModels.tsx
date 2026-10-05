@@ -16,7 +16,7 @@ import { useModelDownloads } from "@/store/modelDownloads";
 import { SITE_DATA_COPY } from "@/lib/modelDownloads";
 import { useMode } from "@/store/mode";
 import { useOpenFile } from "@/hooks/useOpenFile";
-import { MODEL_BROWSER_COPY, panelLabel, showPanel, closedPanel, type BrowserPanelState } from "@/lib/modelBrowser";
+import { MODEL_BROWSER_COPY, MODEL_CONNECT_STEPS, panelLabel, showPanel, closedPanel, type BrowserPanelState } from "@/lib/modelBrowser";
 import {
   filterResults, linkOutUrl, importReasonLabel, DISCLAIMER, BROWSE_PROVIDERS,
   SANCTIONED_SOURCES, type SearchFilters, type SearchResponse, type ModelSource,
@@ -136,9 +136,29 @@ export default function FindModels() {
             </Button>
           ))}
         </div>
+        <ol className="list-decimal space-y-0.5 pl-5 pt-1 text-xs text-muted-foreground">
+          {MODEL_CONNECT_STEPS.map((step) => <li key={step}>{step}</li>)}
+        </ol>
         <p className="flex items-start gap-1.5 pt-1 text-[11px] text-muted-foreground">
           <Lock className="mt-0.5 h-3 w-3 shrink-0" /> {MODEL_BROWSER_COPY.trust}
         </p>
+        <div className="space-y-1 border-t border-border pt-2">
+          <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.signIn}</p>
+          <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.clear}</p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {!confirmClear ? (
+              <Button size="sm" variant="secondary" onClick={() => { setClearNote(null); setConfirmClear(true); }}>
+                Clear site data…
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" onClick={clearSiteData}>Yes, clear site data</Button>
+                <Button size="sm" variant="secondary" onClick={() => setConfirmClear(false)}>Cancel</Button>
+              </>
+            )}
+            {clearNote && <span role="status" className="text-xs text-muted-foreground">{clearNote}</span>}
+          </div>
+        </div>
       </CardContent></Card>
 
       {/* 3) Control center — visible only while the locked window is open */}
@@ -175,26 +195,6 @@ export default function FindModels() {
           {recent.map((item) => <AddedFromCard key={item.path} item={item} />)}
         </div>
       )}
-
-      {/* 3c) Sign-in lives in the browser, not in Studio */}
-      <Card><CardContent className="space-y-2 p-5">
-        <p className="text-sm font-semibold">Signing in to model sites</p>
-        <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.signIn}</p>
-        <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.clear}</p>
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {!confirmClear ? (
-            <Button size="sm" variant="secondary" onClick={() => { setClearNote(null); setConfirmClear(true); }}>
-              Clear site data…
-            </Button>
-          ) : (
-            <>
-              <Button size="sm" onClick={clearSiteData}>Yes, clear site data</Button>
-              <Button size="sm" variant="secondary" onClick={() => setConfirmClear(false)}>Cancel</Button>
-            </>
-          )}
-          {clearNote && <span role="status" className="text-xs text-muted-foreground">{clearNote}</span>}
-        </div>
-      </CardContent></Card>
 
       {/* 4) Downloaded file → Project Doctor (single, no duplicate) */}
       <Card><CardContent className="space-y-2 p-5">
