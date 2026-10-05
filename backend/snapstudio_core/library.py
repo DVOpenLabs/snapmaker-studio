@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS nozzle_confirmation_meta (
   revision INTEGER NOT NULL,
   PRIMARY KEY (host, port)
 );
+CREATE TABLE IF NOT EXISTS project_sources (
+  project_id INTEGER PRIMARY KEY,
+  site TEXT NOT NULL,
+  page_url TEXT,
+  filename TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  imported_at TEXT NOT NULL
+);
 """
 # v1.2 added `nozzle_confirmations` and `nozzle_confirmation_meta` above as
 # CREATE TABLE IF NOT EXISTS statements. This does NOT bump SCHEMA_VERSION: a
@@ -81,7 +90,8 @@ CREATE TABLE IF NOT EXISTS nozzle_confirmation_meta (
 # never heard of is harmless (it never queries them), so refusing that DB
 # would only break downgrade for no protective gain. Only a change to an
 # EXISTING table's shape, or new data an older version would misinterpret,
-# is worth the one-way refusal SCHEMA_VERSION guards.
+# is worth the one-way refusal SCHEMA_VERSION guards. v1.4 adds `project_sources`
+# (where an in-app Model Browser download came from) on the same terms.
 
 
 class LibraryVersionError(RuntimeError):
@@ -174,7 +184,36 @@ def delete_project(conn: sqlite3.Connection, project_id: int) -> None:
     with conn:
         conn.execute("DELETE FROM project_tags WHERE project_id=?", (project_id,))
         conn.execute("DELETE FROM history WHERE project_id=?", (project_id,))
+        conn.execute("DELETE FROM project_sources WHERE project_id=?", (project_id,))
         conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
+
+
+def upsert_source(conn: sqlite3.Connection, *, project_id: int, site: str,
+                  page_url: str | None, filename: str, sha256: str,
+                  size_bytes: int, imported_at: str) -> None:
+    """Record where a project's file came from (one row per project)."""
+    with conn:
+        conn.execute(
+            """INSERT INTO project_sources
+                 (project_id, site, page_url, filename, sha256, size_bytes, imported_at)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(project_id) DO UPDATE SET
+                 site=excluded.site, page_url=excluded.page_url,
+                 filename=excluded.filename, sha256=excluded.sha256,
+                 size_bytes=excluded.size_bytes, imported_at=excluded.imported_at""",
+            (project_id, site, page_url, filename, sha256, size_bytes, imported_at))
+
+
+def get_source(conn: sqlite3.Connection, project_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM project_sources WHERE project_id=?",
+                       (project_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_sources(conn: sqlite3.Connection) -> dict[int, dict]:
+    """Every provenance row keyed by project_id (list_projects stays join-free)."""
+    return {r["project_id"]: dict(r)
+            for r in conn.execute("SELECT * FROM project_sources").fetchall()}
 
 
 def add_tag(conn: sqlite3.Connection, project_id: int, tag: str) -> None:

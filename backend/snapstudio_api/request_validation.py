@@ -33,6 +33,24 @@ def optional_str(data: dict, key: str, default: str = "") -> str:
     return v
 
 
+def require_bounded_str(data: dict, key: str, max_len: int) -> str:
+    """A non-empty string no longer than ``max_len`` (strings only, no coercion)."""
+    v = require_str(data, key)
+    if len(v) > max_len:
+        raise ValidationError(f"Invalid '{key}'")
+    return v
+
+
+def optional_bounded_str(data: dict, key: str, max_len: int) -> str | None:
+    """Absent/null -> None; otherwise a string no longer than ``max_len``."""
+    v = data.get(key)
+    if v is None:
+        return None
+    if not isinstance(v, str) or len(v) > max_len:
+        raise ValidationError(f"Invalid '{key}'")
+    return v
+
+
 def require_path_string(data: dict, key: str = "path") -> str:
     """A non-empty string path. (Existence/safety is the engine's concern; this
     only guarantees the field is a usable string, not a number/null/object.)"""

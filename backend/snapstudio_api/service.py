@@ -5,6 +5,7 @@ timestamps and the on-disk library index. The engine stays pure and testable.
 """
 from __future__ import annotations
 import datetime
+import hashlib
 import os
 import re
 import threading
@@ -24,6 +25,7 @@ from snapstudio_core import print_failure
 from snapstudio_core import print_quality
 from snapstudio_core import first_layer_doctor
 from snapstudio_core.paths import data_dir as _resolve_data_dir
+from snapstudio_core.errors import SnapStudioError
 
 API_VERSION = "api/1"
 
@@ -2099,6 +2101,110 @@ def record_diagnosis(path: str, result: dict) -> None:
             conn.close()
     except Exception:
         pass  # the library is an index; failing to record must not break /doctor
+
+
+# --- model-site downloads (in-app Model Browser -> library, with provenance) --
+
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+_DOWNLOAD_EXTENSIONS = (".3mf", ".stl")
+# registrable host -> display name. Subdomains of these are accepted too.
+_MODEL_SITES = {
+    "printables.com": "Printables",
+    "thingiverse.com": "Thingiverse",
+    "myminifactory.com": "MyMiniFactory",
+    "cults3d.com": "Cults3D",
+    "thangs.com": "Thangs",
+    "makerworld.com": "MakerWorld",
+}
+
+
+class DownloadRefused(SnapStudioError):
+    """A downloaded file Studio will not add to the library. The message is safe
+    to show verbatim: it never contains a path, a URL or anything account-related."""
+
+
+def _model_site(host: str) -> str | None:
+    h = (host or "").strip().lower().rstrip(".")
+    for site in _MODEL_SITES:
+        if h == site or h.endswith("." + site):
+            return site
+    return None
+
+
+def _clean_page_url(page_url: str | None, site: str) -> str | None:
+    """Keep a page URL only if it is https on the same site; drop query/fragment/credentials."""
+    if not page_url:
+        return None
+    try:
+        u = urllib.parse.urlsplit(page_url)
+        if (u.scheme != "https" or u.username or u.password or u.port not in (None, 443)
+                or _model_site(u.hostname or "") != site):
+            return None
+        return "https://" + u.hostname.lower() + u.path
+    except ValueError:
+        return None
+
+
+def register_downloaded_model(path: str, site: str, page_url: str | None = None) -> dict:
+    """Add a file the Model Browser just downloaded to the library, with provenance.
+
+    Runs the existing doctor; a file that cannot be analysed leaves no library row and
+    no source row. Raises DownloadRefused (a deliberate, user-safe refusal) otherwise."""
+    if not isinstance(path, str) or not os.path.isfile(path):
+        raise DownloadRefused("That download is not available as a file.")
+    filename = os.path.basename(path)
+    if os.path.splitext(filename)[1].lower() not in _DOWNLOAD_EXTENSIONS:
+        raise DownloadRefused("Only .3mf and .stl downloads can be added to the library.")
+    site_key = _model_site(site)
+    if site_key is None:
+        raise DownloadRefused("That site is not one of the supported model sites.")
+    size = os.path.getsize(path)
+    if size <= 0:
+        raise DownloadRefused("The downloaded file is empty.")
+    if size > MAX_DOWNLOAD_BYTES:
+        raise DownloadRefused("The downloaded file is too large to add.")
+
+    digest, total = hashlib.sha256(), 0
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_DOWNLOAD_BYTES:
+                    raise DownloadRefused("The downloaded file is too large to add.")
+                digest.update(chunk)
+    except OSError:
+        raise DownloadRefused("The downloaded file could not be read.") from None
+
+    try:
+        result = doctor(path)
+    except Exception:
+        result = None
+    unreadable = (not isinstance(result, dict) or result.get("verdict") == "HIGH_RISK"
+                  or result.get("family") == "unknown"
+                  or (result.get("input_type") == "stl" and result.get("score") is None))
+    if unreadable:
+        raise DownloadRefused("Studio could not read this file as a 3MF or STL model, "
+                              "so it was not added to the library.")
+    record_diagnosis(path, result)
+
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT id FROM projects WHERE source_path=?", (path,)).fetchone()
+        if row is None:
+            raise DownloadRefused("The file could not be added to the library.")
+        pid = int(row["id"])
+        library.upsert_source(
+            conn, project_id=pid, site=site_key, page_url=_clean_page_url(page_url, site_key),
+            filename=filename, sha256=digest.hexdigest(), size_bytes=total, imported_at=_now())
+    finally:
+        conn.close()
+    verdict = result.get("verdict")
+    return {"ok": True, "project_id": pid, "name": filename, "filename": filename,
+            "site": site_key, "site_name": _MODEL_SITES[site_key],
+            "sha256": digest.hexdigest(), "size_bytes": total,
+            "source_family": result.get("family"), "verdict": verdict,
+            "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
+            "ready_hint": "check" if verdict == "READY" else "prepare"}
 
 
 def record_conversion(path: str, result: dict) -> None:
