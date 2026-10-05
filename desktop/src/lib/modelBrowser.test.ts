@@ -17,4 +17,12 @@ describe("Model Browser control panel", () => {
     expect(all).toContain("project doctor");
     expect(all).not.toMatch(/api key.*required|import to studio|downloads? for you|auto-?import|chrome|edge/);
   });
+  it("describes Model Connect accurately: the browser downloads, Studio adds it to the library", () => {
+    const flow = MODEL_BROWSER_COPY.flow.toLowerCase();
+    const trust = MODEL_BROWSER_COPY.trust.toLowerCase();
+    expect(flow).toContain("adds it to your library");
+    expect(trust).toContain("never sees your password or cookies");
+    expect(trust).toContain("never fetches files itself");
+    expect(trust).toContain("no api keys are needed");
+  });
 });

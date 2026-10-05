@@ -20,41 +20,19 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod model_browser;
 mod sidecar;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
+use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{
-    Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    Emitter, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
 use sidecar::{shutdown_sidecar, spawn_sidecar, ApiInfo, SidecarProc};
-
-// Model Browser allowlist — the ONLY domains the in-app browser may navigate to.
-// Enforced in Rust at open time and on every navigation; off-allowlist top-level
-// navigations are blocked. The browser window gets no capabilities (no IPC).
-const ALLOWED_MODEL_DOMAINS: &[&str] = &[
-    "printables.com",
-    "thingiverse.com",
-    "myminifactory.com",
-    "cults3d.com",
-    "thangs.com",
-    "makerworld.com",
-];
-
-fn model_host_allowed(url: &Url) -> bool {
-    match url.host_str() {
-        Some(h) => {
-            let h = h.to_ascii_lowercase();
-            ALLOWED_MODEL_DOMAINS
-                .iter()
-                .any(|d| h == *d || h.ends_with(&format!(".{d}")))
-        }
-        None => false,
-    }
-}
 
 /// Open (or reuse) the locked in-app Model Browser at an approved-site URL.
 /// The frontend builds the (encoded) URL; Rust is the security boundary: it
@@ -76,18 +54,109 @@ const MODEL_BROWSER_LABEL: &str = "model-browser";
 /// so the remote page has zero Studio IPC. `on_navigation` locks every navigation to
 /// the approved-domain allowlist; only about:blank (the initial blank doc) is allowed
 /// off-list.
+/// Where Studio keeps the Model Browser's profile and downloads. Honours the engine data
+/// directory override (so an isolated harness run stays isolated), else the app-local folder.
+fn model_state_base(app: &tauri::AppHandle) -> PathBuf {
+    match std::env::var("SNAPSTUDIO_DATA_DIR") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => app.path().app_local_data_dir().unwrap_or_else(|_| std::env::temp_dir()),
+    }
+}
+
+/// The Model Browser's OWN WebView2 profile, separate from the main Studio webview, so
+/// "Clear site data" can never touch Studio's own stored settings. (If an isolating
+/// harness sets WEBVIEW2_USER_DATA_FOLDER, WebView2 overrides this and everything stays
+/// inside that isolated folder.)
+fn model_browser_profile_dir(app: &tauri::AppHandle) -> PathBuf {
+    model_state_base(app).join("model-browser-profile")
+}
+
+/// Where browser-initiated downloads are accepted. Studio controls this folder.
+fn model_downloads_dir(app: &tauri::AppHandle) -> PathBuf {
+    model_state_base(app).join("model-downloads")
+}
+
+fn file_name_of(path: &Path) -> String {
+    path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string()
+}
+
 fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
     if let Some(w) = app.get_webview_window(MODEL_BROWSER_LABEL) {
         return Ok(w);
     }
     let blank = Url::parse("about:blank").map_err(|e| e.to_string())?;
+    let base = model_state_base(app);
+    let profile = model_browser_profile_dir(app);
+    let downloads = model_downloads_dir(app);
+    std::fs::create_dir_all(&profile).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&downloads).map_err(|e| e.to_string())?;
+    let app_for_dl = app.clone();
+    let downloads_for_dl = downloads.clone();
     let w = WebviewWindowBuilder::new(app, MODEL_BROWSER_LABEL, WebviewUrl::External(blank))
         .title("Snapmaker Studio — Model Browser")
         .inner_size(1100.0, 850.0)
         .min_inner_size(900.0, 600.0)
         .center()
         .visible(false)
-        .on_navigation(|u| u.scheme() == "about" || model_host_allowed(u))
+        .data_directory(profile)
+        // Three separate lists (model sites, download hosts, sign-in hosts); anything
+        // else is refused and only its hostname is noted, never a path or token.
+        .on_navigation(move |u| {
+            let ok = model_browser::navigation_allowed(u);
+            if !ok {
+                model_browser::note_blocked(&base, u);
+            }
+            ok
+        })
+        // Sign-in is a same-window redirect on every site observed, so no popup is needed.
+        .on_new_window(|_url, _features| NewWindowResponse::Deny)
+        .on_document_title_changed(|_wv, title| model_browser::set_title(title))
+        .on_download(move |wv, event| match event {
+            DownloadEvent::Requested { url: _, destination } => {
+                let suggested = file_name_of(destination);
+                match model_browser::sanitize_filename(&suggested) {
+                    Some(name) if model_browser::supported_extension(&name).is_some() => {
+                        let dest = model_browser::unique_path(&downloads_for_dl, &name);
+                        let page = wv.url().map(|u| u.to_string()).unwrap_or_default();
+                        let site = Url::parse(&page)
+                            .ok()
+                            .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+                            .unwrap_or_default();
+                        *destination = dest.clone();
+                        model_browser::remember(dest, model_browser::Pending {
+                            site,
+                            page_url: model_browser::strip_url(&page),
+                            title: model_browser::title(),
+                        });
+                        true
+                    }
+                    _ => {
+                        let _ = app_for_dl.emit(
+                            "model-download-refused",
+                            serde_json::json!({
+                                "filename": model_browser::sanitize_filename(&suggested).unwrap_or_default()
+                            }),
+                        );
+                        false
+                    }
+                }
+            }
+            DownloadEvent::Finished { url: _, path, success } => {
+                if let (true, Some(p)) = (success, path) {
+                    if let Some(pending) = model_browser::take(&p) {
+                        let _ = app_for_dl.emit("model-download-finished", serde_json::json!({
+                            "path": p.to_string_lossy(),
+                            "filename": file_name_of(&p),
+                            "site": pending.site,
+                            "page_url": pending.page_url,
+                            "title": pending.title,
+                        }));
+                    }
+                }
+                true
+            }
+            _ => true,
+        })
         .build()
         .map_err(|e| e.to_string())?;
     // The OS close button should HIDE the locked window (keep it for reuse), not
@@ -102,10 +171,20 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
     Ok(w)
 }
 
+/// Clear the Model Browser's own profile (cookies, storage, cache). It is a separate
+/// WebView2 profile, so this can never touch the main Studio webview or its settings.
+#[tauri::command]
+fn clear_model_browser_data(app: tauri::AppHandle) -> Result<(), String> {
+    let w = app
+        .get_webview_window(MODEL_BROWSER_LABEL)
+        .ok_or_else(|| "model-browser window unavailable".to_string())?;
+    w.clear_all_browsing_data().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn open_model_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let parsed = Url::parse(&url).map_err(|_| "invalid url".to_string())?;
-    if parsed.scheme() != "https" || !model_host_allowed(&parsed) {
+    if parsed.scheme() != "https" || !model_browser::is_site(&parsed) {
         return Err("url is not on the approved model-site allowlist".into());
     }
     eprintln!("[model-browser] open host={} -> approved window", parsed.host_str().unwrap_or("?"));
@@ -890,6 +969,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_api_info,
             open_model_browser,
+            clear_model_browser_data,
             close_model_browser,
             is_model_browser_open,
             focus_model_browser,

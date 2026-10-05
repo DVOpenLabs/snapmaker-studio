@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
 import {
   openModelBrowser, closeModelBrowser, isModelBrowserOpen, focusModelBrowser, modelSearch,
+  clearModelBrowserData,
 } from "@/api";
+import { AddedFromCard } from "@/components/AddedFromCard";
+import { useModelDownloads } from "@/store/modelDownloads";
+import { SITE_DATA_COPY } from "@/lib/modelDownloads";
 import { useMode } from "@/store/mode";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { MODEL_BROWSER_COPY, panelLabel, showPanel, closedPanel, type BrowserPanelState } from "@/lib/modelBrowser";
@@ -37,6 +41,22 @@ export default function FindModels() {
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const providerLabel = (id: string) => BROWSE_PROVIDERS.find((p) => p.id === id)?.label ?? id;
+
+  // What arrived from the Model Browser, and the two-step "Clear site data".
+  const recent = useModelDownloads((s) => s.recent);
+  const refusal = useModelDownloads((s) => s.refusal);
+  const failure = useModelDownloads((s) => s.failure);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearNote, setClearNote] = useState<string | null>(null);
+  async function clearSiteData() {
+    try {
+      await clearModelBrowserData();
+      setClearNote("Site data cleared. You are signed out of the model sites.");
+    } catch {
+      setClearNote("Site data could not be cleared (this needs the desktop app).");
+    }
+    setConfirmClear(false);
+  }
 
   // Open (or re-point) the locked Model Browser window at an approved site.
   async function browse(id: string) {
@@ -128,8 +148,8 @@ export default function FindModels() {
             <Compass className="h-4 w-4 text-primary" /> {panelLabel(panel)}
           </p>
           <p className="text-xs text-muted-foreground">
-            The site is open in a separate, locked Snapmaker Studio window. Download the STL/3MF there,
-            then come back and open it here for Project Doctor.
+            The site is open in a separate, locked Snapmaker Studio window. Download the STL or 3MF
+            there the usual way — Studio adds it to your library, and it appears below.
           </p>
           <div className="flex flex-wrap gap-2 pt-1">
             <Button size="sm" onClick={bringToFront}><ExternalLink className="h-4 w-4" /> Bring browser to front</Button>
@@ -142,6 +162,39 @@ export default function FindModels() {
           </div>
         </CardContent></Card>
       )}
+
+      {/* 3b) What the Model Browser just added to the library */}
+      {(refusal || failure) && (
+        <div role="status" className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+          <p className="flex items-start gap-1.5"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {refusal || failure}</p>
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Added from your downloads</p>
+          {recent.map((item) => <AddedFromCard key={item.path} item={item} />)}
+        </div>
+      )}
+
+      {/* 3c) Sign-in lives in the browser, not in Studio */}
+      <Card><CardContent className="space-y-2 p-5">
+        <p className="text-sm font-semibold">Signing in to model sites</p>
+        <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.signIn}</p>
+        <p className="text-xs text-muted-foreground">{SITE_DATA_COPY.clear}</p>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {!confirmClear ? (
+            <Button size="sm" variant="secondary" onClick={() => { setClearNote(null); setConfirmClear(true); }}>
+              Clear site data…
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" onClick={clearSiteData}>Yes, clear site data</Button>
+              <Button size="sm" variant="secondary" onClick={() => setConfirmClear(false)}>Cancel</Button>
+            </>
+          )}
+          {clearNote && <span role="status" className="text-xs text-muted-foreground">{clearNote}</span>}
+        </div>
+      </CardContent></Card>
 
       {/* 4) Downloaded file → Project Doctor (single, no duplicate) */}
       <Card><CardContent className="space-y-2 p-5">
@@ -214,9 +267,10 @@ export default function FindModels() {
       <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">How Studio handles sites</summary>
         <p className="mt-2 rounded-md bg-muted/40 p-3">
-          Studio does not scrape, auto-import, or bypass site logins. Sites open in a Studio-owned,
-          approved-sites-only window; navigation off the approved sites is blocked. Download from the
-          site, then open the file in Studio. {DISCLAIMER}
+          Studio does not scrape pages, fetch files itself, or bypass site logins or terms. Sites open
+          in a Studio-owned window that can only reach the approved sites and their sign-in and download
+          hosts; anything else is blocked. When you download an STL or 3MF there, your browser saves it
+          into a Studio folder and Studio adds it to your library. {DISCLAIMER}
         </p>
       </details>
     </div>
