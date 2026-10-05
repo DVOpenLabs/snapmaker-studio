@@ -211,6 +211,8 @@ pub fn strip_url(raw: &str) -> String {
     match Url::parse(raw) {
         Ok(u) if u.scheme() == "https" => {
             let mut u = u;
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
             u.set_query(None);
             u.set_fragment(None);
             u.to_string()
@@ -413,5 +415,23 @@ mod tests {
         assert_eq!(unique_path(&dir, "a.3mf"), dir.join("a (2).3mf"));
         assert_eq!(unique_path(&dir, "fresh.3mf"), dir.join("fresh.3mf"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod repair_tests {
+    use super::*;
+
+    #[test]
+    fn strip_url_drops_credentials_query_and_fragment() {
+        let s = strip_url("https://user:pw@printables.com/model/1?token=abc#x");
+        assert_eq!(s, "https://printables.com/model/1");
+    }
+
+    #[test]
+    fn download_host_is_checked_on_the_real_url() {
+        assert!(is_download_host(&Url::parse("https://files.printables.com/m/a.stl").unwrap()));
+        assert!(!is_download_host(&Url::parse("https://evil.example/a.stl").unwrap()));
+        assert!(!is_download_host(&Url::parse("https://printables.com/a.stl").unwrap()));
     }
 }

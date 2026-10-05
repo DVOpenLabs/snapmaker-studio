@@ -39,6 +39,8 @@ All notable changes to this project are documented here. The format is based on
 - Printables downloads are verified. MakerWorld is the next site to verify live. A file
   from a host Studio has not allowlisted is refused with a plain message. The other
   approved sites keep browsing until they are verified the same way.
+- Model Connect downloads and "Clear site data" are available on Windows and Linux. On
+  macOS the browser still browses, but downloads and clearing are switched off.
 - There is no load planner yet.
 
 ## [1.3.1] - 2026-10-03

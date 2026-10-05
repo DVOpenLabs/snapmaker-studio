@@ -26,7 +26,7 @@ export const BUCKET_META: Record<ReadyNowBucket, { label: string; icon: ReadyNow
   },
   needs_preparation: {
     label: "Needs preparation", icon: "prepare",
-    blurb: "Made for another printer. Studio can prepare a U1 copy; no printer is needed to say so.",
+    blurb: "Made for another printer. Studio can prepare a U1 copy.",
   },
   needs_attention: {
     label: "Needs attention", icon: "attention",

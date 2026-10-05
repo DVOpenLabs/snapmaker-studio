@@ -136,6 +136,11 @@ U1 → Prepare if needed → Snapmaker Orca.
 - **No IPC.** Only the `main` window has a Tauri capability. The browser window can call no
   Studio command, and Studio never reads its cookies.
 
+Platform: downloads and "Clear site data" are Windows and Linux only. On macOS wry cannot
+give the browser its own data store or report the finished file path, so both are disabled
+there rather than risk clearing Studio's own webview. The download URL itself (not only the
+page) must be on the file-host allowlist.
+
 ### Not in v1.4.0
 No folder scan, no DOM scraping, no "add current page" button, no authentication popup
 support, no Smart Load Planner. MakerWorld and Printables are the first sites needing live

@@ -393,3 +393,28 @@ def test_unreadable_file_without_a_note_says_so_plainly():
 def test_missing_file_reason():
     r = rd.classify_project(PROJECT, None, printer([spool()]), None, "missing")
     assert r["top_reason"] == "The project file could not be found."
+
+
+def test_unanswerable_printer_check_is_not_ready_now():
+    # Placement unavailable: bed fit cannot be checked, so Studio must not say ready.
+    t = traits(grams={0: 20.0})
+    r = classify(t, printer([spool(remaining=100.0, quality="tracked", as_of=NOW)]),
+                 placement={"available": False, "off_plate": []})
+    assert r["bucket"] != rd.READY_NOW
+
+
+def test_unknown_nozzle_is_not_ready_now():
+    t = traits(grams={0: 20.0})
+    t["nozzle_diameters"] = _tier(None, "unknown")
+    t["nozzle_diameters_by_toolhead"] = _tier(None, "unknown")
+    r = classify(t, printer([spool(remaining=100.0, quality="tracked", as_of=NOW)]))
+    assert r["bucket"] != rd.READY_NOW
+
+
+def test_colour_note_does_not_hide_a_possible_shortage():
+    t = traits(grams={0: 200.0})
+    r = classify(t, printer([spool(color="#0000FF", remaining=195.0, quality="tracked", as_of=NOW)]))
+    assert r["bucket"] == rd.READY_NOW
+    assert r["colour_notes"]
+    assert any("short" in u.lower() for u in r["unknowns"])
+    assert r["top_reason"] != rd.COLOUR_NOTE

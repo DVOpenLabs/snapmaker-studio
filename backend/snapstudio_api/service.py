@@ -2335,11 +2335,14 @@ def _ready_analysis(path: str, bed: dict | None,
                "placement": None, "placed": False}
     foreign = (hit["traits"].get("foreign_printer") or {}).get("value") is True
     if need_placement and not hit["placed"] and hit["state"] == "ok" and bed and not foreign:
+        # Work on a copy so concurrent scans never mutate a shared entry. A failed read is
+        # not cached as done: it is unknown this time and tried again next scan.
+        hit = dict(hit)
         try:
             hit["placement"] = plate_placement.assess(path, bed=bed, bed_name="this printer's")
+            hit["placed"] = True
         except Exception:
             hit["placement"] = None
-        hit["placed"] = True
     with _ready_cache_lock:
         if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
             _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first

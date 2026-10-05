@@ -112,10 +112,13 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
         .on_new_window(|_url, _features| NewWindowResponse::Deny)
         .on_document_title_changed(|_wv, title| model_browser::set_title(title))
         .on_download(move |wv, event| match event {
-            DownloadEvent::Requested { url: _, destination } => {
+            DownloadEvent::Requested { url, destination } => {
                 let suggested = file_name_of(destination);
+                // Only files from a verified file host, and not on macOS, where the
+                // webview cannot isolate this profile or report the finished path.
+                let host_ok = !cfg!(target_os = "macos") && model_browser::is_download_host(&url);
                 match model_browser::sanitize_filename(&suggested) {
-                    Some(name) if model_browser::supported_extension(&name).is_some() => {
+                    Some(name) if host_ok && model_browser::supported_extension(&name).is_some() => {
                         let dest = model_browser::unique_path(&downloads_for_dl, &name);
                         let page = wv.url().map(|u| u.to_string()).unwrap_or_default();
                         let site = Url::parse(&page)
@@ -175,6 +178,10 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
 /// WebView2 profile, so this can never touch the main Studio webview or its settings.
 #[tauri::command]
 fn clear_model_browser_data(app: tauri::AppHandle) -> Result<(), String> {
+    // wry cannot give macOS a separate data store, so clearing would hit Studio's own webview.
+    if cfg!(target_os = "macos") {
+        return Err("Clearing site data is not supported on this platform".into());
+    }
     let w = app
         .get_webview_window(MODEL_BROWSER_LABEL)
         .ok_or_else(|| "model-browser window unavailable".to_string())?;

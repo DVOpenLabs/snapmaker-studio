@@ -349,6 +349,14 @@ def classify_project(project: dict, traits: dict | None, printer: dict | None,
                        unknowns=[c["title"] for c in unknown_checks],
                        slots=slots, file_state=file_state)
 
+    # A check Studio could not answer (bed fit, nozzle size, toolhead count) means it cannot
+    # honestly say "ready": unknown stays unknown.
+    blocking = [c for c in unknown_checks if c["id"] not in _NOTE_ONLY and c["result"] == pf.UNKNOWN]
+    if blocking:
+        why = f"Studio could not check: {blocking[0]['title']}."
+        return cant(why, "Connect the printer or open the project in Snapmaker Orca to check.",
+                    unknowns=[c["title"] for c in unknown_checks], slots=slots)
+
     # Ready. Say exactly how much of that was checked.
     amount_checked = all(s["amount"] == "checked" for s in needed)
     colour_notes = [s["detail"] for s in needed if s["state"] == "different_colour"]
@@ -359,13 +367,21 @@ def classify_project(project: dict, traits: dict | None, printer: dict | None,
     if any(s["amount"] == "not_checked" for s in needed):
         evidence.append(AMOUNT_NOT_CHECKED)
     unknowns += [s["detail"] for s in needed if s["state"] == "maybe_not_enough"]
+    # A colour note must not hide a possible shortage on the same spool.
+    short_too = [s["sufficiency"]["detail"] for s in needed
+                 if s["state"] == "different_colour" and s.get("sufficiency")
+                 and s["sufficiency"]["verdict"] in ("insufficient", "probably_short")]
+    unknowns += short_too
     unknowns += [f"Colour not compared for {_label(s)}." for s in needed
                  if not s.get("colour_compared", False)]
     assumed = any(s["confirmed_by"] != "printer" for s in needed)
     if assumed:
         unknowns.append("Some loaded materials come from your own notes, not the printer.")
     sure = amount_checked and not colour_notes and not unknowns
-    reason = COLOUR_NOTE if colour_notes else "Every material it asks for is loaded."
+    if short_too:
+        reason = "Every material is loaded, but a spool may not hold enough and its colour differs."
+    else:
+        reason = COLOUR_NOTE if colour_notes else "Every material it asks for is loaded."
     return _result(project, READY_NOW, reason,
                    "Prepare it in Snapmaker Orca to slice." if not pf._trait(traits, "is_sliced")
                    else "Open it in Snapmaker Orca.",
