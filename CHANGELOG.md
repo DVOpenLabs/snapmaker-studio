@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+**v1.4.0 (in preparation): find a model, and know if your U1 can print it now.**
+
+### Added
+- **Ready Now.** A new page answers "What can I print on my U1 right now?" for the
+  newest 50 projects already in your Studio library. It reads your U1 once per scan and
+  sorts each project into one of five groups, each with the top reason, the next step and
+  what Studio could not tell:
+  - **Needs preparation**: made for another printer; Studio can prepare a U1 copy.
+  - **Needs attention**: a bed, toolhead, nozzle or busy-printer problem, or too little
+    filament, to resolve first.
+  - **Can't determine**: not enough information; Studio does not guess.
+  - **One change away**: a filament has no suitable spool loaded.
+  - **Ready now**: a suitable spool is loaded for every filament the project declares.
+  A project that needs a material of the right type in a different colour can stay
+  **Ready now**, with a visible colour warning. When Studio has no trusted figure for the
+  filament amount it says "Amount not checked" rather than implying it was. Ready Now is
+  read-only: it never changes the printer, a slot or your material provider, and it never
+  starts anything. Results for a file are remembered until that file changes.
+- **Model Connect.** Find Models now opens model sites in a dedicated Studio browser that
+  keeps its own sign-in, separate from Studio. When you press a site's own download button
+  for a `.3mf` or `.stl`, Studio saves the file into its downloads folder, adds it to your
+  Design Library and shows an **Added from <site>** card (Check for U1, Prepare, Open
+  project). "Clear site data" removes only the model-site sign-in.
+
+### Limits (v1.4.0)
+- Ready Now covers the newest 50 projects in the library. It does not scan folders.
+- Studio does not read model pages, has no "add this page" button and does not fetch
+  files itself. A download happens only when you press the site's own download button.
+- Sign-in and download are driven by the site in the browser window. Studio never sees
+  your password, cookies or tokens.
+- Printables downloads are verified. MakerWorld is the next site to verify live. A file
+  from a host Studio has not allowlisted is refused with a plain message. The other
+  approved sites keep browsing until they are verified the same way.
+- There is no load planner yet.
+
 ## [1.3.1] - 2026-10-03
 
 **Fixes for v1.3.0 reports.**
