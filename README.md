@@ -206,6 +206,24 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
+## Coming in v1.4.0 (unreleased)
+
+**Find a model, then know whether your U1 can print it now.**
+
+Browse MakerWorld or Printables in the Studio browser → press the site's own download
+button → the file is added to your Design Library → **Ready Now** checks it against your
+actual U1 → prepare it if needed → hand it to Snapmaker Orca.
+
+- **Ready Now** sorts the newest 50 library projects into *Needs preparation*, *Needs
+  attention*, *Can't determine*, *One change away* and *Ready now*. A right-material,
+  different-colour spool can stay *Ready now* with a visible colour warning, and "Amount
+  not checked" is said out loud when the filament weight is not a trusted figure.
+- **Model Connect** keeps a model-site sign-in inside a separate Studio browser profile.
+  Studio never sees your password, cookies or tokens, and "Clear site data" removes only
+  that sign-in.
+- Limits: library projects only (no folder scan), no page scraping, no "add this page"
+  button. Printables downloads are verified; MakerWorld is the next to verify.
+
 ## What's new in v1.3.1
 
 **A fix release for what v1.3.0 users reported.**

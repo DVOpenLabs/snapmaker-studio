@@ -10,7 +10,7 @@
 import {
   LayoutDashboard, FolderKanban, Wand2, Palette, GitCompareArrows,
   Settings, BookOpen, FileCheck2, HeartPulse, Coins,
-  ShieldCheck, Compass, Maximize2, Stethoscope, Rocket, type LucideIcon,
+  ShieldCheck, Compass, Maximize2, Stethoscope, Rocket, ListChecks, type LucideIcon,
 } from "lucide-react";
 import { DOCTORS } from "@/lib/doctors";
 
@@ -35,6 +35,8 @@ export const PRIMARY_NAV: NavItem[] = [
   { to: "/start", label: "Get Started", icon: Rocket },
   { to: doctorRoute("project"), label: "Project Doctor", icon: FileCheck2, doctorId: "project" },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  // Which of those projects could be printed on the U1 as it is loaded right now.
+  { to: "/ready-now", label: "Ready now", icon: ListChecks },
   // Compatibility merges the old Source Check + Compatibility Doctor (two tabs).
   // /source still resolves on its own for deep links.
   { to: "/compatibility", label: "Compatibility", icon: ShieldCheck },
@@ -56,8 +58,8 @@ export const PRIMARY_NAV: NavItem[] = [
   { to: "/batch", label: "Batch Prepare", icon: Wand2 },
 ];
 
-// Simple mode IA (beta.21 "one clear path for a novice"): exactly five items
-// with novice labels — Home / Check my model / My designs / Printer / Help.
+// Simple mode IA (beta.21 "one clear path for a novice"): six items
+// with novice labels — Home / This print / My designs / Ready now / Printer / Help.
 // Everything else lives under "More tools". Advanced mode keeps the full
 // PRIMARY_NAV unchanged. Routes stay validated by isKnownRoute().
 export const BEGINNER_NAV: NavItem[] = [
@@ -68,6 +70,7 @@ export const BEGINNER_NAV: NavItem[] = [
   // was using it.
   { to: "/this-print", label: "This print", icon: FileCheck2 },
   { to: "/projects", label: "My designs", icon: FolderKanban },
+  { to: "/ready-now", label: "Ready now", icon: ListChecks },
   { to: doctorRoute("printer"), label: "Printer", icon: HeartPulse, doctorId: "printer" },
   { to: "/help", label: "Help", icon: BookOpen },
 ];
@@ -90,7 +93,7 @@ export const SIMPLE_SECONDARY_NAV: NavItem[] =
 export const STATIC_ROUTES = new Set<string>([
   "/", "/projects", "/batch", "/workspace", "/printers", "/settings",
   "/why", "/plate-remap", "/compatibility", "/colors", "/scale", "/print-quality", "/first-layer", "/find-models", "/start", "/help", "/source",
-  "/after-slicing", "/this-print",
+  "/after-slicing", "/this-print", "/ready-now",
 ]);
 
 /** True when a nav `to` resolves to a real route — guards against blank pages. */

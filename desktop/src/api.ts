@@ -1,7 +1,9 @@
 // Talks to the local Python sidecar. Port + token come from the Tauri shell,
 // which spawned `python -m snapstudio_api` and read its handshake line.
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 
 type ApiInfo = { port: number; token: string };
 let cached: ApiInfo | null = null;
@@ -42,6 +44,46 @@ export async function isModelBrowserOpen(): Promise<boolean> {
 // Bring the locked Model Browser window to the front. No-op if it isn't open.
 export async function focusModelBrowser(): Promise<void> {
   await invoke("focus_model_browser");
+}
+
+// Delete the Model Browser's own cookies/cache (its profile is separate from Studio's).
+export async function clearModelBrowserData(): Promise<void> {
+  await invoke("clear_model_browser_data");
+}
+
+// Register a file the user downloaded in the Model Browser into the library, with
+// provenance. The engine validates type, size and content; a failed one adds nothing.
+export async function registerDownloadedModel(
+  path: string, site: string, pageUrl: string,
+): Promise<RegisteredModel> {
+  const { port, token } = await apiInfo();
+  const r = await fetch(`http://127.0.0.1:${port}/library/register_download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+    body: JSON.stringify({ path, site, page_url: pageUrl || undefined }),
+  });
+  if (!r.ok) {
+    // A refusal (422) carries the engine's own path-free sentence in `error`; show exactly that.
+    let detail = "";
+    try { detail = String(((await r.json()) as { error?: string }).error ?? ""); } catch { /* not JSON */ }
+    throw new Error(detail || `register download failed (${r.status})`);
+  }
+  return r.json();
+}
+
+// Listen for downloads captured by the desktop shell. Outside the desktop app (a plain
+// browser in dev) there is no event bus, so this quietly does nothing.
+export async function listenModelDownloads(handlers: {
+  onFinished: (e: ModelDownloadEvent) => void;
+  onRefused: (e: { filename: string }) => void;
+}): Promise<() => void> {
+  try {
+    const off1 = await listen<ModelDownloadEvent>("model-download-finished", (ev) => handlers.onFinished(ev.payload));
+    const off2 = await listen<{ filename: string }>("model-download-refused", (ev) => handlers.onRefused(ev.payload));
+    return () => { off1(); off2(); };
+  } catch {
+    return () => {};
+  }
 }
 
 // Snapmaker Orca handoff. detectOrca() returns the install path (or null); the UI
@@ -2215,4 +2257,70 @@ export function localSpoolsDelete(host: string, slot: number, id?: number): Prom
  *  never presented as a tracked measurement. */
 export function localSpoolsMarkUsed(host: string, slot: number, usedG: number): Promise<LocalSpoolsList> {
   return post("/local_spools/mark_used", { host, slot, used_g: usedG }, "record filament used");
+}
+
+// ---- Ready now ("what can I print on my U1 right now?") -----------------------
+// A background scan of the newest library projects against the printer's reported
+// state and the configured filament inventory. Read-only: it changes nothing on the
+// printer, in a slot mapping or in an inventory.
+export type ReadyNowBucket =
+  | "ready_now" | "one_change_away" | "needs_preparation" | "needs_attention" | "cant_determine";
+
+export interface ReadyNowSlot {
+  tool: number;
+  required_material: string | null;
+  required_colour: string | null;
+  required_grams: number | null;
+  printer_slot: number | null;
+  loaded_material: string | null;
+  loaded_colour: string | null;
+  state: string;
+  amount: string;
+  colour_differs: boolean;
+  confirmed_by: string | null;
+  detail: string | null;
+}
+
+export interface ReadyNowProject {
+  path: string;
+  name: string;
+  bucket: ReadyNowBucket;
+  top_reason: string;
+  top_action: string | null;
+  confidence: "confirmed" | "likely" | "informational" | "unknown";
+  evidence: string[];
+  unknowns: string[];
+  colour_notes: string[];
+  amount_checked: boolean;
+  slots: ReadyNowSlot[];
+  file_state: "ok" | "missing" | "unreadable";
+}
+
+export interface ReadyNowResult {
+  schema_version?: string;
+  results: ReadyNowProject[];
+  counts?: Record<ReadyNowBucket, number>;
+  scanned?: number;
+  library_total?: number;
+  printer?: { reachable: boolean; print_state: string | null };
+  provider_status?: ProviderStatus | null;
+}
+
+export interface ReadyNowStatus {
+  id: string;
+  status: "running" | "done" | "error";
+  error: string | null;
+  progress: { done: number; total: number | null };
+  /** Partial (results only) while running; complete once done. */
+  result: ReadyNowResult | null;
+}
+
+export function readyNowStart(
+  host?: string, provider: ProviderArgs = {},
+): Promise<{ job_id: string; limit: number }> {
+  return post("/ready_now/start", { host: host ?? "", port: 7125, ...provider }, "ready now");
+}
+
+export function readyNowStatus(jobId: string): Promise<ReadyNowStatus> {
+  return post("/ready_now/status", { job_id: jobId }, "ready now status");
 }

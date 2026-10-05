@@ -1,10 +1,9 @@
 # Model Discovery → "Model Browser" direction
 
-> **Direction / future doc — not a description of current beta.10 behavior.** Any
-> live API search, "Import to Studio," or one-click download ideas here are
-> future/aspirational and are **not shipped in beta.10**. Beta.10 ships an
-> approved-site Model Browser with manual download/open, no API keys, and no
-> auto-import.
+> **History and direction.** The sections below describe the beta-era browser. The
+> v1.4.0 behaviour is in "Status (v1.4.0: Model Connect)" at the end of this file and
+> supersedes the "manual download" statements above it. Live API search and one-click
+> import ideas remain unshipped.
 
 Product decision: Model Discovery is an **approved-site browser**, not an
 API-key search. Beginners browse trusted 3D-model sites, download an STL/3MF from
@@ -112,3 +111,51 @@ page). Verified live: Printables and MakerWorld both load.
 
 Do **not** reattempt the same-window `add_child` embed on this stack without first
 re-verifying the deadlock against a newer Tauri/wry/WebView2 combination.
+
+## Status (v1.4.0: Model Connect)
+
+The workflow: browse MakerWorld / Printables in the Studio browser → press the site's own
+download button → the file is added to the Design Library → Ready Now checks it against the
+U1 → Prepare if needed → Snapmaker Orca.
+
+- **Dedicated profile.** The `model-browser` window has its own persistent WebView2 data
+  directory under Studio's state folder, so a site sign-in survives a restart but is not
+  shared with Studio's own webview. "Clear site data" clears only that profile.
+- **Native downloads.** The download is taken through the webview's download event, not an
+  HTTP request made by Studio. Studio redirects it into its own downloads folder with a
+  collision-safe, sanitised name and accepts only `.3mf` and `.stl`, up to 512 MiB. The
+  only file host allowlisted so far is `files.printables.com`, observed in a live spike. A
+  download from any other host is refused with a path-free message, and the blocked host
+  (host only, size-bounded log) is recorded so it can be verified and added deliberately.
+- **Provenance.** A downloaded file is registered through `POST /library/register_download`
+  and a `project_sources` row records site, source page and download time. The library card
+  shows "Added from <site>". No cookie, token or page content is stored.
+- **Navigation.** Top-level navigation is limited to the approved sites plus the sign-in
+  hosts those sites use (`account.prusa3d.com`, `accounts.google.com`, and `bambulab.com`
+  only on its `/sign-in` path). Popups are denied; sign-in was verified to be same-window.
+- **No IPC.** Only the `main` window has a Tauri capability. The browser window can call no
+  Studio command, and Studio never reads its cookies.
+
+Platform: downloads and "Clear site data" are Windows and Linux only. On macOS wry cannot
+give the browser its own data store or report the finished file path, so both are disabled
+there rather than risk clearing Studio's own webview. The download URL itself (not only the
+page) must be on the file-host allowlist.
+
+Registration boundary: the engine accepts a download only if its resolved path (symlinks
+and junctions followed) is inside the downloads folder the desktop shell gave it, so a file
+elsewhere cannot be added with download provenance. The size cap is checked once the
+download finishes. A download abandoned part-way can leave a partial file in the downloads
+folder (a v1.4 limitation; a failed download Studio can identify is removed).
+
+### Not in v1.4.0
+No folder scan, no DOM scraping, no "add current page" button, no authentication popup
+support, no Smart Load Planner. MakerWorld and Printables are the first sites needing live
+end-to-end verification (sign-in, download, library, Ready Now, restart, clear site data).
+The other approved sites keep browsing and are not claimed to download until verified.
+
+### Ready Now (v1.4.0)
+Library projects only (newest 50). One printer read and one provider read per scan; no
+printer, slot-map or provider writes. Results are cached by path, modified time and size.
+Bucket precedence: needs preparation, needs attention, can't determine, one change away,
+ready now. A colour-only mismatch may remain Ready now with a colour note; unknown stays
+unknown.

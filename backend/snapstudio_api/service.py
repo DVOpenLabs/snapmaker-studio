@@ -5,6 +5,7 @@ timestamps and the on-disk library index. The engine stays pure and testable.
 """
 from __future__ import annotations
 import datetime
+import hashlib
 import os
 import re
 import threading
@@ -24,6 +25,7 @@ from snapstudio_core import print_failure
 from snapstudio_core import print_quality
 from snapstudio_core import first_layer_doctor
 from snapstudio_core.paths import data_dir as _resolve_data_dir
+from snapstudio_core.errors import SnapStudioError
 
 API_VERSION = "api/1"
 
@@ -2101,6 +2103,132 @@ def record_diagnosis(path: str, result: dict) -> None:
         pass  # the library is an index; failing to record must not break /doctor
 
 
+# --- model-site downloads (in-app Model Browser -> library, with provenance) --
+
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+_DOWNLOAD_EXTENSIONS = (".3mf", ".stl")
+# registrable host -> display name. Subdomains of these are accepted too.
+_MODEL_SITES = {
+    "printables.com": "Printables",
+    "thingiverse.com": "Thingiverse",
+    "myminifactory.com": "MyMiniFactory",
+    "cults3d.com": "Cults3D",
+    "thangs.com": "Thangs",
+    "makerworld.com": "MakerWorld",
+}
+
+
+class DownloadRefused(SnapStudioError):
+    """A downloaded file Studio will not add to the library. The message is safe
+    to show verbatim: it never contains a path, a URL or anything account-related."""
+
+
+def _model_site(host: str) -> str | None:
+    h = (host or "").strip().lower().rstrip(".")
+    for site in _MODEL_SITES:
+        if h == site or h.endswith("." + site):
+            return site
+    return None
+
+
+def _clean_page_url(page_url: str | None, site: str) -> str | None:
+    """Keep a page URL only if it is https on the same site; drop query/fragment/credentials."""
+    if not page_url:
+        return None
+    try:
+        u = urllib.parse.urlsplit(page_url)
+        if (u.scheme != "https" or u.username or u.password or u.port not in (None, 443)
+                or _model_site(u.hostname or "") != site):
+            return None
+        return "https://" + u.hostname.lower() + u.path
+    except ValueError:
+        return None
+
+
+def _model_downloads_root() -> str | None:
+    """The one folder Studio's Model Browser downloads into, as set by the desktop shell
+    when it starts the engine. None when unset, in which case nothing is accepted."""
+    raw = os.environ.get("SNAPSTUDIO_MODEL_DOWNLOADS_DIR")
+    return os.path.realpath(raw) if raw else None
+
+
+def _is_inside(root: str, path: str) -> bool:
+    r, p = os.path.normcase(root), os.path.normcase(path)
+    try:
+        return p != r and os.path.commonpath([r, p]) == r
+    except ValueError:  # different drives
+        return False
+
+
+def register_downloaded_model(path: str, site: str, page_url: str | None = None) -> dict:
+    """Add a file the Model Browser just downloaded to the library, with provenance.
+
+    Runs the existing doctor; a file that cannot be analysed leaves no library row and
+    no source row. Raises DownloadRefused (a deliberate, user-safe refusal) otherwise."""
+    if not isinstance(path, str) or not os.path.isfile(path):
+        raise DownloadRefused("That download is not available as a file.")
+    # Only a file inside Studio's own downloads folder can carry download provenance.
+    # Resolve symlinks first so a link inside the folder cannot point at a file outside it,
+    # and use the resolved path from here on.
+    root = _model_downloads_root()
+    path = os.path.realpath(path)
+    if root is None or not _is_inside(root, path) or not os.path.isfile(path):
+        raise DownloadRefused("That download is not available as a file.")
+    filename = os.path.basename(path)
+    if os.path.splitext(filename)[1].lower() not in _DOWNLOAD_EXTENSIONS:
+        raise DownloadRefused("Only .3mf and .stl downloads can be added to the library.")
+    site_key = _model_site(site)
+    if site_key is None:
+        raise DownloadRefused("That site is not one of the supported model sites.")
+    size = os.path.getsize(path)
+    if size <= 0:
+        raise DownloadRefused("The downloaded file is empty.")
+    if size > MAX_DOWNLOAD_BYTES:
+        raise DownloadRefused("The downloaded file is too large to add.")
+
+    digest, total = hashlib.sha256(), 0
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_DOWNLOAD_BYTES:
+                    raise DownloadRefused("The downloaded file is too large to add.")
+                digest.update(chunk)
+    except OSError:
+        raise DownloadRefused("The downloaded file could not be read.") from None
+
+    try:
+        result = doctor(path)
+    except Exception:
+        result = None
+    unreadable = (not isinstance(result, dict) or result.get("verdict") == "HIGH_RISK"
+                  or result.get("family") == "unknown"
+                  or (result.get("input_type") == "stl" and result.get("score") is None))
+    if unreadable:
+        raise DownloadRefused("Studio could not read this file as a 3MF or STL model, "
+                              "so it was not added to the library.")
+    record_diagnosis(path, result)
+
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT id FROM projects WHERE source_path=?", (path,)).fetchone()
+        if row is None:
+            raise DownloadRefused("The file could not be added to the library.")
+        pid = int(row["id"])
+        library.upsert_source(
+            conn, project_id=pid, site=site_key, page_url=_clean_page_url(page_url, site_key),
+            filename=filename, sha256=digest.hexdigest(), size_bytes=total, imported_at=_now())
+    finally:
+        conn.close()
+    verdict = result.get("verdict")
+    return {"ok": True, "project_id": pid, "name": filename, "filename": filename,
+            "site": site_key, "site_name": _MODEL_SITES[site_key],
+            "sha256": digest.hexdigest(), "size_bytes": total,
+            "source_family": result.get("family"), "verdict": verdict,
+            "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
+            "ready_hint": "check" if verdict == "READY" else "prepare"}
+
+
 def record_conversion(path: str, result: dict) -> None:
     """Best-effort: index a successful conversion + log a history event. Never raises."""
     try:
@@ -2188,3 +2316,161 @@ def batch_status(job_id: str) -> dict | None:
         # shallow copy; result dict is already rebuilt fresh on each on_item
         return {"id": job["id"], "status": job["status"],
                 "error": job["error"], "result": job["result"]}
+
+
+# --- Ready Now ("what can I print right now?") ---------------------------------
+# A scan reads the library once, the printer once and the configured material
+# provider once, then classifies each project from those same facts in a background
+# job (the batch pattern above). It only reads: nothing is written to the printer,
+# a slot map, a provider or the library.
+
+READY_NOW_MAX = 50  # newest library projects per scan
+_READY_CACHE: dict[tuple, dict] = {}
+_READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
+_ready_cache_lock = threading.Lock()
+
+
+def _ready_analysis(path: str, bed: dict | None,
+                    need_placement: bool = True) -> tuple[str, dict | None, dict | None]:
+    """(file_state, traits, placement) for one file, cached by what was read.
+
+    Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
+    file or a different printer bed is analysed again and nothing else is.
+
+    Placement (a full read of the model's geometry) is by far the slowest step, so it
+    is only done when asked for: `need_placement=False` returns the cheap traits and
+    leaves placement None, and a later `True` call fills it in on the same cache entry.
+    """
+    from snapstudio_core import plate_placement, project_traits
+
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "missing", None, None
+    bed_key = (bed["max_x"], bed["max_y"]) if bed else None
+    key = (path, st.st_mtime_ns, st.st_size, bed_key)
+    with _ready_cache_lock:
+        hit = _READY_CACHE.get(key)
+    if hit is None:
+        traits = project_traits.extract(path)
+        hit = {"state": "ok" if traits.get("readable") else "unreadable", "traits": traits,
+               "placement": None, "placed": False}
+    foreign = (hit["traits"].get("foreign_printer") or {}).get("value") is True
+    if need_placement and not hit["placed"] and hit["state"] == "ok" and bed and not foreign:
+        # Work on a copy so concurrent scans never mutate a shared entry. A failed read is
+        # not cached as done: it is unknown this time and tried again next scan.
+        hit = dict(hit)
+        try:
+            hit["placement"] = plate_placement.assess(path, bed=bed, bed_name="this printer's")
+            hit["placed"] = True
+        except Exception:
+            hit["placement"] = None
+    with _ready_cache_lock:
+        if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
+            _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first
+        _READY_CACHE[key] = hit
+    return hit["state"], hit["traits"], hit["placement"]
+
+
+# Buckets that a bed-overflow finding could still change. "Needs preparation" (a foreign
+# project) and "needs attention" already outrank it, so their geometry is never read.
+_PLACEMENT_MATTERS = ("cant_determine", "one_change_away", "ready_now")
+
+
+def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
+    from snapstudio_core import preflight as pf
+    from snapstudio_core import readiness
+
+    project = {"path": row.get("source_path"), "name": row.get("name")}
+    try:
+        state, traits, placement = _ready_analysis(project["path"], bed, need_placement=False)
+        foreign = ((traits or {}).get("foreign_printer") or {}).get("value") is True
+        usable = state == "ok" and printer.get("reachable") and not foreign
+        pre = pf.evaluate(traits, printer, placement) if usable else None
+        result = readiness.classify_project(project, traits, printer, pre, state)
+        if usable and bed and result.get("bucket") in _PLACEMENT_MATTERS:
+            # Only now is the (slow) geometry read worth it, and it can only make the
+            # result stricter, never claim more than the cheap pass did.
+            state, traits, placement = _ready_analysis(project["path"], bed, need_placement=True)
+            pre = pf.evaluate(traits, printer, placement)
+            result = readiness.classify_project(project, traits, printer, pre, state)
+        return result
+    except Exception:
+        # One bad file must not sink the scan, and says nothing about the others.
+        return readiness.classify_project(project, None, printer, None, "unreadable")
+
+
+def ready_now_start(host: str | None = None, port: int = 7125, provider: str | None = None,
+                    provider_url: str | None = None, provider_key: str | None = None,
+                    slot_map: dict | None = None, slot_base: int | None = None,
+                    limit: int = READY_NOW_MAX) -> dict:
+    """Start a Ready Now scan in the background. Returns a job handle."""
+    from snapstudio_core import readiness
+
+    limit = max(1, min(int(limit), READY_NOW_MAX))
+    job_id = uuid.uuid4().hex
+    with _jobs_lock:
+        _prune_jobs_locked()
+        _jobs[job_id] = {"id": job_id, "kind": "ready_now", "status": "running",
+                         "error": None, "result": None,
+                         "progress": {"done": 0, "total": None}}
+
+    def publish(**fields) -> None:
+        with _jobs_lock:
+            _jobs[job_id].update(fields)
+
+    def worker() -> None:
+        try:
+            conn = _conn()
+            try:
+                rows = library.list_projects(conn)
+            finally:
+                conn.close()
+            # Newest first; the id breaks a tie between equal timestamps.
+            rows = sorted(rows, key=lambda r: (r.get("updated_at") or "", r.get("id") or 0),
+                          reverse=True)
+            library_total, rows = len(rows), rows[:limit]
+            publish(progress={"done": 0, "total": len(rows)})
+
+            # Exactly one printer read and one provider read serve every project.
+            kind, url = _provider_choice(provider, provider_url, None)
+            printer = printer_facts(host, port) if host else {"reachable": False}
+            printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind,
+                                      provider_key)
+            dims = printer.get("bed_mm") or {}
+            bed = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(dims["x"]),
+                    "max_y": float(dims["y"])} if dims.get("x") and dims.get("y") else None)
+
+            results: list[dict] = []
+            for row in rows:
+                results.append(_ready_one(row, printer, bed))
+                publish(progress={"done": len(results), "total": len(rows)},
+                        result={"results": list(results)})
+            results.sort(key=readiness.sort_key)  # stable: newest first within a bucket
+            publish(status="done", result={
+                "schema_version": readiness.SCHEMA_VERSION,
+                "results": results,
+                "counts": readiness.summarise(results),
+                "scanned": len(results),
+                "library_total": library_total,
+                "printer": {"reachable": bool(printer.get("reachable")),
+                            "print_state": printer.get("print_state")},
+                # Already host-free: see _with_providers.
+                "provider_status": printer.get("provider_status"),
+            })
+        except Exception as exc:
+            # The class name only: the text of an exception can carry an address.
+            publish(status="error", error=type(exc).__name__)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"job_id": job_id, "limit": limit, "schema_version": readiness.SCHEMA_VERSION}
+
+
+def ready_now_status(job_id: str) -> dict | None:
+    """Current snapshot of a scan, or None if the id is not a Ready Now job."""
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None or job.get("kind") != "ready_now":
+            return None
+        return {"id": job["id"], "status": job["status"], "error": job["error"],
+                "progress": dict(job["progress"]), "result": job["result"]}
