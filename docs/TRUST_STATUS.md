@@ -9,6 +9,41 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.4.0 — CANDIDATE: the live sign-in and download test is still to run
+
+**Ready Now and Model Connect.** The Windows installer and Linux `.deb` named in
+[RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by SHA256.
+Build: [run 37305059516](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37305059516), commit `7cae89042649332c6c56c454448dcf6e5a9c3efa`.
+This release's immutable snapshot: [internal/evidence/1.4.0.json](internal/evidence/1.4.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2619 passed / 12 skipped**, desktop **605** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.4.0.json](internal/acceptance-1.4.0.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.4.0.json](internal/hardware-1.4.0.json) |
+| Model Connect on Printables: sign-in, download, library, Ready Now, restart, clear site data | **PENDING (maintainer's live test)** |
+| Model Connect on MakerWorld: same flow | **PENDING (maintainer's live test)** |
+| `tsc`, `cargo test`, production build | clean |
+
+### What is verified, and what is not
+
+**Ready Now** is covered by automated tests, including that an unanswered bed, nozzle or
+toolhead check is never "Ready now", and by a timed scan of 50 real projects. The installed
+acceptance and read-only U1 runs above do not exercise Ready Now's result classes.
+
+**Model Connect** is covered by automated tests (download-path safety, collision-safe
+destinations, registration only from Studio's own downloads folder, no Tauri access for the
+site window, no cookie access in Studio code) and a live spike on Printables. A real sign-in
+and download on MakerWorld and Printables from the installed release candidate is the
+remaining gate, and until it is recorded here this release is not marked ACCEPTED. Downloads
+and "Clear site data" are Windows and Linux only; the 512 MiB size cap is checked after a
+download finishes; a download abandoned part-way can leave a partial file in Studio's
+downloads folder.
+
 ## v1.3.1 — ACCEPTED
 
 **Fixes for v1.3.0 reports: real error messages, private-name SpoolEase

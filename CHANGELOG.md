@@ -6,7 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-**v1.4.0 (in preparation): find a model, and know if your U1 can print it now.**
+## [1.4.0] - 2026-10-07
+
+**Find a model, then know whether your U1 can print it now.**
 
 ### Added
 - **Ready Now.** A new page answers "What can I print on my U1 right now?" for the

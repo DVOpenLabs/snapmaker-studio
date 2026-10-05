@@ -17,16 +17,16 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.3.1 |
-| Installer | `Snapmaker.Studio_1.3.1_x64-setup.exe` |
-| Size (bytes) | 21,818,042 |
-| SHA256 | `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619` |
-| Linux installer | `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb` |
-| Linux size (bytes) | 25,803,624 |
-| Linux SHA256 | `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37207822226 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1 |
-| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Version | v1.4.0 |
+| Installer | `Snapmaker.Studio_1.4.0_x64-setup.exe` |
+| Size (bytes) | 21,858,277 |
+| SHA256 | `e90c06f23677ed2b05485a5e20ace43c98eea65fd7603ee047d5eadd9909e505` |
+| Linux installer | `snapmaker-studio_1.4.0_amd64_7cae89042649.deb` |
+| Linux size (bytes) | 25,857,442 |
+| Linux SHA256 | `48315182919c458f51382d101f7352e6375d63484a0c3f3e29bc2c294d5a680e` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37305059516 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.0 |
+| Trust status | PENDING: the maintainer's live Model Connect sign-in and download test has not run yet. See [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.
 Hashes for both files are also published as `SHA256SUMS` on the release.
@@ -35,6 +35,19 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 `sha256sum <file>.deb` (Linux).
 
 ## Previous release
+
+| Field | Value |
+|---|---|
+| Version | v1.3.1 |
+| Installer | `Snapmaker.Studio_1.3.1_x64-setup.exe` |
+| Size (bytes) | 21,818,042 |
+| SHA256 | `1052f9f1de792c102c62a91033aee5ba56840ebb99ff601b7059affcb7db8619` |
+| Linux installer | `snapmaker-studio_1.3.1_amd64_e3279da9d861.deb` |
+| Linux size (bytes) | 25,803,624 |
+| Linux SHA256 | `fd96a48bfe8f972e29021ef683fb653f49f3e7b089a56e4846dd83763cc88b64` |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.3.1 |
+
+## Superseded
 
 | Field | Value |
 |---|---|
