@@ -362,3 +362,46 @@ def test_progress_and_partial_results_are_reported(tmp_path, monkeypatch):
     st = scan(provider_url=PROVIDER_URL)
     assert st["progress"] == {"done": 4, "total": 4}
     assert st["result"]["schema_version"] == "readiness/1"
+
+
+def test_geometry_is_only_read_when_a_bed_check_could_change_the_answer(tmp_path, monkeypatch):
+    # A busy printer puts every usable project in "needs attention" whatever its geometry says,
+    # and a foreign project is "needs preparation": neither needs the slow geometry read.
+    busy = Fakes(monkeypatch, loaded=[spool("PLA", "#FF0000")], state="printing")
+    for i, n in enumerate(["a", "b", "foreign"]):
+        add_project(tmp_path, f"{n}.3mf", i)
+    busy.traits_by_name = {"foreign.3mf": traits(foreign=True)}
+    got = by_name(scan(provider_url=PROVIDER_URL))
+    assert got["a.3mf"]["bucket"] == got["b.3mf"]["bucket"] == "needs_attention"
+    assert got["foreign.3mf"]["bucket"] == "needs_preparation"
+    assert busy.extracts == 3 and busy.placements == 0
+
+
+def test_a_project_that_would_read_as_ready_does_get_its_geometry_checked(tmp_path, monkeypatch):
+    fakes = Fakes(monkeypatch, loaded=[spool("PLA", "#FF0000")])
+    add_project(tmp_path, "ready.3mf", 0)
+    add_project(tmp_path, "petg.3mf", 1)
+    fakes.traits_by_name = {"petg.3mf": traits(slots=(("PETG", "#FF0000"),))}
+    got = by_name(scan(provider_url=PROVIDER_URL))
+    assert got["ready.3mf"]["bucket"] == "ready_now" and got["petg.3mf"]["bucket"] == "one_change_away"
+    assert fakes.placements == 2          # both could still be changed by a bed overflow
+
+
+def test_a_bed_overflow_still_makes_a_would_be_ready_project_need_attention(tmp_path, monkeypatch):
+    fakes = Fakes(monkeypatch, loaded=[spool("PLA", "#FF0000")])
+    add_project(tmp_path, "wide.3mf", 0)
+    overflow = {"available": True, "off_plate": [{"name": "o", "overhang_mm": 40}]}
+    monkeypatch.setattr(plate_placement, "assess", lambda *a, **k: overflow)
+    got = by_name(scan(provider_url=PROVIDER_URL))["wide.3mf"]
+    assert got["bucket"] == "needs_attention"
+    assert "outside" in got["top_reason"].lower()
+    assert fakes.extracts == 1
+
+
+def test_a_second_scan_reuses_both_the_traits_and_the_geometry(tmp_path, monkeypatch):
+    fakes = Fakes(monkeypatch, loaded=[spool("PLA", "#FF0000")])
+    add_project(tmp_path, "ready.3mf", 0)
+    scan(provider_url=PROVIDER_URL)
+    first = (fakes.extracts, fakes.placements)
+    scan(provider_url=PROVIDER_URL)
+    assert (fakes.extracts, fakes.placements) == first

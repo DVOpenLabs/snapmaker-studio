@@ -376,3 +376,20 @@ def test_summarise_counts_every_bucket():
     counts = rd.summarise([{"bucket": rd.READY_NOW}, {"bucket": rd.READY_NOW}])
     assert counts[rd.READY_NOW] == 2 and counts[rd.NEEDS_ATTENTION] == 0
     assert set(counts) == set(rd.BUCKETS)
+
+
+def test_unreadable_file_gives_the_safe_reason_not_a_garbled_sentence():
+    t = {"readable": False, "notes": ["This 3MF is too large for Studio to open safely."]}
+    r = rd.classify_project(PROJECT, t, printer([spool()]), None, "unreadable")
+    assert r["top_reason"] == "This 3MF is too large for Studio to open safely."
+    assert "could not be read:" not in r["top_reason"]
+
+
+def test_unreadable_file_without_a_note_says_so_plainly():
+    r = rd.classify_project(PROJECT, None, printer([spool()]), None, "unreadable")
+    assert r["top_reason"] == "Studio could not read this file."
+
+
+def test_missing_file_reason():
+    r = rd.classify_project(PROJECT, None, printer([spool()]), None, "missing")
+    assert r["top_reason"] == "The project file could not be found."

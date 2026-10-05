@@ -269,10 +269,15 @@ def classify_project(project: dict, traits: dict | None, printer: dict | None,
         project, CANT_DETERMINE, why, action, UNKNOWN, file_state=file_state, **kw)
 
     if file_state != "ok":
-        word = "could not be found" if file_state == "missing" else "could not be read"
-        return cant(f"Studio {word}: the file is {file_state}.",
-                    "Check the file is still where the library says it is.",
-                    unknowns=[f"The project file is {file_state}."])
+        if file_state == "missing":
+            why, action = ("The project file could not be found.",
+                           "Check the file is still where the library says it is.")
+        else:
+            # Studio's own, path-free reason (for example its size-safety limit), else a plain one.
+            notes = (traits or {}).get("notes") or []
+            why = str(notes[0]) if notes else "Studio could not read this file."
+            action = "Open it in your slicer to check it, or re-export it."
+        return cant(why, action, unknowns=[f"The project file is {file_state}."])
 
     if pf._trait(traits or {}, "foreign_printer") is True:
         target = pf._trait(traits, "target_printer")

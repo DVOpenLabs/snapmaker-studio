@@ -2308,11 +2308,16 @@ _READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
 _ready_cache_lock = threading.Lock()
 
 
-def _ready_analysis(path: str, bed: dict | None) -> tuple[str, dict | None, dict | None]:
+def _ready_analysis(path: str, bed: dict | None,
+                    need_placement: bool = True) -> tuple[str, dict | None, dict | None]:
     """(file_state, traits, placement) for one file, cached by what was read.
 
     Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
     file or a different printer bed is analysed again and nothing else is.
+
+    Placement (a full read of the model's geometry) is by far the slowest step, so it
+    is only done when asked for: `need_placement=False` returns the cheap traits and
+    leaves placement None, and a later `True` call fills it in on the same cache entry.
     """
     from snapstudio_core import plate_placement, project_traits
 
@@ -2324,23 +2329,27 @@ def _ready_analysis(path: str, bed: dict | None) -> tuple[str, dict | None, dict
     key = (path, st.st_mtime_ns, st.st_size, bed_key)
     with _ready_cache_lock:
         hit = _READY_CACHE.get(key)
-    if hit is not None:
-        return hit["state"], hit["traits"], hit["placement"]
-
-    traits = project_traits.extract(path)
-    state = "ok" if traits.get("readable") else "unreadable"
-    placement = None
-    foreign = (traits.get("foreign_printer") or {}).get("value") is True
-    if state == "ok" and bed and not foreign:
+    if hit is None:
+        traits = project_traits.extract(path)
+        hit = {"state": "ok" if traits.get("readable") else "unreadable", "traits": traits,
+               "placement": None, "placed": False}
+    foreign = (hit["traits"].get("foreign_printer") or {}).get("value") is True
+    if need_placement and not hit["placed"] and hit["state"] == "ok" and bed and not foreign:
         try:
-            placement = plate_placement.assess(path, bed=bed, bed_name="this printer's")
+            hit["placement"] = plate_placement.assess(path, bed=bed, bed_name="this printer's")
         except Exception:
-            placement = None
+            hit["placement"] = None
+        hit["placed"] = True
     with _ready_cache_lock:
-        if len(_READY_CACHE) >= _READY_CACHE_MAX:
+        if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
             _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first
-        _READY_CACHE[key] = {"state": state, "traits": traits, "placement": placement}
-    return state, traits, placement
+        _READY_CACHE[key] = hit
+    return hit["state"], hit["traits"], hit["placement"]
+
+
+# Buckets that a bed-overflow finding could still change. "Needs preparation" (a foreign
+# project) and "needs attention" already outrank it, so their geometry is never read.
+_PLACEMENT_MATTERS = ("cant_determine", "one_change_away", "ready_now")
 
 
 def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
@@ -2349,11 +2358,18 @@ def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
 
     project = {"path": row.get("source_path"), "name": row.get("name")}
     try:
-        state, traits, placement = _ready_analysis(project["path"], bed)
+        state, traits, placement = _ready_analysis(project["path"], bed, need_placement=False)
         foreign = ((traits or {}).get("foreign_printer") or {}).get("value") is True
-        pre = (pf.evaluate(traits, printer, placement)
-               if state == "ok" and printer.get("reachable") and not foreign else None)
-        return readiness.classify_project(project, traits, printer, pre, state)
+        usable = state == "ok" and printer.get("reachable") and not foreign
+        pre = pf.evaluate(traits, printer, placement) if usable else None
+        result = readiness.classify_project(project, traits, printer, pre, state)
+        if usable and bed and result.get("bucket") in _PLACEMENT_MATTERS:
+            # Only now is the (slow) geometry read worth it, and it can only make the
+            # result stricter, never claim more than the cheap pass did.
+            state, traits, placement = _ready_analysis(project["path"], bed, need_placement=True)
+            pre = pf.evaluate(traits, printer, placement)
+            result = readiness.classify_project(project, traits, printer, pre, state)
+        return result
     except Exception:
         # One bad file must not sink the scan, and says nothing about the others.
         return readiness.classify_project(project, None, printer, None, "unreadable")

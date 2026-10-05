@@ -61,7 +61,7 @@ export function ReadyNowRow({ r, onOpen, onPrepare }: {
       {r.file_state !== "ok" && (
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <FileWarning className="h-3.5 w-3.5" aria-hidden="true" />
-          {r.file_state === "missing" ? "File not found" : "File could not be read"}
+          {r.file_state === "missing" ? "File not found" : "Studio could not read this file"}
         </p>
       )}
       {actions.length > 0 && (
