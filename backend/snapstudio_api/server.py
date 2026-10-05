@@ -1187,6 +1187,16 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
+            elif self.path == "/library/register_download":
+                try:
+                    self._send(200, service.register_downloaded_model(
+                        rv.require_bounded_str(data, "path", 4096),
+                        rv.require_bounded_str(data, "site", 253),
+                        rv.optional_bounded_str(data, "page_url", 2048)))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/history":
                 pid = data.get("project_id")
                 if pid is None:
