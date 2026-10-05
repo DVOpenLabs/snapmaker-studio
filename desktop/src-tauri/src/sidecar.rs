@@ -198,6 +198,8 @@ pub fn spawn_sidecar(app: &AppHandle) -> (ApiInfo, Child) {
         // The sidecar watches this PID and self-exits if the app dies for any
         // reason (close, crash, force-kill) — belt to the exit-handler braces.
         .env("SNAPSTUDIO_PARENT_PID", std::process::id().to_string())
+        // The only folder the engine will accept Model Browser downloads from.
+        .env("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", crate::model_downloads_dir(app))
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to start snapstudio_api sidecar");

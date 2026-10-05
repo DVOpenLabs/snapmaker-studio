@@ -72,7 +72,7 @@ fn model_browser_profile_dir(app: &tauri::AppHandle) -> PathBuf {
 }
 
 /// Where browser-initiated downloads are accepted. Studio controls this folder.
-fn model_downloads_dir(app: &tauri::AppHandle) -> PathBuf {
+pub(crate) fn model_downloads_dir(app: &tauri::AppHandle) -> PathBuf {
     model_state_base(app).join("model-downloads")
 }
 
@@ -119,7 +119,7 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
                 let host_ok = !cfg!(target_os = "macos") && model_browser::is_download_host(&url);
                 match model_browser::sanitize_filename(&suggested) {
                     Some(name) if host_ok && model_browser::supported_extension(&name).is_some() => {
-                        let dest = model_browser::unique_path(&downloads_for_dl, &name);
+                        let dest = model_browser::reserve_path(&downloads_for_dl, &name);
                         let page = wv.url().map(|u| u.to_string()).unwrap_or_default();
                         let site = Url::parse(&page)
                             .ok()
@@ -145,15 +145,23 @@ fn build_model_browser_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
                 }
             }
             DownloadEvent::Finished { url: _, path, success } => {
-                if let (true, Some(p)) = (success, path) {
-                    if let Some(pending) = model_browser::take(&p) {
-                        let _ = app_for_dl.emit("model-download-finished", serde_json::json!({
-                            "path": p.to_string_lossy(),
-                            "filename": file_name_of(&p),
-                            "site": pending.site,
-                            "page_url": pending.page_url,
-                            "title": pending.title,
-                        }));
+                if let Some(p) = path {
+                    // The destination was claimed at Requested; give it back either way.
+                    let ours = model_browser::release_path(&p);
+                    let pending = model_browser::take(&p);
+                    if success {
+                        if let Some(pending) = pending {
+                            let _ = app_for_dl.emit("model-download-finished", serde_json::json!({
+                                "path": p.to_string_lossy(),
+                                "filename": file_name_of(&p),
+                                "site": pending.site,
+                                "page_url": pending.page_url,
+                                "title": pending.title,
+                            }));
+                        }
+                    } else if ours {
+                        // A failed download of ours leaves a partial file: remove it.
+                        let _ = std::fs::remove_file(&p);
                     }
                 }
                 true

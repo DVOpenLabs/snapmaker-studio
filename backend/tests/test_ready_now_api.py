@@ -408,12 +408,12 @@ def test_a_second_scan_reuses_both_the_traits_and_the_geometry(tmp_path, monkeyp
 
 
 def test_failed_placement_is_not_cached_as_done(tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
     from snapstudio_api import service
     from snapstudio_core import plate_placement
     f = tmp_path / "a.3mf"
-    import zipfile
-    with zipfile.ZipFile(f, "w") as z:
-        z.writestr("3D/3dmodel.model", "<model/>")
+    shutil.copy(Path(__file__).parent / "fixtures" / "painted" / "orcaslicer-2.4.2-painted-cube.3mf", f)
     service._READY_CACHE.clear()
     calls = {"n": 0}
 
@@ -423,7 +423,8 @@ def test_failed_placement_is_not_cached_as_done(tmp_path, monkeypatch):
 
     monkeypatch.setattr(plate_placement, "assess", boom)
     bed = {"min_x": 0.0, "min_y": 0.0, "max_x": 270.0, "max_y": 270.0}
-    service._ready_analysis(str(f), bed, need_placement=True)
-    state, _t, placement = service._ready_analysis(str(f), bed, need_placement=True)
-    if state == "ok":
-        assert placement is None and calls["n"] == 2
+    state1, _t, placement1 = service._ready_analysis(str(f), bed, need_placement=True)
+    state2, _t, placement2 = service._ready_analysis(str(f), bed, need_placement=True)
+    assert state1 == state2 == "ok"
+    assert placement1 is None and placement2 is None
+    assert calls["n"] == 2

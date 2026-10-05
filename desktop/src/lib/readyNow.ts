@@ -134,3 +134,15 @@ export function progressText(p: { done: number; total: number | null } | undefin
   if (!p || p.total == null) return "Reading your library…";
   return `Checked ${p.done} of ${p.total}`;
 }
+
+/** What the page shows, from the start request and the status query. A failed status
+ *  query is an error state: never a spinner, and the button is usable again. */
+export function readyNowView(s: {
+  hasPrinter: boolean; startPending: boolean; startError: boolean;
+  jobId: string | null; jobError: boolean; status: string | undefined;
+}): { running: boolean; failed: boolean; canCheck: boolean } {
+  const failed = s.startError || s.jobError || s.status === "error";
+  const running = !failed && (s.startPending
+    || (s.jobId !== null && (s.status === undefined || s.status === "running")));
+  return { running, failed, canCheck: s.hasPrinter && !running };
+}

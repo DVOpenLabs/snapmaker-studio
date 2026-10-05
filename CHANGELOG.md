@@ -41,6 +41,9 @@ All notable changes to this project are documented here. The format is based on
   approved sites keep browsing until they are verified the same way.
 - Model Connect downloads and "Clear site data" are available on Windows and Linux. On
   macOS the browser still browses, but downloads and clearing are switched off.
+- The 512 MiB size limit is checked after a download finishes, not while it streams, and
+  only files inside Studio's own downloads folder can be added to the library. A download
+  the browser abandons part-way may leave a partial file in that folder.
 - There is no load planner yet.
 
 ## [1.3.1] - 2026-10-03

@@ -2145,12 +2145,34 @@ def _clean_page_url(page_url: str | None, site: str) -> str | None:
         return None
 
 
+def _model_downloads_root() -> str | None:
+    """The one folder Studio's Model Browser downloads into, as set by the desktop shell
+    when it starts the engine. None when unset, in which case nothing is accepted."""
+    raw = os.environ.get("SNAPSTUDIO_MODEL_DOWNLOADS_DIR")
+    return os.path.realpath(raw) if raw else None
+
+
+def _is_inside(root: str, path: str) -> bool:
+    r, p = os.path.normcase(root), os.path.normcase(path)
+    try:
+        return p != r and os.path.commonpath([r, p]) == r
+    except ValueError:  # different drives
+        return False
+
+
 def register_downloaded_model(path: str, site: str, page_url: str | None = None) -> dict:
     """Add a file the Model Browser just downloaded to the library, with provenance.
 
     Runs the existing doctor; a file that cannot be analysed leaves no library row and
     no source row. Raises DownloadRefused (a deliberate, user-safe refusal) otherwise."""
     if not isinstance(path, str) or not os.path.isfile(path):
+        raise DownloadRefused("That download is not available as a file.")
+    # Only a file inside Studio's own downloads folder can carry download provenance.
+    # Resolve symlinks first so a link inside the folder cannot point at a file outside it,
+    # and use the resolved path from here on.
+    root = _model_downloads_root()
+    path = os.path.realpath(path)
+    if root is None or not _is_inside(root, path) or not os.path.isfile(path):
         raise DownloadRefused("That download is not available as a file.")
     filename = os.path.basename(path)
     if os.path.splitext(filename)[1].lower() not in _DOWNLOAD_EXTENSIONS:

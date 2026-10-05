@@ -95,3 +95,29 @@ describe("summary and progress", () => {
     expect(progressText({ done: 0, total: null })).toBe("Reading your library…");
   });
 });
+
+import { readyNowView } from "./readyNow";
+
+describe("readyNowView", () => {
+  const base = { hasPrinter: true, startPending: false, startError: false,
+                 jobId: "j1" as string | null, jobError: false, status: undefined as string | undefined };
+  it("shows progress while the job is starting or running", () => {
+    expect(readyNowView({ ...base, startPending: true, jobId: null }).running).toBe(true);
+    expect(readyNowView({ ...base, status: "running" }).running).toBe(true);
+    expect(readyNowView({ ...base, status: "running" }).canCheck).toBe(false);
+  });
+  it("a failed status query is an error state: no spinner, retry enabled", () => {
+    const v = readyNowView({ ...base, jobError: true });
+    expect(v).toEqual({ running: false, failed: true, canCheck: true });
+  });
+  it("a failed start is an error state with retry enabled", () => {
+    const v = readyNowView({ ...base, startError: true, jobId: null });
+    expect(v).toEqual({ running: false, failed: true, canCheck: true });
+  });
+  it("a job that reports an error stops the spinner", () => {
+    expect(readyNowView({ ...base, status: "error" }).running).toBe(false);
+  });
+  it("without a printer nothing can be checked", () => {
+    expect(readyNowView({ ...base, hasPrinter: false, jobId: null }).canCheck).toBe(false);
+  });
+});

@@ -10,6 +10,7 @@
 // Everything else stays blocked. The remote page has no Tauri IPC (no capability is
 // granted to the `model-browser` label) and Studio never reads cookies or tokens.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -148,8 +149,33 @@ pub fn supported_extension(name: &str) -> Option<&'static str> {
 
 /// `dir/name`, or `dir/name (1)`, `dir/name (2)` ... so an existing file is never overwritten.
 pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    pick_path(dir, name, &HashSet::new())
+}
+
+fn reserved() -> &'static Mutex<HashSet<PathBuf>> {
+    static R: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    R.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Choose a destination AND claim it in one step under one lock, so two downloads with
+/// the same file name that start together can never be handed the same path. The claim
+/// lasts until `release_path` (the download finished or failed); no placeholder file is
+/// created, so nothing empty is left behind.
+pub fn reserve_path(dir: &Path, name: &str) -> PathBuf {
+    let mut held = reserved().lock().unwrap();
+    let chosen = pick_path(dir, name, &held);
+    held.insert(chosen.clone());
+    chosen
+}
+
+/// Give a claimed destination back. True when it was claimed by `reserve_path`.
+pub fn release_path(path: &Path) -> bool {
+    reserved().lock().unwrap().remove(path)
+}
+
+fn pick_path(dir: &Path, name: &str, held: &HashSet<PathBuf>) -> PathBuf {
     let first = dir.join(name);
-    if !first.exists() {
+    if !first.exists() && !held.contains(&first) {
         return first;
     }
     let p = Path::new(name);
@@ -157,7 +183,7 @@ pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let ext = p.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
     for n in 1..10_000 {
         let candidate = dir.join(format!("{stem} ({n}){ext}"));
-        if !candidate.exists() {
+        if !candidate.exists() && !held.contains(&candidate) {
             return candidate;
         }
     }
@@ -433,5 +459,44 @@ mod repair_tests {
         assert!(is_download_host(&Url::parse("https://files.printables.com/m/a.stl").unwrap()));
         assert!(!is_download_host(&Url::parse("https://evil.example/a.stl").unwrap()));
         assert!(!is_download_host(&Url::parse("https://printables.com/a.stl").unwrap()));
+    }
+}
+
+#[cfg(test)]
+mod reservation_tests {
+    use super::*;
+
+    #[test]
+    fn simultaneous_downloads_with_one_name_get_distinct_paths() {
+        let dir = std::env::temp_dir().join(format!("mb-reserve-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let handles: Vec<_> = (0..32)
+            .map(|_| {
+                let d = dir.clone();
+                std::thread::spawn(move || reserve_path(&d, "same.3mf"))
+            })
+            .collect();
+        let got: Vec<PathBuf> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let unique: HashSet<_> = got.iter().cloned().collect();
+        assert_eq!(unique.len(), 32, "every download needs its own path");
+        assert!(got.contains(&dir.join("same.3mf")));
+        assert!(got.contains(&dir.join("same (1).3mf")));
+        for p in &got {
+            assert!(release_path(p));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_released_name_is_reusable_and_release_is_exact() {
+        let dir = std::env::temp_dir().join(format!("mb-release-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = reserve_path(&dir, "x.stl");
+        assert_eq!(a, dir.join("x.stl"));
+        assert_eq!(reserve_path(&dir, "x.stl"), dir.join("x (1).stl"));
+        assert!(release_path(&a));
+        assert!(!release_path(&a), "already released");
+        assert_eq!(reserve_path(&dir, "x.stl"), dir.join("x.stl"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

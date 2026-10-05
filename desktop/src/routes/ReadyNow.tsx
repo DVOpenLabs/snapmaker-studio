@@ -14,7 +14,7 @@ import { usePrinter } from "@/store/printer";
 import { useProvider, providerArgs } from "@/store/provider";
 import {
   READY_NOW_TITLE, READY_NOW_FOOTER, DECLARED_NOTE, NO_PRINTER_TITLE, NO_PRINTER_TEXT,
-  summarySentence, progressText,
+  summarySentence, progressText, readyNowView,
 } from "@/lib/readyNow";
 
 export default function ReadyNow() {
@@ -50,10 +50,12 @@ export default function ReadyNow() {
   }, [hasPrinter]);
 
   const data = job.data;
-  const running = start.isPending || (jobId !== null && (data === undefined || data.status === "running"));
   const result = data?.result ?? null;
   const results = result?.results ?? [];
-  const failed = start.isError || job.isError || data?.status === "error";
+  const { running, failed, canCheck } = readyNowView({
+    hasPrinter, startPending: start.isPending, startError: start.isError, jobId,
+    jobError: job.isError, status: data?.status,
+  });
 
   const open = (r: ReadyNowProject) => { setFile(r.path); nav("/workspace"); };
   const prepare = (r: ReadyNowProject) => { setFile(r.path); nav("/compatibility"); };
@@ -65,7 +67,7 @@ export default function ReadyNow() {
         title={READY_NOW_TITLE}
         subtitle={summarySentence(result, running)}
         actions={
-          <Button size="sm" variant="secondary" disabled={!hasPrinter || running} onClick={() => start.mutate()}>
+          <Button size="sm" variant="secondary" disabled={!canCheck} onClick={() => start.mutate()}>
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />} Check my library
           </Button>
         }

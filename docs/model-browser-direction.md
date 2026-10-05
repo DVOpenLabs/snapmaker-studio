@@ -141,6 +141,12 @@ give the browser its own data store or report the finished file path, so both ar
 there rather than risk clearing Studio's own webview. The download URL itself (not only the
 page) must be on the file-host allowlist.
 
+Registration boundary: the engine accepts a download only if its resolved path (symlinks
+and junctions followed) is inside the downloads folder the desktop shell gave it, so a file
+elsewhere cannot be added with download provenance. The size cap is checked once the
+download finishes. A download abandoned part-way can leave a partial file in the downloads
+folder (a v1.4 limitation; a failed download Studio can identify is removed).
+
 ### Not in v1.4.0
 No folder scan, no DOM scraping, no "add current page" button, no authentication popup
 support, no Smart Load Planner. MakerWorld and Printables are the first sites needing live

@@ -22,6 +22,8 @@ _STL = "solid t\n" + "".join(_TRI.format(*t) for t in [
 @pytest.fixture
 def data(tmp_path, monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    # Studio's controlled downloads folder: files registered here are accepted.
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(tmp_path))
     return tmp_path
 
 
@@ -174,3 +176,82 @@ def test_route_success_auth_and_error_maps(data, monkeypatch):
         assert _rows() == (1, 1)
     finally:
         httpd.shutdown()
+
+
+def test_file_in_controlled_folder_is_accepted(tmp_path, monkeypatch):
+    root = tmp_path / "model-downloads"
+    root.mkdir()
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    r = service.register_downloaded_model(_file(root, "cube.3mf"), "printables.com")
+    assert r["ok"] is True
+
+
+def test_nested_file_in_controlled_folder_is_accepted(tmp_path, monkeypatch):
+    root = tmp_path / "model-downloads"
+    (root / "sub").mkdir(parents=True)
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    assert service.register_downloaded_model(_file(root / "sub", "c.3mf"), "printables.com")["ok"]
+
+
+def test_file_elsewhere_is_refused_with_no_rows(tmp_path, monkeypatch):
+    root = tmp_path / "model-downloads"
+    root.mkdir()
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    with pytest.raises(service.DownloadRefused):
+        service.register_downloaded_model(_file(tmp_path, "elsewhere.3mf"), "printables.com")
+    assert _rows() == (0, 0)
+
+
+def test_sibling_folder_with_same_prefix_is_refused(tmp_path, monkeypatch):
+    root = tmp_path / "model-downloads"
+    other = tmp_path / "model-downloads-evil"
+    root.mkdir(); other.mkdir()
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    with pytest.raises(service.DownloadRefused):
+        service.register_downloaded_model(_file(other, "x.3mf"), "printables.com")
+
+
+def test_unset_downloads_folder_accepts_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", raising=False)
+    with pytest.raises(service.DownloadRefused):
+        service.register_downloaded_model(_file(tmp_path, "x.3mf"), "printables.com")
+
+
+def test_symlink_inside_folder_pointing_outside_is_refused(tmp_path, monkeypatch):
+    root = tmp_path / "model-downloads"
+    root.mkdir()
+    outside = _file(tmp_path, "outside.3mf")
+    link = root / "link.3mf"
+    try:
+        os.symlink(outside, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not permitted on this machine")
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    with pytest.raises(service.DownloadRefused):
+        service.register_downloaded_model(str(link), "printables.com")
+    assert _rows() == (0, 0)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="directory junctions are Windows-only")
+def test_junction_inside_folder_pointing_outside_is_refused(tmp_path, monkeypatch):
+    import subprocess
+    root = tmp_path / "model-downloads"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _file(outside, "o.3mf")
+    r = subprocess.run(["cmd", "/c", "mklink", "/J", str(root / "j"), str(outside)],
+                       capture_output=True)
+    if r.returncode != 0:
+        pytest.skip("cannot create a junction here")
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(root))
+    with pytest.raises(service.DownloadRefused):
+        service.register_downloaded_model(str(root / "j" / "o.3mf"), "printables.com")
+    assert _rows() == (0, 0)
