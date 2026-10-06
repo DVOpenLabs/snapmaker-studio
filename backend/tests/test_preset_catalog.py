@@ -166,3 +166,17 @@ def test_real_install_resolves_matte_when_orca_is_present():
     r = cat.evaluate("Snapmaker PLA Matte @U1", "0.4")
     assert r["status"] == PROVEN
     assert cat.evaluate("Snapmaker PLA", "0.4")["status"] == NO_MATCH   # the legacy name
+
+
+def test_generic_suggestion_also_finds_the_plain_generic_name_the_u1_catalogue_ships(tmp_path):
+    root = tmp_path / "Snapmaker"
+    fil = root / "filament"
+    fil.mkdir(parents=True)
+    p4 = ["Snapmaker U1 (0.4 nozzle)"]
+    _preset(fil, "Generic PETG", printers=p4, vendor="Generic", ftype="PETG")
+    _preset(fil, "Generic PETG HF", printers=p4, vendor="Generic", ftype="PETG")
+    cat = preset_catalog.load(root)
+    s = cat.suggest_generic("PETG", "0.4")
+    assert s["base_name"] == "Generic PETG" and s["status"] == NEEDS_CONFIRMATION       # exact name, not the HF look-alike
+    assert "Generic PETG is installed for this nozzle" in s["reason"]
+    assert cat.suggest_generic("PLA", "0.4") is None

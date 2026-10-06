@@ -11,6 +11,8 @@ import { open3mfDialog, compatibilityCheck, convert, type CompatibilityResult, t
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
+import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
+import type { MaterialSelection } from "@/lib/projectMaterials";
 import { Copy, Stethoscope } from "lucide-react";
 import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
@@ -24,6 +26,8 @@ export default function Compatibility() {
   const [prep, setPrep] = useState<Awaited<ReturnType<typeof convert>> | null>(null);
   const [prepareMode, setPrepareMode] = useState<PrepareMode>("preserve");
   const [preview, setPreview] = useState<ConversionResult | null>(null);
+  // True while Project Materials holds choices: Prepare then goes through its review step, so a plain one is not offered beside it.
+  const [materialsActive, setMaterialsActive] = useState(false);
   const requestGeneration = useRef(0);
 
   const checkM = useMutation({
@@ -32,7 +36,8 @@ export default function Compatibility() {
   });
 
   const prepM = useMutation({
-    mutationFn: ({ path: requestPath, mode }: { path: string; mode: PrepareMode; generation: number }) => convert(requestPath, undefined, mode),
+    mutationFn: ({ path: requestPath, mode, materials }: { path: string; mode: PrepareMode; generation: number; materials?: MaterialSelection[] }) =>
+      convert(requestPath, undefined, mode, false, materials),
     onMutate: () => setPrep(null),
     onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current) setPrep(d); },
   });
@@ -137,16 +142,23 @@ export default function Compatibility() {
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
               {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={() => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
-              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path}>
+              {path && (
+                <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
+                  onActiveChange={setMaterialsActive}
+                  onPrepare={(materials) => prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
+              )}
+              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
                 Prepare U1 copy
               </Button>
+              {materialsActive && <p className="text-[11px] text-muted-foreground">You have spool choices above. Use “Review &amp; prepare” there so they are applied.</p>}
               <p className="text-[11px] text-muted-foreground">Creates a new file. Your original is never modified.</p>
             </div>
           )}
           {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
 
-          {prep && (
+          {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
+          {prep && !prep.blocked && (
             <div className="space-y-3 rounded-md border border-border p-3">
               <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
                 <CheckCircle2 className="h-4 w-4" /> U1 profile copy created
@@ -159,6 +171,7 @@ export default function Compatibility() {
                 Layout is not verified — this checks the U1 profile copy, not object placement. Open in
                 Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
               </p>
+              <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
               {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {prep.errors && prep.errors.length > 0 && (
                 <ul className="space-y-1 text-xs text-muted-foreground">

@@ -145,19 +145,22 @@ class Catalog:
                        filament_type=entry["filament_type"], vendor=entry["vendor"])
 
     def suggest_generic(self, family: str | None, nozzle: str) -> dict | None:
-        """`Generic <family> @U1`, offered as a SUGGESTION only — never proven here."""
+        """`Generic <family> @U1`, or the plain `Generic <family>` the U1 catalogue also ships,
+        offered as a SUGGESTION only — never proven here. Exact names only: no pattern, no pick
+        between look-alikes (`Generic PETG` and `Generic PETG HF` are different presets)."""
         fam = _clean(family).upper()
         if not fam:
             return None
-        found = self.evaluate(f"Generic {fam} @U1", nozzle)
-        if found["status"] != PROVEN:
-            return None
-        found = dict(found)
-        found["status"] = NEEDS_CONFIRMATION
-        found["reason"] = (f"Generic {fam} is installed for this nozzle. Studio suggests it but "
-                           "does not choose between presets for you.")
-        found["suggestion"] = True
-        return found
+        for name in (f"Generic {fam} @U1", f"Generic {fam}"):
+            found = self.evaluate(name, nozzle)
+            if found["status"] == PROVEN:
+                found = dict(found)
+                found["status"] = NEEDS_CONFIRMATION
+                found["reason"] = (f"{found['base_name']} is installed for this nozzle. Studio suggests it "
+                                   "but does not choose between presets for you.")
+                found["suggestion"] = True
+                return found
+        return None
 
     def verify(self, base: str, fingerprint: str | None, nozzle: str) -> dict:
         """Does a remembered mapping still identify the same installed preset?"""
