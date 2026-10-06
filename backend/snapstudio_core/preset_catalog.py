@@ -117,6 +117,11 @@ def _fingerprint(parts: list[str]) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def system_ref(filename: str) -> str:
+    """An opaque pin for one of Orca's own preset files (the file, not the name: two files can share a name)."""
+    return "sys:" + hashlib.sha256(filename.encode("utf-8")).hexdigest()[:16]
+
+
 def user_ref(folder: str, filename: str) -> str:
     """An opaque pin for one of the person's own preset files. It names the file without exposing the Orca
     account folder or the file name, so it can travel through the API and into the mapping store."""
@@ -272,8 +277,7 @@ class Catalog:
 
 
 def _choice(rec: dict) -> dict:
-    return {"ref": rec["ref"] if rec["source"] == USER else None, "name": rec["name"], "source": rec["source"],
-            "proof": rec["proof"]}
+    return {"ref": rec["ref"], "name": rec["name"], "source": rec["source"], "proof": rec["proof"]}
 
 
 def _result(status, reason, name, nozzle, *, base=None, candidates=None, preset_name=None,
@@ -401,10 +405,12 @@ def load(profile_dir: str | os.PathLike, user_roots: list | None = None) -> Cata
     if not fdir.is_dir():
         return None
     docs: dict[str, dict] = {}
+    sys_files: list[tuple[str, dict]] = []
     for path in sorted(fdir.glob("*.json")):
         doc = _read_json(path)
         if doc and doc.get("name"):
-            docs[str(doc["name"])] = doc
+            docs[str(doc["name"])] = doc          # by name, for resolving inheritance
+            sys_files.append((path.name, doc))    # by file, so two files with one name stay two records
     # The shared library other vendors' presets inherit from: read for its settings only, never listed.
     library: dict[str, dict] = {}
     lib_dir = root.parent / "OrcaFilamentLibrary" / "filament"
@@ -418,10 +424,10 @@ def load(profile_dir: str | os.PathLike, user_roots: list | None = None) -> Cata
         return docs.get(name) or library.get(name)
 
     records: list[dict] = []
-    for name, doc in docs.items():
+    for filename, doc in sys_files:
         if str(doc.get("instantiation", "")).lower() != "true":
             continue
-        rec = _record(doc, sys_lookup, source=SYSTEM, ref=f"system:{name}", location=None, file=f"{name}.json", stat=None)
+        rec = _record(doc, sys_lookup, source=SYSTEM, ref=system_ref(filename), location=None, file=filename, stat=None)
         if rec and rec["nozzles"]:
             rec["proof"] = "listed"
             records.append(rec)

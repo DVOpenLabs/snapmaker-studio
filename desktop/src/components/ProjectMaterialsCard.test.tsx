@@ -594,3 +594,99 @@ describe("the review repairs in the card", () => {
     await waitFor(() => expect(active).toHaveBeenLastCalledWith(true));     // nothing would be sent yet, but it is on screen
   });
 });
+
+
+describe("two of Orca's own presets with one name", () => {
+  const DUP: MaterialPresetList = {
+    available: true, nozzle: "0.4",
+    presets: [
+      { base_name: "Dup PLA @U1", preset_name: "Dup PLA @U1", vendor: "Acme", filament_type: "PLA", fingerprint: "a", source: "system", ref: "sys:aaaa", status: "proven", ambiguous: true },
+      { base_name: "Dup PLA @U1", preset_name: "Dup PLA @U1", vendor: "Acme", filament_type: "PLA", fingerprint: "b", source: "system", ref: "sys:bbbb", status: "proven", ambiguous: true },
+      { base_name: "Dup PLA @U1", preset_name: "Dup PLA @U1", vendor: "Me", filament_type: "PLA", fingerprint: "c", source: "user", ref: "user:cccc", status: "proven", ambiguous: true },
+    ],
+  };
+
+  it("are listed apart, and picking one pins exactly that one", () => {
+    render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={DUP} />);
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    expect(texts[0]).toContain("Dup PLA @U1 — System preset (1 of 2)");
+    expect(texts[1]).toContain("Dup PLA @U1 — System preset (2 of 2)");
+    expect(texts[2]).toContain("Dup PLA @U1 — User preset");
+    expect(texts[2]).not.toContain("of 2");
+    fireEvent.click(screen.getAllByRole("option")[1].querySelector("button")!);
+    expect(request()[0]).toMatchObject({ preset: "Dup PLA @U1", ref: "sys:bbbb", source: "system" });
+    expect(reviewButton().disabled).toBe(false);
+  });
+});
+
+describe("a completed review cannot be used again", () => {
+  const stage = async (onPrepare: (s: any) => any) => {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate({ mapping: PROVEN })] })] }));
+    api.materialPresets.mockResolvedValue(PRESETS);
+    api.convert.mockResolvedValue({ schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true,
+      settings_summary: { project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["A line."], slots: [] } } } });
+    api.confirmMaterialMapping.mockResolvedValue({ ok: true });
+    render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={onPrepare} />);
+    await screen.findByText("Slot 1");
+    choose(/Yoopai PLA Matte/);
+    await act(async () => { fireEvent.click(reviewButton()); });
+    await screen.findByText("A line.");
+  };
+  const prepareButton = () => screen.queryByRole("button", { name: "Prepare with these choices" });
+
+  it("closes the review at once after a copy was made, so Prepare cannot be pressed on it again", async () => {
+    const onPrepare = vi.fn(async () => ({ output_path: "C:/p/out.3mf", blocked: false }) as any);
+    await stage(onPrepare);
+    await act(async () => { fireEvent.click(prepareButton()!); });
+    await waitFor(() => expect(onPrepare).toHaveBeenCalledTimes(1));
+    expect(prepareButton()).toBeNull();
+    expect(screen.queryByTestId("review")).toBeNull();
+    expect(onPrepare).toHaveBeenCalledTimes(1);                         // nothing can trigger a second one from the old review
+    expect(reviewButton().disabled).toBe(false);                        // another copy takes a fresh review
+  });
+
+  it("ignores a second click while the first Prepare is still running", async () => {
+    let finish: (v: any) => void = () => {};
+    const onPrepare = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    await stage(onPrepare);
+    const button = prepareButton()!;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onPrepare).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({ output_path: "C:/p/out.3mf" }); });
+  });
+
+  it("when saving the mapping fails after the copy was made it warns, and does not reopen the old review", async () => {
+    api.confirmMaterialMapping.mockRejectedValue(new Error("disk full"));
+    const onPrepare = vi.fn(async () => ({ output_path: "C:/p/out.3mf", blocked: false }) as any);
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
+    api.materialPresets.mockResolvedValue(PRESETS);
+    api.convert.mockResolvedValue({ schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true,
+      settings_summary: { project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["A line."], slots: [] } } } });
+    render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={onPrepare} />);
+    await screen.findByText("Slot 1");
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
+    fireEvent.click(screen.getByLabelText("Remember this mapping"));
+    await act(async () => { fireEvent.click(reviewButton()); });
+    await screen.findByText("A line.");
+    await act(async () => { fireEvent.click(prepareButton()!); });
+    await screen.findByText(/Your copy was made, but a mapping could not be saved \(disk full\)/);
+    expect(screen.queryByTestId("review")).toBeNull();
+    expect(prepareButton()).toBeNull();
+    expect(onPrepare).toHaveBeenCalledTimes(1);
+  });
+
+  it("a blocked or failed Prepare keeps the review for another try and saves nothing", async () => {
+    const onPrepare = vi.fn(async () => ({ blocked: true, output_path: "" }) as any);
+    await stage(onPrepare);
+    await act(async () => { fireEvent.click(prepareButton()!); });
+    await waitFor(() => expect(onPrepare).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("review")).toBeTruthy();
+    expect(api.confirmMaterialMapping).not.toHaveBeenCalled();
+  });
+});

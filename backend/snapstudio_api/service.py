@@ -362,7 +362,7 @@ def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
                 "filament_type": r["filament_type"], "fingerprint": r["fingerprint"],
                 # what the picker needs to tell two presets of one name apart, and to pin the one chosen; the
                 # pin is opaque - no Orca account folder or file name leaves the backend
-                "source": r["source"], "ref": r["ref"] if r["source"] == "user" else None,
+                "source": r["source"], "ref": r["ref"],
                 "proof": r["proof"], "status": "proven" if proven else "needs_confirmation",
                 "reason": None if proven else r["unproven_reason"], "ambiguous": ambiguous,
             })

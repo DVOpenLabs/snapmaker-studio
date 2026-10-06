@@ -104,6 +104,49 @@ export default function Compatibility() {
           onActiveChange={setMaterialsActive}
           onPrepare={(materials) => prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
       )}
+
+      {/* What Prepare did - success, a refusal or a failure - is shown whether or not the settings check has
+          answered: Project Materials can be used while it is pending or has failed, and its Prepare must never
+          finish without anything on screen. The compatibility findings below stay conditional. */}
+      {path && (prep || prepM.isError) && (
+        <div className="space-y-3" data-testid="prepare-outcome">
+      {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
+
+      {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
+      {prep && !prep.blocked && (
+        <div className="space-y-3 rounded-md border border-border p-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
+            <CheckCircle2 className="h-4 w-4" /> U1 profile copy created
+          </p>
+          <p className="truncate text-xs text-muted-foreground" title={prep.output_path}>
+            Saved as <b>{prep.output_name}</b> · creator settings kept where possible; review in Orca before slicing. (new file — original untouched).
+          </p>
+          <p className="flex items-start gap-1.5 rounded-md border border-doctor-cost/40 bg-doctor-cost/5 p-2 text-[11px] text-muted-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-doctor-cost" />
+            Layout is not verified — this checks the U1 profile copy, not object placement. Open in
+            Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
+          </p>
+          <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
+          {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+          {prep.errors && prep.errors.length > 0 && (
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {prep.output_path && <OrcaHandoff outputPath={prep.output_path} originalPath={path ?? undefined} />}
+            <Button size="sm" variant="secondary" onClick={() => copyPath(prep.output_path)}>
+              <Copy className="h-4 w-4" /> Copy path
+            </Button>
+            <Button size="sm" variant="secondary" asChild>
+              <Link to="/doctor/project"><Stethoscope className="h-4 w-4" /> Run Project Doctor</Link>
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Advisory — not a print-success guarantee. Studio does not slice; Orca does.</p>
+        </div>
+      )}
+        </div>
+      )}
       {checkM.isError && <p className="text-sm text-risk">Couldn't read that file: {(checkM.error as Error).message}</p>}
 
       {result && (
@@ -158,42 +201,6 @@ export default function Compatibility() {
               <p className="text-[11px] text-muted-foreground">Creates a new file. Your original is never modified.</p>
             </div>
           )}
-          {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
-
-          {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
-          {prep && !prep.blocked && (
-            <div className="space-y-3 rounded-md border border-border p-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
-                <CheckCircle2 className="h-4 w-4" /> U1 profile copy created
-              </p>
-              <p className="truncate text-xs text-muted-foreground" title={prep.output_path}>
-                Saved as <b>{prep.output_name}</b> · creator settings kept where possible; review in Orca before slicing. (new file — original untouched).
-              </p>
-              <p className="flex items-start gap-1.5 rounded-md border border-doctor-cost/40 bg-doctor-cost/5 p-2 text-[11px] text-muted-foreground">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-doctor-cost" />
-                Layout is not verified — this checks the U1 profile copy, not object placement. Open in
-                Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
-              </p>
-              <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
-              {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
-              {prep.errors && prep.errors.length > 0 && (
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}
-                </ul>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                {prep.output_path && <OrcaHandoff outputPath={prep.output_path} originalPath={path ?? undefined} />}
-                <Button size="sm" variant="secondary" onClick={() => copyPath(prep.output_path)}>
-                  <Copy className="h-4 w-4" /> Copy path
-                </Button>
-                <Button size="sm" variant="secondary" asChild>
-                  <Link to="/doctor/project"><Stethoscope className="h-4 w-4" /> Run Project Doctor</Link>
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">Advisory — not a print-success guarantee. Studio does not slice; Orca does.</p>
-            </div>
-          )}
-
           <p className="flex items-start gap-1.5 rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {result.recommendation}
           </p>

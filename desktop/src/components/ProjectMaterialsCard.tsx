@@ -74,6 +74,18 @@ function Swatch({ colour }: { colour: string | null }) {
 export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList; onPick: (preset: MaterialPreset) => void; label: string }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => filterPresets(list.presets, query), [list.presets, query]);
+  // Two presets of one name from one source (two bundled files, say) differ only by position, so say which of how many.
+  const twins = useMemo(() => {
+    const groups = new Map<string, MaterialPreset[]>();
+    for (const p of list.presets) {
+      const key = `${p.base_name}\u0000${p.source ?? "system"}`;
+      groups.set(key, [...(groups.get(key) ?? []), p]);
+    }
+    return (p: MaterialPreset): string => {
+      const group = groups.get(`${p.base_name}\u0000${p.source ?? "system"}`) ?? [];
+      return group.length > 1 ? ` (${group.indexOf(p) + 1} of ${group.length})` : "";
+    };
+  }, [list.presets]);
   return (
     <div className="space-y-1 rounded-md border border-border bg-card p-2">
       <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search installed presets"
@@ -88,7 +100,7 @@ export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList
               <span className="truncate">
                 {p.base_name}
                 {/* what tells two presets of one name apart */}
-                {(p.source === "user" || p.ambiguous) && <span className="text-muted-foreground"> — {presetSourceLabel(p)}</span>}
+                {(p.source === "user" || p.ambiguous) && <span className="text-muted-foreground"> — {presetSourceLabel(p)}{twins(p)}</span>}
               </span>
               <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
                 {p.status === "needs_confirmation" && <StatusBadge status="needs_confirmation" />}
@@ -517,23 +529,41 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
     }
   }
 
+  const submitting = useRef(false);
+  const [preparing, setPreparing] = useState(false);
+
   async function doPrepare() {
+    // One Prepare per click: a second click while one is running, or on a review that has already been used, does nothing.
+    if (submitting.current) return;
+    submitting.current = true;
+    setPreparing(true);
     setWarning(null);
-    let result: ConversionResult | void;
-    try { result = await onPrepare(selections); }
-    catch { return; }                                    // the page already shows why Prepare failed; nothing is saved
-    // A mapping is remembered only once a copy was actually made with it: not when Prepare was blocked or failed.
-    if (!result || result.blocked || !result.output_path) return;
-    for (const request of mappingRequests(choices, analysis?.nozzle ?? "0.4")) {
-      try { await confirmMaterialMapping(request); }
-      catch (e: any) { setWarning(`Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`); }
+    try {
+      let result: ConversionResult | void;
+      // The route that owns Prepare shows why it failed (Compatibility renders it whether or not the settings check
+      // answered), so a failure is not repeated here and nothing is saved.
+      try { result = await onPrepare(selections); }
+      catch { return; }
+      // A mapping is remembered only once a copy was actually made with it: not when Prepare was blocked or failed.
+      if (!result || result.blocked || !result.output_path) return;
+      // The review described the copy that now exists. Close it at once, so "Prepare with these choices" cannot be pressed
+      // again against it; making another copy takes a fresh review.
+      reviewGen.current += 1;
+      setReview({ status: "idle" });
+      for (const request of mappingRequests(choices, analysis?.nozzle ?? "0.4")) {
+        try { await confirmMaterialMapping(request); }
+        catch (e: any) { setWarning(`Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`); }
+      }
+    } finally {
+      submitting.current = false;
+      setPreparing(false);
     }
   }
 
   return (
     <ProjectMaterialsView load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
-      onPrepare={doPrepare} busy={busy} warning={warning} />
+      onPrepare={doPrepare} busy={busy || preparing} warning={warning} />
   );
 }
 

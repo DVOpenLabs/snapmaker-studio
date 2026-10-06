@@ -126,7 +126,9 @@ def test_stored_record_holds_names_and_fingerprints_only(catalog, store):
                     preset=_proven(catalog), catalog=catalog)
     assert set(row) == {"scope", "provider", "preset_base", "fingerprint", "origin", "profiles_version",
                         "catalog_fingerprint", "confirmed_at", "spool_id", "source", "ref", "proof"}
-    assert (row["source"], row["ref"], row["proof"]) == ("system", None, "evidence")
+    # the exact installed record is kept, for Orca's own presets as well as the person's; the pin is opaque
+    assert (row["source"], row["proof"]) == ("system", "evidence")
+    assert row["ref"].startswith("sys:") and ".json" not in row["ref"] and "Matte" not in row["ref"]
     assert row["catalog_fingerprint"] == catalog.fingerprint
     text = open(store.path, encoding="utf-8").read().lower()
     for secret_word in ("key", "token", "password", "secret", "url", "http"):

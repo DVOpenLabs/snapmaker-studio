@@ -325,7 +325,7 @@ def test_user_presets_appear_in_the_picker_with_their_source_and_proof(world):
     assert "default" not in blob.replace("default_", "") and ".json" not in blob
     m = rows[("Mystery PLA", "user")]
     assert m["status"] == "needs_confirmation" and "does not say which printers" in m["reason"]
-    assert rows[(MATTE, "system")]["ref"] is None and rows[(MATTE, "system")]["status"] == "proven"
+    assert rows[(MATTE, "system")]["ref"].startswith("sys:") and rows[(MATTE, "system")]["status"] == "proven"
     assert rows[("Acme PLA @U1", "system")]["ambiguous"] is True and rows[("Acme PLA @U1", "user")]["ambiguous"] is True
     assert out["source"]["user_presets"] == 3
 
@@ -522,3 +522,95 @@ def test_a_confirmed_preset_of_another_material_is_reported_as_a_mismatch(world)
          "spool": {"provider": "spoolease", "id": 9, "vendor": "Yoopai", "material": "PETG"}}]})
     codes = [d["code"] for d in res["settings_summary"]["project_materials"]["fidelity"]["slots"][2]["discrepancies"]]
     assert "material_mismatch" in codes and "vendor_mismatch" in codes and "user_preset_unproven" in codes
+
+
+# --- two of Orca's own preset files claiming one name ------------------------------------------------------------------
+
+def _dup(world, name="Dup PLA @U1", vendor="Acme", ftype="PLA"):
+    """Two bundled files for one base name and nozzle, as a broken or overlapping profile pack can ship."""
+    for filename in ("Dup PLA @U1.json", "Dup PLA @U1 (second file).json"):
+        (world.fil / filename).write_text(json.dumps({
+            "type": "filament", "from": "system", "instantiation": "true", "name": name,
+            "compatible_printers": U1_04, "filament_vendor": [vendor], "filament_type": [ftype]}), "utf-8")
+    return [pc.system_ref("Dup PLA @U1.json"), pc.system_ref("Dup PLA @U1 (second file).json")]
+
+
+def test_two_system_files_with_one_name_are_both_listed_and_individually_selectable(world):
+    first, second = _dup(world)
+    c = cat()
+    amb = c.evaluate("Dup PLA @U1", "0.4")
+    assert amb["status"] == NEEDS_CONFIRMATION and amb["preset_name"] is None
+    assert sorted(x["ref"] for x in amb["choices"]) == sorted([first, second])
+    rows = [r for r in service.material_presets("0.4")["presets"] if r["base_name"] == "Dup PLA @U1"]
+    assert len(rows) == 2 and all(r["ambiguous"] and r["source"] == "system" and r["status"] == "proven" for r in rows)
+    assert sorted(r["ref"] for r in rows) == sorted([first, second])
+    for ref in (first, second):                                     # each one, by its own pin, is usable on its own
+        r = c.evaluate("Dup PLA @U1", "0.4", ref=ref)
+        assert r["status"] == PROVEN and r["ref"] == ref and r["preset_name"] == "Dup PLA @U1"
+
+
+def test_a_pinned_system_record_is_used_by_prepare_and_an_unpinned_name_is_refused(world):
+    first, _ = _dup(world)
+    src = _project(world.tmp)
+    with pytest.raises(ValueError, match="not a proven installed preset"):
+        service.convert(str(src), str(world.tmp / "o1"), "preserve", False,
+                        {"selections": [{"slot": 0, "preset": "Dup PLA @U1"}]})
+    ok = service.convert(str(src), str(world.tmp / "o2"), "preserve", False,
+                         {"selections": [{"slot": 0, "preset": "Dup PLA @U1", "ref": first, "source": "system"}]})
+    assert ok["output_path"]
+
+
+def test_a_saved_mapping_reuses_that_exact_system_record_and_never_its_sibling(world):
+    first, second = _dup(world)
+    store = mm.Store(str(world.tmp / "m.json"))
+    row = _save(store, cat(), "Dup PLA @U1", ref=first)
+    assert row["ref"] == first and row["source"] == "system"
+    got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
+    assert (got["status"], got["ref"], got["match_source"]) == (PROVEN, first, mm.SOURCE_SAVED_SPOOL)
+    (world.fil / "Dup PLA @U1.json").unlink()                                      # the pinned record disappears
+    gone = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
+    assert gone["status"] == NO_MATCH and gone["preset_name"] is None             # the sibling is NOT silently used
+    assert cat().evaluate("Dup PLA @U1", "0.4", ref=second)["status"] == PROVEN   # it is still there, just not what was confirmed
+
+
+def test_replacing_the_pinned_system_record_invalidates_the_mapping(world):
+    first, _ = _dup(world)
+    store = mm.Store(str(world.tmp / "m.json"))
+    _save(store, cat(), "Dup PLA @U1", ref=first)
+    (world.fil / "Dup PLA @U1.json").write_text(json.dumps({
+        "type": "filament", "from": "system", "instantiation": "true", "name": "Dup PLA @U1",
+        "compatible_printers": U1_04, "filament_vendor": ["Acme"], "filament_type": ["PETG"]}), "utf-8")
+    got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
+    assert got["status"] == NEEDS_CONFIRMATION and got["stale"] is True
+
+
+def test_system_and_user_collisions_stay_explicit_with_a_ref_on_both(world):
+    _user(world.data, "Acme PLA @U1", inherits="Acme PLA @U1")
+    r = cat().evaluate("Acme PLA @U1", "0.4")
+    refs = {x["source"]: x["ref"] for x in r["choices"]}
+    assert refs["system"].startswith("sys:") and refs["user"].startswith("user:")
+    assert cat().evaluate("Acme PLA @U1", "0.4", ref=refs["system"])["source"] == "system"
+    assert cat().evaluate("Acme PLA @U1", "0.4", ref=refs["user"])["source"] == "user"
+
+
+def test_no_path_or_file_name_leaves_the_backend_for_any_preset(world, tmp_path):
+    _dup(world)
+    _user(world.data, "Yoopai PLA+", inherits=MATTE)
+    blob = json.dumps(service.material_presets("0.4")) + json.dumps(cat().evaluate("Dup PLA @U1", "0.4"))
+    for leak in (".json", str(tmp_path), "(second file)", "orca-data", "filament/", "filament\\", "default"):
+        assert leak not in blob.replace("default_", ""), leak
+    assert all(r["ref"].startswith(("sys:", "user:")) for r in service.material_presets("0.4")["presets"])
+
+
+def test_the_line_for_a_preset_the_person_made_does_not_promise_what_orca_may_not_do(world):
+    """Measured on Orca 2.4.0 (isolated profile): a project naming a user preset opened as a Customized Preset with the
+    project's own values. Studio says only what is certain for those, and keeps the stronger sentence for Orca's own."""
+    _user(world.data, "Yoopai PLA+", inherits=MATTE)
+    mine = service.convert(str(_project(world.tmp)), str(world.tmp / "o1"), "preserve", False,
+                           {"selections": [{"slot": 1, "preset": "Yoopai PLA+"}]})
+    line = mine["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
+    assert "come from the installed" not in line
+    assert "only if it has the preset installed" in line and "Customized Preset" in line and "keeps the project's values" in line
+    system = service.convert(str(_project(world.tmp, name="p2.3mf")), str(world.tmp / "o2"), "preserve", False,
+                             {"selections": [{"slot": 1, "preset": MATTE}]})
+    assert "come from the installed" in system["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]

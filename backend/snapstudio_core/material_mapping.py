@@ -114,9 +114,9 @@ class Store:
             raise ValueError("only a proven installed preset, or one of your own presets you confirmed, can be remembered")
         row = {
             "source": preset.get("source"),
-            # A user preset is one file, so it is pinned by that file. A system preset is not: the file
-            # that carries it differs by nozzle, so it is pinned by its source only.
-            "ref": preset.get("ref") if preset.get("source") == "user" else None,
+            # The exact installed record, whether Orca's or the person's: a mapping never falls back to a
+            # same-name sibling. (A system preset's file differs by nozzle; Prepare writes one nozzle.)
+            "ref": preset.get("ref"),
             "proof": "evidence" if proven else "user_confirmed",
             "scope": scope,
             "provider": _text(provider),

@@ -176,3 +176,62 @@ describe("one-click Prepare in the other mode never drops the person's choices",
     await waitFor(() => expect(screen.queryAllByRole("button", { name: /recommended/i }).length).toBe(0));
   });
 });
+
+
+describe("what Project Materials' Prepare did is always visible", () => {
+  const SUMMARY = { source_has_creator_settings: true, kept_count: 0, compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [],
+    recommendations_available: false, recommended_changes: [],
+    project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["Slot 1: mapped."], slots: [] } } };
+  const REVIEW = { schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true, errors: [], settings_summary: SUMMARY };
+  const DONE = { ...REVIEW, output_path: "C:/p/out.3mf", output_name: "out.3mf" };
+
+  /** Review (dry run) always succeeds; `real` decides what the actual Prepare does. */
+  async function prepareWith(real: () => Promise<any>) {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate({ mapping: {
+      status: "proven", match_source: "saved_spool", preset_name: "P @U1", base_name: "P @U1", reason: "", candidates: [], stale: false } })] })] }));
+    api.convert.mockImplementation(async (_p: string, _o: unknown, _m: string, dry: boolean) => (dry ? REVIEW : real()));
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: /Yoopai PLA Matte/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Review & prepare/ }));
+    await screen.findByText("Slot 1: mapped.");
+    fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" }));
+  }
+
+  it("shows success while the compatibility check is still pending", async () => {
+    api.compatibilityCheck.mockReturnValue(new Promise(() => {}));
+    await prepareWith(async () => DONE);
+    await screen.findByText("U1 profile copy created");
+    expect(screen.getByTestId("prepare-outcome")).toBeTruthy();
+    expect(screen.queryByText("Printer profile is for another machine")).toBeNull();
+  });
+
+  it("shows success when the compatibility check failed", async () => {
+    api.compatibilityCheck.mockRejectedValue(new Error("no answer"));
+    await prepareWith(async () => DONE);
+    await screen.findByText("U1 profile copy created");
+    expect(screen.getByText(/Couldn't read that file: no answer/)).toBeTruthy();
+  });
+
+  it("shows the error when the compatibility check failed and Prepare then fails", async () => {
+    api.compatibilityCheck.mockRejectedValue(new Error("no answer"));
+    await prepareWith(async () => { throw new Error("engine said no"); });
+    await screen.findByText(/Couldn't prepare a copy: engine said no/);
+    expect(screen.queryByText("U1 profile copy created")).toBeNull();
+  });
+
+  it("shows a blocked Prepare with no compatibility result", async () => {
+    api.compatibilityCheck.mockReturnValue(new Promise(() => {}));
+    await prepareWith(async () => ({ ...REVIEW, blocked: true, validated_ok: false, errors: ["Prepare stopped: x."],
+      settings_summary: { project_materials: { guard: { applies: true, blocking: true, shared: [], warnings: [], resolution: "Pick other presets.",
+        conflicts: [{ key: "filament_vendor", preset: "P @U1", slots: [0, 1], declared_in: [0], values: {} }] } } } }));
+    await screen.findByTestId("blocked");
+    expect(screen.getByText(/Prepare stopped: x\./)).toBeTruthy();
+  });
+
+  it("with findings, success still appears and the findings stay conditional on the check", async () => {
+    api.compatibilityCheck.mockResolvedValue(WITH_FINDINGS);
+    await prepareWith(async () => DONE);
+    await screen.findByText("U1 profile copy created");
+    expect(await screen.findByText("Printer profile is for another machine")).toBeTruthy();
+  });
+});
