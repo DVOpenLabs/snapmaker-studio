@@ -43,6 +43,9 @@ export const COPY = {
   blocked: "Prepare stopped",
 } as const;
 
+// A preset the person made is theirs to vouch for: Studio can name it, but cannot confirm Orca applies its values.
+export const MANUAL_CHECK = "Manual check in Orca required";
+
 const STATUS_STYLE: Record<PresetStatus, string> = {
   proven: "bg-ready/10 text-ready",
   needs_confirmation: "bg-repairable/15 text-repairable ring-1 ring-repairable/40",
@@ -105,7 +108,8 @@ export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList
               <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
                 {p.status === "needs_confirmation" && <StatusBadge status="needs_confirmation" />}
                 {[p.vendor, p.filament_type].filter(Boolean).join(" · ")} ·{" "}
-                {p.status === "needs_confirmation" ? (p.reason ?? "compatibility not stated") : `fits ${list.nozzle} mm nozzle`}
+                {p.status === "needs_confirmation" ? (p.reason ?? "compatibility not stated")
+                  : p.source === "user" ? `fits ${list.nozzle} mm nozzle · ${MANUAL_CHECK}` : `fits ${list.nozzle} mm nozzle`}
               </span>
             </button>
           </li>
@@ -215,8 +219,10 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
             : choice.preset ? <span>{choice.preset.name}{choice.preset.source === "user" && <span className="text-muted-foreground"> — User preset</span>}</span>
             : <span className="text-muted-foreground">Not chosen yet</span>}
           {status && !choice.keepOwn && (choice.preset || spool) && (
-            <StatusBadge status={status} confirmedByYou={!!choice.preset?.confirmed && !!choice.preset?.needsSayso} />
+            <StatusBadge status={status}
+              confirmedByYou={!!choice.preset?.confirmed && (!!choice.preset?.needsSayso || choice.preset?.source === "user")} />
           )}
+          {choice.preset?.source === "user" && !choice.keepOwn && <span className="text-[11px] font-semibold text-repairable" data-testid="manual-check">{MANUAL_CHECK}</span>}
           {spool && choice.preset && !choice.keepOwn && (
             <span className="text-[11px] text-muted-foreground" data-testid="match-source">
               {samePreset(choice.preset, spool.mapping)

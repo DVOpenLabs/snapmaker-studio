@@ -559,6 +559,7 @@ describe("the review repairs in the card", () => {
     const area = screen.getByTestId("preset-area");
     expect(within(area).getByText("Confirmed by you").getAttribute("data-status")).toBe("confirmed_by_you");
     expect(within(area).queryByText("Proven")).toBeNull();
+    expect(within(area).getByTestId("manual-check").textContent).toBe("Manual check in Orca required");
   });
 
   it("a review still in flight when the mode changes never reappears", async () => {

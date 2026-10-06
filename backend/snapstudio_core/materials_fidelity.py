@@ -260,14 +260,16 @@ def _line(rec: dict, spool: dict | None) -> str:
                 f"Slot {n}: mapped to '{out['preset_written']}' (chosen by you{', a preset you made' if mine else ''}).")
         pc = out["preset_controlled"]
         if mine:
-            # Measured on Snapmaker Orca 2.4.0 with an isolated profile: a project that names one of the person's own
-            # presets was shown as a Customized Preset and kept the project's values. Studio cannot say Orca applies a
-            # user preset's values, so for those it says only what is certain.
+            # Measured on Snapmaker Orca 2.4.0: a project naming one of the person's own presets kept the project's
+            # values (isolated profile: Customized Preset prompt; normal profile: no prompt, preset shown as modified
+            # with the project's values as unsaved changes). Studio cannot say Orca applies a user preset's values,
+            # so for those it says only what is certain.
             held = (f" The project declares {', '.join(pc['kept_by_declaration'])}, so Orca keeps the project's own "
                     "value for it." if pc["kept_by_declaration"] else "")
             return (head + colour_text + " Studio cannot confirm Snapmaker Orca will apply this preset's temperature, "
-                    "flow and cooling: when tested, Orca opened a project naming a preset someone made as a Customized "
-                    "Preset and kept the project's values. Check the filament in Orca before slicing." + held)
+                    "flow and cooling: when tested, Orca kept the project's values and showed the preset as modified "
+                    "(as a Customized Preset in one profile). Manual check in Orca required. "
+                    "Check the filament in Orca before slicing." + held)
         if not pc["kept_by_declaration"]:
             return (head + colour_text + f" Temperature, flow and cooling come from the installed "
                     f"{out['preset_written']} preset.")

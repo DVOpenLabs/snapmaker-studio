@@ -42,6 +42,14 @@ All notable changes to this project are documented here. The format is based on
 - Project Materials appears whenever a project has filament slots, whether or not the
   compatibility check found anything.
 
+### Known limitation
+- **Presets you made yourself need a manual check in Orca.** Studio can find your own preset,
+  map a spool to it and write its exact name into the copy, but it cannot confirm that Snapmaker
+  Orca will apply that preset's temperature, flow and cooling. In testing, Orca 2.4.0 kept the
+  project's own values and showed the preset as modified (in one profile with a "Customized
+  Preset" prompt). Such presets are marked "Confirmed by you" and "Manual check in Orca
+  required"; check the filament in Orca before slicing. Orca's built-in presets are unaffected.
+
 ### Not included
 - Project Materials does not create custom Snapmaker Orca presets.
 - Keeping a project's own print parameters while using a different installed preset is still
