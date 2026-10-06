@@ -533,18 +533,18 @@ def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: st
         preset = (sel.get("preset") or "").strip() if isinstance(sel.get("preset"), str) else ""
         if sel.get("preset") not in (None, "") and not preset:
             raise ValueError("preset must be a name")
+        # validated on every selection, with or without a preset, so a malformed flag is never silently ignored
+        ref, source, accept = sel.get("ref"), sel.get("source"), sel.get("accept_unproven")
+        if ref is not None and not isinstance(ref, str):
+            raise ValueError("ref must be text")
+        if source not in (None, "system", "user"):
+            raise ValueError("source must be 'system' or 'user'")
+        if accept is not None and type(accept) is not bool:
+            raise ValueError("accept_unproven must be true or false")
         if preset:
             if catalog is None:
                 raise ValueError("Snapmaker Orca's installed filament presets could not be read, "
                                  "so no preset can be applied")
-            ref, source = sel.get("ref"), sel.get("source")
-            if ref is not None and not isinstance(ref, str):
-                raise ValueError("ref must be text")
-            if source not in (None, "system", "user"):
-                raise ValueError("source must be 'system' or 'user'")
-            accept = sel.get("accept_unproven")
-            if accept not in (None, True, False):
-                raise ValueError("accept_unproven must be true or false")
             found = catalog.evaluate(preset, nozzle, ref, source)
             proven = found["status"] == PROVEN
             if not proven and not (found.get("confirmable") and accept is True):
@@ -552,6 +552,9 @@ def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: st
                         "that it is a U1 preset to use it." if found.get("confirmable") else "")
                 raise ValueError(f"“{preset}” is not a proven installed preset for the {nozzle} mm "
                                  f"nozzle: {found['reason']}{hint}")
+            if not proven and sel.get("fingerprint") != found.get("fingerprint"):
+                # the say-so was given for the preset the person was shown; it has been replaced since
+                raise ValueError(f"“{preset}” has changed since you confirmed it. Choose it again to confirm it.")
             presets[slot] = found["preset_name"]
             if proofs is not None:
                 proofs[slot] = {"source": found.get("source"), "ref": found.get("ref"),

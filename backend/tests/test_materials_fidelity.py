@@ -349,3 +349,18 @@ def test_verification_checks_the_source_facts_and_the_declarations_the_record_sa
     assert slots[0]["verified"] is False and "does not declare everything" in slots[0]["verification"][0]
     assert report["materials"]["verified"] is False
     assert slots[2]["verified"] is True
+
+
+def test_a_slot_that_cannot_be_checked_is_never_marked_verified(env, tmp_path):
+    src, result = _mapped(tmp_path)
+    for bad_slot in ("1", -1, True, None, 99):
+        forged = copy.deepcopy(_record(result))
+        forged["slots"][1]["slot"] = bad_slot
+        report = fidelity.audit(str(src), result["output_path"], forged)
+        slots = [s for s in report["materials"]["slots"] if s.get("slot") == bad_slot or s.get("slot") is None]
+        assert slots and all(s["verified"] is False for s in slots), bad_slot
+        assert report["materials"]["verified"] is False
+    incomplete = copy.deepcopy(_record(result))
+    incomplete["slots"][1]["output"] = "x"
+    report = fidelity.audit(str(src), result["output_path"], incomplete)
+    assert report["materials"]["slots"][1]["verified"] is False and report["materials"]["verified"] is False

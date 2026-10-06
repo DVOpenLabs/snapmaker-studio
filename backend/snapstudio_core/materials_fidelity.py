@@ -99,7 +99,9 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     preset = presets.get(s)
     wanted_colour = colours.get(s)
     involved = preset is not None or wanted_colour is not None
-    found = catalog.evaluate(preset, nozzle) if (catalog is not None and preset) else None
+    pin = ctx.get("preset") or {}
+    found = (catalog.evaluate(preset, nozzle, pin.get("ref"), pin.get("source"))
+             if (catalog is not None and preset) else None)
 
     changed, preserved = [], []
     for key in ("filament_settings_id", "filament_colour"):
@@ -163,7 +165,7 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     controlled = _controlled(preset, declared_here)
 
     discrepancies = []
-    if found and found["status"] == PROVEN and spool:
+    if found and found.get("preset_name") and spool:
         spool_material, preset_type = spool.get("material"), found.get("filament_type")
         if spool_material and preset_type and _norm(spool_material) != _norm(preset_type):
             discrepancies.append({
@@ -432,7 +434,13 @@ def verify(record: dict, prepared: dict | None, original: dict | None = None) ->
         else:
             i = slot.get("slot")
             o = slot.get("output") or {}
-            if isinstance(i, int):
+            count = filament_count(prepared)
+            shaped = all(isinstance(slot.get(k), dict) for k in ("source", "output", "declarations"))
+            if not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < count:
+                notes.append("This slot cannot be checked: it does not name a filament slot of the copy.")
+            elif not shaped:
+                notes.append("This slot's record is incomplete, so it cannot be checked.")
+            else:
                 if o.get("preset_written") and _at(prepared, "filament_settings_id", i) != o["preset_written"]:
                     notes.append("The copy does not carry the preset this record says was written.")
                 if o.get("colour_written") and pm.hex6(_at(prepared, "filament_colour", i)) != o["colour_written"]:

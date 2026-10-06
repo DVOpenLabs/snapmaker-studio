@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  choiceReduce, colourWord, emptyChoice, filterPresets, mappingRequests, materialText, presetSourceLabel,
+  choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText, presetSourceLabel,
   presetStatusFor, slotNumber, unconfirmedSlots,
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
@@ -49,7 +49,15 @@ const STATUS_STYLE: Record<PresetStatus, string> = {
   no_match: "bg-muted text-muted-foreground",
 };
 
-export function StatusBadge({ status }: { status: PresetStatus }) {
+export function StatusBadge({ status, confirmedByYou = false }: { status: PresetStatus; confirmedByYou?: boolean }) {
+  // "Proven" is something Studio worked out. A preset the person vouched for is not that, and is never called so.
+  if (confirmedByYou) {
+    return (
+      <span data-status="confirmed_by_you" className="inline-flex items-center rounded-full bg-primary/15 px-2 py-px text-[11px] font-semibold text-primary">
+        Confirmed by you
+      </span>
+    );
+  }
   return (
     <span data-status={status} className={`inline-flex items-center rounded-full px-2 py-px text-[11px] font-semibold ${STATUS_STYLE[status]}`}>
       {STATUS_LABEL[status]}
@@ -109,7 +117,7 @@ function CandidateRow({ c, selected, onChoose }: { c: MaterialCandidate; selecte
           <span>{[c.vendor, materialText(c)].filter(Boolean).join(" ")}</span>
           <span className="text-muted-foreground">#{c.spool_id}</span>
           <span className="text-muted-foreground">{amountText(c)}</span>
-          <StatusBadge status={c.mapping.status} />
+          <StatusBadge status={c.mapping.status} confirmedByYou={c.mapping.status === "proven" && c.mapping.proof === "user_confirmed"} />
           {c.mapping.stale && <span className="rounded-full bg-repairable/15 px-2 py-px text-[11px] font-semibold text-repairable">{COPY.stale}</span>}
         </span>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
@@ -194,7 +202,9 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
           {choice.keepOwn ? <span className="text-muted-foreground">Keep project&apos;s filament</span>
             : choice.preset ? <span>{choice.preset.name}{choice.preset.source === "user" && <span className="text-muted-foreground"> — User preset</span>}</span>
             : <span className="text-muted-foreground">Not chosen yet</span>}
-          {status && !choice.keepOwn && (choice.preset || spool) && <StatusBadge status={status} />}
+          {status && !choice.keepOwn && (choice.preset || spool) && (
+            <StatusBadge status={status} confirmedByYou={!!choice.preset?.confirmed && !!choice.preset?.needsSayso} />
+          )}
           {spool && choice.preset && !choice.keepOwn && (
             <span className="text-[11px] text-muted-foreground" data-testid="match-source">
               {(spool.mapping.base_name ?? spool.mapping.preset_name) === choice.preset.name
@@ -248,7 +258,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
             setPicking(false);
             dispatch({ type: "pickPreset", slot: slot.slot, name: row.base_name,
               source: row.source === "user" || row.ambiguous ? row.source : undefined, ref: row.ref ?? undefined,
-              unproven: row.status === "needs_confirmation", note: row.reason });
+              unproven: row.status === "needs_confirmation", note: row.reason, fingerprint: row.fingerprint });
           }} />
         )}
 
@@ -485,19 +495,25 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   }, [path, argsKey]);
 
   const selections = useMemo(() => buildSelections(choices), [choices]);
-  useEffect(() => { onActiveChange?.(selections.length > 0); }, [selections.length, onActiveChange]);
-  // Any change to the choices, or to the preparation mode, invalidates a review that was already shown:
-  // the review was computed for exactly those choices in exactly that mode.
-  useEffect(() => { setReview((r) => (r.status === "idle" ? r : { status: "idle" })); }, [choices, mode]);
+  const holding = holdsChoices(choices);
+  useEffect(() => { onActiveChange?.(holding); }, [holding, onActiveChange]);
+  // Any change to the choices, the preparation mode, the project or the provider invalidates a review: it was
+  // computed for exactly those. A review still in flight is discarded too (see the generation check below).
+  const reviewGen = useRef(0);
+  useEffect(() => {
+    reviewGen.current += 1;
+    setReview((r) => (r.status === "idle" ? r : { status: "idle" }));
+  }, [choices, mode, path, argsKey]);
 
   async function onReview() {
+    const gen = reviewGen.current;
     setReview({ status: "loading" });
     setWarning(null);
     try {
       const result = await convert(path, undefined, mode, true, selections);
-      setReview({ status: "done", result });
+      if (gen === reviewGen.current) setReview({ status: "done", result });
     } catch (e: any) {
-      setReview({ status: "error", error: String(e?.message ?? e) });
+      if (gen === reviewGen.current) setReview({ status: "error", error: String(e?.message ?? e) });
     }
   }
 

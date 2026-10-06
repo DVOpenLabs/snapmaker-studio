@@ -32,6 +32,8 @@ export interface MaterialMapping {
   /** Pins one of the person's preset files; null for a system preset. */
   ref?: string | null;
   proof?: string | null;
+  /** Which version of the preset this is, so a say-so given for it cannot be applied to a replacement. */
+  fingerprint?: string | null;
   /** True for one of the person's own presets Studio could not itself tell is for the U1: usable only if they say so. */
   confirmable?: boolean;
   /** When a name is ambiguous, each installed preset that claims it. */
@@ -150,6 +152,8 @@ export interface MaterialSelection {
   ref?: string;
   /** The person said this user preset is a U1 preset (Studio could not tell). */
   accept_unproven?: boolean;
+  /** The preset they were shown when they said so; the engine refuses if it has changed since. */
+  fingerprint?: string;
   spool?: {
     provider: string;
     id: number | string;
@@ -175,6 +179,7 @@ export interface MappingRequest {
   source?: "system" | "user";
   ref?: string;
   accept_unproven?: boolean;
+  fingerprint?: string;
 }
 
 /** The exact sentence for a slot that keeps its own filament. */
@@ -209,6 +214,8 @@ export interface PresetChoice {
   needsSayso?: boolean;
   /** The engine's own words for why it needs their say-so. */
   note?: string | null;
+  /** Which version of the preset they were shown. */
+  fingerprint?: string | null;
 }
 
 export interface SlotChoice {
@@ -225,7 +232,7 @@ export const emptyChoice: SlotChoice = { spool: null, preset: null, keepOwn: fal
 export type ChoiceAction =
   | { type: "chooseSpool"; slot: number; spool: MaterialCandidate }
   | { type: "clearSpool"; slot: number }
-  | { type: "pickPreset"; slot: number; name: string; source?: "system" | "user"; ref?: string | null; unproven?: boolean; note?: string | null }
+  | { type: "pickPreset"; slot: number; name: string; source?: "system" | "user"; ref?: string | null; unproven?: boolean; note?: string | null; fingerprint?: string | null }
   | { type: "confirmPreset"; slot: number }
   | { type: "clearPreset"; slot: number }
   | { type: "keepOwn"; slot: number }
@@ -243,7 +250,10 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       const m = action.spool.mapping;
       // base_name is the installed preset the engine resolved; an ambiguous match has none and gets no preset.
       const name = m.base_name ?? m.preset_name;
-      const pin = { source: (m.source ?? undefined) as "system" | "user" | undefined, ref: m.ref ?? undefined };
+      const pin = { source: (m.source ?? undefined) as "system" | "user" | undefined, ref: m.ref ?? undefined,
+                    fingerprint: m.fingerprint ?? null };
+      // A name more than one installed preset claims has no single preset to offer; the person picks one by its source.
+      if ((m.choices?.length ?? 0) > 1) return put({ spool: action.spool, preset: null, keepOwn: false, remember: "off" });
       // A remembered mapping the person confirmed (even one they said was a U1 preset) stays confirmed; a
       // preset the engine could not prove, or the provider merely names, waits for them.
       const preset: PresetChoice | null =
@@ -259,7 +269,7 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       // Studio could not tell is for the U1: that needs their explicit say-so first.
       return put({ ...current, keepOwn: false, remember: "off", preset: {
         name: action.name, confirmed: !action.unproven, source: action.source, ref: action.ref ?? undefined,
-        needsSayso: !!action.unproven, note: action.note ?? null } });
+        needsSayso: !!action.unproven, note: action.note ?? null, fingerprint: action.fingerprint ?? null } });
     case "confirmPreset":
       return current.preset ? put({ ...current, preset: { ...current.preset, confirmed: true } }) : state;
     case "clearPreset":
@@ -279,6 +289,12 @@ export function unconfirmedSlots(choices: Choices): number[] {
     .sort((a, b) => a - b);
 }
 
+/** Whether Project Materials holds anything that a one-click Prepare elsewhere on the page would drop: a choice that
+ *  will be sent, or one still waiting for the person to confirm it. */
+export function holdsChoices(choices: Choices): boolean {
+  return buildSelections(choices).length > 0 || unconfirmedSlots(choices).length > 0;
+}
+
 /** The request Prepare (and its dry-run review) is sent. Only what the person has chosen and confirmed. */
 export function buildSelections(choices: Choices): MaterialSelection[] {
   const out: MaterialSelection[] = [];
@@ -290,7 +306,10 @@ export function buildSelections(choices: Choices): MaterialSelection[] {
     if (preset && c.preset) {
       if (c.preset.source) sel.source = c.preset.source;
       if (c.preset.ref) sel.ref = c.preset.ref;
-      if (c.preset.needsSayso) sel.accept_unproven = true;
+      if (c.preset.needsSayso) {
+        sel.accept_unproven = true;
+        if (c.preset.fingerprint) sel.fingerprint = c.preset.fingerprint;
+      }
     }
     if (c.spool) {
       sel.spool = {
@@ -323,7 +342,10 @@ export function mappingRequests(choices: Choices, nozzle: string): MappingReques
     const pin: Partial<MappingRequest> = {};
     if (c.preset.source) pin.source = c.preset.source;
     if (c.preset.ref) pin.ref = c.preset.ref;
-    if (c.preset.needsSayso) pin.accept_unproven = true;
+    if (c.preset.needsSayso) {
+      pin.accept_unproven = true;
+      if (c.preset.fingerprint) pin.fingerprint = c.preset.fingerprint;
+    }
     out.push(c.remember === "spool"
       ? { scope: "spool", provider: c.spool.provider, spool_id: c.spool.spool_id, preset: c.preset.name, nozzle, origin, ...pin }
       : { scope: "signature", provider: c.spool.provider, vendor: c.spool.vendor, material: c.spool.material,

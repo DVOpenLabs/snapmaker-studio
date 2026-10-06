@@ -353,19 +353,18 @@ def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
         return {"available": False, "nozzle": nozzle, "presets": [], "source": None}
     rows = []
     for base in catalog.names_for(nozzle):
-        records = catalog.records_for(base, nozzle)
-        ambiguous = len(records) > 1
-        for r in records:
+        # ambiguous across every look-alike (case and nozzle suffix aside), so the source pin is always offered
+        ambiguous = catalog.same_name_count(base, nozzle) > 1
+        for r in catalog.records_for(base, nozzle):
             proven = nozzle in r["nozzles"]
             rows.append({
                 "base_name": base, "preset_name": r["name"], "vendor": r["vendor"],
                 "filament_type": r["filament_type"], "fingerprint": r["fingerprint"],
-                # what the picker needs to tell two presets of one name apart, and to pin the one chosen
-                "source": r["source"], "location": r["location"],
-                "ref": r["ref"] if r["source"] == "user" else None,
+                # what the picker needs to tell two presets of one name apart, and to pin the one chosen; the
+                # pin is opaque - no Orca account folder or file name leaves the backend
+                "source": r["source"], "ref": r["ref"] if r["source"] == "user" else None,
                 "proof": r["proof"], "status": "proven" if proven else "needs_confirmation",
-                "reason": None if proven else r["unproven_reason"],
-                "parent": r["parent"], "ambiguous": ambiguous,
+                "reason": None if proven else r["unproven_reason"], "ambiguous": ambiguous,
             })
     return {"available": True, "nozzle": nozzle, "presets": rows, "source": catalog.source,
             "fingerprint": catalog.fingerprint}
@@ -398,13 +397,16 @@ def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
         raise ValueError("Snapmaker Orca's installed filament presets could not be read")
     ref, source, accept = data.get("ref"), data.get("source"), data.get("accept_unproven")
     if (ref is not None and not isinstance(ref, str)) or source not in (None, "system", "user") \
-            or accept not in (None, True, False):
+            or (accept is not None and type(accept) is not bool):
         raise ValueError("ref, source and accept_unproven are not valid")
     found = catalog.evaluate(data.get("preset"), nozzle, ref, source)
     proven = found["status"] == preset_catalog.PROVEN
     if not proven and not (found.get("confirmable") and accept is True):
         raise ValueError(
             f"That is not a proven installed preset for the {nozzle} mm nozzle: {found['reason']}")
+    if not proven and data.get("fingerprint") != found["fingerprint"]:
+        # the say-so is about the preset the person was shown; it has been replaced since
+        raise ValueError("That preset has changed since you confirmed it. Choose it again to confirm it.")
     origin = data.get("origin") or mm.SOURCE_MANUAL
     row = (store if store is not None else _material_store()).put(
         scope=scope, provider=provider, spool_id=spool_id, sig=sig, preset=found,

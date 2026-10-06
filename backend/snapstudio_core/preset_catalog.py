@@ -117,6 +117,12 @@ def _fingerprint(parts: list[str]) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def user_ref(folder: str, filename: str) -> str:
+    """An opaque pin for one of the person's own preset files. It names the file without exposing the Orca
+    account folder or the file name, so it can travel through the API and into the mapping store."""
+    return "user:" + hashlib.sha256(f"{folder}/{filename}".encode("utf-8")).hexdigest()[:16]
+
+
 def _first(value):
     if isinstance(value, list):
         return str(value[0]) if value else None
@@ -143,18 +149,29 @@ class Catalog:
         return len(self.entries)
 
     # --- listing ---------------------------------------------------------------------------------
+    @staticmethod
+    def viable(rec: dict, nozzle: str) -> bool:
+        """Usable for `nozzle`, or one the person may confirm. A preset whose own name says another nozzle
+        ("... 0.2 nozzle") is never offered for this one."""
+        if nozzle in rec["nozzles"]:
+            return True
+        return not rec["nozzles"] and rec.get("name_nozzle") in (None, nozzle)
+
     def names_for(self, nozzle: str) -> list[str]:
         """Base names with at least one record usable for `nozzle`, or one the person may confirm."""
-        return sorted(b for b, e in self.entries.items()
-                      if any(nozzle in r["nozzles"] or not r["nozzles"] for r in e["records"]))
+        return sorted(b for b, e in self.entries.items() if any(self.viable(r, nozzle) for r in e["records"]))
 
     def records_for(self, base: str, nozzle: str) -> list[dict]:
         """Every record of `base` that is usable for `nozzle` or confirmable, in a stable order."""
         entry = self.entries.get(base)
         if not entry:
             return []
-        return sorted((r for r in entry["records"] if nozzle in r["nozzles"] or not r["nozzles"]),
+        return sorted((r for r in entry["records"] if self.viable(r, nozzle)),
                       key=lambda r: (r["source"] != SYSTEM, r["name"], r["ref"]))
+
+    def same_name_count(self, base: str, nozzle: str) -> int:
+        """How many viable records share this name once spacing, nozzle suffix and letter case are ignored."""
+        return sum(len(self.records_for(b, nozzle)) for b in self._by_key.get(norm_key(base), []))
 
     def preset_name(self, base: str, nozzle: str) -> str | None:
         """The exact preset name Orca writes for `base` on `nozzle`, or None (also when ambiguous)."""
@@ -171,38 +188,38 @@ class Catalog:
         raw = _clean(name)
         if not raw:
             return _result(NO_MATCH, "No preset name was given.", raw, nozzle)
-        candidates = self._by_key.get(norm_key(raw), [])
-        if not candidates:
+        bases = self._by_key.get(norm_key(raw), [])
+        if not bases:
             return _result(NO_MATCH, "No installed Snapmaker Orca U1 preset has that name.", raw, nozzle)
-        if len(candidates) > 1:
-            return _result(NEEDS_CONFIRMATION, "More than one installed preset matches that name.",
-                           raw, nozzle, candidates=candidates)
-        base = candidates[0]
-        entry = self.entries[base]
-        pool = entry["records"]
+        lone = bases[0] if len(bases) == 1 else None
+        # Every installed record whose name matches, case and nozzle suffix aside. A pin narrows THIS set, so a
+        # person can resolve a case-only look-alike as well as an exact duplicate.
+        pool = [r for b in bases for r in self.entries[b]["records"]]
         if ref is not None:
             pool = [r for r in pool if r["ref"] == ref]
         elif source is not None:
             pool = [r for r in pool if r["source"] == source]
         if not pool:
-            return _result(NO_MATCH, "That installed preset is no longer there.", raw, nozzle,
-                           base=base, candidates=[base])
-        viable = [r for r in pool if nozzle in r["nozzles"] or not r["nozzles"]]
+            return _result(NO_MATCH, "That installed preset is no longer there.", raw, nozzle, base=lone,
+                           candidates=bases)
+        viable = [r for r in pool if self.viable(r, nozzle)]
         if not viable:
             return _result(NO_MATCH, f"That preset is installed but has no {nozzle} mm nozzle version.",
-                           raw, nozzle, base=base, candidates=[base])
+                           raw, nozzle, base=lone, candidates=bases)
         if len(viable) > 1:
+            kinds = {r["base"] for r in viable}
             return _result(NEEDS_CONFIRMATION,
                            f"More than one installed preset claims this name for the {nozzle} mm nozzle.",
-                           raw, nozzle, base=base, candidates=sorted(r["name"] for r in viable),
-                           choices=[_choice(r) for r in viable])
+                           raw, nozzle, base=next(iter(kinds)) if len(kinds) == 1 else None,
+                           candidates=sorted(r["name"] for r in viable), choices=[_choice(r) for r in viable])
         rec = viable[0]
+        base = rec["base"]
         if nozzle not in rec["nozzles"]:
             return _result(NEEDS_CONFIRMATION, rec["unproven_reason"] or "Studio cannot tell which printers this preset is for.",
                            raw, nozzle, base=base, candidates=[base], preset_name=rec["name"],
                            fingerprint=rec["fingerprint"], filament_type=rec["filament_type"], vendor=rec["vendor"],
                            record=rec, confirmable=True)
-        exact = raw == base or raw == rec["name"] or raw in {r["name"] for r in entry["records"]}
+        exact = raw == base or raw == rec["name"] or raw in {r["name"] for r in self.entries[base]["records"]}
         status = PROVEN if exact else NEEDS_CONFIRMATION
         reason = ("Exact installed preset." if exact else
                   "The name matches an installed preset only after ignoring letter case.")
@@ -255,7 +272,7 @@ class Catalog:
 
 
 def _choice(rec: dict) -> dict:
-    return {"ref": rec["ref"], "name": rec["name"], "source": rec["source"], "location": rec["location"],
+    return {"ref": rec["ref"] if rec["source"] == USER else None, "name": rec["name"], "source": rec["source"],
             "proof": rec["proof"]}
 
 
@@ -267,10 +284,29 @@ def _result(status, reason, name, nozzle, *, base=None, candidates=None, preset_
             "fingerprint": fingerprint, "filament_type": filament_type, "vendor": vendor,
             "choices": choices or [], "confirmable": confirmable,
             "source": record["source"] if record else None, "ref": record["ref"] if record else None,
-            "proof": record["proof"] if record else None, "location": record["location"] if record else None}
+            "proof": record["proof"] if record else None}
 
 
 # --- reading the installed presets ---------------------------------------------------------------
+
+def _resolved(path: Path):
+    try:
+        return path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+
+
+def _within(path: Path, root: Path) -> bool:
+    """True when `path`, once every link is followed, is still inside `root`."""
+    target = _resolved(path)
+    if target is None:
+        return False
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
 
 def _read_json(path: Path):
     try:
@@ -300,6 +336,7 @@ def _record(doc: dict, lookup, *, source: str, ref: str, location, file: str, st
         return None
     printers, depth = _chain(doc, lookup, "compatible_printers")
     listed = printers if isinstance(printers, list) else []
+    name_nozzle = (m.group(1) if (m := _NOZZLE_SUFFIX.search(name)) else None)
     nozzles = {m.group(1) for p in listed if (m := _U1_PRINTER.match(str(p)))}
     if nozzles:
         proof, reason = ("listed" if depth == 0 else "inherited"), None
@@ -314,14 +351,23 @@ def _record(doc: dict, lookup, *, source: str, ref: str, location, file: str, st
     rec = {
         "ref": ref, "name": name, "base": base_name(name), "source": source, "location": location,
         "file": file, "nozzles": nozzles, "proof": proof, "unproven_reason": reason, "parent": parent,
+        "name_nozzle": name_nozzle,
+        # What the preset says about printers, kept whole for the person's own presets: "says nothing",
+        # "lists none" and "lists other printers" are three different states and must not look alike.
+        "compat_state": ("absent" if printers is None else "empty" if not listed else
+                         "list:" + ",".join(sorted(str(x) for x in listed))) if source == USER else "",
         "setting_id": _first(setting_id), "filament_type": _first(ftype), "vendor": _first(vendor),
         "mtime_ns": getattr(stat, "st_mtime_ns", None), "size": getattr(stat, "st_size", None),
     }
-    # Identity, not content: a rename, a different file, another parent, type, vendor or nozzle set changes
-    # it; editing a temperature does not, so tuning a preset does not silently un-confirm it.
+    return _seal(rec)
+
+
+def _seal(rec: dict) -> dict:
+    """Identity, not content: a rename, a different file, another parent, type, vendor, printer list or nozzle set
+    changes it; editing a temperature does not, so tuning a preset does not silently un-confirm it."""
     rec["fingerprint"] = _fingerprint([
-        ref, name, str(rec["setting_id"]), str(rec["filament_type"]), str(rec["vendor"]), str(parent),
-        proof, ",".join(sorted(nozzles))])
+        rec["ref"], rec["name"], str(rec["setting_id"]), str(rec["filament_type"]), str(rec["vendor"]),
+        str(rec["parent"]), rec["proof"], ",".join(sorted(rec["nozzles"])), rec["compat_state"]])
     return rec
 
 
@@ -382,15 +428,22 @@ def load(profile_dir: str | os.PathLike, user_roots: list | None = None) -> Cata
     system_count = len({r["base"] for r in records})
 
     user_count = 0
+    user_records: list[dict] = []
+    folders_with_presets: set[str] = set()
     for user_root in user_roots or []:
         user_root = Path(user_root)
+        resolved_root = _resolved(user_root)
+        if resolved_root is None:
+            continue
         try:
             folders = sorted(p for p in user_root.iterdir() if p.is_dir() and not p.is_symlink())
         except OSError:
             continue
         for folder in folders:
             fil = folder / "filament"
-            if not fil.is_dir():
+            # Only a real <id>/filament folder that really lives under the user root: a symlink or junction
+            # anywhere on the way would let this read outside it.
+            if fil.is_symlink() or not fil.is_dir() or not _within(fil, resolved_root):
                 continue
             try:
                 files = sorted(fil.glob("*.json"))
@@ -399,6 +452,8 @@ def load(profile_dir: str | os.PathLike, user_roots: list | None = None) -> Cata
             for path in files:
                 if user_count >= _MAX_USER_PRESETS:
                     break
+                if not _within(path, resolved_root):
+                    continue
                 doc = _read_json(path)
                 if not doc:
                     continue
@@ -406,11 +461,23 @@ def load(profile_dir: str | os.PathLike, user_roots: list | None = None) -> Cata
                     stat = path.stat()
                 except OSError:
                     stat = None
-                rec = _record(doc, lambda n: sys_lookup(n), source=USER, ref=f"user:{folder.name}/{path.name}",
+                rec = _record(doc, lambda n: sys_lookup(n), source=USER, ref=user_ref(folder.name, path.name),
                               location=folder.name, file=path.name, stat=stat)
                 if rec:
                     records.append(rec)
+                    user_records.append(rec)
+                    folders_with_presets.add(folder.name)
                     user_count += 1
+    if len(folders_with_presets) > 1:
+        # Orca loads the presets of the account that is signed in. Studio does not read Orca's account settings
+        # to find out which that is, so it cannot say any of these is installed for the person: each is offered
+        # for them to confirm instead of being treated as proven.
+        for rec in user_records:
+            rec["nozzles"] = set()
+            rec["proof"] = "unstated"
+            rec["unproven_reason"] = ("There is more than one Orca account folder with presets, so Studio cannot "
+                                      "tell which one Orca has loaded.")
+            _seal(rec)
     if not records:
         return None
     by_base: dict[str, list[dict]] = {}

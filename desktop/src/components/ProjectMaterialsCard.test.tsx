@@ -545,3 +545,52 @@ describe("the person's own presets in the picker", () => {
     expect(reviewButton().disabled).toBe(false);
   });
 });
+
+
+describe("the review repairs in the card", () => {
+  it("a preset the person vouched for is not called Proven", () => {
+    const vouched = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Mystery PLA", base_name: "Mystery PLA", source: "user",
+      ref: "user:abc", proof: "user_confirmed", fingerprint: "fp", reason: "" });
+    render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: vouched })] })] })} />);
+    const row = screen.getByRole("button", { name: /Yoopai PLA Matte/ });
+    expect(within(row).getByText("Confirmed by you")).toBeTruthy();
+    expect(within(row).queryByText("Proven")).toBeNull();
+    fireEvent.click(row);
+    const area = screen.getByTestId("preset-area");
+    expect(within(area).getByText("Confirmed by you").getAttribute("data-status")).toBe("confirmed_by_you");
+    expect(within(area).queryByText("Proven")).toBeNull();
+  });
+
+  it("a review still in flight when the mode changes never reappears", async () => {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
+    api.materialPresets.mockResolvedValue(PRESETS);
+    let release: (v: any) => void = () => {};
+    api.convert.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const view = render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="recommended" onPrepare={vi.fn()} />);
+    await screen.findByText("Slot 1");
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
+    await act(async () => { fireEvent.click(reviewButton()); });
+    expect(screen.getByText(/Checking your choices/)).toBeTruthy();
+    view.rerender(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={vi.fn()} />);
+    await act(async () => { release({ schema_version: "convert/2", prepare_mode: "recommended", output_path: "", output_name: "", validated_ok: true,
+      settings_summary: { project_materials: { fidelity: { schema: "x", mode: "recommended", lines: ["Old mode line."], slots: [] } } } }); });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("Old mode line.")).toBeNull();
+    expect(screen.queryByTestId("review")).toBeNull();
+    expect(reviewButton().disabled).toBe(false);                      // review again for the new mode
+  });
+
+  it("a user preset still waiting for confirmation counts as held choices", async () => {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [] , candidate_count: 0 })] }));
+    api.materialPresets.mockResolvedValue({ available: true, nozzle: "0.4", presets: [
+      { base_name: "Mystery PLA", preset_name: "Mystery PLA", vendor: null, filament_type: "PLA", fingerprint: "m", source: "user", ref: "user:abc",
+        status: "needs_confirmation", reason: "It does not say which printers it is for." }] });
+    const active = vi.fn();
+    render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={vi.fn()} onActiveChange={active} />);
+    await screen.findByText("Slot 1");
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    fireEvent.click(screen.getAllByRole("option")[0].querySelector("button")!);
+    await waitFor(() => expect(active).toHaveBeenLastCalledWith(true));     // nothing would be sent yet, but it is on screen
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  KEEP_OWN_NOTICE, amountText, blockedFacts, buildSelections, canRemember, choiceReduce, emptyChoice, filterPresets,
+  KEEP_OWN_NOTICE, amountText, blockedFacts, buildSelections, canRemember, choiceReduce, emptyChoice, filterPresets, holdsChoices,
   mappingRequests, presetSourceLabel, presetStatusFor, unconfirmedSlots,
   type Choices, type MaterialCandidate,
 } from "./projectMaterials";
@@ -219,5 +219,43 @@ describe("the person's own Snapmaker Orca presets", () => {
     expect(presetSourceLabel({})).toBe("System preset");
     expect(filterPresets(rows, "user")).toEqual([rows[0]]);
     expect(filterPresets(rows, "system yoopai")).toEqual([rows[1]]);
+  });
+});
+
+
+describe("the review repairs", () => {
+  it("the say-so travels with the version of the preset the person was shown", () => {
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Mystery PLA", source: "user", ref: "user:abc", unproven: true, fingerprint: "fp-1" });
+    s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
+    expect(buildSelections(s)[0]).toMatchObject({ preset: "Mystery PLA", accept_unproven: true, fingerprint: "fp-1" });
+    s = choiceReduce(s, { type: "remember", slot: 0, mode: "spool" });
+    expect(mappingRequests(s, "0.4")[0]).toMatchObject({ accept_unproven: true, fingerprint: "fp-1", ref: "user:abc" });
+  });
+
+  it("a remembered user-confirmed mapping sends its fingerprint too", () => {
+    const m = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Mystery PLA", base_name: "Mystery PLA", source: "user",
+      ref: "user:abc", proof: "user_confirmed", fingerprint: "fp-9", reason: "" });
+    const s = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: m }) });
+    expect(buildSelections(s)[0]).toMatchObject({ accept_unproven: true, fingerprint: "fp-9" });
+  });
+
+  it("a name more than one installed preset claims is offered no preset on its own", () => {
+    const ambiguous = mapping({ status: "needs_confirmation", match_source: "exact_name", base_name: "Acme PLA @U1", preset_name: null,
+      choices: [{ ref: "x", name: "Acme PLA @U1", source: "system", location: null, proof: "listed" },
+                { ref: "user:abc", name: "Acme PLA @U1", source: "user", location: null, proof: "inherited" }] });
+    const s = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: ambiguous }) });
+    expect(s[0].preset).toBeNull();
+    expect(unconfirmedSlots(s)).toEqual([]);
+  });
+
+  it("choices still waiting for confirmation count as held, so a one-click Prepare is not offered beside them", () => {
+    expect(holdsChoices({})).toBe(false);
+    let s: Choices = choiceReduce({}, { type: "pickPreset", slot: 0, name: "Mystery PLA", source: "user", unproven: true });
+    expect(buildSelections(s)).toEqual([]);                 // nothing would be sent...
+    expect(holdsChoices(s)).toBe(true);                     // ...but the choice is on screen and would be dropped
+    s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
+    expect(holdsChoices(s)).toBe(true);
+    expect(holdsChoices(choiceReduce(s, { type: "reset" }))).toBe(false);
   });
 });

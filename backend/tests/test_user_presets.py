@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -58,6 +60,20 @@ def cat():
     return pc.load_default()
 
 
+def _link_dir(link: Path, target: Path) -> None:
+    """A directory symlink, or on Windows a junction (which needs no special right); skips if neither works."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if sys.platform == "win32":
+        done = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
+        if done.returncode == 0:
+            return
+    pytest.skip("this account can create neither a symlink nor a junction")
+
+
 def _tree(*roots: Path) -> dict:
     out = {}
     for root in roots:
@@ -77,8 +93,9 @@ def test_a_user_preset_is_discovered_with_its_identity(world):
     c = cat()
     assert c.source["user_presets"] == 1 and c.source["presets"] == 3
     r = c.evaluate("Yoopai PLA+", "0.4")
-    assert r["status"] == PROVEN and r["source"] == "user" and r["location"] == "default"
-    assert r["ref"] == "user:default/Yoopai PLA+.json" and r["preset_name"] == "Yoopai PLA+"
+    assert r["status"] == PROVEN and r["source"] == "user" and "location" not in r
+    assert r["ref"] == pc.user_ref("default", "Yoopai PLA+.json") and r["preset_name"] == "Yoopai PLA+"
+    assert r["ref"].startswith("user:") and "default" not in r["ref"] and "Yoopai" not in r["ref"]    # opaque
     rec = c.entries["Yoopai PLA+"]["records"][0]
     assert (rec["parent"], rec["file"], rec["size"] == path.stat().st_size, rec["mtime_ns"] == path.stat().st_mtime_ns) == \
         (MATTE, "Yoopai PLA+.json", True, True)
@@ -157,17 +174,20 @@ def test_a_system_and_a_user_preset_with_one_name_are_ambiguous_and_resolved_by_
     assert r["status"] == NEEDS_CONFIRMATION and r["preset_name"] is None and len(r["choices"]) == 2
     assert {x["source"] for x in r["choices"]} == {"system", "user"}
     assert c.evaluate("Acme PLA @U1", "0.4", source="system")["status"] == PROVEN
-    user = c.evaluate("Acme PLA @U1", "0.4", ref="user:default/Acme PLA @U1.json")
+    user = c.evaluate("Acme PLA @U1", "0.4", ref=pc.user_ref("default", "Acme PLA @U1.json"))
     assert user["status"] == PROVEN and user["source"] == "user"
-    assert c.evaluate("Acme PLA @U1", "0.4", ref="user:default/gone.json")["status"] == NO_MATCH
+    assert c.evaluate("Acme PLA @U1", "0.4", ref=pc.user_ref("default", "gone.json"))["status"] == NO_MATCH
 
 
 def test_two_user_presets_with_one_name_are_ambiguous(world):
     _user(world.data, "Twin PLA", folder="default", inherits=MATTE)
     _user(world.data, "Twin PLA", folder="12345", inherits=MATTE)
     r = cat().evaluate("Twin PLA", "0.4")
-    assert r["status"] == NEEDS_CONFIRMATION and sorted(x["location"] for x in r["choices"]) == ["12345", "default"]
-    assert cat().evaluate("Twin PLA", "0.4", ref="user:12345/Twin PLA.json")["status"] == PROVEN
+    assert r["status"] == NEEDS_CONFIRMATION and len({x["ref"] for x in r["choices"]}) == 2
+    assert all("location" not in x for x in r["choices"])
+    pinned = cat().evaluate("Twin PLA", "0.4", ref=pc.user_ref("12345", "Twin PLA.json"))
+    # with two Orca account folders Studio cannot tell which one Orca has loaded, so the pick is the person's to confirm
+    assert pinned["status"] == NEEDS_CONFIRMATION and pinned["confirmable"] is True and pinned["preset_name"] == "Twin PLA"
 
 
 def test_a_user_preset_and_its_nozzle_variant_claiming_one_nozzle_are_ambiguous(world):
@@ -207,7 +227,7 @@ def test_the_spoolease_path_needs_confirmation_first_then_becomes_usable(world):
     first = mm.resolve(cat(), store, "spoolease", spool, "0.4")
     assert (first["status"], first["match_source"], first["preset_name"], first["source"]) == \
         (NEEDS_CONFIRMATION, mm.SOURCE_EXACT_NAME, "Yoopai PLA+", "user")           # slicer_filament alone is never proven
-    _save(store, cat(), "Yoopai PLA+", ref="user:default/Yoopai PLA+.json")
+    _save(store, cat(), "Yoopai PLA+", ref=pc.user_ref("default", "Yoopai PLA+.json"))
     again = mm.resolve(cat(), store, "spoolease", spool, "0.4")
     assert (again["status"], again["match_source"], again["source"]) == (PROVEN, mm.SOURCE_SAVED_SPOOL, "user")
 
@@ -216,9 +236,9 @@ def test_an_unproven_user_preset_can_be_remembered_only_when_the_person_confirme
     _user(world.data, "Mystery PLA", filament_type=["PLA"])
     store = mm.Store(str(world.tmp / "m.json"))
     with pytest.raises(ValueError):
-        _save(store, cat(), "Mystery PLA", ref="user:default/Mystery PLA.json")            # not confirmed
-    row = _save(store, cat(), "Mystery PLA", accept=True, ref="user:default/Mystery PLA.json")
-    assert row["proof"] == "user_confirmed" and row["source"] == "user" and row["ref"] == "user:default/Mystery PLA.json"
+        _save(store, cat(), "Mystery PLA", ref=pc.user_ref("default", "Mystery PLA.json"))            # not confirmed
+    row = _save(store, cat(), "Mystery PLA", accept=True, ref=pc.user_ref("default", "Mystery PLA.json"))
+    assert row["proof"] == "user_confirmed" and row["source"] == "user" and row["ref"] == pc.user_ref("default", "Mystery PLA.json")
     got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
     assert got["status"] == PROVEN and got["proof"] == "user_confirmed"
 
@@ -266,14 +286,15 @@ def test_a_mapping_whose_user_preset_stops_being_compatible_is_downgraded(world)
 def test_a_mapping_turns_ambiguous_when_a_system_preset_of_that_name_appears(world):
     _user(world.data, "Yoopai PLA+", inherits=MATTE)
     store = mm.Store(str(world.tmp / "m.json"))
-    _save(store, cat(), "Yoopai PLA+", ref="user:default/Yoopai PLA+.json")
+    _save(store, cat(), "Yoopai PLA+", ref=pc.user_ref("default", "Yoopai PLA+.json"))
     assert mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")["status"] == PROVEN          # pinned to the user file
-    _user(world.data, "Yoopai PLA+", folder="999", inherits=MATTE)                            # a second user preset appears
-    got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
-    assert got["status"] == PROVEN and got["ref"] == "user:default/Yoopai PLA+.json"         # still the one the person pinned
-    # an old mapping with no pin cannot choose between two
     old = mm.Store(str(world.tmp / "old.json"))
-    _save(old, cat(), "Yoopai PLA+", ref="user:default/Yoopai PLA+.json")
+    _save(old, cat(), "Yoopai PLA+", ref=pc.user_ref("default", "Yoopai PLA+.json"))
+    _user(world.data, "Yoopai PLA+", folder="999", inherits=MATTE)                            # a second account folder appears
+    got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
+    # Studio can no longer tell which account Orca has loaded: the mapping is downgraded, not applied
+    assert got["status"] == NEEDS_CONFIRMATION and got["ref"] == pc.user_ref("default", "Yoopai PLA+.json")
+    # an old mapping with no pin cannot choose between two
     row = json.loads(Path(old.path).read_text())["mappings"][0]
     row["ref"] = None
     Path(old.path).write_text(json.dumps({"schema": mm.SCHEMA, "mappings": [row]}))
@@ -296,8 +317,12 @@ def test_user_presets_appear_in_the_picker_with_their_source_and_proof(world):
     out = service.material_presets("0.4")
     rows = {(r["preset_name"], r["source"]): r for r in out["presets"]}
     y = rows[("Yoopai PLA+", "user")]
-    assert (y["status"], y["proof"], y["location"], y["ref"], y["parent"], y["ambiguous"]) == \
-        ("proven", "inherited", "default", "user:default/Yoopai PLA+.json", MATTE, False)
+    assert (y["status"], y["proof"], y["ref"], y["ambiguous"]) == \
+        ("proven", "inherited", pc.user_ref("default", "Yoopai PLA+.json"), False)
+    # nothing about where the file lives or what it is called on disk leaves the backend
+    assert "location" not in y and "parent" not in y
+    blob = json.dumps(out)
+    assert "default" not in blob.replace("default_", "") and ".json" not in blob
     m = rows[("Mystery PLA", "user")]
     assert m["status"] == "needs_confirmation" and "does not say which printers" in m["reason"]
     assert rows[(MATTE, "system")]["ref"] is None and rows[(MATTE, "system")]["status"] == "proven"
@@ -310,9 +335,10 @@ def test_a_user_preset_is_used_by_prepare_once_the_person_confirms_it(world):
     src = _project(world.tmp)
     with pytest.raises(ValueError, match="does not say which printers"):
         service.convert(str(src), str(world.tmp / "o1"), "preserve", False,
-                        {"selections": [{"slot": 0, "preset": "Mystery PLA", "ref": "user:default/Mystery PLA.json"}]})
+                        {"selections": [{"slot": 0, "preset": "Mystery PLA", "ref": pc.user_ref("default", "Mystery PLA.json")}]})
     res = service.convert(str(src), str(world.tmp / "o2"), "preserve", False, {"selections": [
-        {"slot": 0, "preset": "Mystery PLA", "ref": "user:default/Mystery PLA.json", "source": "user", "accept_unproven": True,
+        {"slot": 0, "preset": "Mystery PLA", "ref": pc.user_ref("default", "Mystery PLA.json"), "source": "user", "accept_unproven": True,
+         "fingerprint": cat().evaluate("Mystery PLA", "0.4")["fingerprint"],
          "spool": {"provider": "spoolease", "id": 9, "vendor": "Yoopai", "material": "PLA", "subtype": "Matte"}}]})
     import zipfile
     out = json.loads(zipfile.ZipFile(res["output_path"]).read("Metadata/project_settings.config"))
@@ -355,7 +381,7 @@ def test_the_mapping_endpoint_remembers_a_user_preset_and_the_next_analysis_uses
     first = service.project_materials(str(_project(world.tmp)), **kw)["slots"][0]["candidates"][0]["mapping"]
     assert (first["status"], first["match_source"], first["source"]) == (NEEDS_CONFIRMATION, mm.SOURCE_EXACT_NAME, "user")
     service.material_mapping_confirm({"scope": "spool", "provider": "spoolease", "spool_id": 9, "preset": "Yoopai PLA+",
-                                      "ref": "user:default/Yoopai PLA+.json", "source": "user", "origin": "exact_name"})
+                                      "ref": pc.user_ref("default", "Yoopai PLA+.json"), "source": "user", "origin": "exact_name"})
     second = service.project_materials(str(_project(world.tmp)), **kw)["slots"][0]["candidates"][0]["mapping"]
     assert (second["status"], second["match_source"], second["source"]) == (PROVEN, mm.SOURCE_SAVED_SPOOL, "user")
 
@@ -371,10 +397,128 @@ def test_nothing_in_the_orca_folders_is_ever_written(world):
     c.evaluate("Yoopai PLA+", "0.4"); c.evaluate("Mystery PLA", "0.4"); c.suggest_generic("PLA", "0.4")
     service.material_presets("0.4")
     service.material_mapping_confirm({"scope": "spool", "provider": "spoolease", "spool_id": 9, "preset": "Mystery PLA",
-                                      "ref": "user:default/Mystery PLA.json", "accept_unproven": True})
+                                      "ref": pc.user_ref("default", "Mystery PLA.json"), "accept_unproven": True,
+                                      "fingerprint": cat().evaluate("Mystery PLA", "0.4")["fingerprint"]})
     service.project_materials(str(_project(world.tmp)))
     service.convert(str(_project(world.tmp, name="p2.3mf")), str(world.tmp / "o"), "preserve", False,
                     {"selections": [{"slot": 0, "preset": "Yoopai PLA+"}]})
     assert _tree(world.system, world.data) == before
     # Studio's own file is the only thing written, and it is somewhere else
     assert (world.tmp / "studio-data" / mm.FILE_NAME).exists()
+
+
+# --- review repairs --------------------------------------------------------------------------------------------------
+
+def _fp(name, **pin):
+    return cat().evaluate(name, "0.4", **pin)["fingerprint"]
+
+
+def test_a_confirmed_preset_edited_to_list_only_other_printers_is_no_longer_usable(world):
+    path = _user(world.data, "Mystery PLA", filament_type=["PLA"])                    # says nothing about printers
+    store = mm.Store(str(world.tmp / "m.json"))
+    pin = dict(ref=pc.user_ref("default", "Mystery PLA.json"))
+    _save(store, cat(), "Mystery PLA", accept=True, **pin)
+    assert mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")["status"] == PROVEN
+    path.write_text(json.dumps({"name": "Mystery PLA", "from": "User", "filament_type": ["PLA"],
+                                "compatible_printers": ["Prusa MK4 (0.4 nozzle)"]}), "utf-8")      # now lists another printer
+    got = mm.resolve(cat(), store, "spoolease", SPOOL, "0.4")
+    assert got["status"] == NEEDS_CONFIRMATION and got["stale"] is True                  # a different claim is a different preset
+
+
+def test_a_symlinked_filament_folder_or_file_never_reads_outside_the_user_root(world, tmp_path):
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "Elsewhere PLA.json").write_text(json.dumps({"name": "Elsewhere PLA", "inherits": MATTE}), "utf-8")
+    user = world.data / "user"
+    (user / "default").mkdir(parents=True)
+    _link_dir(user / "default" / "filament", outside)
+    assert "Elsewhere PLA" not in cat().entries
+    _link_dir(user / "linked", outside)
+    assert "Elsewhere PLA" not in cat().entries and cat().source["user_presets"] == 0
+
+
+def test_a_symlinked_preset_file_is_never_read(world, tmp_path):
+    secret = tmp_path / "secret.json"
+    secret.write_text(json.dumps({"name": "Linked PLA", "inherits": MATTE}), "utf-8")
+    d = world.data / "user" / "default" / "filament"
+    d.mkdir(parents=True)
+    try:
+        (d / "Linked PLA.json").symlink_to(secret)
+    except (OSError, NotImplementedError):
+        pytest.skip("this account may not create symlinks")
+    assert "Linked PLA" not in cat().entries
+
+
+def test_case_only_look_alikes_are_resolved_by_an_explicit_pin(world):
+    _user(world.data, "acme pla @u1", inherits="Acme PLA @U1")
+    c = cat()
+    assert c.evaluate("Acme PLA @U1", "0.4")["status"] == NEEDS_CONFIRMATION
+    assert c.evaluate("Acme PLA @U1", "0.4", source="system")["status"] == PROVEN
+    user = c.evaluate("acme pla @u1", "0.4", ref=pc.user_ref("default", "acme pla @u1.json"))
+    assert user["status"] == PROVEN and user["source"] == "user" and user["preset_name"] == "acme pla @u1"
+    rows = service.material_presets("0.4")["presets"]
+    assert {(r["preset_name"], r["source"], r["ambiguous"]) for r in rows if "cme" in r["preset_name"]} == \
+        {("Acme PLA @U1", "system", True), ("acme pla @u1", "user", True)}
+
+
+def test_with_more_than_one_orca_account_folder_nothing_of_the_persons_is_proven(world):
+    _user(world.data, "Yoopai PLA+", folder="default", inherits=MATTE)
+    assert cat().evaluate("Yoopai PLA+", "0.4")["status"] == PROVEN                     # one account: unambiguous
+    _user(world.data, "Other PLA", folder="12345", inherits=MATTE)
+    for name in ("Yoopai PLA+", "Other PLA"):
+        r = cat().evaluate(name, "0.4")
+        assert r["status"] == NEEDS_CONFIRMATION and r["confirmable"] is True
+        assert "more than one Orca account folder" in r["reason"]
+    assert cat().evaluate(MATTE, "0.4")["status"] == PROVEN                             # Orca's own presets are unaffected
+
+
+def test_the_persons_say_so_is_tied_to_the_preset_they_were_shown(world):
+    path = _user(world.data, "Mystery PLA", filament_type=["PLA"])
+    src = _project(world.tmp)
+    pin = {"ref": pc.user_ref("default", "Mystery PLA.json"), "source": "user", "accept_unproven": True}
+    shown = _fp("Mystery PLA", ref=pin["ref"])
+    for bad in ({}, {"fingerprint": "0" * 24}, {"fingerprint": None}):
+        with pytest.raises(ValueError, match="changed since you confirmed it"):
+            service.convert(str(src), str(world.tmp / "o"), "preserve", False,
+                            {"selections": [{"slot": 0, "preset": "Mystery PLA", **pin, **bad}]})
+        with pytest.raises(ValueError, match="changed since you confirmed it"):
+            service.material_mapping_confirm({"scope": "spool", "provider": "spoolease", "spool_id": 1, "preset": "Mystery PLA", **pin, **bad})
+    # the file is replaced by a different unproven preset after the person was shown the first one
+    path.write_text(json.dumps({"name": "Mystery PLA", "from": "User", "filament_type": ["TPU"], "filament_vendor": ["Other"]}), "utf-8")
+    with pytest.raises(ValueError, match="changed since you confirmed it"):
+        service.convert(str(src), str(world.tmp / "o"), "preserve", False,
+                        {"selections": [{"slot": 0, "preset": "Mystery PLA", **pin, "fingerprint": shown}]})
+    ok = service.convert(str(src), str(world.tmp / "o2"), "preserve", False,
+                         {"selections": [{"slot": 0, "preset": "Mystery PLA", **pin, "fingerprint": _fp("Mystery PLA", ref=pin["ref"])}]})
+    assert ok["output_path"]
+
+
+def test_the_new_fields_are_validated_strictly_on_every_selection(world):
+    _user(world.data, "Yoopai PLA+", inherits=MATTE)
+    src = _project(world.tmp)
+    for bad in ({"accept_unproven": 1}, {"accept_unproven": 0}, {"accept_unproven": "true"}, {"ref": 7}, {"source": "cloud"}):
+        with pytest.raises(ValueError):
+            service.convert(str(src), str(world.tmp / "o"), "preserve", False,
+                            {"selections": [{"slot": 0, "colour": "#112233", **bad}]})      # no preset at all: still rejected
+        with pytest.raises(ValueError):
+            service.material_mapping_confirm({"scope": "spool", "provider": "spoolease", "spool_id": 1,
+                                              "preset": "Yoopai PLA+", **bad})
+
+
+def test_an_unproven_preset_named_for_another_nozzle_is_not_offered_for_this_one(world):
+    _user(world.data, "Acme PLA 0.2 nozzle", filament_type=["PLA"])
+    c = cat()
+    assert c.evaluate("Acme PLA", "0.4")["status"] == NO_MATCH
+    assert c.evaluate("Acme PLA", "0.2")["confirmable"] is True
+    assert "Acme PLA" not in {r["base_name"] for r in service.material_presets("0.4")["presets"]}
+
+
+def test_a_confirmed_preset_of_another_material_is_reported_as_a_mismatch(world):
+    _user(world.data, "Mystery PLA", filament_type=["PLA"], filament_vendor=["Somebody"])
+    pin = {"ref": pc.user_ref("default", "Mystery PLA.json"), "source": "user", "accept_unproven": True,
+           "fingerprint": _fp("Mystery PLA", ref=pc.user_ref("default", "Mystery PLA.json"))}
+    res = service.convert(str(_project(world.tmp)), str(world.tmp / "o"), "preserve", False, {"selections": [
+        {"slot": 2, "preset": "Mystery PLA", **pin,
+         "spool": {"provider": "spoolease", "id": 9, "vendor": "Yoopai", "material": "PETG"}}]})
+    codes = [d["code"] for d in res["settings_summary"]["project_materials"]["fidelity"]["slots"][2]["discrepancies"]]
+    assert "material_mismatch" in codes and "vendor_mismatch" in codes and "user_preset_unproven" in codes
