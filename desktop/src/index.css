@@ -11,6 +11,7 @@
    story (the --stage-* tokens), never general UI fills. */
 @layer base {
   :root {
+    color-scheme: light;
     /* Light variant — neutral surfaces, brand accent so even light mode is on-brand. */
     --background: 0 0% 100%;
     --foreground: 222 18% 12%;
@@ -43,6 +44,8 @@
   }
 
   .dark {
+    /* Native controls (a leftover <select>, scrollbars) draw dark instead of light-on-light. */
+    color-scheme: dark;
     /* Brand identity — dark-first, verbatim from the Asset Pack. */
     --background: 228 28% 8%;         /* Primary Dark #0F111A */
     --foreground: 0 0% 95%;           /* #F2F2F2 */

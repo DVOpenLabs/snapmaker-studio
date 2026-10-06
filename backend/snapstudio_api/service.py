@@ -16,6 +16,7 @@ from snapstudio_core.convert import convert_to_u1
 from snapstudio_core.diff import diff_projects
 from snapstudio_core.container import ThreeMF
 from snapstudio_core import library
+from snapstudio_core import spool_choices
 from snapstudio_core import fix_ledger
 from snapstudio_core.batch import run_batch
 from snapstudio_core import compatibility
@@ -1259,17 +1260,7 @@ def provider_test(url: str, provider: str | None = None, provider_key: str | Non
         # can end up in a screenshot.
         "detail": _provider_detail(name, len(spools), len(tracked), with_weight,
                                    state.get("weight_source")),
-        "choices": [
-            {"id": s.get("id"),
-             "label": " ".join(x for x in (s.get("vendor"), s.get("name") or s.get("material"))
-                               if x) or f"spool {s.get('id')}",
-             "material": s.get("material"),
-             "color": s.get("color"),
-             "remaining_g": s.get("remaining_g"),
-             "remaining_quality": s.get("remaining_quality"),
-             "archived": bool(s.get("archived"))}
-            for s in spools
-        ],
+        "choices": spool_choices.build(spools, kind),
     }
 
 

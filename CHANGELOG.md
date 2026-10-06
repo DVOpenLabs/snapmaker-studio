@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **A readable, searchable spool picker.** Settings → Materials provider replaces the
+  operating system's drop-down (light text on a light popup in the dark theme) with a Studio
+  list. Every spool is described in words: vendor, material and subtype, colour name, the
+  provider's ID and the weight status (for example `Yoopai PLA Matte — Red · #124 · 250 g
+  estimated`, or `weight unknown`), with a swatch as an extra, never the only signal. The list
+  is sorted the same way every time (vendor, material family, subtype, colour, ID), you can type
+  to narrow it (vendor, material, colour or `#id`), and it works from the keyboard (arrows,
+  Home/End, Enter, Escape). It copes with a hundred spools or more. Which spool is in which
+  slot still means what is loaded now; nothing about that changed.
+
 ## [1.4.0] - 2026-10-07
 
 **Find a model, then know whether your U1 can print it now.**
