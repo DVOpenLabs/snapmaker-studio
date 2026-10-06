@@ -158,9 +158,13 @@ class Catalog:
     def viable(rec: dict, nozzle: str) -> bool:
         """Usable for `nozzle`, or one the person may confirm. A preset whose own name says another nozzle
         ("... 0.2 nozzle") is never offered for this one."""
+        # A name that says another nozzle ("... 0.2 nozzle") is never offered for this one, whatever its
+        # compatible_printers say: the name is what Orca would write into the copy.
+        if rec.get("name_nozzle") not in (None, nozzle):
+            return False
         if nozzle in rec["nozzles"]:
             return True
-        return not rec["nozzles"] and rec.get("name_nozzle") in (None, nozzle)
+        return not rec["nozzles"]
 
     def names_for(self, nozzle: str) -> list[str]:
         """Base names with at least one record usable for `nozzle`, or one the person may confirm."""

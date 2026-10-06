@@ -610,7 +610,44 @@ def test_the_line_for_a_preset_the_person_made_does_not_promise_what_orca_may_no
                            {"selections": [{"slot": 1, "preset": "Yoopai PLA+"}]})
     line = mine["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
     assert "come from the installed" not in line
-    assert "only if it has the preset installed" in line and "Customized Preset" in line and "keeps the project's values" in line
+    assert "Studio cannot confirm Snapmaker Orca will apply" in line and "Customized Preset" in line
+    assert "Check the filament in Orca before slicing" in line
+    # nothing else about a slot using the person's own preset promises that Orca applies its values
+    lines = mine["settings_summary"]["project_materials"]["fidelity"]["lines"]
+    for text in lines:
+        if "Yoopai PLA+" in text:
+            assert "takes them from" not in text and "apply the installed preset" not in text and "come from the installed" not in text, text
     system = service.convert(str(_project(world.tmp, name="p2.3mf")), str(world.tmp / "o2"), "preserve", False,
                              {"selections": [{"slot": 1, "preset": MATTE}]})
     assert "come from the installed" in system["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
+
+
+def test_a_user_preset_whose_name_says_another_nozzle_is_never_proven_for_this_one(world):
+    """Its compatible_printers (inherited from a 0.4 parent) say 0.4, its name says 0.2: the name is what Orca writes."""
+    _user(world.data, "Foo PLA 0.2 nozzle", inherits=MATTE)
+    c = cat()
+    assert c.evaluate("Foo PLA", "0.4")["status"] == NO_MATCH
+    assert "Foo PLA" not in {r["base_name"] for r in service.material_presets("0.4")["presets"]}
+    assert c.evaluate("Foo PLA", "0.2")["status"] == NO_MATCH                         # the parent only fits 0.4
+
+
+def test_a_fingerprint_the_client_sends_must_match_even_for_a_proven_preset(world):
+    path = _user(world.data, "Yoopai PLA+", inherits=MATTE)
+    src = _project(world.tmp)
+    ref = pc.user_ref("default", "Yoopai PLA+.json")
+    shown = cat().evaluate("Yoopai PLA+", "0.4", ref=ref)["fingerprint"]
+    ok = service.convert(str(src), str(world.tmp / "o1"), "preserve", False,
+                         {"selections": [{"slot": 0, "preset": "Yoopai PLA+", "ref": ref, "fingerprint": shown}]})
+    assert ok["output_path"]
+    path.write_text(json.dumps({"name": "Yoopai PLA+", "from": "User", "inherits": MATTE, "filament_type": ["PETG"]}), "utf-8")
+    for call in (
+        lambda: service.convert(str(src), str(world.tmp / "o2"), "preserve", False,
+                                {"selections": [{"slot": 0, "preset": "Yoopai PLA+", "ref": ref, "fingerprint": shown}]}),
+        lambda: service.material_mapping_confirm({"scope": "spool", "provider": "spoolease", "spool_id": 1, "preset": "Yoopai PLA+",
+                                                  "ref": ref, "fingerprint": shown}),
+    ):
+        with pytest.raises(ValueError, match="changed since you confirmed it"):
+            call()
+    # a client that sends no fingerprint is unchanged
+    assert service.convert(str(src), str(world.tmp / "o3"), "preserve", False,
+                           {"selections": [{"slot": 0, "preset": MATTE}]})["output_path"]

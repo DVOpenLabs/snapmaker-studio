@@ -113,7 +113,12 @@ export default function Compatibility() {
       {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
 
       {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
-      {prep && !prep.blocked && (
+      {prep && !prep.blocked && !prep.output_path && (
+        <p className="text-sm text-risk" role="alert" data-testid="prepare-no-file">
+          Prepare finished but no copy was written, so there is nothing to open. Nothing was changed.
+        </p>
+      )}
+      {prep && !prep.blocked && prep.output_path && (
         <div className="space-y-3 rounded-md border border-border p-3">
           <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
             <CheckCircle2 className="h-4 w-4" /> U1 profile copy created

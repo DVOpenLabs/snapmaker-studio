@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  KEEP_OWN_NOTICE, amountText, blockedFacts, buildSelections, canRemember, choiceReduce, emptyChoice, filterPresets, holdsChoices,
+  KEEP_OWN_NOTICE, amountText, blockedFacts, buildSelections, canRemember, choiceReduce, emptyChoice, filterPresets, holdsChoices, samePreset,
   mappingRequests, presetSourceLabel, presetStatusFor, unconfirmedSlots,
   type Choices, type MaterialCandidate,
 } from "./projectMaterials";
@@ -257,5 +257,29 @@ describe("the review repairs", () => {
     s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
     expect(holdsChoices(s)).toBe(true);
     expect(holdsChoices(choiceReduce(s, { type: "reset" }))).toBe(false);
+  });
+});
+
+
+describe("the final review repairs", () => {
+  it("every preset sends the version the person was shown, proven or not", () => {
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Snapmaker PLA Matte @U1", fingerprint: "fp-proven" });
+    expect(buildSelections(s)[0]).toMatchObject({ preset: "Snapmaker PLA Matte @U1", fingerprint: "fp-proven" });
+    expect(buildSelections(s)[0].accept_unproven).toBeUndefined();
+    s = choiceReduce(s, { type: "remember", slot: 0, mode: "spool" });
+    expect(mappingRequests(s, "0.4")[0]).toMatchObject({ fingerprint: "fp-proven" });
+  });
+
+  it("a different record of the same name is a different choice, not the saved mapping", () => {
+    const saved = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Dup PLA @U1", base_name: "Dup PLA @U1",
+      source: "system", ref: "sys:aaaa", reason: "" });
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: saved }) });
+    expect(canRemember(s[0])).toBe(false);                                           // exactly the saved record
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Dup PLA @U1", source: "system", ref: "sys:bbbb" });
+    expect(canRemember(s[0])).toBe(true);                                            // the sibling: a new choice worth remembering
+    expect(samePreset(s[0].preset!, saved)).toBe(false);
+    expect(samePreset({ name: "Dup PLA @U1", confirmed: true, ref: "sys:aaaa" }, saved)).toBe(true);
+    expect(samePreset({ name: "Other", confirmed: true }, saved)).toBe(false);
   });
 });

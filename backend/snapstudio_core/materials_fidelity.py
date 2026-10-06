@@ -265,9 +265,9 @@ def _line(rec: dict, spool: dict | None) -> str:
             # user preset's values, so for those it says only what is certain.
             held = (f" The project declares {', '.join(pc['kept_by_declaration'])}, so Orca keeps the project's own "
                     "value for it." if pc["kept_by_declaration"] else "")
-            return (head + colour_text + " Snapmaker Orca applies that preset's temperature, flow and cooling only if it "
-                    "has the preset installed; if it does not recognize it, Orca shows it as a Customized Preset and "
-                    "keeps the project's values." + held)
+            return (head + colour_text + " Studio cannot confirm Snapmaker Orca will apply this preset's temperature, "
+                    "flow and cooling: when tested, Orca opened a project naming a preset someone made as a Customized "
+                    "Preset and kept the project's values. Check the filament in Orca before slicing." + held)
         if not pc["kept_by_declaration"]:
             return (head + colour_text + f" Temperature, flow and cooling come from the installed "
                     f"{out['preset_written']} preset.")
@@ -315,15 +315,22 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
         keys = sorted(entry["keys"])
         phrase = ", ".join(k.replace("_", "-") for k in keys[:-1])
         phrase = (phrase + " and " if phrase else "") + keys[-1].replace("_", "-")
+        mine = any((slots[m]["selection"] or {}).get("preset_source") == "user" for m in entry["slots"]
+                   if m < len(slots))
         lines.append(f"{_cap(_slots_phrase(entry['slots']))} use '{preset}'. Studio removed its own {phrase} "
-                     "declarations from this shared-preset group so Snapmaker Orca can apply the installed "
-                     "preset consistently.")
+                     + ("declarations from this shared-preset group." if mine else
+                        "declarations from this shared-preset group so Snapmaker Orca can apply the installed "
+                        "preset consistently."))
         withdrawn_groups.append({"preset": preset, "slots": entry["slots"], "keys": keys})
     for r in slots:
         if r["declarations"]["withdrawn_studio_added"] and r["slot"] not in grouped:
             keys = ", ".join(r["declarations"]["withdrawn_studio_added"])
-            lines.append(f"Slot {r['slot'] + 1}: Studio did not declare {keys}, so Snapmaker Orca takes "
-                         f"them from '{r['output']['preset_written']}'.")
+            if (r["selection"] or {}).get("preset_source") == "user":
+                lines.append(f"Slot {r['slot'] + 1}: Studio did not declare {keys}, leaving those values to your preset "
+                             f"'{r['output']['preset_written']}'.")
+            else:
+                lines.append(f"Slot {r['slot'] + 1}: Studio did not declare {keys}, so Snapmaker Orca takes "
+                             f"them from '{r['output']['preset_written']}'.")
         in_group = r["slot"] in {s for g in withdrawn_groups for s in g["slots"]}
         if (r["involved"] or in_group) and r["declarations"]["retained"]:
             lines.append(f"Slot {r['slot'] + 1}: the project's own declaration of "

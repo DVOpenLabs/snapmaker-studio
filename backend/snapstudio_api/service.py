@@ -291,7 +291,9 @@ def _material_context(selections, presets: dict, catalog, nozzle: str, proofs: d
                      "material": spool.get("material"), "subtype": spool.get("subtype"),
                      "slicer_filament": _text_field(raw.get("slicer_filament"))}
             found = mm.resolve(catalog, store, spool["provider"], probe, nozzle)
-            same = found.get("base_name") == chosen.get("base_name")
+            # the same installed record, not merely the same name: a sibling of one name is a different choice
+            same = (found.get("base_name") == chosen.get("base_name")
+                    and (found.get("ref") is None or found.get("ref") == chosen.get("ref")))
             saved = found["match_source"] in (mm.SOURCE_SAVED_SPOOL, mm.SOURCE_SAVED_SIGNATURE)
             if saved and same and found["status"] == "proven":
                 source = found["match_source"]
@@ -404,8 +406,9 @@ def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
     if not proven and not (found.get("confirmable") and accept is True):
         raise ValueError(
             f"That is not a proven installed preset for the {nozzle} mm nozzle: {found['reason']}")
-    if not proven and data.get("fingerprint") != found["fingerprint"]:
-        # the say-so is about the preset the person was shown; it has been replaced since
+    sent = data.get("fingerprint")
+    if (not proven and sent != found["fingerprint"]) or (proven and sent not in (None, found["fingerprint"])):
+        # what the person confirmed is the preset they were shown; it has been replaced since
         raise ValueError("That preset has changed since you confirmed it. Choose it again to confirm it.")
     origin = data.get("origin") or mm.SOURCE_MANUAL
     row = (store if store is not None else _material_store()).put(

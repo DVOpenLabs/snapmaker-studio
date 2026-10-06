@@ -306,10 +306,9 @@ export function buildSelections(choices: Choices): MaterialSelection[] {
     if (preset && c.preset) {
       if (c.preset.source) sel.source = c.preset.source;
       if (c.preset.ref) sel.ref = c.preset.ref;
-      if (c.preset.needsSayso) {
-        sel.accept_unproven = true;
-        if (c.preset.fingerprint) sel.fingerprint = c.preset.fingerprint;
-      }
+      if (c.preset.needsSayso) sel.accept_unproven = true;
+      // The version the person was shown, for every preset: one replaced since is refused, not silently used.
+      if (c.preset.fingerprint) sel.fingerprint = c.preset.fingerprint;
     }
     if (c.spool) {
       sel.spool = {
@@ -323,13 +322,19 @@ export function buildSelections(choices: Choices): MaterialSelection[] {
   return out.sort((a, b) => a.slot - b.slot);
 }
 
+/** The same installed record, not merely the same name: two presets of one name are different choices. */
+export function samePreset(preset: PresetChoice, m: MaterialMapping): boolean {
+  if (!m.base_name || preset.name !== m.base_name) return false;
+  return !m.ref || !preset.ref || m.ref === preset.ref;
+}
+
 /** Whether offering to remember this pair makes sense: a spool and a confirmed preset, and not
  *  a mapping that is already saved for exactly that preset. */
 export function canRemember(choice: SlotChoice): boolean {
   if (!choice.spool || !choice.preset?.confirmed || choice.keepOwn) return false;
   const m = choice.spool.mapping;
   const saved = m.match_source === "saved_spool" || m.match_source === "saved_signature";
-  const same = !!m.base_name && m.status === "proven" && choice.preset.name === m.base_name;
+  const same = m.status === "proven" && samePreset(choice.preset, m);
   return !(saved && same);
 }
 
@@ -342,10 +347,8 @@ export function mappingRequests(choices: Choices, nozzle: string): MappingReques
     const pin: Partial<MappingRequest> = {};
     if (c.preset.source) pin.source = c.preset.source;
     if (c.preset.ref) pin.ref = c.preset.ref;
-    if (c.preset.needsSayso) {
-      pin.accept_unproven = true;
-      if (c.preset.fingerprint) pin.fingerprint = c.preset.fingerprint;
-    }
+    if (c.preset.needsSayso) pin.accept_unproven = true;
+    if (c.preset.fingerprint) pin.fingerprint = c.preset.fingerprint;
     out.push(c.remember === "spool"
       ? { scope: "spool", provider: c.spool.provider, spool_id: c.spool.spool_id, preset: c.preset.name, nozzle, origin, ...pin }
       : { scope: "signature", provider: c.spool.provider, vendor: c.spool.vendor, material: c.spool.material,

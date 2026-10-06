@@ -10,7 +10,7 @@ import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
   choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText, presetSourceLabel,
-  presetStatusFor, slotNumber, unconfirmedSlots,
+  presetStatusFor, samePreset, slotNumber, unconfirmedSlots,
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
 } from "@/lib/projectMaterials";
@@ -219,7 +219,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
           )}
           {spool && choice.preset && !choice.keepOwn && (
             <span className="text-[11px] text-muted-foreground" data-testid="match-source">
-              {(spool.mapping.base_name ?? spool.mapping.preset_name) === choice.preset.name
+              {samePreset(choice.preset, spool.mapping)
                 ? (MATCH_SOURCE_LABEL[spool.mapping.match_source] ?? spool.mapping.match_source)
                 : MATCH_SOURCE_LABEL.manual}
             </span>

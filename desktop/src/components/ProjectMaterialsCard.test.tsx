@@ -384,7 +384,7 @@ describe("the card end to end", () => {
     await waitFor(() => expect(api.confirmMaterialMapping).toHaveBeenCalledTimes(1));
     expect(order).toEqual(["prepare", "save"]);                                           // saved only once the copy exists
     expect(api.confirmMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA",
-      subtype: "Matte", preset: "Snapmaker PLA SnapSpeed @U1", nozzle: "0.4", origin: "manual" });
+      subtype: "Matte", preset: "Snapmaker PLA SnapSpeed @U1", nozzle: "0.4", origin: "manual", fingerprint: "c" });
     expect(onPrepare).toHaveBeenCalledWith([expect.objectContaining({ slot: 0, preset: "Snapmaker PLA SnapSpeed @U1" })]);
   });
 

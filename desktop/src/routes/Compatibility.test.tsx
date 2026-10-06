@@ -235,3 +235,25 @@ describe("what Project Materials' Prepare did is always visible", () => {
     expect(await screen.findByText("Printer profile is for another machine")).toBeTruthy();
   });
 });
+
+
+describe("a Prepare that wrote nothing is not reported as a success", () => {
+  it("says so, and offers no file to open", async () => {
+    api.compatibilityCheck.mockReturnValue(new Promise(() => {}));
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate({ mapping: {
+      status: "proven", match_source: "saved_spool", preset_name: "P @U1", base_name: "P @U1", reason: "", candidates: [], stale: false } })] })] }));
+    const summary = { source_has_creator_settings: true, kept_count: 0, compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [],
+      recommendations_available: false, recommended_changes: [],
+      project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["Slot 1: mapped."], slots: [] } } };
+    api.convert.mockImplementation(async (_p: string, _o: unknown, _m: string, dry: boolean) => ({
+      schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true, errors: [], settings_summary: summary, dry }));
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: /Yoopai PLA Matte/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Review & prepare/ }));
+    await screen.findByText("Slot 1: mapped.");
+    fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" }));
+    await screen.findByTestId("prepare-no-file");
+    expect(screen.queryByText("U1 profile copy created")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Copy path/ })).toBeNull();
+  });
+});

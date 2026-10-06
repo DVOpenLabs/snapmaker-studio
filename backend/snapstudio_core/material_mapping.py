@@ -230,7 +230,7 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
 
 def _carry(found: dict) -> dict:
     keys = ("status", "reason", "preset_name", "base_name", "candidates", "fingerprint", "source", "ref",
-            "proof", "location", "choices")
+            "proof", "choices")
     out = {k: found.get(k) for k in keys}
     out["choices"] = out["choices"] or []
     out["confirmable"] = bool(found.get("confirmable"))

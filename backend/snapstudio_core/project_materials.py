@@ -552,8 +552,9 @@ def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: st
                         "that it is a U1 preset to use it." if found.get("confirmable") else "")
                 raise ValueError(f"“{preset}” is not a proven installed preset for the {nozzle} mm "
                                  f"nozzle: {found['reason']}{hint}")
-            if not proven and sel.get("fingerprint") != found.get("fingerprint"):
-                # the say-so was given for the preset the person was shown; it has been replaced since
+            sent = sel.get("fingerprint")
+            if (not proven and sent != found.get("fingerprint")) or (proven and sent not in (None, found.get("fingerprint"))):
+                # the person chose the preset they were shown; it has been replaced since, so it is not applied
                 raise ValueError(f"“{preset}” has changed since you confirmed it. Choose it again to confirm it.")
             presets[slot] = found["preset_name"]
             if proofs is not None:
