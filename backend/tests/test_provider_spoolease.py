@@ -704,3 +704,13 @@ def test_spoolease_plaintext_server_on_https_is_not_a_certificate_failure():
     assert "certificate" not in out["error"].lower()
     assert "127.0.0.1" not in out["error"]
     assert "secure connection" in out["error"].lower()
+
+
+def test_slicer_filament_is_exposed_as_provider_text_only():
+    """SpoolEase's slicer filament is an input to preset mapping, not an Orca preset."""
+    with SpoolEaseFake(mode="ok") as fake:
+        out = mp.read("spoolease", fake.url, key=FIXTURE_KEY)
+    by_id = {s["id"]: s for s in out["spools"]}
+    assert by_id["1"]["slicer_filament"] == "Generic PLA"
+    assert by_id["2"]["slicer_filament"] == "Generic PETG"
+    assert by_id["3"]["slicer_filament"] is None

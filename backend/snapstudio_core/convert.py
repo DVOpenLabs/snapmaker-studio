@@ -331,8 +331,13 @@ def check_structure(tm) -> None:
 
 
 def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
-                  dry_run: bool = False) -> ConversionResult:
-    """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result."""
+                  dry_run: bool = False, confirmed_presets: dict | None = None,
+                  filament_catalog=None) -> ConversionResult:
+    """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
+
+    `confirmed_presets` maps a filament slot to the exact installed Orca preset the
+    person confirmed for it. Slots not listed keep the project's own filament identity
+    in every mode; `filament_catalog` only lets the report suggest a preset for them."""
     src = Path(path)
     if prepare_mode == "u1":
         prepare_mode = "recommended"
@@ -384,13 +389,15 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     before = load_project_settings(raw_config)
     recommended_tm = copy.deepcopy(tm) if prepare_mode == "preserve" else None
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
-    outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None)
+    outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
+                        confirmed_presets=confirmed_presets, filament_catalog=filament_catalog)
     after = load_project_settings(tm.read_part(SETTINGS))
     recommended_after = None
     if recommended_tm is not None:
         # Use the normal repair path on a wholly in-memory project so preview
         # results cannot diverge from a real recommended conversion or write.
-        do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None)
+        do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
+                  confirmed_presets=confirmed_presets, filament_catalog=filament_catalog)
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)

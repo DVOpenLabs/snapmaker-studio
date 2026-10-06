@@ -136,8 +136,14 @@ def test_recommended_is_opt_in_and_print_sequence_contract(tmp_path):
     # identity/preset work that a profile-swap-only preview missed.
     actual_delta = {x["key"] for x in config_diff(before, _prepared(recommended))}
     assert {x["key"] for x in preview} == actual_delta
-    assert {"nozzle_temperature", "filament_settings_id", "filament_vendor",
-            "default_filament_profile", "different_settings_to_system", "print_sequence"} <= actual_delta
+    assert {"nozzle_temperature", "different_settings_to_system", "print_sequence"} <= actual_delta
+    # Recommended no longer stamps a legacy "Snapmaker PLA" identity over the filaments:
+    # Orca replaced the carried print values from that preset. Identity changes only when
+    # the person confirms an installed preset for a slot (Project Materials).
+    # (The arrays are widened to the U1's four toolheads; every value is still the creator's.)
+    prepared = _prepared(recommended)
+    for key in ("filament_settings_id", "filament_vendor", "default_filament_profile"):
+        assert set(prepared[key]) == set(before[key]), key
 
 
 def test_dry_run_starter_and_multimaterial_preservation(tmp_path):

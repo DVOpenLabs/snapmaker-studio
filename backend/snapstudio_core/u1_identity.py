@@ -23,8 +23,18 @@ U1_PRINTER_SETTINGS_ID = "Snapmaker U1 (0.4 nozzle)"
 U1_PRINTER_VARIANT = "0.4"
 U1_PRINT_SETTINGS_ID = "0.20 Standard @Snapmaker U1 (0.4 nozzle)"
 U1_NOZZLE_TYPE = "hardened_steel"
-U1_FILAMENT_SETTINGS_ID = "Snapmaker PLA"
-U1_FILAMENT_VENDOR = "Snapmaker"
+
+# The fields that name a filament. Studio never stamps a constant over them: a slot
+# carries either the installed Orca preset the person confirmed, or the project's own
+# value. Measured on Orca 2.3.6, writing the legacy "Snapmaker PLA" beside another
+# slicer's print values made Orca replace those values from a preset that is not even
+# U1-compatible.
+FILAMENT_IDENTITY_KEYS = ("filament_settings_id", "filament_vendor", "default_filament_profile")
+
+#: What Studio says when it keeps a filament identity Orca may not recognise.
+FILAMENT_IDENTITY_NOTICE = (
+    "Studio keeps the project's existing filament identity. If Snapmaker Orca does not "
+    "recognize that preset, Orca may treat it as a Customized Preset and rename it.")
 
 # Substrings that must never survive in a clean U1 project (case-insensitive).
 FOREIGN_TOKENS = ("bbl", "h2d", "bambu")
@@ -82,9 +92,15 @@ def _has_foreign(value) -> bool:
 
 
 def normalize_project_identity(cfg: dict, n_filaments: int,
-                               *, preserve_filament_identity: bool = False) -> dict:
+                               *, confirmed_presets: dict | None = None,
+                               catalog=None) -> dict:
     """Force the U1 preset identity block. Returns the changes applied (old->new).
-    Filament identity arrays are sized to `n_filaments` (the real colour count)."""
+
+    Filament identity is not part of that block. A slot in `confirmed_presets`
+    (slot -> exact installed Orca preset name) is written; every other slot keeps the
+    project's own identity, and `catalog` (an installed-preset catalogue, optional) is
+    used only to SUGGEST a generic preset for it — never to apply one.
+    """
     n = max(1, n_filaments)
 
     # The preset *name* has to describe the project. Preserve mode keeps the
@@ -116,19 +132,45 @@ def normalize_project_identity(cfg: dict, n_filaments: int,
         "print_compatible_printers": [printer_settings_id],
         "nozzle_type": U1_NOZZLE_TYPE,
     }
-    if not preserve_filament_identity:
-        targets.update({
-            "default_filament_profile": [U1_FILAMENT_SETTINGS_ID],
-            "filament_settings_id": [U1_FILAMENT_SETTINGS_ID] * n,
-            "filament_vendor": [U1_FILAMENT_VENDOR] * n,
-        })
     changes = []
     for k, v in targets.items():
         if cfg.get(k) != v:
             changes.append({"key": k, "old": cfg.get(k), "new": v,
                             "reason": "U1 project identity normalized"})
             cfg[k] = v
-    return {"changed": changes, "preset": preset}
+    filament = _apply_filament_identity(cfg, n, confirmed_presets or {}, catalog,
+                                        str(targets["printer_variant"]))
+    return {"changed": changes, "preset": preset, "filament": filament}
+
+
+def _apply_filament_identity(cfg: dict, n: int, confirmed: dict, catalog, nozzle: str) -> dict:
+    """Write confirmed installed presets; report what was kept and what could be suggested."""
+    current = cfg.get("filament_settings_id")
+    names = list(current) if isinstance(current, list) else []
+    names += [""] * (n - len(names))
+    applied, kept, suggestions = [], [], []
+    types = cfg.get("filament_type") if isinstance(cfg.get("filament_type"), list) else []
+    for slot in range(n):
+        wanted = str(confirmed.get(slot) or "").strip()
+        if wanted:
+            if names[slot] != wanted:
+                applied.append({"slot": slot, "old": names[slot] or None, "new": wanted})
+            names[slot] = wanted
+            continue
+        kept.append({"slot": slot, "identity": names[slot] or None})
+        family = types[slot] if slot < len(types) else None
+        suggestion = catalog.suggest_generic(family, nozzle) if catalog and family else None
+        if suggestion:
+            suggestions.append({"slot": slot, "family": str(family).upper(),
+                                "preset_name": suggestion["preset_name"],
+                                "base_name": suggestion["base_name"],
+                                "status": suggestion["status"], "reason": suggestion["reason"]})
+    if applied:
+        cfg["filament_settings_id"] = names
+        first = names[0] if confirmed.get(0) else None
+        if first and cfg.get("default_filament_profile") != [first]:
+            cfg["default_filament_profile"] = [first]
+    return {"applied": applied, "kept": kept, "suggestions": suggestions}
 
 
 # Clean-import normalization (Snapmaker Orca dialogs on a real beta file):
@@ -200,6 +242,8 @@ def scrub_foreign(cfg: dict, *, preserve_creator_settings: bool = False,
     for k, v in list(cfg.items()):
         if not _has_foreign(v):
             continue
+        if k in FILAMENT_IDENTITY_KEYS and not preserve_creator_settings:
+            continue   # the project's own filament identity is kept, not blanked
         machine_or_device = k in allowed or "printhost" in k or k.startswith("device_")
         if preserve_creator_settings and not machine_or_device:
             warnings.append(f"Creator setting '{k}' contains foreign slicer metadata and was kept from the original file.")
@@ -219,7 +263,7 @@ def find_foreign(cfg: dict, *, preserve_creator_settings: bool = False,
     """Keys whose value still contains a foreign token (for validation)."""
     foreign = [k for k, v in cfg.items() if _has_foreign(v)]
     if not preserve_creator_settings:
-        return foreign
+        return [k for k in foreign if k not in FILAMENT_IDENTITY_KEYS]
     allowed = set(compat_keys or ()) | machine_gcode_keys() | {
                                         "printhost", "printhost_type", "printhost_authorization_type",
                                         "printhost_port", "printhost_api_key", "device_ip",
@@ -246,7 +290,7 @@ def is_u1_clean(cfg: dict, *, preserve_creator_settings: bool = False,
     fsi = cfg.get("filament_settings_id")
     if (not preserve_creator_settings and isinstance(fsi, list)
             and not all(str(x).startswith("Snapmaker") for x in fsi)):
-        issues.append("filament_settings_id contains non-Snapmaker presets")
+        issues.append("warning: " + FILAMENT_IDENTITY_NOTICE)
     if not cfg.get("version"):
         issues.append("missing version")
     # `different_settings_to_system` used to be checked here as a defect, on the
@@ -271,7 +315,7 @@ def is_u1_clean(cfg: dict, *, preserve_creator_settings: bool = False,
     elif preserve_creator_settings and ps == "by object":
         issues.append("warning: creator's print_sequence 'by object' was kept")
     if preserve_creator_settings and isinstance(fsi, list) and not all(str(x).startswith("Snapmaker") for x in fsi):
-        issues.append("warning: Orca may ask to map an unknown filament preset")
+        issues.append("warning: " + FILAMENT_IDENTITY_NOTICE)
     return (not [issue for issue in issues if not issue.startswith("warning:")], issues)
 
 

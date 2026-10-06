@@ -1395,6 +1395,9 @@ def spoolease(base_url: str, slot_map: dict | None = None, timeout: float = 4.0,
             "color": _colour(record.get("color_code")),
             "vendor": _text(record.get("brand")),
             "color_name": _text(record.get("color_name")),
+            # What SpoolEase says the slicer filament is. An INPUT to preset mapping
+            # only: it is not an Orca preset until it matches the installed catalogue.
+            "slicer_filament": _text(record.get("slicer_filament")),
             "remaining_g": remaining,
             "remaining_quality": quality,
             # Always undated: a DERIVED SpoolEase figure never carries a

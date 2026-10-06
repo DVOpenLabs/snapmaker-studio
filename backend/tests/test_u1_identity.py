@@ -45,8 +45,10 @@ def test_normalize_then_scrub_is_clean_and_preserves_design():
     assert cfg["version"] == U1_VERSION
     assert cfg["printer_model"] == "Snapmaker U1"
     assert "@Snapmaker U1" in cfg["print_settings_id"]
-    assert cfg["filament_settings_id"] == ["Snapmaker PLA", "Snapmaker PLA"]
-    assert cfg["filament_vendor"] == ["Snapmaker", "Snapmaker"]
+    # filament identity is the project's own: Studio no longer stamps a legacy preset
+    # over it (Orca replaced the print values from that preset, which is not U1-compatible)
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D", "Generic PLA @BBL H2D"]
+    assert cfg["filament_vendor"] == ["Bambu Lab", "Bambu Lab"]
     # design preserved
     assert cfg["filament_colour"] == ["#FF0000", "#00FF00"]
     assert cfg["filament_type"] == ["PLA", "PLA"]
@@ -149,8 +151,12 @@ def test_convert_3mf_strips_all_foreign(tmp_path):
     # known-good U1 file, so we check values, not raw text).
     assert find_foreign(cfg) == []
     # H2D / Bambu never appear as legitimate key names, so they must be gone entirely.
+    # (filament identity keys are the exception: Studio keeps the project's own text)
+    from snapstudio_core.u1_identity import FILAMENT_IDENTITY_KEYS
+    kept = {k: v for k, v in cfg.items() if k not in FILAMENT_IDENTITY_KEYS}
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D", "Generic PLA @BBL H2D"]
     blob = (
-        z.read("Metadata/project_settings.config").decode("utf-8").lower()
+        json.dumps(kept).lower()
         + z.read("Metadata/slice_info.config").decode("utf-8").lower()
     )
     assert "h2d" not in blob and "bambu" not in blob
@@ -210,3 +216,72 @@ def test_geometry_only_3mf_wraps_to_clean_u1(tmp_path):
     assert 'id="1"' in ms and 'id="2"' in ms              # both build objects mapped
     assert res.validated_ok is True
     assert src.exists()
+
+
+# ---- filament identity: confirmed preset or the project's own, never a constant ----
+def test_confirmed_preset_is_written_and_other_slots_keep_their_identity():
+    cfg = _bambu_cfg()
+    out = normalize_project_identity(
+        cfg, n_filaments=2, confirmed_presets={1: "Snapmaker PLA Matte @U1"})
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D", "Snapmaker PLA Matte @U1"]
+    assert cfg["filament_vendor"] == ["Bambu Lab", "Bambu Lab"]   # vendor/type come from the preset
+    assert cfg["default_filament_profile"] == ["Bambu PLA Basic @BBL H2D"]  # slot 0 not confirmed
+    fil = out["filament"]
+    assert fil["applied"] == [{"slot": 1, "old": "Generic PLA @BBL H2D", "new": "Snapmaker PLA Matte @U1"}]
+    assert [k["slot"] for k in fil["kept"]] == [0]
+    # filament identity is reported on its own, so it is never declared as a deviation
+    assert not any(c["key"].startswith("filament_") for c in out["changed"])
+
+
+def test_confirming_slot_zero_sets_the_default_filament_profile():
+    cfg = _bambu_cfg()
+    normalize_project_identity(cfg, n_filaments=2, confirmed_presets={0: "Snapmaker PLA Matte @U1"})
+    assert cfg["default_filament_profile"] == ["Snapmaker PLA Matte @U1"]
+
+
+def test_recommended_never_writes_the_legacy_snapmaker_pla_identity():
+    cfg = _bambu_cfg()
+    normalize_project_identity(cfg, n_filaments=2)
+    assert "Snapmaker PLA" not in cfg["filament_settings_id"]
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D"] * 2
+
+
+class _FakeCatalog:
+    def suggest_generic(self, family, nozzle):
+        if family == "PLA":
+            return {"preset_name": "Generic PLA @U1", "base_name": "Generic PLA @U1",
+                    "status": "needs_confirmation", "reason": "suggested"}
+        return None
+
+
+def test_suggestion_is_reported_but_never_applied():
+    cfg = _bambu_cfg()
+    out = normalize_project_identity(cfg, n_filaments=2, catalog=_FakeCatalog())
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D"] * 2     # not applied
+    sug = out["filament"]["suggestions"]
+    assert [s["slot"] for s in sug] == [0, 1]
+    assert all(s["status"] == "needs_confirmation" and s["preset_name"] == "Generic PLA @U1" for s in sug)
+
+
+def test_unrecognised_filament_identity_is_a_warning_not_a_failure():
+    from snapstudio_core.u1_identity import FILAMENT_IDENTITY_NOTICE
+    cfg = _bambu_cfg()
+    normalize_project_identity(cfg, n_filaments=2)
+    scrub_foreign(cfg)
+    normalize_presets(cfg)
+    ok, issues = is_u1_clean(cfg)
+    assert ok is True, issues
+    assert "warning: " + FILAMENT_IDENTITY_NOTICE in issues
+
+
+def test_recommended_convert_keeps_identity_and_warns(tmp_path):
+    from snapstudio_core.u1_identity import FILAMENT_IDENTITY_NOTICE
+    src = _bambu_3mf(tmp_path)
+    res = convert_to_u1(str(src), prepare_mode="recommended")
+    cfg = load_project_settings(zipfile.ZipFile(res.output_path).read("Metadata/project_settings.config"))
+    assert cfg["filament_settings_id"] == ["Generic PLA @BBL H2D", "Generic PLA @BBL H2D"]
+    assert res.validated_ok is True
+    res2 = convert_to_u1(str(src), prepare_mode="recommended",
+                         confirmed_presets={0: "Snapmaker PLA Matte @U1"})
+    cfg2 = load_project_settings(zipfile.ZipFile(res2.output_path).read("Metadata/project_settings.config"))
+    assert cfg2["filament_settings_id"] == ["Snapmaker PLA Matte @U1", "Generic PLA @BBL H2D"]
