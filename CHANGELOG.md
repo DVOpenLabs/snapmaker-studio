@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-06
+
+**A readable spool picker (#39).**
+
 ### Changed
 - **A readable, searchable spool picker.** Settings → Materials provider replaces the
   operating system's drop-down (light text on a light popup in the dark theme) with a Studio
