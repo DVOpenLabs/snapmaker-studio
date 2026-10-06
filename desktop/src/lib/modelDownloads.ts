@@ -134,8 +134,8 @@ export function failureMessage(detail?: string): string {
 
 export const SITE_DATA_COPY = {
   signIn:
-    "Sign in on the site itself. Studio never sees your password or cookies, and the sign-in is " +
-    "kept for next time inside the Model Browser only.",
+    "Sign in on the site itself. Studio never sees your password or cookies. " +
+    "Sign-in is stored on this computer by the Model Connect browser.",
   clear:
     "Clear site data signs you out of every site and deletes the Model Browser's cookies and " +
     "cache. It does not touch Studio's own settings, your library or your files.",

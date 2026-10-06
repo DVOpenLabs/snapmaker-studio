@@ -12,6 +12,14 @@ export const MODEL_BROWSER_COPY = {
     "itself, and never bypasses a site's login or terms. No API keys are needed.",
 } as const;
 
+/** What happens, in order, when you use Model Connect. Said once, the same on every site. */
+export const MODEL_CONNECT_STEPS = [
+  "Browse or search for a model",
+  "Use the site's normal download button",
+  "Studio adds supported downloads to your Library",
+  "Ready Now checks it against your U1",
+] as const;
+
 export interface BrowserPanelState {
   open: boolean;
   site: string | null; // human label of the site currently open in-app

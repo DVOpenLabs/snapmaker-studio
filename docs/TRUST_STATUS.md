@@ -9,6 +9,47 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.4.0 — ACCEPTED
+
+**Ready Now and Model Connect.** The Windows installer and Linux `.deb` named in
+[RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by SHA256.
+Build: [run 37393209055](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37393209055), commit
+`e5eafdc323e66c982c77a581a7b8683d5ec14eb8`. This release's immutable snapshot: [internal/evidence/1.4.0.json](internal/evidence/1.4.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2619 passed / 12 skipped**, desktop **607**, Rust **45** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.4.0.json](internal/acceptance-1.4.0.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.4.0.json](internal/hardware-1.4.0.json) |
+| Model Connect on the installed release candidate: MakerWorld sign-in with Google (sign-in popup opens, completes with phone approval, closes itself, the browser is signed in) | **pass** |
+| Model Connect: MakerWorld download with the site's own button → "Added from MakerWorld" → Library → Ready Now | **pass** |
+| Model Connect: Printables download → "Added from Printables" → Library → Ready Now | **pass** |
+| Model Connect: sign-in kept after quitting and relaunching Studio | **pass** |
+| Model Connect: "Clear site data" signs the model site out and leaves Studio's printer address, Library and provider setting untouched | **pass** |
+| `tsc`, `cargo test`, production build | clean |
+
+### What is verified, and what is not
+
+**Ready Now** is covered by automated tests, including that an unanswered bed, nozzle or
+toolhead check is never "Ready now", and by a timed scan of 50 real projects. The installed
+acceptance and read-only U1 runs above do not exercise Ready Now's result classes. In the live
+Model Connect test the saved printer was not reachable, so Ready Now correctly reported
+"Can't determine" for imported files that were not made for another printer.
+
+**Model Connect** is covered by automated tests (download-path safety, collision-safe
+destinations, registration only from Studio's own downloads folder, no Tauri access for the
+site window or the sign-in popup, no cookie access in Studio code) and by the live tests in the
+table, run by hand on the installed release candidate with a real MakerWorld account. Apple
+and Facebook sign-in use the same popup path and are **not yet verified**. Downloads and
+"Clear site data" are Windows and Linux only; the 512 MiB size cap is checked after a download
+finishes; a download abandoned part-way can leave a partial file in Studio's downloads folder.
+The MakerWorld file host (`makerworld.bblmw.com`) and Google's session host used by its
+sign-in were each read from the live flow, not guessed.
+
 ## v1.3.1 — ACCEPTED
 
 **Fixes for v1.3.0 reports: real error messages, private-name SpoolEase

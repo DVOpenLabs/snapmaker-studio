@@ -6,7 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-**v1.4.0 (in preparation): find a model, and know if your U1 can print it now.**
+## [1.4.0] - 2026-10-07
+
+**Find a model, then know whether your U1 can print it now.**
 
 ### Added
 - **Ready Now.** A new page answers "What can I print on my U1 right now?" for the
@@ -35,10 +37,14 @@ All notable changes to this project are documented here. The format is based on
 - Studio does not read model pages, has no "add this page" button and does not fetch
   files itself. A download happens only when you press the site's own download button.
 - Sign-in and download are driven by the site in the browser window. Studio never sees
-  your password, cookies or tokens.
-- Printables downloads are verified. MakerWorld is the next site to verify live. A file
-  from a host Studio has not allowlisted is refused with a plain message. The other
-  approved sites keep browsing until they are verified the same way.
+  your password, cookies or tokens. A site that signs in through a popup (MakerWorld's
+  Google, Apple and Facebook buttons) opens it as a separate Studio window with no access
+  to Studio, limited to the sign-in providers, and Studio closes it once the sign-in has
+  returned to the site.
+- Printables and MakerWorld downloads, and MakerWorld sign-in with Google, are verified
+  live. Apple and Facebook sign-in use the same path and are not yet verified. A file from
+  a host Studio has not allowlisted is refused with a plain message. The other approved
+  sites keep browsing until they are verified the same way.
 - Model Connect downloads and "Clear site data" are available on Windows and Linux. On
   macOS the browser still browses, but downloads and clearing are switched off.
 - The 512 MiB size limit is checked after a download finishes, not while it streams, and

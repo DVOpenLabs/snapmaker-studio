@@ -90,7 +90,8 @@ describe("messages", () => {
     const text = (SITE_DATA_COPY.signIn + " " + SITE_DATA_COPY.clear).toLowerCase();
     expect(text).toContain("never sees your password or cookies");
     expect(text).toContain("does not touch studio's own settings");
-    expect(text).not.toMatch(/store.*password|save.*password/);
+    expect(text).toContain("sign-in is stored on this computer by the model connect browser");
+    expect(text).not.toMatch(/store.*password|save.*password|you are signed in|currently signed in/);
   });
   it("family labels exist only for families Studio knows", () => {
     expect(familyLabel("prusa")).toBe("PrusaSlicer project");
