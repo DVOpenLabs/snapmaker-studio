@@ -1699,8 +1699,14 @@ export interface ProviderTest {
 export interface ProviderSpool {
   id: number | string;
   label: string;
+  vendor?: string | null;
   material?: string | null;
+  subtype?: string | null;
   color?: string | null;
+  /** What the provider calls the colour, or a plain-English name for the hex. */
+  color_name?: string | null;
+  /** Which provider this spool came from. */
+  source?: string | null;
   remaining_g?: number | null;
   remaining_quality?: string | null;
   archived?: boolean;

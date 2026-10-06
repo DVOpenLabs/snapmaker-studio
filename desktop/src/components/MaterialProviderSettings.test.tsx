@@ -199,7 +199,8 @@ describe("MaterialProviderSettings SpoolEase", () => {
       change(screen.getByPlaceholderText(placeholder), placeholder);
       providerTestMock.mockResolvedValueOnce({ ok: true, spools: 1, with_weight: 1, choices: [{ id, label: "Test spool", remaining_g: 500 }] });
       await pressTest();
-      fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: String(id) } });
+      fireEvent.click(screen.getAllByRole("combobox")[0]);
+      fireEvent.mouseDown(screen.getByRole("option", { name: /Test spool/ }));
       // The store/UI default is slots numbered 1–4, so the first select maps
       // to slot "1". The selected option still preserves the provider's id
       // type (string for SpoolEase, number for Spoolman).

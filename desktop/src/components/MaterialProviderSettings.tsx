@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Boxes, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { providerTest, type ProviderSpool, type ProviderTest } from "@/api";
+import { providerTest, type ProviderTest } from "@/api";
 import { useProvider, PROVIDERS, type ProviderKind } from "@/store/provider";
 import LocalSpoolSettings from "@/components/LocalSpoolSettings";
+import SpoolListbox from "@/components/SpoolListbox";
 
 // Where a person tells Studio what is keeping track of their filament.
 //
@@ -24,16 +25,6 @@ import LocalSpoolSettings from "@/components/LocalSpoolSettings";
 // then reports the wrong material with complete confidence.
 
 const SLOTS = [0, 1, 2, 3];
-
-function quality(spool: ProviderSpool): string {
-  if (spool.remaining_g === null || spool.remaining_g === undefined) return "no weight recorded";
-  const amount = `${Math.round(spool.remaining_g)} g`;
-  // Both providers answer with a remaining weight for every spool, computed from
-  // the spool's declared size. Only a spool something has printed from — or has
-  // been weighed — carries a figure anything is actually keeping, so the two are
-  // labelled apart here as well as in the engine.
-  return spool.remaining_quality === "tracked" ? `${amount} tracked` : `${amount} estimated`;
-}
 
 function plural(count: number, singular: string, pluralForm: string): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
@@ -222,21 +213,12 @@ export default function MaterialProviderSettings() {
                     return (
                       <li key={key} className="flex items-center gap-2 text-xs">
                         <span className="w-16 shrink-0 text-muted-foreground">Slot {key}</span>
-                        <select
-                          value={chosen ?? ""}
-                          onChange={(e) =>
-                            setSlot(key, e.target.value === "" ? null : (spools.find((spool) => String(spool.id) === e.target.value)?.id ?? null))
-                          }
-                          className="h-8 flex-1 rounded-md border border-border bg-card px-2 text-xs outline-none"
-                        >
-                          <option value="">— nothing mapped —</option>
-                          {spools.map((spool) => (
-                            <option key={spool.id} value={spool.id}>
-                              {spool.label} · {quality(spool)}
-                              {spool.archived ? " · archived" : ""}
-                            </option>
-                          ))}
-                        </select>
+                        <SpoolListbox
+                          ariaLabel={`Spool for slot ${key}`}
+                          spools={spools}
+                          value={chosen ?? null}
+                          onChange={(id) => setSlot(key, id)}
+                        />
                       </li>
                     );
                   })}
