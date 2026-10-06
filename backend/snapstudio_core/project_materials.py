@@ -92,9 +92,16 @@ def required_grams(plates: list[dict] | None) -> dict[int, float]:
 def project_nozzle(cfg: dict) -> str:
     """The nozzle Prepare will name in the copy, so presets are checked against it."""
     from . import process_preset
+    from .profile import load_profile
     from .u1_identity import U1_PRINTER_VARIANT
 
-    chosen = process_preset.choose(cfg)
+    # Prepare applies the U1 profile before it names the printer, and that profile sets the nozzle, so
+    # the copy is written for the profile's nozzle whatever the source used. Presets must fit THAT.
+    probe = dict(cfg)
+    profile_nozzle = load_profile("snapmaker_u1")["keys"].get("nozzle_diameter")
+    if profile_nozzle is not None:
+        probe["nozzle_diameter"] = profile_nozzle
+    chosen = process_preset.choose(probe)
     return str(chosen["printer_variant"]) if chosen.get("matched") else U1_PRINTER_VARIANT
 
 
@@ -294,6 +301,15 @@ def _preset_reason(mapping: dict) -> dict:
     return {"code": "preset_none", "text": "No installed preset chosen for this spool yet"}
 
 
+def _tie_key(spool: dict) -> tuple:
+    """vendor, material, subtype, colour, then the spool's own name, then its id."""
+    base = spool_choices.sort_key({
+        "vendor": spool.get("vendor"), "material": spool.get("material"),
+        "subtype": spool.get("subtype"), "color_name": spool.get("color_name"),
+        "color": spool.get("color"), "id": spool.get("id")})
+    return base[:-1] + (spool_choices._text_key(spool.get("name")),) + base[-1:]
+
+
 def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalog, store,
               nozzle: str) -> dict | None:
     """One spool as a candidate for one slot, with the facts and the reasons. None if the family differs."""
@@ -330,10 +346,7 @@ def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalo
         "_rank": (sub_tier, _PRESET_TIER[mapping["status"]], weight_tier,
                   -(distance if distance is not None else 1e9), 1 if loaded is not None else 0),
         "_distance": distance,
-        "_tie": spool_choices.sort_key({
-            "vendor": spool.get("vendor"), "material": spool.get("material"),
-            "subtype": spool.get("subtype"), "color_name": spool.get("color_name"),
-            "color": spool.get("color"), "id": spool.get("id")}),
+        "_tie": _tie_key(spool),
     }
 
 

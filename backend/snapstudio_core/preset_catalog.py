@@ -136,6 +136,10 @@ class Catalog:
             return _result(NO_MATCH,
                            f"That preset is installed but has no {nozzle} mm nozzle version.",
                            raw, nozzle, base=base, candidates=[base])
+        if nozzle in entry.get("collisions", {}):
+            return _result(NEEDS_CONFIRMATION,
+                           f"More than one installed preset file claims this name for the {nozzle} mm nozzle.",
+                           raw, nozzle, base=base, candidates=entry["collisions"][nozzle])
         exact = raw == base or raw in entry["nozzles"].values()
         status = PROVEN if exact else NEEDS_CONFIRMATION
         reason = ("Exact installed preset." if exact else
@@ -227,8 +231,11 @@ def load(profile_dir: str | os.PathLike) -> Catalog | None:
         base = base_name(name)
         entry = entries.setdefault(base, {
             "base_name": base, "nozzles": {}, "setting_id": None,
-            "filament_type": None, "vendor": None})
+            "filament_type": None, "vendor": None, "collisions": {}})
         for n in nozzles:
+            known = entry["nozzles"].get(n)
+            if known is not None and known != _clean(name):
+                entry["collisions"][n] = sorted({known, _clean(name)} | set(entry["collisions"].get(n, [])))
             entry["nozzles"][n] = _clean(name)
         entry["setting_id"] = entry["setting_id"] or _first(_inherited(doc, docs, "setting_id"))
         entry["filament_type"] = entry["filament_type"] or _first(_inherited(doc, docs, "filament_type"))
@@ -239,7 +246,8 @@ def load(profile_dir: str | os.PathLike) -> Catalog | None:
         entry["fingerprint"] = _fingerprint([
             entry["base_name"], str(entry["setting_id"]), str(entry["filament_type"]),
             str(entry["vendor"]),
-            ",".join(f"{n}={entry['nozzles'][n]}" for n in sorted(entry["nozzles"]))])
+            ",".join(f"{n}={entry['nozzles'][n]}" for n in sorted(entry["nozzles"])),
+            ",".join(f"{n}:{'|'.join(v)}" for n, v in sorted(entry["collisions"].items()))])
     vendor_json = _read_json(root.parent / "Snapmaker.json") or {}
     source = {"kind": "system", "profiles_version": _first(vendor_json.get("version")),
               "presets": len(entries)}

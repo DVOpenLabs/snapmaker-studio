@@ -102,7 +102,7 @@ export default function Compatibility() {
       {path && (
         <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
           onActiveChange={setMaterialsActive}
-          onPrepare={(materials) => prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
+          onPrepare={(materials) => prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
       )}
       {checkM.isError && <p className="text-sm text-risk">Couldn't read that file: {(checkM.error as Error).message}</p>}
 
@@ -148,7 +148,7 @@ export default function Compatibility() {
                 prepare a U1 profile copy so Orca opens it with U1-compatible settings.
               </p>
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
-              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={() => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
               <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
@@ -175,7 +175,7 @@ export default function Compatibility() {
                 Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
               </p>
               <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
-              {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+              {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {prep.errors && prep.errors.length > 0 && (
                 <ul className="space-y-1 text-xs text-muted-foreground">
                   {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}

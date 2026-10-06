@@ -426,8 +426,9 @@ export function ProjectMaterialsView(p: ViewProps) {
 interface CardProps {
   path: string;
   mode: PrepareMode;
-  /** Called with the confirmed selections once the person has reviewed them and chosen to prepare. */
-  onPrepare: (selections: MaterialSelection[]) => void;
+  /** Called with the confirmed selections once the person has reviewed them and chosen to prepare. Returns the
+   *  Prepare result so a remembered mapping is saved only after a copy was really made. */
+  onPrepare: (selections: MaterialSelection[]) => void | Promise<ConversionResult | void>;
   /** Lets the parent know whether Project Materials holds choices, so a plain Prepare is not offered beside them. */
   onActiveChange?: (active: boolean) => void;
   busy?: boolean;
@@ -474,8 +475,9 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
 
   const selections = useMemo(() => buildSelections(choices), [choices]);
   useEffect(() => { onActiveChange?.(selections.length > 0); }, [selections.length, onActiveChange]);
-  // Any change to the choices invalidates a review that was already shown.
-  useEffect(() => { setReview((r) => (r.status === "idle" ? r : { status: "idle" })); }, [choices]);
+  // Any change to the choices, or to the preparation mode, invalidates a review that was already shown:
+  // the review was computed for exactly those choices in exactly that mode.
+  useEffect(() => { setReview((r) => (r.status === "idle" ? r : { status: "idle" })); }, [choices, mode]);
 
   async function onReview() {
     setReview({ status: "loading" });
@@ -490,12 +492,15 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
 
   async function doPrepare() {
     setWarning(null);
-    const toSave = mappingRequests(choices, analysis?.nozzle ?? "0.4");
-    for (const request of toSave) {
+    let result: ConversionResult | void;
+    try { result = await onPrepare(selections); }
+    catch { return; }                                    // the page already shows why Prepare failed; nothing is saved
+    // A mapping is remembered only once a copy was actually made with it: not when Prepare was blocked or failed.
+    if (!result || result.blocked || !result.output_path) return;
+    for (const request of mappingRequests(choices, analysis?.nozzle ?? "0.4")) {
       try { await confirmMaterialMapping(request); }
-      catch (e: any) { setWarning(`Couldn't save a mapping (${String(e?.message ?? e)}). Prepare is going ahead without it.`); }
+      catch (e: any) { setWarning(`Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`); }
     }
-    onPrepare(selections);
   }
 
   return (

@@ -180,3 +180,20 @@ def test_generic_suggestion_also_finds_the_plain_generic_name_the_u1_catalogue_s
     assert s["base_name"] == "Generic PETG" and s["status"] == NEEDS_CONFIRMATION       # exact name, not the HF look-alike
     assert "Generic PETG is installed for this nozzle" in s["reason"]
     assert cat.suggest_generic("PLA", "0.4") is None
+
+
+def test_two_installed_files_for_one_name_and_nozzle_are_ambiguous_not_last_wins(tmp_path):
+    root = tmp_path / "Snapmaker"
+    fil = root / "filament"
+    fil.mkdir(parents=True)
+    p4 = ["Snapmaker U1 (0.4 nozzle)"]
+    _preset(fil, "Acme PLA @U1", printers=p4, vendor="Acme", ftype="PLA")
+    _preset(fil, "Acme PLA @U1 0.4 nozzle", printers=p4, vendor="Acme", ftype="PLA")
+    cat = preset_catalog.load(root)
+    r = cat.evaluate("Acme PLA @U1", "0.4")
+    assert r["status"] == NEEDS_CONFIRMATION and r["preset_name"] is None
+    assert r["candidates"] == ["Acme PLA @U1", "Acme PLA @U1 0.4 nozzle"]
+    clean = tmp_path / "clean" / "Snapmaker"
+    (clean / "filament").mkdir(parents=True)
+    _preset(clean / "filament", "Acme PLA @U1", printers=p4, vendor="Acme", ftype="PLA")
+    assert preset_catalog.load(clean).fingerprint != cat.fingerprint

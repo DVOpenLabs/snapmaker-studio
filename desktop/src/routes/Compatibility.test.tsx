@@ -157,3 +157,22 @@ describe("Project Materials never dead-ends Prepare", () => {
     expect(plainPrepare()?.disabled).toBe(false);
   });
 });
+
+
+describe("one-click Prepare in the other mode never drops the person's choices", () => {
+  it("is not offered while Project Materials holds choices", async () => {
+    api.compatibilityCheck.mockResolvedValue(WITH_FINDINGS);
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
+    api.convert.mockResolvedValue({ output_path: "C:/p/out.3mf", output_name: "out.3mf", prepare_mode: "preserve", validated_ok: true, errors: [],
+      settings_summary: { source_has_creator_settings: true, kept_count: 0, compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [],
+        recommendations_available: true,
+        recommended_changes: [{ key: "print_sequence", old: "by object", new: "by layer", reason: "available with the recommended U1 profile" }] } });
+    page();
+    const row = await screen.findByRole("button", { name: /Yoopai PLA Matte/ });
+    fireEvent.click(plainPrepare()!);
+    await screen.findByText("U1 profile copy created");
+    expect(screen.getAllByRole("button", { name: /recommended/i }).length).toBeGreaterThan(0);   // offered with no choices held
+    fireEvent.click(row);
+    await waitFor(() => expect(screen.queryAllByRole("button", { name: /recommended/i }).length).toBe(0));
+  });
+});

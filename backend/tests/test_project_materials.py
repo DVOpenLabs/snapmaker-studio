@@ -739,3 +739,29 @@ def test_without_project_materials_a_conflicted_source_prepares_as_before(tmp_pa
         res = convert_to_u1(str(_conflicted(tmp_path)), out_dir=str(tmp_path / mode), prepare_mode=mode)
         assert res.blocked is False and res.output_path
         assert "project_materials" not in res.settings_summary
+
+
+# --- review repairs ---------------------------------------------------------------------------------------------------
+
+def test_presets_are_checked_against_the_nozzle_the_copy_is_written_for(tmp_path, catalog):
+    """Prepare applies the U1 profile (0.4 mm) whatever nozzle the source used."""
+    cfg = _cfg(layer_height="0.2", nozzle_diameter=["0.6"])
+    assert pm.project_nozzle(cfg) == "0.4"
+    assert pm.prepare_inputs([{"slot": 0, "preset": MATTE}], cfg, catalog, pm.project_nozzle(cfg)) == ({0: MATTE}, {})
+    src = _project(tmp_path, cfg)
+    for mode in ("preserve", "recommended"):
+        res = convert_to_u1(str(src), out_dir=str(tmp_path / mode), prepare_mode=mode,
+                            confirmed_presets={0: MATTE}, filament_catalog=catalog)
+        out = _prepared(res)
+        assert out["printer_settings_id"] == "Snapmaker U1 (0.4 nozzle)"
+        assert out["nozzle_diameter"] == ["0.4"] * 4
+        assert out["filament_settings_id"][0] == MATTE                      # the 0.4 name, not a 0.6 one
+    analysis = pm.analyze(cfg, None, provider=None, state=None, catalog=catalog,
+                          store=mm.Store(str(tmp_path / "m.json")))
+    assert analysis["nozzle"] == "0.4"
+
+
+def test_equal_spools_are_ordered_by_vendor_then_name_then_id(catalog, store):
+    spools = [spool(1, vendor="Acme", name="Special"), spool(2, vendor="Acme", name="Daily"),
+              spool(3, vendor="Acme", name=None), spool(0, vendor="Acme", name="Daily")]
+    assert _ids(_rank(slot(), spools, catalog, store)) == ["0", "2", "1", "3"]

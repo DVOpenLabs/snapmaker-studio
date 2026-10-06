@@ -359,13 +359,15 @@ describe("the card end to end", () => {
     expect(api.confirmMaterialMapping).not.toHaveBeenCalled();
   });
 
-  it("reviews with a dry run, then saves a ticked mapping only on Prepare and hands over the selections", async () => {
+  it("reviews with a dry run, then saves a ticked mapping only after a copy was made, and hands over the selections", async () => {
     ready();
     const lines = ["Slot 1: Yoopai PLA Matte Red #124 mapped to 'Snapmaker PLA SnapSpeed @U1'."];
     api.convert.mockResolvedValue({ schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true,
       settings_summary: { project_materials: { fidelity: { schema: "x", mode: "preserve", lines, slots: [] } } } });
     api.confirmMaterialMapping.mockResolvedValue({ ok: true });
-    const onPrepare = vi.fn();
+    const order: string[] = [];
+    const onPrepare = vi.fn(async () => { order.push("prepare"); return { output_path: "C:/p/out.3mf", blocked: false } as any; });
+    api.confirmMaterialMapping.mockImplementation(async () => { order.push("save"); return { ok: true }; });
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="recommended" onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
     choose(/Yoopai PLA Matte/);
@@ -379,8 +381,8 @@ describe("the card end to end", () => {
       [expect.objectContaining({ slot: 0, preset: "Snapmaker PLA SnapSpeed @U1", colour: "#FF0000" })]);
     expect(api.confirmMaterialMapping).not.toHaveBeenCalled();                            // reviewing saves nothing
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" })); });
-    await waitFor(() => expect(onPrepare).toHaveBeenCalledTimes(1));
-    expect(api.confirmMaterialMapping).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(api.confirmMaterialMapping).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["prepare", "save"]);                                           // saved only once the copy exists
     expect(api.confirmMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA",
       subtype: "Matte", preset: "Snapmaker PLA SnapSpeed @U1", nozzle: "0.4", origin: "manual" });
     expect(onPrepare).toHaveBeenCalledWith([expect.objectContaining({ slot: 0, preset: "Snapmaker PLA SnapSpeed @U1" })]);
@@ -442,5 +444,49 @@ describe("the card end to end", () => {
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={vi.fn()} />);
     await screen.findByTestId("no-provider");
     expect(api.projectMaterials).toHaveBeenCalledWith("C:/p/x.3mf", {}, 3);
+  });
+});
+
+
+describe("the card after the review repairs", () => {
+  const stage = async (onPrepare: (s: any) => any, mode: "preserve" | "recommended" = "preserve") => {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
+    api.materialPresets.mockResolvedValue(PRESETS);
+    api.convert.mockResolvedValue({ schema_version: "convert/2", prepare_mode: mode, output_path: "", output_name: "", validated_ok: true,
+      settings_summary: { project_materials: { fidelity: { schema: "x", mode, lines: ["A line."], slots: [] } } } });
+    api.confirmMaterialMapping.mockResolvedValue({ ok: true });
+    const view = render(<ProjectMaterialsCard path="C:/p/x.3mf" mode={mode} onPrepare={onPrepare} />);
+    await screen.findByText("Slot 1");
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
+    fireEvent.click(screen.getByLabelText("Remember this mapping"));
+    await act(async () => { fireEvent.click(reviewButton()); });
+    await screen.findByText("A line.");
+    return view;
+  };
+
+  it("saves nothing when Prepare was blocked, wrote no file, or failed", async () => {
+    for (const outcome of [
+      async () => ({ blocked: true, output_path: "" }),
+      async () => ({ blocked: false, output_path: "" }),
+      async () => { throw new Error("prepare failed"); },
+      () => undefined,
+    ]) {
+      api.confirmMaterialMapping.mockClear();
+      const { unmount } = await stage(outcome);
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" })); });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(api.confirmMaterialMapping).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it("a review does not survive a change of preparation mode", async () => {
+    const view = await stage(async () => ({ output_path: "C:/o.3mf" }), "recommended");
+    expect(screen.getByTestId("review")).toBeTruthy();
+    view.rerender(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={async () => undefined} />);
+    await waitFor(() => expect(screen.queryByTestId("review")).toBeNull());
+    expect(reviewButton().disabled).toBe(false);                                           // review again for the new mode
   });
 });

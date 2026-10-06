@@ -23,15 +23,34 @@ from .u1_identity import FILAMENT_IDENTITY_NOTICE
 SCHEMA = "project-materials-fidelity/1"
 
 #: What the installed preset decides once Orca loads it (measured on Orca 2.3.6: restored from
-#: the named preset unless the slot declares them), as plain labels and as project keys.
-PRESET_CONTROLLED = {
-    "fields": ["temperature", "flow", "volumetric speed", "pressure advance", "cooling",
-               "bed temperature", "density", "cost"],
-    "keys": ["nozzle_temperature", "nozzle_temperature_initial_layer", "filament_flow_ratio",
-             "filament_max_volumetric_speed", "pressure_advance", "enable_pressure_advance",
-             "fan_min_speed", "fan_max_speed", "hot_plate_temp", "textured_plate_temp",
-             "cool_plate_temp", "eng_plate_temp", "filament_density", "filament_cost"],
-}
+#: the named preset unless the slot - or another slot using the same preset - declares them).
+_LABEL_KEYS = (
+    ("temperature", ("nozzle_temperature", "nozzle_temperature_initial_layer",
+                     "nozzle_temperature_range_low", "nozzle_temperature_range_high")),
+    ("flow", ("filament_flow_ratio",)),
+    ("volumetric speed", ("filament_max_volumetric_speed",)),
+    ("pressure advance", ("pressure_advance", "enable_pressure_advance")),
+    ("cooling", ("fan_min_speed", "fan_max_speed")),
+    ("bed temperature", ("hot_plate_temp", "hot_plate_temp_initial_layer", "textured_plate_temp",
+                         "textured_plate_temp_initial_layer", "cool_plate_temp",
+                         "cool_plate_temp_initial_layer", "eng_plate_temp", "eng_plate_temp_initial_layer")),
+    ("density", ("filament_density",)),
+    ("cost", ("filament_cost",)),
+)
+
+
+def _controlled(preset: str | None, declared: set) -> dict:
+    """What the preset controls for this slot, and what the project's own declarations keep from it."""
+    if not preset:
+        return {"fields": [], "keys": [], "kept_by_declaration": []}
+    fields, keys, kept = [], [], []
+    for label, group in _LABEL_KEYS:
+        held = [k for k in group if k in declared]
+        kept += held
+        if not held:
+            fields.append(label)
+        keys += [k for k in group if k not in declared]
+    return {"fields": fields, "keys": keys, "kept_by_declaration": sorted(kept)}
 
 MAPPING_SOURCES = ("saved_spool", "saved_signature", "slicer_filament_confirmed", "manual")
 
@@ -134,6 +153,15 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                 "text": (f"Conflicting {_KEY_WORD.get(c['key'], c['key'])} declarations on slots "
                          f"sharing “{c['preset']}” survive in the copy.")})
 
+    # Orca copies a declared value to every slot using the same preset, so a declaration held by any slot
+    # in this slot's group keeps that value from the preset here too.
+    declared_here = set(effective)
+    for group in guard.get("shared", []):
+        if s in group["slots"]:
+            for member in group["slots"]:
+                declared_here |= set(pm.declared_keys(prepared, member))
+    controlled = _controlled(preset, declared_here)
+
     discrepancies = []
     if found and found["status"] == PROVEN and spool:
         spool_material, preset_type = spool.get("material"), found.get("filament_type")
@@ -186,7 +214,7 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
             "colour_changed": colour_changed,
             "vendor_type_origin": "preset" if preset else "project",
             "changed_fields": changed, "preserved_fields": preserved,
-            "preset_controlled": (dict(PRESET_CONTROLLED) if preset else {"fields": [], "keys": []}),
+            "preset_controlled": controlled,
         },
         "declarations": declarations,
         "discrepancies": discrepancies,
@@ -220,8 +248,16 @@ def _line(rec: dict, spool: dict | None) -> str:
     if out["preset_written"]:
         head = (f"Slot {n}: {who} mapped to '{out['preset_written']}'." if who else
                 f"Slot {n}: mapped to '{out['preset_written']}' (chosen by you).")
-        return (head + colour_text + f" Temperature, flow and cooling come from the installed "
-                f"{out['preset_written']} preset.")
+        pc = out["preset_controlled"]
+        if not pc["kept_by_declaration"]:
+            return (head + colour_text + f" Temperature, flow and cooling come from the installed "
+                    f"{out['preset_written']} preset.")
+        held = ", ".join(pc["kept_by_declaration"])
+        why = "it" if len(pc["kept_by_declaration"]) == 1 else "them"
+        lead = (f" The installed {out['preset_written']} preset controls {', '.join(pc['fields'])}; "
+                if pc["fields"] else " ")
+        return (head + colour_text + lead + f"Snapmaker Orca keeps the project's own value for {held}, "
+                f"because the project declares {why}.")
     if colour and out["colour_changed"]:
         text = f"Slot {n}: Colour changed to {_colour_phrase(colour)}" + (f" (from {who})" if who else "") + "."
     else:
@@ -270,7 +306,7 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
             lines.append(f"Slot {r['slot'] + 1}: Studio did not declare {keys}, so Snapmaker Orca takes "
                          f"them from '{r['output']['preset_written']}'.")
         in_group = r["slot"] in {s for g in withdrawn_groups for s in g["slots"]}
-        if in_group and r["declarations"]["retained"]:
+        if (r["involved"] or in_group) and r["declarations"]["retained"]:
             lines.append(f"Slot {r['slot'] + 1}: the project's own declaration of "
                          f"{', '.join(r['declarations']['retained'])} remains. Studio does not remove "
                          "declarations the source made.")
@@ -296,43 +332,88 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
     }
 
 
-# --- later display: clean what comes back, then check it against the prepared file ---------------
+# --- later display: rebuild what comes back from a strict schema, then check it against the files -----
 
-_TOP = ("schema", "mode", "nozzle", "slots", "lines", "counts", "guard", "withdrawn_groups")
-_SLOT = ("slot", "label", "involved", "source", "selection", "output", "declarations",
-         "discrepancies", "line")
-_MAX_TEXT, _MAX_LIST, _MAX_DEPTH = 400, 64, 6
+_S = str
+_ANY = object()          # a plain JSON scalar of any kind
+_MAX_TEXT, _MAX_LIST = 400, 64
+
+_SLOT_SCHEMA = {
+    "slot": int, "label": _S, "involved": bool, "line": _S,
+    "source": {"settings_id": _S, "vendor": _S, "type": _S, "colour": _S, "declared_keys": [_S]},
+    "selection": {"provider": _S, "spool_id": _S, "vendor": _S, "material": _S, "subtype": _S, "colour": _S,
+                  "color_name": _S, "label": _S, "preset": _S, "mapping_source": _S},
+    "output": {
+        "preset_written": _S, "colour_written": _S, "colour_changed": bool, "vendor_type_origin": _S,
+        "changed_fields": [{"key": _S, "old": _ANY, "new": _ANY}],
+        "preserved_fields": [{"key": _S, "value": _ANY}],
+        "preset_controlled": {"fields": [_S], "keys": [_S], "kept_by_declaration": [_S]},
+    },
+    "declarations": {
+        "source": [_S], "retained": [_S], "withdrawn_studio_added": [_S], "removed_by_mode": [_S],
+        "declared_by_studio": [_S], "withdrawn_reason": _S,
+        "propagation": [{"kind": _S, "preset": _S, "slots": [int], "keys": [_S], "declared_in": [int], "text": _S}],
+    },
+    "discrepancies": [{"code": _S, "text": _S}],
+}
+_CONFLICT = {"key": _S, "preset": _S, "slots": [int], "declared_in": [int]}
+_SCHEMA = {
+    "schema": _S, "mode": _S, "nozzle": _S, "lines": [_S],
+    "counts": {"slots": int, "involved": int, "presets_written": int, "colours_written": int},
+    "withdrawn_groups": [{"preset": _S, "slots": [int], "keys": [_S]}],
+    "guard": {"applies": bool, "blocking": bool, "mode": _S, "conflicts": [_CONFLICT],
+              "source_conflicts": [_CONFLICT], "removed_by_mode": [_CONFLICT],
+              "shared": [{"preset": _S, "slots": [int]}],
+              "warnings": [{"preset": _S, "slots": [int], "keys": [_S], "declared_in": [int], "text": _S}]},
+}
 
 
-def _clean(value, depth=0):
-    if depth > _MAX_DEPTH:
-        return None
-    if isinstance(value, bool) or value is None or isinstance(value, (int, float)):
-        return value
-    if isinstance(value, str):
-        return value[:_MAX_TEXT]
-    if isinstance(value, list):
-        return [_clean(v, depth + 1) for v in value[:_MAX_LIST]]
-    if isinstance(value, dict):
-        return {str(k)[:60]: _clean(v, depth + 1) for k, v in list(value.items())[:_MAX_LIST]}
+def _conform(value, spec):
+    """`value` rebuilt to `spec`: unknown keys dropped, wrong types become empty, text is bounded."""
+    if spec is _ANY:
+        if isinstance(value, bool) or value is None or isinstance(value, (int, float)):
+            return value
+        return value[:_MAX_TEXT] if isinstance(value, str) else None
+    if spec is _S:
+        if isinstance(value, bool) or value is None:
+            return None
+        return str(value)[:_MAX_TEXT] if isinstance(value, (str, int, float)) else None
+    if spec is int:
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+    if spec is bool:
+        return value if isinstance(value, bool) else None
+    if isinstance(spec, list):
+        if not isinstance(value, list):
+            return []
+        return [c for c in (_conform(v, spec[0]) for v in value[:_MAX_LIST])
+                if c is not None and (not isinstance(spec[0], dict) or c)]
+    if isinstance(spec, dict):
+        if not isinstance(value, dict):
+            return None
+        return {k: _conform(value.get(k), sub) for k, sub in spec.items() if k in value}
     return None
 
 
 def sanitize(record) -> dict | None:
-    """Keep only the shape :func:`build` writes. Anything else (extra keys, wrong types) is dropped."""
+    """Rebuild a record to exactly the shape :func:`build` writes. Anything else is dropped, so a
+    forged or oversized field (a provider key under `selection`, say) cannot ride along."""
     if not isinstance(record, dict) or record.get("schema") != SCHEMA \
             or not isinstance(record.get("slots"), list):
         return None
-    out = {k: _clean(record.get(k)) for k in _TOP if k in record}
-    out["slots"] = [{k: _clean(s.get(k)) for k in _SLOT if k in s}
-                    for s in record["slots"][:_MAX_LIST] if isinstance(s, dict)]
+    out = {k: _conform(record.get(k), spec) for k, spec in _SCHEMA.items() if k in record}
+    out["slots"] = [c for c in (_conform(s, _SLOT_SCHEMA) for s in record["slots"][:_MAX_LIST]) if c]
     return out
 
 
-def verify(record: dict, prepared: dict | None) -> dict:
-    """Mark each slot as confirmed or not against the prepared project, never trusting the record."""
+def verify(record: dict, prepared: dict | None, original: dict | None = None) -> dict:
+    """Mark each slot confirmed or not against the project files, never trusting the record.
+
+    Checked from the files: the preset and colour written, that every declaration the record says
+    "remains" is really declared in the copy, and that the recorded source facts are the original's.
+    The selected spool's own facts cannot be checked from a file and are not claimed to be."""
     out = dict(record)
     out["verified"] = prepared is not None
+    src_slots = pm.extract_slots(original) if original is not None else None
     slots = []
     for slot in record.get("slots", []):
         slot = dict(slot)
@@ -347,6 +428,17 @@ def verify(record: dict, prepared: dict | None) -> dict:
                     notes.append("The copy does not carry the preset this record says was written.")
                 if o.get("colour_written") and pm.hex6(_at(prepared, "filament_colour", i)) != o["colour_written"]:
                     notes.append("The copy does not carry the colour this record says was written.")
+                declared = set(pm.declared_keys(prepared, i))
+                if not set((slot.get("declarations") or {}).get("retained") or []) <= declared:
+                    notes.append("The copy does not declare everything this record says remains declared.")
+                if src_slots is not None and 0 <= i < len(src_slots):
+                    src = src_slots[i]
+                    claimed = slot.get("source") or {}
+                    for key, actual in (("settings_id", src["settings_id"]), ("vendor", src["vendor"]),
+                                        ("colour", src["colour"]), ("declared_keys", src["declared_keys"])):
+                        if key in claimed and claimed[key] != actual and not (claimed[key] in (None, "") and actual in (None, "")):
+                            notes.append("The recorded source facts do not match the original project.")
+                            break
         slot["verified"] = not notes
         slot["verification"] = notes
         slots.append(slot)
@@ -355,17 +447,20 @@ def verify(record: dict, prepared: dict | None) -> dict:
     return out
 
 
-def attach(report: dict, materials, prepared_tm) -> dict:
+def _settings_of(tm):
+    try:
+        if tm is not None and pm.SETTINGS in tm.list_parts():
+            return load_project_settings(tm.read_part(pm.SETTINGS))
+    except Exception:
+        return None
+    return None
+
+
+def attach(report: dict, materials, prepared_tm, original_tm=None) -> dict:
     """Add the checked materials section to a fidelity report. Schema bumps only when there is one."""
     clean = sanitize(materials)
     if clean is None:
         return report
-    prepared = None
-    try:
-        if pm.SETTINGS in prepared_tm.list_parts():
-            prepared = load_project_settings(prepared_tm.read_part(pm.SETTINGS))
-    except Exception:
-        prepared = None
-    report["materials"] = verify(clean, prepared)
+    report["materials"] = verify(clean, _settings_of(prepared_tm), _settings_of(original_tm))
     report["schema_version"] = "fidelity/2"
     return report

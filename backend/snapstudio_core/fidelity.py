@@ -506,7 +506,7 @@ def audit(original: str, prepared: str, materials: dict | None = None) -> dict:
     }
     if materials is not None:
         from . import materials_fidelity
-        report = materials_fidelity.attach(report, materials, b)
+        report = materials_fidelity.attach(report, materials, b, a)
     return report
 
 

@@ -87,7 +87,7 @@ def test_untouched_slots_say_so_and_note_a_possible_customized_preset(env, tmp_p
     assert s["involved"] is False and s["selection"] is None
     assert s["line"] == "Slot 1: no Project Materials choice; Studio keeps the project's own filament identity."
     assert s["output"]["preset_written"] is None and s["output"]["vendor_type_origin"] == "project"
-    assert s["output"]["preset_controlled"] == {"fields": [], "keys": []}
+    assert s["output"]["preset_controlled"] == {"fields": [], "keys": [], "kept_by_declaration": []}
     assert [d["code"] for d in s["discrepancies"]] == ["customized_preset_possible"]
     assert "may treat it as a Customized Preset" in s["discrepancies"][0]["text"]
     assert not s["line"].count("Customized")
@@ -244,7 +244,7 @@ def test_unknown_keys_in_a_record_are_dropped(env, tmp_path):
     clean = mf.sanitize(noisy)
     blob = json.dumps(clean)
     assert SECRET not in blob and HOST not in blob and "provider_key" not in blob
-    assert len(clean["slots"][1]["selection"]["extra"]) <= 400
+    assert "extra" not in clean["slots"][1]["selection"]           # nested keys are an allowlist too
 
 
 def test_no_provider_secret_or_weight_reaches_the_record(env, tmp_path):
@@ -285,3 +285,67 @@ def test_http_fidelity_route_with_materials(env, tmp_path):
         assert st == 200 and SECRET not in json.dumps(out)
     finally:
         httpd.shutdown()
+
+
+# --- review repairs: the record must not claim more than the file shows -------------------------------------
+
+def test_a_source_declaration_on_the_mapped_slot_is_not_called_preset_controlled(env, tmp_path):
+    cfg = _cfg(different_settings_to_system=["", "filament_flow_ratio;nozzle_temperature", "", "", ""])
+    _, result = _prepare(tmp_path, [{"slot": 0, "preset": MATTE}], project=_project(tmp_path, cfg))
+    rec = _record(result)
+    s = rec["slots"][0]
+    assert s["declarations"]["retained"] == ["filament_flow_ratio", "nozzle_temperature"]
+    pc = s["output"]["preset_controlled"]
+    assert pc["kept_by_declaration"] == ["filament_flow_ratio", "nozzle_temperature"]
+    assert "flow" not in pc["fields"] and "temperature" not in pc["fields"] and "cooling" in pc["fields"]
+    assert "nozzle_temperature" not in pc["keys"] and "fan_min_speed" in pc["keys"]
+    assert ("Slot 1: mapped to 'Snapmaker PLA Matte @U1' (chosen by you). The installed Snapmaker PLA Matte @U1 "
+            "preset controls volumetric speed, pressure advance, cooling, bed temperature, density, cost; Snapmaker "
+            "Orca keeps the project's own value for filament_flow_ratio, nozzle_temperature, because the project "
+            "declares them.") == s["line"]
+    assert "Temperature, flow and cooling come from" not in s["line"]
+    # the declaration is also reported on its own line, for the mapped slot itself
+    assert ("Slot 1: the project's own declaration of filament_flow_ratio, nozzle_temperature remains. Studio does "
+            "not remove declarations the source made.") in rec["lines"]
+
+
+def test_a_declaration_held_by_another_slot_on_the_same_preset_is_not_called_preset_controlled(env, tmp_path):
+    cfg = _cfg(filament_settings_id=[MATTE, MATTE, "Generic PETG @U1"], filament_vendor=["A", "A", "A"],
+               different_settings_to_system=["", "", "filament_flow_ratio", "", ""])        # slot 2 declares flow
+    _, result = _prepare(tmp_path, [{"slot": 0, "preset": MATTE}], project=_project(tmp_path, cfg))
+    s0 = _record(result)["slots"][0]
+    assert "filament_flow_ratio" in s0["output"]["preset_controlled"]["kept_by_declaration"]
+    assert "flow" not in s0["output"]["preset_controlled"]["fields"]
+    assert "Temperature, flow and cooling come from" not in s0["line"]
+
+
+def test_a_forged_record_cannot_crash_the_audit_or_smuggle_nested_fields(env, tmp_path):
+    src, result = _mapped(tmp_path)
+    base = _record(result)
+    for mutate in (
+        lambda r: r["slots"][1].update(output="x"),
+        lambda r: r["slots"][1].update(selection=["a"], declarations=7, source=None),
+        lambda r: r["slots"][1]["output"].update(changed_fields="x", preserved_fields=[1, None, {"key": 3}]),
+        lambda r: r.update(guard="x", counts=[], withdrawn_groups={"a": 1}),
+        lambda r: r["slots"][1]["selection"].update(provider_key=SECRET, url=f"http://{HOST}", remaining_g=412),
+        lambda r: r["slots"][1]["output"]["preset_controlled"].update(token=SECRET),
+        lambda r: r["slots"][1]["declarations"]["propagation"].append({"kind": "x", "api_key": SECRET}),
+    ):
+        forged = copy.deepcopy(base)
+        mutate(forged)
+        report = fidelity.audit(str(src), result["output_path"], forged)       # never raises
+        blob = json.dumps(report)
+        assert SECRET not in blob and HOST not in blob
+
+
+def test_verification_checks_the_source_facts_and_the_declarations_the_record_says_remain(env, tmp_path):
+    src, result = _mapped(tmp_path)
+    forged = copy.deepcopy(_record(result))
+    forged["slots"][1]["source"]["settings_id"] = "Something Else"
+    forged["slots"][0]["declarations"]["retained"] = ["filament_flow_ratio"]       # the copy does not declare it
+    report = fidelity.audit(str(src), result["output_path"], forged)
+    slots = report["materials"]["slots"]
+    assert slots[1]["verified"] is False and "do not match the original" in slots[1]["verification"][0]
+    assert slots[0]["verified"] is False and "does not declare everything" in slots[0]["verification"][0]
+    assert report["materials"]["verified"] is False
+    assert slots[2]["verified"] is True
