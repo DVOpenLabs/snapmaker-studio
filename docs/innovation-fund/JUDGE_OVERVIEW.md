@@ -107,7 +107,7 @@ source at the release commit, not from the installer.
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | **58/58** | see [../internal/hardware-1.5.0.json](../internal/hardware-1.5.0.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 2802 passed, 13 skipped | `pytest` |
+| Backend | 2804 passed, 13 skipped | `pytest` |
 | Desktop | 725 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 

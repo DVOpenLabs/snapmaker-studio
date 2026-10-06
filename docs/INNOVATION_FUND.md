@@ -219,7 +219,7 @@ source at the release commit, not from the installer. Commands, counts and full 
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2802 passed, 13 skipped |
+| Backend tests | 2804 passed, 13 skipped |
 | Desktop tests | 725 passed |
 | TypeScript, Rust, production build | clean |
 

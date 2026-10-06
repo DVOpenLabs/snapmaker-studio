@@ -125,11 +125,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.4.1/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.4.1/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.5.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.5.0/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.4.1/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.4.1/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.5.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.5.0/what-to-load.png) |
 
-From the v1.4.1 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.5.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -182,7 +182,7 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2802 · 725 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2804 · 725 · clean · clean |
 
 The installed-application acceptance count (45/45) is a different total from
 v1.2.0's: this release adds two checks for the SpoolEase provider and
@@ -238,7 +238,6 @@ in words (vendor, material, colour name, the provider's `#id`, and the weight st
 sorted the same way every time, you can type to narrow it, and it works from the keyboard. It copes
 with a hundred spools or more. What is physically loaded in each slot means what it always did.
 
-![The spool picker, open, with 115 spools](docs/screenshots/v1.4.1/spool-picker.png)
 
 ## What's new in v1.4.0
 
@@ -261,9 +260,6 @@ actual U1 → prepare it if needed → hand it to Snapmaker Orca.
   MakerWorld sign-in with Google, are verified live ([TRUST_STATUS.md](docs/TRUST_STATUS.md));
   Apple and Facebook sign-in use the same path and are not yet verified.
 
-| Model Connect: the steps, in Studio | A download added to your Library | Ready Now |
-|---|---|---|
-| ![Find Models with the four steps](docs/screenshots/v1.4.1/model-connect-panel.png) | ![Added from Printables, with Check for U1, Prepare and Open project](docs/screenshots/v1.4.1/model-connect-added-from.png) | ![Ready Now sorting library projects](docs/screenshots/v1.4.1/ready-now.png) |
 
 ## What's new in v1.3.1
 

@@ -18,7 +18,7 @@ real Snapmaker U1 have all passed and are recorded here.
 
 | Gate | Result |
 |---|---|
-| Backend / desktop suites | backend **2802 passed / 13 skipped**, desktop **725**, Rust **45** |
+| Backend / desktop suites | backend **2804 passed / 13 skipped**, desktop **725**, Rust **45** |
 | Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
 | Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
 | Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.5.0.json](internal/acceptance-1.5.0.json) |
