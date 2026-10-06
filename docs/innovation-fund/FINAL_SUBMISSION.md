@@ -49,7 +49,7 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 ## 3. What is being submitted
 
-**Release:** [v1.3.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1)
+**Release:** [v1.5.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0)
 — the current stable build; v0.4.0 was the first verified against a real Snapmaker
 U1, and every release since has been. Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
@@ -82,8 +82,8 @@ source at the release commit, not from the installer.
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2633 passed, 12 skipped |
-| Desktop tests | 638 passed |
+| Backend tests | 2804 passed, 13 skipped |
+| Desktop tests | 725 passed |
 | TypeScript · production build · Rust | clean |
 
 Reproduce any of it: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).

@@ -17,7 +17,7 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
 [![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
@@ -69,30 +69,30 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 **Windows 10/11 (x64)** ✅ · **Linux x86_64 (.deb)** ✅ · **macOS** not supported.
 
-**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1)**
+**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0)**
 — one click, no Python, runs offline.
-**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1)**
+**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0)**
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.4.1 is the current stable release** — not a prerelease, so this is also what
+**v1.5.0 is the current stable release** — not a prerelease, so this is also what
 GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
 points at. Every build ever published is on the
 [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
-- Release: [v1.4.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1)
-- Windows installer: `Snapmaker.Studio_1.4.1_x64-setup.exe`
-  — 21,867,496 bytes — SHA256: `989cc6214cd71536fd3a3f0951fdafaba7b9b929a413ee0cbac24fb0cb096966`
-- Linux package: `snapmaker-studio_1.4.1_amd64_482737819f3c.deb`
-  — 25,867,028 bytes — SHA256: `3d6049787a4db908d74fa4b80f16fad986fbc549c8d83daf93da00160564761c`
+- Release: [v1.5.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0)
+- Windows installer: `Snapmaker.Studio_1.5.0_x64-setup.exe`
+  — 21,944,474 bytes — SHA256: `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82`
+- Linux package: `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb`
+  — 25,944,098 bytes — SHA256: `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a`
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.4.1_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.5.0_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.4.1_amd64_482737819f3c.deb
+sha256sum snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -125,11 +125,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.4.1/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.4.1/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.5.0/problem.png) | ![The prepared copy, with what survived and what changed](docs/screenshots/v1.5.0/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.4.1/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.4.1/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.5.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.5.0/what-to-load.png) |
 
-From the v1.4.1 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.5.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -163,7 +163,7 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was run against the v1.4.1 release-candidate build — the
+Everything below was run against the v1.5.0 release-candidate build — the
 same application and Linux package published on the release page, checked by
 SHA256 — not against a development build. The Windows installed-application
 run used an acceptance copy of the release-candidate installer (same application
@@ -182,7 +182,7 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2633 · 638 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2804 · 725 · clean · clean |
 
 The installed-application acceptance count (45/45) is a different total from
 v1.2.0's: this release adds two checks for the SpoolEase provider and
@@ -206,6 +206,30 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
+## What's new in v1.5.0
+
+**Project Materials: the real spool and the real Snapmaker Orca preset, for each colour.**
+
+Model → the materials and colours it needs → suggested spools from your inventory → the installed
+Orca preset you confirm → review → Prepare. On the Prepare page whenever a project has filament
+slots, Studio lists the top spool candidates with the reasons, selects nothing for you, lets you pick
+the physical spool and the installed preset, remembers the mapping if you ask it to, carries the
+spool's colour into the prepared copy, and shows a plain-language review before anything is written.
+A shared-preset guard stops, and says why, when Snapmaker Orca would copy one slot's declared vendor
+or type onto another. Recommended mode no longer silently writes the legacy "Snapmaker PLA" preset.
+
+Snapmaker Orca's own presets can be checked against the U1 and your nozzle and are shown as **Proven**.
+Presets you made yourself can be found and mapped, but are shown as **"Confirmed by you"** and
+**"Manual check in Orca required"**: in testing Snapmaker Orca kept the project's own values for such
+a preset, so Studio does not say Orca will apply them. Check the filament in Orca before slicing.
+
+| Suggested spools, nothing selected | Review before Prepare | Orca's presets and yours, told apart |
+|---|---|---|
+| ![Project Materials: top spool candidates with reasons, no spool selected](docs/screenshots/v1.5.0/pm-1-recommendations.png) | ![Review: each slot mapped, what changed, what the preset controls](docs/screenshots/v1.5.0/pm-3-fidelity-review.png) | ![A user preset marked Manual check in Orca required, next to a built-in preset](docs/screenshots/v1.5.0/pm-5-system-vs-user.png) |
+
+From the v1.5.0 release-candidate build's own installed-application run, against anonymised
+disposable spools and presets.
+
 ## What's new in v1.4.1
 
 **A readable spool picker.** Settings → Materials provider now has a Studio list in place of the
@@ -214,7 +238,6 @@ in words (vendor, material, colour name, the provider's `#id`, and the weight st
 sorted the same way every time, you can type to narrow it, and it works from the keyboard. It copes
 with a hundred spools or more. What is physically loaded in each slot means what it always did.
 
-![The spool picker, open, with 115 spools](docs/screenshots/v1.4.1/spool-picker.png)
 
 ## What's new in v1.4.0
 
@@ -237,9 +260,6 @@ actual U1 → prepare it if needed → hand it to Snapmaker Orca.
   MakerWorld sign-in with Google, are verified live ([TRUST_STATUS.md](docs/TRUST_STATUS.md));
   Apple and Facebook sign-in use the same path and are not yet verified.
 
-| Model Connect: the steps, in Studio | A download added to your Library | Ready Now |
-|---|---|---|
-| ![Find Models with the four steps](docs/screenshots/v1.4.1/model-connect-panel.png) | ![Added from Printables, with Check for U1, Prepare and Open project](docs/screenshots/v1.4.1/model-connect-added-from.png) | ![Ready Now sorting library projects](docs/screenshots/v1.4.1/ready-now.png) |
 
 ## What's new in v1.3.1
 

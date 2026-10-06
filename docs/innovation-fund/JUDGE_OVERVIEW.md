@@ -93,7 +93,7 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **v1.4.1 release-candidate build** — an acceptance
+Everything below ran against the **v1.5.0 release-candidate build** — an acceptance
 copy of its installer (same application files, separate install identity) was installed,
 launched, driven through the real window, then uninstalled; the real installer itself was
 exercised only on a disposable GitHub-hosted runner. Not a development
@@ -104,11 +104,11 @@ source at the release commit, not from the installer.
 |---|---|---|
 | Installed-application acceptance (v1.3.0 release candidate, acceptance-identity copy of the installer) | **45/45** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app | **58/58** | see [../internal/hardware-1.3.1.json](../internal/hardware-1.3.1.json) |
+| Read-only verification against a real Snapmaker U1, from the Windows-installed app | **58/58** | see [../internal/hardware-1.5.0.json](../internal/hardware-1.5.0.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 2633 passed, 12 skipped | `pytest` |
-| Desktop | 638 passed | `npm run test` |
+| Backend | 2804 passed, 13 skipped | `pytest` |
+| Desktop | 725 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
 The installed-application acceptance count is higher than the previous
@@ -214,4 +214,4 @@ SHA256 before running it. Why, and what is being done:
 | Technical depth | [TECHNICAL_DEPTH.md](TECHNICAL_DEPTH.md) |
 | Where Studio sits in the field | [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md) · [DIFFERENTIATION_STRATEGY.md](DIFFERENTIATION_STRATEGY.md) |
 | The ecosystem story | [OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md) |
-| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.1) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
+| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |

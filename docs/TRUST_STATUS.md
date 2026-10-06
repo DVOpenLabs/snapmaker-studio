@@ -9,6 +9,42 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.5.0 — ACCEPTED
+
+**Project Materials (#39).** The Windows installer and Linux `.deb` named in
+[RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by SHA256. Build:
+[run 37533259845](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37533259845), commit
+`5245cf9f966486e336b4146ef678742dd9bce1da`. This release's immutable snapshot: [internal/evidence/1.5.0.json](internal/evidence/1.5.0.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2804 passed / 13 skipped**, desktop **725**, Rust **45** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.5.0.json](internal/acceptance-1.5.0.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.5.0.json](internal/hardware-1.5.0.json) |
+| Project Materials on the installed release candidate, against the real engine with an anonymised Spoolman look-alike and throwaway Orca user presets: visible with and without compatibility findings, nothing selected automatically, system-preset path through Prepare, saved mapping applied and reset, blocked same-preset guard, no provider / provider unreachable / no candidates, user-preset labels | **pass** |
+| A prepared copy opened in Snapmaker Orca (normal profile, read-only): preset names, spool colour, no "Customized Preset" prompt | **pass** |
+| Prepared copies carry no provider address, spool ID or weight, local path or account folder | **pass** |
+| `tsc`, `cargo test`, production build, `u1convert selfcheck` (27/27) | clean |
+
+### What is verified, and what is not
+
+Project Materials is covered by automated tests and was exercised by hand in the installed release
+candidate against disposable inputs. Snapmaker Orca's own (built-in) presets are the verified path:
+a prepared copy naming one opened in Snapmaker Orca with the right preset and colour and no
+"Customized Preset" prompt.
+
+**Presets a person made in Snapmaker Orca are not verified in that sense.** In testing on Snapmaker
+Orca 2.4.0, a project naming such a preset kept the project's own values and showed the preset as
+modified (in one isolated profile with a "Customized Preset" prompt). Studio shows them as "Confirmed
+by you" and "Manual check in Orca required" and never says Orca applies their values. A separate
+"preset reset" control does not exist in the interface in this release: a saved mapping is replaced by
+choosing and remembering a different one (the engine can remove a mapping; the interface does not offer it yet).
+No real SpoolEase device was tested, and nothing was written to a spool provider.
+
 ## v1.4.1 — ACCEPTED
 
 **A readable, searchable, sorted spool picker (#39 items 1–3).** The Windows installer and Linux

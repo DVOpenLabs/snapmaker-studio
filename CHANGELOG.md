@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-06
+
 **Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**
 
 ### Added
