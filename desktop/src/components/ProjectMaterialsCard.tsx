@@ -46,7 +46,7 @@ export const COPY = {
 const STATUS_STYLE: Record<PresetStatus, string> = {
   proven: "bg-ready/10 text-ready",
   needs_confirmation: "bg-repairable/15 text-repairable ring-1 ring-repairable/40",
-  no_match: "bg-risk/10 text-risk",
+  no_match: "bg-muted text-muted-foreground",
 };
 
 export function StatusBadge({ status }: { status: PresetStatus }) {
@@ -366,6 +366,9 @@ export interface ViewProps {
 
 export function ProjectMaterialsView(p: ViewProps) {
   const { analysis, choices } = p;
+  // A project with no usable filament slots (an STL, a file without project settings, or no slots) gets no
+  // picker at all: an empty card would only suggest something is missing.
+  if (p.load.status === "ready" && (!analysis || !analysis.supported || (analysis.slots ?? []).length === 0)) return null;
   const selections = buildSelections(choices);
   const pending = unconfirmedSlots(choices);
   const body = (() => {
@@ -373,7 +376,7 @@ export function ProjectMaterialsView(p: ViewProps) {
       return <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {COPY.loading}</p>;
     }
     if (p.load.status === "error") return <p className="text-sm text-risk" role="alert">Couldn&apos;t read this project&apos;s materials: {p.load.error}</p>;
-    if (!analysis || !analysis.supported) return <p className="text-xs text-muted-foreground">{analysis?.reason ?? ""}</p>;
+    if (!analysis) return null;
     return (
       <div className="space-y-3">
         {analysis.catalog && !analysis.catalog.available && (

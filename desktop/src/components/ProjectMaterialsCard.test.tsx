@@ -241,8 +241,11 @@ describe("states", () => {
     const second = render(<ProjectMaterialsView {...base} load={{ status: "error", error: "boom" }} />);
     expect(screen.getByRole("alert").textContent).toContain("boom");
     second.unmount();
-    render(<ProjectMaterialsView {...base} load={{ status: "ready" }} analysis={{ schema: "x", supported: false, reason: "An STL has no filament slots. Open a 3MF project." }} />);
-    expect(screen.getByText("An STL has no filament slots. Open a 3MF project.")).toBeTruthy();
+    const third = render(<ProjectMaterialsView {...base} load={{ status: "ready" }} analysis={{ schema: "x", supported: false, reason: "An STL has no filament slots. Open a 3MF project." }} />);
+    expect(third.container.innerHTML).toBe("");          // no empty picker for a project with nothing to map
+    third.unmount();
+    const fourth = render(<ProjectMaterialsView {...base} load={{ status: "ready" }} analysis={{ schema: "x", supported: true, slots: [] }} />);
+    expect(fourth.container.innerHTML).toBe("");
   });
 
   it("says when the provider could not be read, and when none is set up", () => {

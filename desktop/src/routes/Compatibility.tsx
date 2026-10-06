@@ -96,6 +96,14 @@ export default function Compatibility() {
           now. Unknowns stay unknown — a firmware that does not publish the fitted
           nozzle produces "check this yourself", never a pass. */}
       {path && <PreflightCard path={path} />}
+
+      {/* Project Materials is a normal part of preparing a model, not a compatibility finding: it appears
+          whenever the engine reports filament slots, whether or not the settings check found anything. */}
+      {path && (
+        <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
+          onActiveChange={setMaterialsActive}
+          onPrepare={(materials) => prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
+      )}
       {checkM.isError && <p className="text-sm text-risk">Couldn't read that file: {(checkM.error as Error).message}</p>}
 
       {result && (
@@ -142,11 +150,6 @@ export default function Compatibility() {
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
               {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={() => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
-              {path && (
-                <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
-                  onActiveChange={setMaterialsActive}
-                  onPrepare={(materials) => prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
-              )}
               <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
                 Prepare U1 copy
