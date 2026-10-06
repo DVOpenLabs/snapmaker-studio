@@ -112,19 +112,36 @@ pub fn navigation_allowed(url: &Url) -> bool {
 /// stay on these hosts: the identity providers, and the two sites a sign-in returns to.
 /// Observed from the real flow, never guessed; a host not listed here is refused and its
 /// hostname alone is recorded in the blocked-hosts log.
-pub const POPUP_HOSTS: &[&str] = &[
+pub const POPUP_IDP_HOSTS: &[&str] = &[
     "accounts.google.com",
+    // Google finishes a sign-in (and a phone-approval step) through its own session host.
+    "accounts.youtube.com",
     "appleid.apple.com",
     "idmsa.apple.com",
     "facebook.com",
-    "bambulab.com",
-    "makerworld.com",
 ];
+
+/// The sites a sign-in returns to. Their sign-in endpoints also open the popup in the first place.
+pub const POPUP_RETURN_HOSTS: &[&str] = &["bambulab.com", "makerworld.com"];
 
 /// May a popup open at, or navigate to, this URL? `about:blank` is the window's initial
 /// document; everything else must be https on a popup host.
 pub fn popup_allowed(url: &Url) -> bool {
-    url.as_str() == "about:blank" || (url.scheme() == "https" && matches_any(url, POPUP_HOSTS))
+    url.as_str() == "about:blank"
+        || (url.scheme() == "https"
+            && (matches_any(url, POPUP_IDP_HOSTS) || matches_any(url, POPUP_RETURN_HOSTS)))
+}
+
+pub fn is_popup_idp_host(url: &Url) -> bool {
+    url.scheme() == "https" && matches_any(url, POPUP_IDP_HOSTS)
+}
+
+/// Has the sign-in finished? Once the popup has been to an identity provider and has come
+/// back to one of the sites it signs in to, the page there has done its part (the session
+/// is in the shared profile). The site normally closes the popup itself; this is only the
+/// fallback for when it leaves a blank window behind.
+pub fn popup_sign_in_finished(visited_idp: bool, url: &Url) -> bool {
+    visited_idp && url.scheme() == "https" && matches_any(url, POPUP_RETURN_HOSTS)
 }
 
 /// At most one sign-in popup at a time.
@@ -598,6 +615,7 @@ mod popup_tests {
     fn the_identity_providers_and_return_sites_are_allowed() {
         for ok in [
             "https://accounts.google.com/signin",
+            "https://accounts.youtube.com/accounts/SetSID",
             "https://appleid.apple.com/auth/authorize",
             "https://www.facebook.com/login.php",
             "https://m.facebook.com/dialog/oauth",
@@ -694,5 +712,33 @@ mod makerworld_host_tests {
         // A file host is not a place to browse to or sign in at.
         assert!(navigation_allowed(&u("https://makerworld.bblmw.com/a")));
         assert!(!popup_allowed(&u("https://makerworld.bblmw.com/a")));
+    }
+}
+
+#[cfg(test)]
+mod popup_close_tests {
+    use super::*;
+
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn the_popup_is_finished_only_after_an_identity_provider_and_a_return_to_the_site() {
+        let back = u("https://bambulab.com/en-us/sign-in/callback");
+        assert!(!popup_sign_in_finished(false, &back), "the opening page is not a finished sign-in");
+        assert!(popup_sign_in_finished(true, &back));
+        assert!(popup_sign_in_finished(true, &u("https://makerworld.com/en/")));
+        assert!(!popup_sign_in_finished(true, &u("https://accounts.google.com/signin")));
+        assert!(!popup_sign_in_finished(true, &u("http://bambulab.com/x")));
+        assert!(!popup_sign_in_finished(true, &u("https://evil.example/")));
+    }
+
+    #[test]
+    fn identity_provider_visits_are_recognised() {
+        assert!(is_popup_idp_host(&u("https://accounts.google.com/o/oauth2/auth")));
+        assert!(is_popup_idp_host(&u("https://accounts.youtube.com/accounts/SetSID")));
+        assert!(!is_popup_idp_host(&u("https://bambulab.com/")));
+        assert!(!is_popup_idp_host(&u("http://accounts.google.com/")));
     }
 }

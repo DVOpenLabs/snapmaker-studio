@@ -25,9 +25,10 @@ mod sidecar;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
-use tauri::webview::{DownloadEvent, NewWindowFeatures, NewWindowResponse};
+use tauri::webview::{DownloadEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent};
 use tauri::{
     Emitter, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
@@ -62,15 +63,30 @@ fn auth_popup(app: &tauri::AppHandle, base: &Path, url: Url, features: NewWindow
         }
     };
     let nav_base = base.to_path_buf();
+    let seen_idp = Arc::new(AtomicBool::new(false));
+    let seen_idp_nav = seen_idp.clone();
     let built = WebviewWindowBuilder::new(app, AUTH_POPUP_LABEL, WebviewUrl::External(blank))
         .title("Snapmaker Studio — Sign in")
         .window_features(features)
         .on_navigation(move |u| {
             let ok = model_browser::popup_allowed(u);
+            if ok && model_browser::is_popup_idp_host(u) {
+                seen_idp_nav.store(true, Ordering::SeqCst);
+            }
             if !ok {
                 model_browser::note_blocked(&nav_base, u);
             }
             ok
+        })
+        .on_page_load(move |window, payload| {
+            if matches!(payload.event(), PageLoadEvent::Finished)
+                && model_browser::popup_sign_in_finished(seen_idp.load(Ordering::SeqCst), payload.url())
+            {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(2500));
+                    let _ = window.close();
+                });
+            }
         })
         .on_new_window(|_url, _features| NewWindowResponse::Deny)
         .on_download(|_wv, _event| false)

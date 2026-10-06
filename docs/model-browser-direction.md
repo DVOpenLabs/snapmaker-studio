@@ -140,8 +140,11 @@ U1 → Prepare if needed → Snapmaker Orca.
   that inherits the Model Browser's environment, so it shares only the Model Connect profile
   and the finished sign-in is already there when it closes. It has no Tauri capability and no
   IPC, is https-only, may visit only the identity providers and the two sites a sign-in
-  returns to (`POPUP_HOSTS`), can open no popup or download of its own, and only one can be
-  open at a time. The main browser's navigation allowlist is unchanged. Blocked popup
+  returns to (`POPUP_IDP_HOSTS`, `POPUP_RETURN_HOSTS`; Google finishes a sign-in through
+  `accounts.youtube.com`, so that host is included), can open no popup or download of its own,
+  and only one can be open at a time. If the site leaves a blank popup behind after a finished
+  sign-in, Studio closes it about 2.5 seconds after it returns to the site from an identity
+  provider. The main browser's navigation allowlist is unchanged. Blocked popup
   navigations are logged as hostname only. Google sign-in was verified live; Apple and
   Facebook use the same path but are not yet verified.
 - **MakerWorld downloads** come from `makerworld.bblmw.com`, read from the blocked-hosts log
