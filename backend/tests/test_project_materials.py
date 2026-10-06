@@ -687,3 +687,55 @@ def test_a_declaration_the_project_itself_made_is_kept_on_a_confirmed_slot(tmp_p
                          filament_catalog=catalog)
     entries2 = _prepared(res2)["different_settings_to_system"]
     assert entries2[1] == "" and entries2[2] == "filament_type" and entries2[3] == "nozzle_temperature"
+
+
+# --- the guard judges what will be written, not what the source declared -------------------
+
+def _conflicted(tmp_path):
+    return _project(tmp_path, _shared())
+
+
+def test_preserve_blocks_when_the_conflicting_declarations_survive(tmp_path, catalog):
+    res = convert_to_u1(str(_conflicted(tmp_path)), out_dir=str(tmp_path / "p"), prepare_mode="preserve",
+                        confirmed_presets={2: "Generic PETG @U1"}, filament_catalog=catalog)
+    assert res.blocked is True and res.output_path == ""
+    g = res.settings_summary["project_materials"]["guard"]
+    assert g["mode"] == "preserve" and g["blocking"] is True
+    assert [(c["key"], c["slots"]) for c in g["conflicts"]] == [("filament_vendor", [0, 1])]
+    assert g["source_conflicts"] == g["conflicts"] and g["removed_by_mode"] == []
+    assert "Recommended mode removes the source's declarations" in g["resolution"]
+    assert not list((tmp_path / "p").glob("*.3mf"))
+
+
+def test_recommended_does_not_block_when_it_removes_those_declarations(tmp_path, catalog):
+    src = _conflicted(tmp_path)
+    before = src.read_bytes()
+    res = convert_to_u1(str(src), out_dir=str(tmp_path / "r"), prepare_mode="recommended",
+                        confirmed_presets={2: "Generic PETG @U1"}, filament_catalog=catalog)
+    assert res.blocked is False and res.output_path
+    g = res.settings_summary["project_materials"]["guard"]
+    assert g["blocking"] is False and g["conflicts"] == []
+    # still reported, as information: what the source held and that the mode took it away
+    assert [(c["key"], c["preset"], c["slots"]) for c in g["source_conflicts"]] == [("filament_vendor", MATTE, [0, 1])]
+    assert g["removed_by_mode"] == g["source_conflicts"]
+    declared = _prepared(res)["different_settings_to_system"]
+    assert not any("filament_vendor" in str(entry) for entry in declared)
+    assert src.read_bytes() == before                      # the source is never edited
+
+
+def test_recommended_still_blocks_a_conflict_that_survives_output(tmp_path, catalog, monkeypatch):
+    from snapstudio_core import repair
+    monkeypatch.setattr(repair, "normalize_presets", lambda cfg, **kw: [])   # a path that keeps declarations
+    res = convert_to_u1(str(_conflicted(tmp_path)), out_dir=str(tmp_path / "r"), prepare_mode="recommended",
+                        confirmed_presets={2: "Generic PETG @U1"}, filament_catalog=catalog)
+    assert res.blocked is True and res.output_path == ""
+    g = res.settings_summary["project_materials"]["guard"]
+    assert g["mode"] == "recommended" and g["conflicts"] and g["removed_by_mode"] == []
+    assert "Recommended mode removes" not in g["resolution"]
+
+
+def test_without_project_materials_a_conflicted_source_prepares_as_before(tmp_path):
+    for mode in ("preserve", "recommended"):
+        res = convert_to_u1(str(_conflicted(tmp_path)), out_dir=str(tmp_path / mode), prepare_mode=mode)
+        assert res.blocked is False and res.output_path
+        assert "project_materials" not in res.settings_summary

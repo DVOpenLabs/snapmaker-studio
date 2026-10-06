@@ -393,20 +393,22 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     raw_config = tm.read_part(SETTINGS)
     before = load_project_settings(raw_config)
     material_guard = None
-    if confirmed_presets:
-        from . import project_materials as pm
-        material_guard = pm.guard(before, pm.extract_slots(before), confirmed_presets,
-                                  filament_catalog, pm.project_nozzle(before))
-        if material_guard["blocking"]:
-            return ConversionResult(
-                "blocked", "", "", False, [pm.guard_message(material_guard)], prepare_mode,
-                {"project_materials": {"guard": material_guard}}, blocked=True)
     recommended_tm = copy.deepcopy(tm) if prepare_mode == "preserve" else None
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
                         confirmed_colours=confirmed_colours)
     after = load_project_settings(tm.read_part(SETTINGS))
+    if confirmed_presets:
+        # Judged on what this mode will actually write, not on what the source declared:
+        # Orca propagates the written declarations. Nothing is saved when this blocks.
+        from . import project_materials as pm
+        material_guard = pm.effective_guard(before, after, confirmed_presets, filament_catalog,
+                                            pm.project_nozzle(before), prepare_mode)
+        if material_guard["blocking"]:
+            return ConversionResult(
+                "blocked", "", "", False, [pm.guard_message(material_guard)], prepare_mode,
+                {"project_materials": {"guard": material_guard}}, blocked=True)
     recommended_after = None
     if recommended_tm is not None:
         # Use the normal repair path on a wholly in-memory project so preview

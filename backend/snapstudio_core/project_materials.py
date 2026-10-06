@@ -201,6 +201,31 @@ def guard(cfg: dict, slots: list[dict], confirmed: dict | None, catalog, nozzle:
     return out
 
 
+def effective_guard(source_cfg: dict, prepared_cfg: dict, confirmed: dict | None, catalog,
+                    nozzle: str, mode: str = "preserve") -> dict:
+    """The guard, judged on the declarations that will actually be WRITTEN.
+
+    Orca propagates what the prepared file declares, not what the source declared. A mode
+    that removes the source's declarations (Recommended) leaves nothing to propagate, so
+    nothing blocks; a mode that keeps them (Preserve) does. The source's own conflicts are
+    still reported (``source_conflicts``), and the ones the mode took away are listed in
+    ``removed_by_mode``. Neither config is changed."""
+    out = guard(prepared_cfg, extract_slots(prepared_cfg), confirmed, catalog, nozzle)
+    source = guard(source_cfg, extract_slots(source_cfg), confirmed, catalog, nozzle)
+
+    def ident(c):
+        return (c["key"], c["preset"], tuple(c["slots"]))
+
+    surviving = {ident(c) for c in out["conflicts"]}
+    out["source_conflicts"] = source["conflicts"]
+    out["removed_by_mode"] = [c for c in source["conflicts"] if ident(c) not in surviving]
+    out["mode"] = mode
+    if out["conflicts"] and mode == "preserve":
+        out["resolution"] = (out["resolution"] or "") + (
+            " Recommended mode removes the source's declarations before it writes the copy.")
+    return out
+
+
 def guard_message(result: dict) -> str:
     parts = []
     for c in result.get("conflicts", []):
