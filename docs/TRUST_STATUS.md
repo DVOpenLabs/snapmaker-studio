@@ -9,6 +9,35 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.4.1 — ACCEPTED
+
+**A readable, searchable, sorted spool picker (#39 items 1–3).** The Windows installer and Linux
+`.deb` named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by
+SHA256. Build: [run 37449340983](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37449340983), commit
+`482737819f3c6271bd22f5953d03cc95eb225d41`. This release's immutable snapshot: [internal/evidence/1.4.1.json](internal/evidence/1.4.1.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2633 passed / 12 skipped**, desktop **638**, Rust **45** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account) | **45/45** — [internal/acceptance-1.4.1.json](internal/acceptance-1.4.1.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, no providers | **58/58** — [internal/hardware-1.4.1.json](internal/hardware-1.4.1.json) |
+| Spool picker on the installed release candidate, against the real engine with a 115-spool Spoolman look-alike: dark theme, sort order, type-ahead, keyboard, all 116 rows distinguishable, one spool mapped to a slot | **pass** |
+| Ready Now and the provider/slot behaviour unchanged | **pass** |
+| `tsc`, `cargo test`, production build | clean |
+
+### What is verified, and what is not
+
+The picker is covered by automated tests (sorting, filtering, keyboard reducer, 100+ spools, colour
+name and ID always in the text, theme tokens only) and was exercised by hand in the installed
+release candidate against the real engine, using a local read-only look-alike of Spoolman with 115
+spools. It has **not** been tried against a real SpoolEase device; the list shape is the same for all
+three providers. SpoolEase's and Bambuddy's own colour names are passed through when they send one.
+Per-project spool selection and writing a chosen spool into a prepared file are **not** in this release.
+
 ## v1.4.0 — ACCEPTED
 
 **Ready Now and Model Connect.** The Windows installer and Linux `.deb` named in

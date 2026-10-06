@@ -1,0 +1,240 @@
+{
+  "schema_version": "acceptance/3",
+  "lane": {
+    "schema": "harness-lane-evidence/3",
+    "lane": "rewrapped acceptance-identity installer",
+    "laneKind": "acceptance",
+    "identity": "acceptance",
+    "status": "pass",
+    "installerSha256": "031a64a7441c6b74c72dd7b0ace5815dceb40aab578b6f7341c74ba37901f43b",
+    "sourceVersion": "1.4.1",
+    "templateSha256": "d30f5f9d4bc40902addbc895e4211498612c6f0c567a54738c47fe3403ce1028",
+    "rewrappedOnDemand": true,
+    "installDir": "install\\h11a3d721541a43d7924d2751aa49b239",
+    "installArguments": "/S /NCRC /NS /D=<install dir>",
+    "preflight": {
+      "updateCheck": "absent",
+      "webView2Runtime": "154.0.4258.53"
+    },
+    "keptInstall": false,
+    "repair": null,
+    "journals": [
+      {
+        "runId": "h11a3d721541a43d7924d2751aa49b239",
+        "installExitCode": 0,
+        "finalized": true
+      }
+    ],
+    "orphanedInstall": null,
+    "uninstallOutcome": "Success",
+    "errorCount": 0,
+    "warningCount": 0,
+    "reasonCodes": [],
+    "warningCodes": [],
+    "tripwire": {
+      "violations": 0,
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "leveldbChanged": 0,
+      "structural": 0,
+      "completed": true,
+      "surfaces": {
+        "uninstallKey": 0,
+        "rememberedKey": 0,
+        "manufacturerKey": 0,
+        "runValue": 0,
+        "startMenuShortcut": 0,
+        "desktopShortcut": 0,
+        "installDir": 0
+      }
+    },
+    "shortcutFindings": 0,
+    "notProven": "Production registration, shortcut creation, default-path install/upgrade/uninstall of the real installer are NOT proven by this lane; they are exercised only on disposable GitHub-hosted CI runners."
+  },
+  "checks": [
+    {
+      "name": "Probe servers this run owns are up",
+      "ok": true
+    },
+    {
+      "name": "Scripted install completes",
+      "ok": true
+    },
+    {
+      "name": "Application installed",
+      "ok": true
+    },
+    {
+      "name": "Frozen engine sidecar installed",
+      "ok": true
+    },
+    {
+      "name": "Uninstaller installed",
+      "ok": true
+    },
+    {
+      "name": "Application launches",
+      "ok": true
+    },
+    {
+      "name": "Window title",
+      "ok": true
+    },
+    {
+      "name": "Sidecar boots from the install directory",
+      "ok": true
+    },
+    {
+      "name": "CDP reachable on the installed webview",
+      "ok": true
+    },
+    {
+      "name": "Startup checks",
+      "ok": true
+    },
+    {
+      "name": "Engine routes answer from the installed sidecar",
+      "ok": true
+    },
+    {
+      "name": "Model passed on the command line is open",
+      "ok": true
+    },
+    {
+      "name": "Project opens and its findings render",
+      "ok": true
+    },
+    {
+      "name": "Prepare, fidelity, ledger and best-tool render",
+      "ok": true
+    },
+    {
+      "name": "Colour plan renders on its own page",
+      "ok": true
+    },
+    {
+      "name": "Post-Slice Doctor reads a sliced job in the installed app",
+      "ok": true
+    },
+    {
+      "name": "One surface shows the whole job",
+      "ok": true
+    },
+    {
+      "name": "Studio explains how sure it is about a job",
+      "ok": true
+    },
+    {
+      "name": "First-evening mistakes are answered, not ignored",
+      "ok": true
+    },
+    {
+      "name": "Spool notes and nozzle empty states render (W1/W6/W9)",
+      "ok": true
+    },
+    {
+      "name": "Spool notes are created through the installed UI (W2)",
+      "ok": true
+    },
+    {
+      "name": "Editing, clearing and validating a spool note behave as specified (W3/W5/W9)",
+      "ok": true
+    },
+    {
+      "name": "Recording filament used shows an estimate, not a measurement (W4)",
+      "ok": true
+    },
+    {
+      "name": "Nozzle sizes are confirmed through the installed UI (W6)",
+      "ok": true
+    },
+    {
+      "name": "Sliced job is byte-identical afterwards",
+      "ok": true
+    },
+    {
+      "name": "Original file is byte-identical afterwards",
+      "ok": true
+    },
+    {
+      "name": "Painted colour is shown in the installed build",
+      "ok": true
+    },
+    {
+      "name": "Spool notes and nozzle confirmations survive a relaunch (W7)",
+      "ok": true
+    },
+    {
+      "name": "Removing nozzles, deleting a note and switching provider kind behave as specified (W8)",
+      "ok": true
+    },
+    {
+      "name": "Probe servers survived the app restarts",
+      "ok": true
+    },
+    {
+      "name": "Both provider wire shapes work in the installed build",
+      "ok": true
+    },
+    {
+      "name": "No provider configured means no provider request",
+      "ok": true
+    },
+    {
+      "name": "Provider addresses are validated in the installed build",
+      "ok": true
+    },
+    {
+      "name": "A redirect off the local network is refused in the installed build",
+      "ok": true
+    },
+    {
+      "name": "Closing the real window exits the app and its sidecar (not just a kill)",
+      "ok": true
+    },
+    {
+      "name": "No orphan sidecar after close",
+      "ok": true
+    },
+    {
+      "name": "Reopens cleanly",
+      "ok": true
+    },
+    {
+      "name": "SpoolEase can be configured and read in the installed build",
+      "ok": true
+    },
+    {
+      "name": "SpoolEase settings restore without the session key",
+      "ok": true
+    },
+    {
+      "name": "Uninstall completes",
+      "ok": true
+    },
+    {
+      "name": "Install directory removed",
+      "ok": true
+    },
+    {
+      "name": "No sidecar survives uninstall",
+      "ok": true
+    },
+    {
+      "name": "Harness journal finalised (nothing left to recover)",
+      "ok": true
+    },
+    {
+      "name": "Production state unchanged (tripwire)",
+      "ok": true
+    },
+    {
+      "name": "Harness cleanup reported no errors",
+      "ok": true
+    }
+  ],
+  "passed": 45,
+  "total": 45,
+  "evidence": "<harness-root>\\run\\<run id>\\evidence"
+}
