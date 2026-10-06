@@ -490,3 +490,58 @@ describe("the card after the review repairs", () => {
     expect(reviewButton().disabled).toBe(false);                                           // review again for the new mode
   });
 });
+
+
+describe("the person's own presets in the picker", () => {
+  const LIST: MaterialPresetList = {
+    available: true, nozzle: "0.4",
+    presets: [
+      { base_name: "Yoopai PLA+", preset_name: "Yoopai PLA+", vendor: "Snapmaker", filament_type: "PLA", fingerprint: "s", source: "system",
+        ref: null, status: "proven", ambiguous: true },
+      { base_name: "Yoopai PLA+", preset_name: "Yoopai PLA+", vendor: "Yoopai", filament_type: "PLA", fingerprint: "u", source: "user",
+        ref: "user:default/Yoopai PLA+.json", status: "proven", proof: "inherited", ambiguous: true },
+      { base_name: "Mystery PLA", preset_name: "Mystery PLA", vendor: null, filament_type: "PLA", fingerprint: "m", source: "user",
+        ref: "user:default/Mystery PLA.json", status: "needs_confirmation", reason: "It does not say which printers it is for, so Studio cannot tell it fits the U1.", ambiguous: false },
+    ],
+  };
+  const optionsOf = () => screen.getAllByRole("option").map((o) => o.textContent ?? "");
+
+  it("shows enough source context to tell a collision apart, and marks what needs confirming", () => {
+    render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    const opts = optionsOf();
+    expect(opts[0]).toContain("Yoopai PLA+ — System preset");
+    expect(opts[1]).toContain("Yoopai PLA+ — User preset");
+    expect(opts[2]).toContain("Mystery PLA — User preset");
+    expect(opts[2]).toContain("Needs confirmation");
+    expect(opts[2]).toContain("does not say which printers it is for");
+    expect(opts[1]).toContain("fits 0.4 mm nozzle");
+  });
+
+  it("picking the user one of two same-named presets pins it, and a proven one needs no extra step", () => {
+    render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    fireEvent.click(screen.getAllByRole("option")[1].querySelector("button")!);
+    expect(request()[0]).toMatchObject({ preset: "Yoopai PLA+", source: "user", ref: "user:default/Yoopai PLA+.json" });
+    expect(request()[0].accept_unproven).toBeUndefined();
+    expect(screen.getByTestId("preset-area").textContent).toContain("Yoopai PLA+ — User preset");
+    expect(reviewButton().disabled).toBe(false);
+  });
+
+  it("a user preset Studio cannot prove is held until the person says it is a U1 preset", () => {
+    render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
+    choose(/Yoopai PLA Matte/);
+    fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
+    fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
+    const area = screen.getByTestId("preset-area");
+    expect(within(area).getByText("Needs confirmation")).toBeTruthy();
+    expect(within(area).getByText(/does not say which printers it is for/)).toBeTruthy();       // the engine's words
+    expect(request()[0].preset).toBeNull();
+    expect(reviewButton().disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm this is a U1 preset" }));
+    expect(request()[0]).toMatchObject({ preset: "Mystery PLA", source: "user", ref: "user:default/Mystery PLA.json", accept_unproven: true });
+    expect(reviewButton().disabled).toBe(false);
+  });
+});

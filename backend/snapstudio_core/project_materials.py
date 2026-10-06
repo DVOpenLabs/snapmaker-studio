@@ -506,13 +506,18 @@ def change_records(filament: dict) -> list[dict]:
     return out
 
 
-def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: str) -> tuple[dict, dict]:
+def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: str,
+                   proofs: dict | None = None) -> tuple[dict, dict]:
     """Turn the person's explicit selections into (confirmed_presets, confirmed_colours).
 
-    Each selection: ``{"slot": 0, "preset": "<installed preset name>"|None, "colour": "#RRGGBB"|None}``.
-    A preset must be PROVEN in the installed catalogue right now — a remembered or suggested
-    name is not enough until the person has confirmed it by sending it here. A slot with no
-    preset keeps the project's own filament identity.
+    Each selection: ``{"slot": 0, "preset": "<installed preset name>"|None, "colour": "#RRGGBB"|None,
+    "source": "system"|"user"|None, "ref": "<user preset file>"|None, "accept_unproven": bool}``.
+    A preset must be PROVEN in the installed catalogue right now - a remembered or suggested name is
+    not enough until the person has confirmed it by sending it here. The one exception is one of the
+    person's own presets that does not say which printers it is for: it is used only when the person
+    says it is a U1 preset (``accept_unproven``). `source`/`ref` pin one installed preset when a name is
+    ambiguous. A slot with no preset keeps the project's own filament identity. When `proofs` is given
+    it is filled with how each preset was established, for the fidelity record.
     """
     presets: dict[int, str] = {}
     colours: dict[int, str] = {}
@@ -532,11 +537,25 @@ def prepare_inputs(selections: list[dict] | None, cfg: dict, catalog, nozzle: st
             if catalog is None:
                 raise ValueError("Snapmaker Orca's installed filament presets could not be read, "
                                  "so no preset can be applied")
-            found = catalog.evaluate(preset, nozzle)
-            if found["status"] != PROVEN:
+            ref, source = sel.get("ref"), sel.get("source")
+            if ref is not None and not isinstance(ref, str):
+                raise ValueError("ref must be text")
+            if source not in (None, "system", "user"):
+                raise ValueError("source must be 'system' or 'user'")
+            accept = sel.get("accept_unproven")
+            if accept not in (None, True, False):
+                raise ValueError("accept_unproven must be true or false")
+            found = catalog.evaluate(preset, nozzle, ref, source)
+            proven = found["status"] == PROVEN
+            if not proven and not (found.get("confirmable") and accept is True):
+                hint = (" It is one of your own presets and does not say which printers it is for; confirm "
+                        "that it is a U1 preset to use it." if found.get("confirmable") else "")
                 raise ValueError(f"“{preset}” is not a proven installed preset for the {nozzle} mm "
-                                 f"nozzle: {found['reason']}")
+                                 f"nozzle: {found['reason']}{hint}")
             presets[slot] = found["preset_name"]
+            if proofs is not None:
+                proofs[slot] = {"source": found.get("source"), "ref": found.get("ref"),
+                                "proof": found.get("proof") if proven else "user_confirmed"}
         if sel.get("colour") not in (None, ""):
             value = hex6(sel.get("colour"))
             if value is None:

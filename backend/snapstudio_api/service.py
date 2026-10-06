@@ -248,8 +248,9 @@ def _material_inputs(path: str, materials: dict, catalog=None):
         raise ValueError("This file has no project settings, so it has no filament slots to map")
     catalog = catalog if catalog is not None else _orca_catalog()
     nozzle = pm.project_nozzle(cfg)
-    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog, nozzle)
-    return presets, colours, catalog, _material_context(materials.get("selections"), presets, catalog, nozzle)
+    proofs: dict = {}
+    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog, nozzle, proofs)
+    return presets, colours, catalog, _material_context(materials.get("selections"), presets, catalog, nozzle, proofs)
 
 
 def _text_field(value, limit: int = 120) -> str | None:
@@ -272,7 +273,7 @@ def _clean_spool(spool) -> dict | None:
     return out if any(out.values()) else None
 
 
-def _material_context(selections, presets: dict, catalog, nozzle: str) -> dict:
+def _material_context(selections, presets: dict, catalog, nozzle: str, proofs: dict | None = None) -> dict:
     """Per slot: the selected spool and how its preset was matched, worked out here rather than
     taken from the request. Feeds the plain-language record and nothing in the prepared file."""
     from snapstudio_core import material_mapping as mm
@@ -285,7 +286,7 @@ def _material_context(selections, presets: dict, catalog, nozzle: str) -> dict:
         spool = _clean_spool(raw)
         entry: dict = {"spool": spool}
         if spool and slot in presets and catalog is not None and spool.get("provider"):
-            chosen = catalog.evaluate(presets[slot], nozzle)
+            chosen = catalog.evaluate(presets[slot], nozzle, sel.get("ref"), sel.get("source"))
             probe = {"id": spool.get("id"), "vendor": spool.get("vendor"),
                      "material": spool.get("material"), "subtype": spool.get("subtype"),
                      "slicer_filament": _text_field(raw.get("slicer_filament"))}
@@ -303,6 +304,8 @@ def _material_context(selections, presets: dict, catalog, nozzle: str) -> dict:
         elif slot in presets:
             entry["mapping"] = {"source": "manual", "stale": False, "saved_base": None}
         if isinstance(slot, int):
+            if proofs and slot in proofs:
+                entry["preset"] = proofs[slot]
             out[slot] = entry
     return out
 
@@ -350,10 +353,20 @@ def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
         return {"available": False, "nozzle": nozzle, "presets": [], "source": None}
     rows = []
     for base in catalog.names_for(nozzle):
-        e = catalog.entries[base]
-        rows.append({"base_name": base, "preset_name": e["nozzles"][nozzle],
-                     "vendor": e["vendor"], "filament_type": e["filament_type"],
-                     "fingerprint": e["fingerprint"]})
+        records = catalog.records_for(base, nozzle)
+        ambiguous = len(records) > 1
+        for r in records:
+            proven = nozzle in r["nozzles"]
+            rows.append({
+                "base_name": base, "preset_name": r["name"], "vendor": r["vendor"],
+                "filament_type": r["filament_type"], "fingerprint": r["fingerprint"],
+                # what the picker needs to tell two presets of one name apart, and to pin the one chosen
+                "source": r["source"], "location": r["location"],
+                "ref": r["ref"] if r["source"] == "user" else None,
+                "proof": r["proof"], "status": "proven" if proven else "needs_confirmation",
+                "reason": None if proven else r["unproven_reason"],
+                "parent": r["parent"], "ambiguous": ambiguous,
+            })
     return {"available": True, "nozzle": nozzle, "presets": rows, "source": catalog.source,
             "fingerprint": catalog.fingerprint}
 
@@ -383,14 +396,19 @@ def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
     catalog = catalog if catalog is not None else _orca_catalog()
     if catalog is None:
         raise ValueError("Snapmaker Orca's installed filament presets could not be read")
-    found = catalog.evaluate(data.get("preset"), nozzle)
-    if found["status"] != preset_catalog.PROVEN:
+    ref, source, accept = data.get("ref"), data.get("source"), data.get("accept_unproven")
+    if (ref is not None and not isinstance(ref, str)) or source not in (None, "system", "user") \
+            or accept not in (None, True, False):
+        raise ValueError("ref, source and accept_unproven are not valid")
+    found = catalog.evaluate(data.get("preset"), nozzle, ref, source)
+    proven = found["status"] == preset_catalog.PROVEN
+    if not proven and not (found.get("confirmable") and accept is True):
         raise ValueError(
             f"That is not a proven installed preset for the {nozzle} mm nozzle: {found['reason']}")
     origin = data.get("origin") or mm.SOURCE_MANUAL
     row = (store if store is not None else _material_store()).put(
         scope=scope, provider=provider, spool_id=spool_id, sig=sig, preset=found,
-        origin=origin, catalog=catalog)
+        origin=origin, catalog=catalog, accept_unproven=accept is True)
     return {"ok": True, "mapping": row}
 
 

@@ -142,17 +142,38 @@ def test_the_declaration_slot_exists_for_every_owner():
     assert change["printer_keys"] == ["nozzle_type"]
 
 
+#: The one module allowed to look at Orca's preset files: it lists WHICH presets are installed (name, type,
+#: vendor, parent and which printers each is stated to fit) so Project Materials can map a spool to a real
+#: installed preset. It never reads, resolves or copies a preset's print VALUES - see the next test.
+_PRESET_CATALOGUE = "preset_catalog.py"
+
+
 def test_studio_never_reads_orcas_preset_files_at_runtime():
     """That would be a second preset resolver to keep in step with every release.
 
-    Studio knows what it changed because Studio made the change.
+    Studio knows what it changed because Studio made the change. The installed-preset catalogue is the
+    single, named exception: identity only, never values.
     """
     import snapstudio_core
 
     root = Path(snapstudio_core.__file__).parent
     offenders = []
     for path in root.rglob("*.py"):
+        if path.name == _PRESET_CATALOGUE:
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if "resources/profiles" in text or "resources\\\\profiles" in text:
             offenders.append(path.name)
     assert not offenders, f"these read Orca's shipped presets: {offenders}"
+
+
+def test_the_preset_catalogue_reads_identity_never_print_values():
+    """It may ask which printers a preset is for, what it inherits and what it is called - not what it prints at."""
+    import snapstudio_core
+
+    text = (Path(snapstudio_core.__file__).parent / _PRESET_CATALOGUE).read_text(encoding="utf-8")
+    values = ("nozzle_temperature", "filament_flow_ratio", "filament_max_volumetric_speed", "pressure_advance",
+              "fan_min_speed", "fan_max_speed", "hot_plate_temp", "textured_plate_temp", "filament_density",
+              "filament_cost")
+    assert [k for k in values if k in text] == []
+    assert "write_text" not in text and "open(" not in text and ".unlink" not in text and "os.replace" not in text

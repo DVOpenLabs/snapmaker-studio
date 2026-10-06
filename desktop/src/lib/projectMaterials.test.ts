@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   KEEP_OWN_NOTICE, amountText, blockedFacts, buildSelections, canRemember, choiceReduce, emptyChoice, filterPresets,
-  mappingRequests, presetStatusFor, unconfirmedSlots,
+  mappingRequests, presetSourceLabel, presetStatusFor, unconfirmedSlots,
   type Choices, type MaterialCandidate,
 } from "./projectMaterials";
 import { candidate, mapping, slot } from "./projectMaterials.fixtures";
@@ -18,13 +18,13 @@ describe("choices", () => {
 
   it("choosing a spool with a remembered, proven mapping offers its preset as already confirmed", () => {
     const s = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: PROVEN }) });
-    expect(s[0].preset).toEqual({ name: "Snapmaker PLA Matte @U1", confirmed: true });
+    expect(s[0].preset).toMatchObject({ name: "Snapmaker PLA Matte @U1", confirmed: true });
     expect(presetStatusFor(s[0], slot())).toBe("proven");
   });
 
   it("a preset the provider merely names waits for the person; a spool with no match gets none", () => {
     const named = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: NAMED }) });
-    expect(named[0].preset).toEqual({ name: "Snapmaker PLA Matte @U1", confirmed: false });
+    expect(named[0].preset).toMatchObject({ name: "Snapmaker PLA Matte @U1", confirmed: false });
     expect(unconfirmedSlots(named)).toEqual([0]);
     expect(buildSelections(named)[0].preset).toBeNull();            // not sent until confirmed
     const none = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
@@ -41,7 +41,7 @@ describe("choices", () => {
     expect(unconfirmedSlots(s)).toEqual([]);
     expect(buildSelections(s)[0].preset).toBe("Snapmaker PLA Matte @U1");
     s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Snapmaker PLA SnapSpeed @U1" });
-    expect(s[0].preset).toEqual({ name: "Snapmaker PLA SnapSpeed @U1", confirmed: true });
+    expect(s[0].preset).toMatchObject({ name: "Snapmaker PLA SnapSpeed @U1", confirmed: true });
     s = choiceReduce(s, { type: "clearPreset", slot: 0 });
     expect(s[0].preset).toBeNull();
     expect(choiceReduce({}, { type: "confirmPreset", slot: 3 })).toEqual({});     // nothing to confirm
@@ -155,5 +155,69 @@ describe("display helpers", () => {
       conflicts: [{ key: "filament_vendor", preset: "P @U1", slots: [0, 1], declared_in: [0], values: {} }] } } } });
     expect(facts).toEqual({ message: "Prepare stopped: x", resolution: "Pick different presets.",
       conflicts: [{ key: "filament_vendor", preset: "P @U1", slots: [0, 1], declared_in: [0], values: {} }] });
+  });
+});
+
+
+describe("the person's own Snapmaker Orca presets", () => {
+  const USER_MAPPING = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Yoopai PLA+", base_name: "Yoopai PLA+",
+    source: "user", ref: "user:default/Yoopai PLA+.json", proof: "user_confirmed", reason: "" });
+
+  it("a preset Studio cannot prove is for the U1 waits for the person's say-so, then carries the pin and the flag", () => {
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Mystery PLA", source: "user", ref: "user:default/Mystery PLA.json",
+      unproven: true, note: "It does not say which printers it is for." });
+    expect(s[0].preset).toMatchObject({ confirmed: false, needsSayso: true, note: "It does not say which printers it is for." });
+    expect(unconfirmedSlots(s)).toEqual([0]);
+    expect(buildSelections(s)[0].preset).toBeNull();                       // not sent until they confirm
+    s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
+    expect(buildSelections(s)[0]).toMatchObject({ preset: "Mystery PLA", source: "user", ref: "user:default/Mystery PLA.json", accept_unproven: true });
+  });
+
+  it("a proven preset sends no say-so flag, and a system pin only when the name is ambiguous", () => {
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Snapmaker PLA Matte @U1" });
+    const sel = buildSelections(s)[0];
+    expect(sel.accept_unproven).toBeUndefined();
+    expect(sel.ref).toBeUndefined();
+    expect(sel.source).toBeUndefined();
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Acme PLA @U1", source: "system" });
+    expect(buildSelections(s)[0]).toMatchObject({ source: "system" });
+  });
+
+  it("a remembered mapping to a user preset the person once confirmed stays confirmed and keeps its pin", () => {
+    const s = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: USER_MAPPING }) });
+    expect(s[0].preset).toMatchObject({ name: "Yoopai PLA+", confirmed: true, source: "user", ref: "user:default/Yoopai PLA+.json", needsSayso: true });
+    expect(buildSelections(s)[0]).toMatchObject({ preset: "Yoopai PLA+", source: "user", ref: "user:default/Yoopai PLA+.json", accept_unproven: true });
+  });
+
+  it("a provider-named user preset the engine could not prove stays unconfirmed until confirmed", () => {
+    const named = mapping({ status: "needs_confirmation", match_source: "exact_name", preset_name: "Mystery PLA", base_name: "Mystery PLA",
+      source: "user", ref: "user:default/Mystery PLA.json", confirmable: true, reason: "It does not say which printers it is for." });
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate({ mapping: named }) });
+    expect(s[0].preset).toMatchObject({ confirmed: false, needsSayso: true });
+    s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
+    expect(buildSelections(s)[0].accept_unproven).toBe(true);
+  });
+
+  it("Remember carries the pin and the flag", () => {
+    let s: Choices = choiceReduce({}, { type: "chooseSpool", slot: 0, spool: candidate() });
+    s = choiceReduce(s, { type: "pickPreset", slot: 0, name: "Mystery PLA", source: "user", ref: "user:default/Mystery PLA.json", unproven: true });
+    s = choiceReduce(s, { type: "confirmPreset", slot: 0 });
+    s = choiceReduce(s, { type: "remember", slot: 0, mode: "spool" });
+    expect(mappingRequests(s, "0.4")).toEqual([{ scope: "spool", provider: "spoolease", spool_id: "124", preset: "Mystery PLA", nozzle: "0.4",
+      origin: "manual", source: "user", ref: "user:default/Mystery PLA.json", accept_unproven: true }]);
+  });
+
+  it("the source label tells two presets of one name apart, and filters the list", () => {
+    const rows = [
+      { base_name: "Yoopai PLA+", preset_name: "Yoopai PLA+", vendor: "Yoopai", filament_type: "PLA", fingerprint: "a", source: "user" as const },
+      { base_name: "Yoopai PLA+", preset_name: "Yoopai PLA+", vendor: "Snapmaker", filament_type: "PLA", fingerprint: "b", source: "system" as const },
+    ];
+    expect(presetSourceLabel(rows[0])).toBe("User preset");
+    expect(presetSourceLabel(rows[1])).toBe("System preset");
+    expect(presetSourceLabel({})).toBe("System preset");
+    expect(filterPresets(rows, "user")).toEqual([rows[0]]);
+    expect(filterPresets(rows, "system yoopai")).toEqual([rows[1]]);
   });
 });

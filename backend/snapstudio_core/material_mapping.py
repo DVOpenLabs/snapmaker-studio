@@ -99,15 +99,25 @@ class Store:
         return None, SOURCE_NONE
 
     def put(self, *, scope: str, provider: str, preset: dict, origin: str,
-            spool_id=None, sig: dict | None = None, catalog=None) -> dict:
-        """Remember a confirmed mapping. `preset` is a PROVEN :meth:`Catalog.evaluate` result."""
+            spool_id=None, sig: dict | None = None, catalog=None, accept_unproven: bool = False) -> dict:
+        """Remember a confirmed mapping. `preset` is a :meth:`Catalog.evaluate` result: PROVEN, or - only
+        when the person said so (`accept_unproven`) - a user preset Studio could not itself tell is for
+        the U1 (``confirmable``). The latter is stored as ``user_confirmed`` and is re-checked on every use."""
         if scope not in (SCOPE_SPOOL, SCOPE_SIGNATURE):
             raise ValueError("scope must be 'spool' or 'signature'")
         if origin not in ORIGINS:
             raise ValueError("origin must be 'exact_name' or 'manual'")
-        if preset.get("status") != PROVEN or not preset.get("base_name"):
-            raise ValueError("only a proven installed preset can be remembered")
+        proven = preset.get("status") == PROVEN
+        confirmable = (preset.get("status") == NEEDS_CONFIRMATION and bool(preset.get("confirmable"))
+                       and accept_unproven)
+        if not (proven or confirmable) or not preset.get("base_name"):
+            raise ValueError("only a proven installed preset, or one of your own presets you confirmed, can be remembered")
         row = {
+            "source": preset.get("source"),
+            # A user preset is one file, so it is pinned by that file. A system preset is not: the file
+            # that carries it differs by nozzle, so it is pinned by its source only.
+            "ref": preset.get("ref") if preset.get("source") == "user" else None,
+            "proof": "evidence" if proven else "user_confirmed",
             "scope": scope,
             "provider": _text(provider),
             "preset_base": preset["base_name"],
@@ -190,7 +200,8 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
     sig = signature(spool.get("vendor"), spool.get("material"), spool.get("subtype"))
     saved, source = (store.find(provider, spool.get("id"), sig) if store else (None, SOURCE_NONE))
     if saved:
-        found = catalog.verify(saved["preset_base"], saved.get("fingerprint"), nozzle)
+        found = catalog.verify(saved["preset_base"], saved.get("fingerprint"), nozzle, saved.get("ref"),
+                               saved.get("proof"), saved.get("source"))
         out.update(_carry(found))
         out["match_source"] = SOURCE_NONE if found["status"] == NO_MATCH else source
         if found["status"] == NO_MATCH:
@@ -218,7 +229,10 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
 
 
 def _carry(found: dict) -> dict:
-    keys = ("status", "reason", "preset_name", "base_name", "candidates", "fingerprint")
+    keys = ("status", "reason", "preset_name", "base_name", "candidates", "fingerprint", "source", "ref",
+            "proof", "location", "choices")
     out = {k: found.get(k) for k in keys}
+    out["choices"] = out["choices"] or []
+    out["confirmable"] = bool(found.get("confirmable"))
     out["stale"] = bool(found.get("stale"))
     return out

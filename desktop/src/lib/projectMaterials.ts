@@ -27,6 +27,15 @@ export interface MaterialMapping {
   candidates: string[];
   stale: boolean;
   catalog_missing?: boolean;
+  /** Where the preset the engine resolved lives: Orca's own, or one the person made. */
+  source?: "system" | "user" | null;
+  /** Pins one of the person's preset files; null for a system preset. */
+  ref?: string | null;
+  proof?: string | null;
+  /** True for one of the person's own presets Studio could not itself tell is for the U1: usable only if they say so. */
+  confirmable?: boolean;
+  /** When a name is ambiguous, each installed preset that claims it. */
+  choices?: { ref: string; name: string; source: string; location: string | null; proof: string }[];
 }
 
 export interface MaterialCandidate {
@@ -110,6 +119,18 @@ export interface MaterialPreset {
   vendor: string | null;
   filament_type: string | null;
   fingerprint: string;
+  /** "system" (Orca's own) or "user" (made by the person). Absent means system. */
+  source?: "system" | "user";
+  location?: string | null;
+  /** Pins one user preset file; null for a system preset. */
+  ref?: string | null;
+  proof?: string | null;
+  /** "proven" when Studio can tell it fits the U1; otherwise the person must say so. Absent means proven. */
+  status?: PresetStatus;
+  reason?: string | null;
+  parent?: string | null;
+  /** More than one installed preset has this name, so the source is what tells them apart. */
+  ambiguous?: boolean;
 }
 
 export interface MaterialPresetList {
@@ -124,6 +145,11 @@ export interface MaterialSelection {
   slot: number;
   preset: string | null;
   colour: string | null;
+  /** Which installed preset when a name is ambiguous. */
+  source?: "system" | "user";
+  ref?: string;
+  /** The person said this user preset is a U1 preset (Studio could not tell). */
+  accept_unproven?: boolean;
   spool?: {
     provider: string;
     id: number | string;
@@ -146,6 +172,9 @@ export interface MappingRequest {
   preset: string;
   nozzle: string;
   origin: "manual" | "exact_name";
+  source?: "system" | "user";
+  ref?: string;
+  accept_unproven?: boolean;
 }
 
 /** The exact sentence for a slot that keeps its own filament. */
@@ -172,9 +201,14 @@ export type RememberMode = "off" | "spool" | "signature";
 
 export interface PresetChoice {
   name: string;
-  /** A preset taken from a remembered mapping is already confirmed. One the provider merely
-   *  names, or the engine merely suggests, is not until the person says so. */
+  /** A preset taken from a remembered mapping is already confirmed. One the provider merely names, or the engine merely suggests, is not until the person says so. */
   confirmed: boolean;
+  source?: "system" | "user";
+  ref?: string;
+  /** One of the person's own presets that Studio could not tell is for the U1: it is used only once they confirm it. */
+  needsSayso?: boolean;
+  /** The engine's own words for why it needs their say-so. */
+  note?: string | null;
 }
 
 export interface SlotChoice {
@@ -191,7 +225,7 @@ export const emptyChoice: SlotChoice = { spool: null, preset: null, keepOwn: fal
 export type ChoiceAction =
   | { type: "chooseSpool"; slot: number; spool: MaterialCandidate }
   | { type: "clearSpool"; slot: number }
-  | { type: "pickPreset"; slot: number; name: string }
+  | { type: "pickPreset"; slot: number; name: string; source?: "system" | "user"; ref?: string | null; unproven?: boolean; note?: string | null }
   | { type: "confirmPreset"; slot: number }
   | { type: "clearPreset"; slot: number }
   | { type: "keepOwn"; slot: number }
@@ -209,17 +243,23 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       const m = action.spool.mapping;
       // base_name is the installed preset the engine resolved; an ambiguous match has none and gets no preset.
       const name = m.base_name ?? m.preset_name;
+      const pin = { source: (m.source ?? undefined) as "system" | "user" | undefined, ref: m.ref ?? undefined };
+      // A remembered mapping the person confirmed (even one they said was a U1 preset) stays confirmed; a
+      // preset the engine could not prove, or the provider merely names, waits for them.
       const preset: PresetChoice | null =
-        name && m.status === "proven" ? { name, confirmed: true }
-        : name && m.status === "needs_confirmation" ? { name, confirmed: false }
+        name && m.status === "proven" ? { name, confirmed: true, ...pin, needsSayso: m.proof === "user_confirmed" }
+        : name && m.status === "needs_confirmation" ? { name, confirmed: false, ...pin, needsSayso: !!m.confirmable, note: m.reason }
         : null;
       return put({ spool: action.spool, preset, keepOwn: false, remember: "off" });
     }
     case "clearSpool":
       return put({ ...current, spool: null, remember: "off", preset: current.preset?.confirmed ? current.preset : null });
     case "pickPreset":
-      // Choosing from the installed list is the confirmation.
-      return put({ ...current, preset: { name: action.name, confirmed: true }, keepOwn: false, remember: "off" });
+      // Choosing from the installed list is the confirmation - except for one of the person's own presets that
+      // Studio could not tell is for the U1: that needs their explicit say-so first.
+      return put({ ...current, keepOwn: false, remember: "off", preset: {
+        name: action.name, confirmed: !action.unproven, source: action.source, ref: action.ref ?? undefined,
+        needsSayso: !!action.unproven, note: action.note ?? null } });
     case "confirmPreset":
       return current.preset ? put({ ...current, preset: { ...current.preset, confirmed: true } }) : state;
     case "clearPreset":
@@ -247,6 +287,11 @@ export function buildSelections(choices: Choices): MaterialSelection[] {
     const colour = c.spool?.colour ?? null;
     if (!preset && !colour) continue;
     const sel: MaterialSelection = { slot: Number(key), preset, colour };
+    if (preset && c.preset) {
+      if (c.preset.source) sel.source = c.preset.source;
+      if (c.preset.ref) sel.ref = c.preset.ref;
+      if (c.preset.needsSayso) sel.accept_unproven = true;
+    }
     if (c.spool) {
       sel.spool = {
         provider: c.spool.provider, id: c.spool.spool_id, vendor: c.spool.vendor,
@@ -275,10 +320,14 @@ export function mappingRequests(choices: Choices, nozzle: string): MappingReques
   for (const c of Object.values(choices)) {
     if (c.remember === "off" || !canRemember(c) || !c.spool || !c.preset) continue;
     const origin = c.spool.mapping.match_source === "exact_name" ? "exact_name" : "manual";
+    const pin: Partial<MappingRequest> = {};
+    if (c.preset.source) pin.source = c.preset.source;
+    if (c.preset.ref) pin.ref = c.preset.ref;
+    if (c.preset.needsSayso) pin.accept_unproven = true;
     out.push(c.remember === "spool"
-      ? { scope: "spool", provider: c.spool.provider, spool_id: c.spool.spool_id, preset: c.preset.name, nozzle, origin }
+      ? { scope: "spool", provider: c.spool.provider, spool_id: c.spool.spool_id, preset: c.preset.name, nozzle, origin, ...pin }
       : { scope: "signature", provider: c.spool.provider, vendor: c.spool.vendor, material: c.spool.material,
-          subtype: c.spool.subtype, preset: c.preset.name, nozzle, origin });
+          subtype: c.spool.subtype, preset: c.preset.name, nozzle, origin, ...pin });
   }
   return out;
 }
@@ -314,12 +363,17 @@ export function presetStatusFor(c: SlotChoice, slot: MaterialSlot): PresetStatus
   return slot.suggestion ? slot.suggestion.status : null;
 }
 
+/** "Yoopai PLA+ - User preset": what tells two presets of one name apart. */
+export function presetSourceLabel(p: { source?: string | null }): string {
+  return p.source === "user" ? "User preset" : "System preset";
+}
+
 /** Filter the installed-preset list by what the person typed. Every word must appear somewhere. */
 export function filterPresets(presets: MaterialPreset[], query: string): MaterialPreset[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return presets;
   return presets.filter((p) => {
-    const hay = `${p.base_name} ${p.vendor ?? ""} ${p.filament_type ?? ""}`.toLowerCase();
+    const hay = `${p.base_name} ${p.vendor ?? ""} ${p.filament_type ?? ""} ${presetSourceLabel(p)}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }

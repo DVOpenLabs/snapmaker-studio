@@ -9,9 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  choiceReduce, colourWord, emptyChoice, filterPresets, mappingRequests, materialText, presetStatusFor, slotNumber,
-  unconfirmedSlots,
-  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPresetList, type MaterialSelection,
+  choiceReduce, colourWord, emptyChoice, filterPresets, mappingRequests, materialText, presetSourceLabel,
+  presetStatusFor, slotNumber, unconfirmedSlots,
+  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
 } from "@/lib/projectMaterials";
 import { PROVIDERS, providerArgs, useProvider, type ProviderKind } from "@/store/provider";
@@ -63,7 +63,7 @@ function Swatch({ colour }: { colour: string | null }) {
 
 // --- installed preset picker ---------------------------------------------------------------------
 
-export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList; onPick: (baseName: string) => void; label: string }) {
+export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList; onPick: (preset: MaterialPreset) => void; label: string }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => filterPresets(list.presets, query), [list.presets, query]);
   return (
@@ -74,12 +74,18 @@ export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList
       <ul role="listbox" aria-label={`Installed presets for ${label}`} className="max-h-44 overflow-auto">
         {shown.length === 0 && <li className="px-2 py-1 text-xs text-muted-foreground">No installed preset matches that.</li>}
         {shown.slice(0, 100).map((p) => (
-          <li key={p.base_name} role="option" aria-selected={false}>
-            <button type="button" onClick={() => onPick(p.base_name)}
+          <li key={`${p.ref ?? "system"}:${p.preset_name}`} role="option" aria-selected={false}>
+            <button type="button" onClick={() => onPick(p)}
               className="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left text-sm hover:bg-muted">
-              <span className="truncate">{p.base_name}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {[p.vendor, p.filament_type].filter(Boolean).join(" · ")} · fits {list.nozzle} mm nozzle
+              <span className="truncate">
+                {p.base_name}
+                {/* what tells two presets of one name apart */}
+                {(p.source === "user" || p.ambiguous) && <span className="text-muted-foreground"> — {presetSourceLabel(p)}</span>}
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                {p.status === "needs_confirmation" && <StatusBadge status="needs_confirmation" />}
+                {[p.vendor, p.filament_type].filter(Boolean).join(" · ")} ·{" "}
+                {p.status === "needs_confirmation" ? (p.reason ?? "compatibility not stated") : `fits ${list.nozzle} mm nozzle`}
               </span>
             </button>
           </li>
@@ -186,7 +192,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-medium">Orca preset</span>
           {choice.keepOwn ? <span className="text-muted-foreground">Keep project&apos;s filament</span>
-            : choice.preset ? <span>{choice.preset.name}</span>
+            : choice.preset ? <span>{choice.preset.name}{choice.preset.source === "user" && <span className="text-muted-foreground"> — User preset</span>}</span>
             : <span className="text-muted-foreground">Not chosen yet</span>}
           {status && !choice.keepOwn && (choice.preset || spool) && <StatusBadge status={status} />}
           {spool && choice.preset && !choice.keepOwn && (
@@ -202,9 +208,9 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
 
         {choice.preset && !choice.preset.confirmed && !choice.keepOwn && (
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs text-muted-foreground">{spool?.mapping.reason}</p>
+            <p className="text-xs text-muted-foreground">{choice.preset.note ?? spool?.mapping.reason}</p>
             <Button size="sm" onClick={() => dispatch({ type: "confirmPreset", slot: slot.slot })}>
-              <Check className="h-3.5 w-3.5" /> Confirm this preset
+              <Check className="h-3.5 w-3.5" /> {choice.preset.needsSayso ? "Confirm this is a U1 preset" : "Confirm this preset"}
             </Button>
           </div>
         )}
@@ -238,7 +244,12 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
           )}
         </div>
         {picking && presets && presets.available && (
-          <PresetPicker list={presets} label={`slot ${n}`} onPick={(name) => { setPicking(false); dispatch({ type: "pickPreset", slot: slot.slot, name }); }} />
+          <PresetPicker list={presets} label={`slot ${n}`} onPick={(row) => {
+            setPicking(false);
+            dispatch({ type: "pickPreset", slot: slot.slot, name: row.base_name,
+              source: row.source === "user" || row.ambiguous ? row.source : undefined, ref: row.ref ?? undefined,
+              unproven: row.status === "needs_confirmation", note: row.reason });
+          }} />
         )}
 
         {canRemember(choice) && (

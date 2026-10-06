@@ -54,7 +54,7 @@ def test_a_mapped_slot_records_source_selection_output_declarations_and_discrepa
     assert s["selection"] == {"provider": "spoolman", "spool_id": "124", "vendor": "Yoopai", "material": "PLA",
                               "subtype": "Matte", "colour": "#00AA11", "color_name": "green",
                               "label": "Yoopai PLA Matte Green #124", "preset": MATTE,
-                              "mapping_source": "manual"}
+                              "mapping_source": "manual", "preset_source": "system", "preset_proof": "listed"}
     out = s["output"]
     assert out["preset_written"] == MATTE and out["colour_written"] == "#00AA11"
     assert out["colour_changed"] is True and out["vendor_type_origin"] == "preset"
@@ -256,7 +256,7 @@ def test_no_provider_secret_or_weight_reaches_the_record(env, tmp_path):
         assert word not in blob, word
     sel = _record(result)["slots"][1]["selection"]
     assert set(sel) == {"provider", "spool_id", "vendor", "material", "subtype", "colour", "color_name",
-                        "label", "preset", "mapping_source"}
+                        "label", "preset", "mapping_source", "preset_source", "preset_proof"}
 
 
 def test_the_record_is_only_built_when_project_materials_made_a_choice(tmp_path, catalog):

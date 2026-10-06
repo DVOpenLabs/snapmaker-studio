@@ -175,6 +175,11 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                 "code": "vendor_mismatch",
                 "text": (f"The provider lists {spool_vendor}; the installed preset’s vendor is "
                          f"{preset_vendor}. Studio did not override it.")})
+    if preset and (ctx.get("preset") or {}).get("proof") == "user_confirmed":
+        discrepancies.append({
+            "code": "user_preset_unproven",
+            "text": ("Studio could not tell from this preset of yours which printers it is for; "
+                     "you confirmed it is a U1 preset.")})
     if mapping.get("stale"):
         discrepancies.append({
             "code": "stale_mapping",
@@ -200,6 +205,8 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
             "color_name": (spool or {}).get("color_name") or spool_choices.color_name((spool or {}).get("colour")),
             "label": spool_label(spool), "preset": preset,
             "mapping_source": (mapping.get("source") or "manual") if preset else None,
+            "preset_source": ((ctx.get("preset") or {}).get("source") or "system") if preset else None,
+            "preset_proof": (ctx.get("preset") or {}).get("proof") if preset else None,
         }
 
     record = {
@@ -246,8 +253,9 @@ def _line(rec: dict, spool: dict | None) -> str:
         colour_text = (f" Colour changed to {_colour_phrase(colour)}." if out["colour_changed"]
                        else f" Colour was already {_colour_phrase(colour)}.")
     if out["preset_written"]:
-        head = (f"Slot {n}: {who} mapped to '{out['preset_written']}'." if who else
-                f"Slot {n}: mapped to '{out['preset_written']}' (chosen by you).")
+        mine = " (a preset you made)" if (sel or {}).get("preset_source") == "user" else ""
+        head = (f"Slot {n}: {who} mapped to '{out['preset_written']}'{mine}." if who else
+                f"Slot {n}: mapped to '{out['preset_written']}' (chosen by you{', a preset you made' if mine else ''}).")
         pc = out["preset_controlled"]
         if not pc["kept_by_declaration"]:
             return (head + colour_text + f" Temperature, flow and cooling come from the installed "
@@ -342,7 +350,8 @@ _SLOT_SCHEMA = {
     "slot": int, "label": _S, "involved": bool, "line": _S,
     "source": {"settings_id": _S, "vendor": _S, "type": _S, "colour": _S, "declared_keys": [_S]},
     "selection": {"provider": _S, "spool_id": _S, "vendor": _S, "material": _S, "subtype": _S, "colour": _S,
-                  "color_name": _S, "label": _S, "preset": _S, "mapping_source": _S},
+                  "color_name": _S, "label": _S, "preset": _S, "mapping_source": _S,
+                  "preset_source": _S, "preset_proof": _S},
     "output": {
         "preset_written": _S, "colour_written": _S, "colour_changed": bool, "vendor_type_origin": _S,
         "changed_fields": [{"key": _S, "old": _ANY, "new": _ANY}],
