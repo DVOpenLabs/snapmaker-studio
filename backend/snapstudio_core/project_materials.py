@@ -414,20 +414,53 @@ def apply_colours(cfg: dict, colours: dict | None) -> list[dict]:
     return changes
 
 
-def withdraw_studio_declarations(cfg: dict, before, slots, filaments: int) -> list[dict]:
-    """Put back, for each confirmed slot, the declaration it had before Studio added its own.
+def same_preset_groups(cfg: dict, catalog, nozzle: str) -> dict[str, list[int]]:
+    """Base preset name -> the slots whose effective filament preset is that installed preset."""
+    groups: dict[str, list[int]] = {}
+    if catalog is None:
+        return groups
+    names = _list(cfg.get("filament_settings_id"))
+    for slot in range(filament_count(cfg)):
+        name = _item(names, slot)
+        if not name:
+            continue
+        found = catalog.evaluate(name, nozzle)
+        if found.get("base_name"):
+            groups.setdefault(found["base_name"], []).append(slot)
+    return groups
 
-    Orca keeps a declared value over the preset's, so a print value Studio declared for a
-    slot would defeat the preset the person chose. Nothing the project itself declared is
-    removed: `before` is the state just ahead of Studio's declaration step."""
+
+def withdraw_studio_declarations(cfg: dict, before, confirmed, filaments: int,
+                                 groups: dict | None = None) -> list[dict]:
+    """Take Studio's OWN declarations back off every slot that must follow a confirmed preset.
+
+    Orca keeps a declared value over the preset's and copies it, with its declaration, to every
+    slot using the same installed preset. So a print value Studio declared would defeat the preset
+    the person chose, on the confirmed slot and on any slot that shares that preset. This
+    restores, for those slots, the declaration they had before Studio's step.
+
+    * a confirmed slot, and every other slot in its same-preset group, are covered;
+    * only what Studio added is removed - `before` is the state just ahead of Studio's
+      declaration step, so a declaration the project itself made is never touched;
+    * slots on a different preset are left exactly as they were.
+    """
     from . import preset_deviation
 
     entries = cfg.get("different_settings_to_system")
     if not isinstance(entries, list):
         return []
+    confirmed = set(confirmed or ())
+    reason: dict[int, tuple[str, str | None, list[int]]] = {s: ("confirmed_slot", None, [s]) for s in confirmed}
+    for base, members in sorted((groups or {}).items()):
+        if confirmed & set(members):
+            for m in members:
+                if m not in confirmed:
+                    reason[m] = ("shared_preset_group", base, list(members))
+                elif len(members) > 1:
+                    reason[m] = ("shared_preset_group", base, list(members))
     original = preset_deviation._entries(before, filaments)
     out = []
-    for slot in sorted(slots):
+    for slot in sorted(reason):
         index = preset_deviation.FIRST_FILAMENT + slot
         if index >= len(entries) - 1 or index >= len(original) - 1:
             continue
@@ -435,7 +468,9 @@ def withdraw_studio_declarations(cfg: dict, before, slots, filaments: int) -> li
                  - set(p.strip() for p in str(original[index]).split(";") if p.strip()))
         if added:
             entries[index] = original[index]
-            out.append({"slot": slot, "withdrawn": sorted(added)})
+            why, base, members = reason[slot]
+            out.append({"slot": slot, "withdrawn": sorted(added), "reason": why, "preset": base,
+                        "group": members})
     return out
 
 

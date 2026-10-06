@@ -157,7 +157,9 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
             # before this step is the project's own and stays.
             from . import project_materials
             restored = project_materials.withdraw_studio_declarations(
-                work, entries_before_declare, confirmed_presets, filament_count(work))
+                work, entries_before_declare, confirmed_presets, filament_count(work),
+                groups=project_materials.same_preset_groups(
+                    work, filament_catalog, project_materials.project_nozzle(cfg)))
             if restored:
                 report["project_materials_declarations_withdrawn"] = restored
                 if declared:

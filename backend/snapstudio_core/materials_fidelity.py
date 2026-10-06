@@ -72,7 +72,8 @@ def _colour_phrase(hex_value: str) -> str:
 
 def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot: dict, report: dict,
                  presets: dict, colours: dict, context: dict, catalog, nozzle: str, guard: dict,
-                 withdrawn: dict) -> dict:
+                 withdrawn: dict, withdrawn_info: dict | None = None) -> dict:
+    withdrawn_info = withdrawn_info or {}
     ctx = context.get(s) or {}
     spool = ctx.get("spool")
     mapping = ctx.get("mapping") or {}
@@ -190,6 +191,7 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
         "declarations": declarations,
         "discrepancies": discrepancies,
     }
+    record["declarations"]["withdrawn_reason"] = (withdrawn_info.get(s) or {}).get("reason")
     record["line"] = _line(record, spool)
     return record
 
@@ -240,18 +242,38 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
     context = context or {}
     guard = guard or {"shared": [], "warnings": [], "conflicts": [], "source_conflicts": [],
                       "removed_by_mode": []}
-    withdrawn = {w["slot"]: w["withdrawn"]
-                 for w in report.get("project_materials_declarations_withdrawn", []) or []}
+    info = {w["slot"]: w for w in report.get("project_materials_declarations_withdrawn", []) or []}
+    withdrawn = {slot: w["withdrawn"] for slot, w in info.items()}
     src_slots, out_slots = pm.extract_slots(source), pm.extract_slots(prepared)
     slots = [_slot_record(i, source, prepared, src_slots[i], out_slots[i], report, presets, colours,
-                          context, catalog, nozzle, guard, withdrawn)
+                          context, catalog, nozzle, guard, withdrawn, info)
              for i in range(min(filament_count(source), filament_count(prepared)))]
     lines = [r["line"] for r in slots if r["involved"]]
+    group_lines, grouped = {}, set()
+    for slot, w in sorted(info.items()):
+        if w.get("reason") == "shared_preset_group" and len(w.get("group") or []) > 1:
+            entry = group_lines.setdefault(w["preset"], {"slots": w["group"], "keys": set()})
+            entry["keys"] |= set(w["withdrawn"])
+            grouped.add(slot)
+    withdrawn_groups = []
+    for preset, entry in group_lines.items():
+        keys = sorted(entry["keys"])
+        phrase = ", ".join(k.replace("_", "-") for k in keys[:-1])
+        phrase = (phrase + " and " if phrase else "") + keys[-1].replace("_", "-")
+        lines.append(f"{_cap(_slots_phrase(entry['slots']))} use '{preset}'. Studio removed its own {phrase} "
+                     "declarations from this shared-preset group so Snapmaker Orca can apply the installed "
+                     "preset consistently.")
+        withdrawn_groups.append({"preset": preset, "slots": entry["slots"], "keys": keys})
     for r in slots:
-        if r["declarations"]["withdrawn_studio_added"]:
+        if r["declarations"]["withdrawn_studio_added"] and r["slot"] not in grouped:
             keys = ", ".join(r["declarations"]["withdrawn_studio_added"])
             lines.append(f"Slot {r['slot'] + 1}: Studio did not declare {keys}, so Snapmaker Orca takes "
                          f"them from '{r['output']['preset_written']}'.")
+        in_group = r["slot"] in {s for g in withdrawn_groups for s in g["slots"]}
+        if in_group and r["declarations"]["retained"]:
+            lines.append(f"Slot {r['slot'] + 1}: the project's own declaration of "
+                         f"{', '.join(r['declarations']['retained'])} remains. Studio does not remove "
+                         "declarations the source made.")
         if r["declarations"]["removed_by_mode"] and mode == "recommended":
             lines.append(f"Slot {r['slot'] + 1}: Recommended mode removed the declarations "
                          f"{', '.join(r['declarations']['removed_by_mode'])} before Prepare.")
@@ -268,6 +290,7 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
         "counts": {"slots": len(slots), "involved": sum(1 for r in slots if r["involved"]),
                    "presets_written": sum(1 for r in slots if r["output"]["preset_written"]),
                    "colours_written": sum(1 for r in slots if r["output"]["colour_written"])},
+        "withdrawn_groups": withdrawn_groups,
         "guard": {k: guard.get(k) for k in ("applies", "blocking", "mode", "conflicts", "shared",
                                              "warnings", "source_conflicts", "removed_by_mode")},
     }
@@ -275,7 +298,7 @@ def build(*, source: dict, prepared: dict, report: dict, mode: str, confirmed_pr
 
 # --- later display: clean what comes back, then check it against the prepared file ---------------
 
-_TOP = ("schema", "mode", "nozzle", "slots", "lines", "counts", "guard")
+_TOP = ("schema", "mode", "nozzle", "slots", "lines", "counts", "guard", "withdrawn_groups")
 _SLOT = ("slot", "label", "involved", "source", "selection", "output", "declarations",
          "discrepancies", "line")
 _MAX_TEXT, _MAX_LIST, _MAX_DEPTH = 400, 64, 6
