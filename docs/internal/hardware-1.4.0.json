@@ -121,7 +121,7 @@
     {
       "name": "The send check fingerprints what it looked at",
       "ok": true,
-      "detail": "token cdc34107…"
+      "detail": "token d15147eb…"
     },
     {
       "name": "The fingerprint carries the machine's real loadout",
@@ -291,7 +291,7 @@
     {
       "name": "The request listener actually observed allow-listed printer traffic (H5)",
       "ok": true,
-      "detail": "5 allow-listed /printer/* POST(s) observed"
+      "detail": "4 allow-listed /printer/* POST(s) observed"
     },
     {
       "name": "No printer CONTROL route was ever called during this run (R2/A7-6)",
@@ -323,19 +323,19 @@
       "speed_factor": 1,
       "extrude_factor": 1,
       "bed": {
-        "temperature": 23,
+        "temperature": 24,
         "target": 0
       },
       "toolheads": [
         {
           "index": 0,
-          "temperature": 25,
+          "temperature": 26,
           "target": 0,
           "active": false
         },
         {
           "index": 1,
-          "temperature": 25,
+          "temperature": 26,
           "target": 0,
           "active": false
         },
@@ -347,7 +347,7 @@
         },
         {
           "index": 3,
-          "temperature": 25,
+          "temperature": 26,
           "target": 0,
           "active": false
         }
@@ -691,7 +691,7 @@
         "reachable": true,
         "host": "<printer-on-lan>",
         "port": 7125,
-        "observed_at": 1791212857.655756,
+        "observed_at": 1791246705.6587408,
         "toolhead_count": 4,
         "bed_mm": {
           "x": 271,
@@ -997,7 +997,7 @@
         "reachable": true,
         "host": "<printer-on-lan>",
         "port": 7125,
-        "observed_at": 1791212858.4118333,
+        "observed_at": 1791246706.4194584,
         "toolhead_count": 4,
         "bed_mm": {
           "x": 271,
@@ -1417,7 +1417,7 @@
       "toolhead_count": 4,
       "toolhead_count_source": "printer",
       "revision": 0,
-      "observed_at": "2026-10-05T15:07:43Z",
+      "observed_at": "2026-10-06T00:31:51Z",
       "count_mismatch": false,
       "storage_error": null,
       "toolheads": [
@@ -1473,7 +1473,7 @@
       "toolhead_count": 4,
       "toolhead_count_source": "printer",
       "revision": 1,
-      "observed_at": "2026-10-05T15:07:45Z",
+      "observed_at": "2026-10-06T00:31:53Z",
       "count_mismatch": false,
       "storage_error": null,
       "toolheads": [
@@ -1481,7 +1481,7 @@
           "toolhead": 0,
           "diameter": 0.4,
           "source": "printer",
-          "confirmed_at": "2026-10-05T15:07:44Z",
+          "confirmed_at": "2026-10-06T00:31:52Z",
           "confirmed": 0.6,
           "conflict": true,
           "out_of_range": false

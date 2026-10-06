@@ -84,15 +84,15 @@ Verify it before you run it:
 
 - Release: [v1.4.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.4.0)
 - Windows installer: `Snapmaker.Studio_1.4.0_x64-setup.exe`
-  — 21,858,277 bytes — SHA256: `e90c06f23677ed2b05485a5e20ace43c98eea65fd7603ee047d5eadd9909e505`
-- Linux package: `snapmaker-studio_1.4.0_amd64_7cae89042649.deb`
-  — 25,857,442 bytes — SHA256: `48315182919c458f51382d101f7352e6375d63484a0c3f3e29bc2c294d5a680e`
+  — 21,861,080 bytes — SHA256: `0a94e5a89e88496fa65e3295140efa0e9bd7bef4317e28695509caee00ff237f`
+- Linux package: `snapmaker-studio_1.4.0_amd64_e5eafdc323e6.deb`
+  — 25,862,448 bytes — SHA256: `c1b031d4e9b51ee3a46515e727285ac59d41b002b840bf01e573058b398e1701`
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.4.0_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.4.0_amd64_7cae89042649.deb
+sha256sum snapmaker-studio_1.4.0_amd64_e5eafdc323e6.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -182,7 +182,7 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2619 · 605 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 2619 · 607 · clean · clean |
 
 The installed-application acceptance count (45/45) is a different total from
 v1.2.0's: this release adds two checks for the SpoolEase provider and
@@ -223,8 +223,13 @@ actual U1 → prepare it if needed → hand it to Snapmaker Orca.
   Studio never sees your password, cookies or tokens, and "Clear site data" removes only
   that sign-in.
 - Limits: library projects only (no folder scan), no page scraping, no "add this page"
-  button, Windows and Linux only for downloads. Printables downloads are verified;
-  MakerWorld is verified live only where [TRUST_STATUS.md](docs/TRUST_STATUS.md) says so.
+  button, Windows and Linux only for downloads. Printables and MakerWorld downloads, and
+  MakerWorld sign-in with Google, are verified live ([TRUST_STATUS.md](docs/TRUST_STATUS.md));
+  Apple and Facebook sign-in use the same path and are not yet verified.
+
+| Model Connect: the steps, in Studio | A download added to your Library | Ready Now |
+|---|---|---|
+| ![Find Models with the four steps](docs/screenshots/v1.4.0/model-connect-panel.png) | ![Added from Printables, with Check for U1, Prepare and Open project](docs/screenshots/v1.4.0/model-connect-added-from.png) | ![Ready Now sorting library projects](docs/screenshots/v1.4.0/ready-now.png) |
 
 ## What's new in v1.3.1
 

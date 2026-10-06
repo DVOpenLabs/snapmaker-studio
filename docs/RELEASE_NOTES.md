@@ -28,17 +28,20 @@ pages or add the page you are looking at.
 
 ## Limits
 
-Printables downloads are verified. MakerWorld is verified live only where
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.4.0/docs/TRUST_STATUS.md)
-says so. A file from a host Studio has not allowlisted is refused with a plain message.
+Printables and MakerWorld downloads are verified live, and so is MakerWorld sign-in with
+Google (it opens a small Studio sign-in window with no access to Studio, which closes itself).
+Apple and Facebook sign-in use the same path and are not yet verified. The other approved sites
+keep browsing until they are verified. A file from a host Studio has not allowlisted is
+refused with a plain message. Details:
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.4.0/docs/TRUST_STATUS.md).
 Downloads and "Clear site data" are available on Windows and Linux, not macOS. The size limit
 (512 MiB) is checked after a download finishes, and a download abandoned part-way can leave a
 partial file in Studio's downloads folder.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.4.0_x64-setup.exe` — 21,858,277 bytes — SHA256 `e90c06f23677ed2b05485a5e20ace43c98eea65fd7603ee047d5eadd9909e505`
-- Linux: `snapmaker-studio_1.4.0_amd64_7cae89042649.deb` — 25,857,442 bytes — SHA256 `48315182919c458f51382d101f7352e6375d63484a0c3f3e29bc2c294d5a680e`
+- Windows: `Snapmaker.Studio_1.4.0_x64-setup.exe` — 21,861,080 bytes — SHA256 `0a94e5a89e88496fa65e3295140efa0e9bd7bef4317e28695509caee00ff237f`
+- Linux: `snapmaker-studio_1.4.0_amd64_e5eafdc323e6.deb` — 25,862,448 bytes — SHA256 `c1b031d4e9b51ee3a46515e727285ac59d41b002b840bf01e573058b398e1701`
 
 Verification for this release is in
 [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.4.0/docs/TRUST_STATUS.md).

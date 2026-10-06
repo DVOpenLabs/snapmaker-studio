@@ -108,7 +108,7 @@ source at the release commit, not from the installer.
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
 | Backend | 2619 passed, 12 skipped | `pytest` |
-| Desktop | 605 passed | `npm run test` |
+| Desktop | 607 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
 The installed-application acceptance count is higher than the previous

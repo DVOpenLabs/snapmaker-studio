@@ -6,11 +6,11 @@
     "laneKind": "acceptance",
     "identity": "acceptance",
     "status": "pass",
-    "installerSha256": "562145883aa5c81f213c3adf7446b62a07850d786113bf2f48fb8d7a95fb75b1",
+    "installerSha256": "5ddb5d72f46b42fda042e45f182b15a860e32914209758a429220c1223018ff3",
     "sourceVersion": "1.4.0",
     "templateSha256": "d30f5f9d4bc40902addbc895e4211498612c6f0c567a54738c47fe3403ce1028",
     "rewrappedOnDemand": true,
-    "installDir": "install\\h876c0c68bb654e068a4ade7b814f20b2",
+    "installDir": "install\\hf8f6df25d327412dba4625a649ac7690",
     "installArguments": "/S /NCRC /NS /D=<install dir>",
     "preflight": {
       "updateCheck": "absent",
@@ -20,7 +20,7 @@
     "repair": null,
     "journals": [
       {
-        "runId": "h876c0c68bb654e068a4ade7b814f20b2",
+        "runId": "hf8f6df25d327412dba4625a649ac7690",
         "installExitCode": 0,
         "finalized": true
       }

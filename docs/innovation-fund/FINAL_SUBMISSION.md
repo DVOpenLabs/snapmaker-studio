@@ -83,7 +83,7 @@ source at the release commit, not from the installer.
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
 | Backend tests | 2619 passed, 12 skipped |
-| Desktop tests | 605 passed |
+| Desktop tests | 607 passed |
 | TypeScript · production build · Rust | clean |
 
 Reproduce any of it: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).

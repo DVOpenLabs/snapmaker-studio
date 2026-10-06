@@ -220,7 +220,7 @@ source at the release commit, not from the installer. Commands, counts and full 
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
 | Backend tests | 2619 passed, 12 skipped |
-| Desktop tests | 605 passed |
+| Desktop tests | 607 passed |
 | TypeScript, Rust, production build | clean |
 
 Demo: [`docs/media/snapmaker-studio-demo.mp4`](media/snapmaker-studio-demo.mp4) —
