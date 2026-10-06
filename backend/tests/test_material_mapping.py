@@ -73,7 +73,9 @@ def test_signature_ignores_case_and_spacing_but_not_provider(catalog, store):
 
 def test_provider_slicer_filament_is_proven_only_by_the_catalogue(catalog, store):
     ok = mm.resolve(catalog, store, "spoolease", {**SPOOL, "slicer_filament": "Snapmaker PLA Matte @U1"}, "0.4")
-    assert (ok["status"], ok["match_source"]) == (PROVEN, mm.SOURCE_EXACT_NAME)
+    # a provider's text names an installed preset but never proves it on its own
+    assert (ok["status"], ok["match_source"]) == (NEEDS_CONFIRMATION, mm.SOURCE_EXACT_NAME)
+    assert ok["preset_name"] == "Snapmaker PLA Matte @U1"
     bogus = mm.resolve(catalog, store, "spoolease", {**SPOOL, "slicer_filament": "Yoopai PLA+"}, "0.4")
     assert bogus["status"] == NO_MATCH and "Yoopai PLA+" in bogus["reason"]
     # a saved mapping outranks the provider's text

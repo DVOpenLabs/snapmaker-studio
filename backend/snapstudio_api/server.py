@@ -715,14 +715,50 @@ def _make_handler(token: str):
                 if not isinstance(dry_run, bool):
                     self._send(400, {"error": "dry_run must be a boolean"})
                     return
+                materials = data.get("materials")
+                if materials is not None and not isinstance(materials, dict):
+                    self._send(400, {"error": "materials must be an object"})
+                    return
                 try:
-                    result = service.convert(path, data.get("out_dir"), prepare_mode, dry_run)
-                    if not dry_run:
+                    result = service.convert(path, data.get("out_dir"), prepare_mode, dry_run,
+                                             materials)
+                    if not dry_run and not result.get("blocked"):
                         service.record_conversion(path, result)  # best-effort index
                     self._send(200, result)
                 except ValueError as e:
                     self._send(400, {"error": str(e)})
                 except Exception as exc:  # adapter must not crash the server
+                    self._send_exception(exc)
+            elif self.path == "/project_materials":
+                try:
+                    slot_map = data.get("slot_map")
+                    self._send(200, service.project_materials(
+                        rv.require_path_string(data),
+                        provider=rv.optional_str(data, "provider", "") or None,
+                        provider_url=rv.optional_str(data, "provider_url", "") or None,
+                        provider_key=rv.optional_str(data, "provider_key", "") or None,
+                        slot_map=slot_map if isinstance(slot_map, dict) else None,
+                        slot_base=rv.optional_int(data, "slot_base", 0),
+                        limit=rv.optional_int(data, "limit", 5)))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/material_presets":
+                try:
+                    self._send(200, service.material_presets(rv.optional_str(data, "nozzle", "0.4")))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path in ("/material_mapping/confirm", "/material_mapping/remove"):
+                try:
+                    fn = (service.material_mapping_confirm if self.path.endswith("confirm")
+                          else service.material_mapping_remove)
+                    self._send(200, fn(data))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
                     self._send_exception(exc)
             elif self.path == "/prepare_scaled":
                 path = data.get("path")

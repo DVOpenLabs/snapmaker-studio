@@ -177,8 +177,8 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
 
     Order: a remembered spool mapping, a remembered signature mapping, then the
     provider's own slicer filament name (SpoolEase) when it names exactly one
-    installed preset. Nothing is chosen between presets; an unresolved spool comes
-    back ``no_match`` so the person picks one.
+    installed preset — which is only ever ``needs_confirmation``. Nothing is chosen
+    between presets; an unresolved spool comes back ``no_match`` so the person picks one.
     """
     out = {"status": NO_MATCH, "match_source": SOURCE_NONE, "preset_name": None,
            "base_name": None, "reason": "", "candidates": [], "fingerprint": None,
@@ -201,7 +201,14 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
     if named:
         found = catalog.evaluate(named, nozzle)
         if found["status"] != NO_MATCH:
+            # The provider's text is a claim, not a decision. Even when it names exactly one
+            # installed preset it stays unconfirmed until the person confirms it, which saves
+            # a mapping; only a saved mapping proves it.
             out.update(_carry(found), match_source=SOURCE_EXACT_NAME)
+            if out["status"] == PROVEN:
+                out["status"] = NEEDS_CONFIRMATION
+                out["reason"] = ("The provider names this installed preset. Confirm it to use "
+                                 "it and to remember it.")
             return out
         out["reason"] = (f"The provider names “{named}” as its slicer filament, but "
                          + found["reason"][0].lower() + found["reason"][1:])

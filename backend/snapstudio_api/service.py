@@ -192,9 +192,21 @@ def first_layer_check(symptom: str) -> dict:
 
 
 def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
-            dry_run: bool = False) -> dict:
-    """Make a file U1-ready and save it next to the source. Returns the result."""
-    result = convert_to_u1(path, out_dir, prepare_mode=prepare_mode, dry_run=dry_run).to_dict()
+            dry_run: bool = False, materials: dict | None = None, *,
+            catalog=None) -> dict:
+    """Make a file U1-ready and save it next to the source. Returns the result.
+
+    `materials` is Project Materials: the person's explicit per-slot choices,
+    ``{"selections": [{"slot": 0, "preset": "<installed preset>"|None, "colour": "#RRGGBB"|None}]}``.
+    Without it this behaves exactly as it always did."""
+    confirmed_presets = confirmed_colours = filament_catalog = None
+    if materials is not None:
+        confirmed_presets, confirmed_colours, filament_catalog = _material_inputs(
+            path, materials, catalog)
+    result = convert_to_u1(path, out_dir, prepare_mode=prepare_mode, dry_run=dry_run,
+                           confirmed_presets=confirmed_presets or None,
+                           filament_catalog=filament_catalog,
+                           confirmed_colours=confirmed_colours or None).to_dict()
     if not dry_run and result.get("output_path"):
         summary = result.get("settings_summary") or {}
         _record_fix(
@@ -205,6 +217,132 @@ def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve
             validated=result.get("validated_ok"),
             notes=list(summary.get("warnings") or []))
     return result
+
+
+# --- Project Materials -------------------------------------------------------
+
+def _orca_catalog():
+    from snapstudio_core import preset_catalog
+    return preset_catalog.load_default()
+
+
+def _material_store():
+    from snapstudio_core import material_mapping
+    return material_mapping.Store()
+
+
+def _material_inputs(path: str, materials: dict, catalog=None):
+    """The person's selections -> (confirmed_presets, confirmed_colours, catalogue).
+
+    Raises ValueError (a refusal with a sentence a person can read) for anything not proven."""
+    from snapstudio_core import project_materials as pm
+
+    if not isinstance(materials, dict) or not isinstance(materials.get("selections", []), list):
+        raise ValueError("materials must be an object with a 'selections' list")
+    if str(path).lower().endswith(".stl"):
+        raise ValueError("Project Materials needs a 3MF project with filament slots")
+    tm = ThreeMF.open(path)
+    cfg, _plates = pm.read_project(tm)
+    if cfg is None:
+        raise ValueError("This file has no project settings, so it has no filament slots to map")
+    catalog = catalog if catalog is not None else _orca_catalog()
+    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog,
+                                         pm.project_nozzle(cfg))
+    return presets, colours, catalog
+
+
+def project_materials(path: str, provider: str | None = None, provider_url: str | None = None,
+                      provider_key: str | None = None, slot_map: dict | None = None,
+                      slot_base: int | None = None, spoolman: str | None = None,
+                      limit: int = 5, *, catalog=None, store=None) -> dict:
+    """Which spool and which installed Orca preset could fill each filament slot.
+
+    Read-only. Reads the provider once through the existing seam and never writes to it.
+    Nothing is selected: every slot comes back with ranked candidates and the reasons."""
+    from snapstudio_core import material_providers as providers, project_materials as pm
+
+    if str(path).lower().endswith(".stl"):
+        return {"schema": pm.SCHEMA, "supported": False,
+                "reason": "An STL has no filament slots. Open a 3MF project."}
+    tm = ThreeMF.open(path)
+    cfg, plates = pm.read_project(tm)
+    if cfg is None:
+        return {"schema": pm.SCHEMA, "supported": False,
+                "reason": "This file has no project settings, so it has no filament slots to map."}
+    kind, url = _provider_choice(provider, provider_url, spoolman)
+    state = None
+    if url:
+        try:
+            state = providers.read(kind, providers.validate_provider_url(url), slot_map,
+                                   slot_base=slot_base, key=provider_key)
+        except providers.InvalidProviderAddress:
+            state = {"available": False, "error_code": "invalid_address", "spools": [], "slots": []}
+        except Exception:
+            state = {"available": False, "error_code": "unreachable", "spools": [], "slots": []}
+    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
+                      catalog=catalog if catalog is not None else _orca_catalog(),
+                      store=store if store is not None else _material_store(),
+                      limit=max(1, min(int(limit), 20)))
+
+
+def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
+    """The installed U1-compatible filament presets for a nozzle, for a picker."""
+    catalog = catalog if catalog is not None else _orca_catalog()
+    if nozzle not in ("0.2", "0.4", "0.6", "0.8"):
+        raise ValueError("nozzle must be one of 0.2, 0.4, 0.6, 0.8")
+    if catalog is None:
+        return {"available": False, "nozzle": nozzle, "presets": [], "source": None}
+    rows = []
+    for base in catalog.names_for(nozzle):
+        e = catalog.entries[base]
+        rows.append({"base_name": base, "preset_name": e["nozzles"][nozzle],
+                     "vendor": e["vendor"], "filament_type": e["filament_type"],
+                     "fingerprint": e["fingerprint"]})
+    return {"available": True, "nozzle": nozzle, "presets": rows, "source": catalog.source,
+            "fingerprint": catalog.fingerprint}
+
+
+def _mapping_key(data: dict):
+    from snapstudio_core import material_mapping as mm
+
+    scope = data.get("scope")
+    provider = str(data.get("provider") or "").strip().lower()
+    if scope not in (mm.SCOPE_SPOOL, mm.SCOPE_SIGNATURE) or not provider:
+        raise ValueError("scope must be 'spool' or 'signature' and a provider is required")
+    if scope == mm.SCOPE_SPOOL:
+        spool_id = data.get("spool_id")
+        return scope, provider, "" if spool_id is None else str(spool_id), None
+    return scope, provider, None, mm.signature(data.get("vendor"), data.get("material"),
+                                               data.get("subtype"))
+
+
+def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
+    """Remember that a spool (or a kind of spool) is a real installed Orca preset.
+
+    Only a preset that is proven in the installed catalogue right now can be saved."""
+    from snapstudio_core import material_mapping as mm, preset_catalog
+
+    scope, provider, spool_id, sig = _mapping_key(data)
+    nozzle = str(data.get("nozzle") or "0.4")
+    catalog = catalog if catalog is not None else _orca_catalog()
+    if catalog is None:
+        raise ValueError("Snapmaker Orca's installed filament presets could not be read")
+    found = catalog.evaluate(data.get("preset"), nozzle)
+    if found["status"] != preset_catalog.PROVEN:
+        raise ValueError(
+            f"That is not a proven installed preset for the {nozzle} mm nozzle: {found['reason']}")
+    origin = data.get("origin") or mm.SOURCE_MANUAL
+    row = (store if store is not None else _material_store()).put(
+        scope=scope, provider=provider, spool_id=spool_id, sig=sig, preset=found,
+        origin=origin, catalog=catalog)
+    return {"ok": True, "mapping": row}
+
+
+def material_mapping_remove(data: dict, *, store=None) -> dict:
+    scope, provider, spool_id, sig = _mapping_key(data)
+    removed = (store if store is not None else _material_store()).remove(
+        scope=scope, provider=provider, spool_id=spool_id, sig=sig)
+    return {"ok": True, "removed": removed}
 
 
 def prepare_scaled(path: str, scale_percent: float, out_dir: str | None = None) -> dict:
