@@ -333,13 +333,16 @@ def check_structure(tm) -> None:
 
 def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
                   dry_run: bool = False, confirmed_presets: dict | None = None,
-                  filament_catalog=None, confirmed_colours: dict | None = None) -> ConversionResult:
+                  filament_catalog=None, confirmed_colours: dict | None = None,
+                  material_context: dict | None = None) -> ConversionResult:
     """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
 
     `confirmed_presets` maps a filament slot to the exact installed Orca preset the
     person confirmed for it. Slots not listed keep the project's own filament identity
     in every mode; `filament_catalog` only lets the report suggest a preset for them.
     `confirmed_colours` maps a slot to the colour of the spool the person selected.
+    `material_context` maps a slot to the selected spool and how its preset was matched; it
+    only feeds the plain-language record of what happened and changes nothing in the copy.
 
     With `confirmed_presets`, a project whose existing vendor/type declarations Orca would
     copy between slots sharing a preset is not prepared: the result is `blocked`."""
@@ -423,6 +426,14 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
         summary["project_materials"] = {
             **(outcome.report.get("filament_identity") or {}), "guard": material_guard}
+        if confirmed_presets or confirmed_colours:
+            from . import materials_fidelity
+            from . import project_materials as pm
+            summary["project_materials"]["fidelity"] = materials_fidelity.build(
+                source=before, prepared=after, report=outcome.report, mode=prepare_mode,
+                confirmed_presets=confirmed_presets, confirmed_colours=confirmed_colours,
+                context=material_context, catalog=filament_catalog, nozzle=pm.project_nozzle(before),
+                guard=material_guard)
     check_structure(tm)
     backup = src.with_suffix(".orig.3mf")
     if not dry_run and not backup.exists():

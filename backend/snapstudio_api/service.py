@@ -199,14 +199,15 @@ def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve
     `materials` is Project Materials: the person's explicit per-slot choices,
     ``{"selections": [{"slot": 0, "preset": "<installed preset>"|None, "colour": "#RRGGBB"|None}]}``.
     Without it this behaves exactly as it always did."""
-    confirmed_presets = confirmed_colours = filament_catalog = None
+    confirmed_presets = confirmed_colours = filament_catalog = material_context = None
     if materials is not None:
-        confirmed_presets, confirmed_colours, filament_catalog = _material_inputs(
+        confirmed_presets, confirmed_colours, filament_catalog, material_context = _material_inputs(
             path, materials, catalog)
     result = convert_to_u1(path, out_dir, prepare_mode=prepare_mode, dry_run=dry_run,
                            confirmed_presets=confirmed_presets or None,
                            filament_catalog=filament_catalog,
-                           confirmed_colours=confirmed_colours or None).to_dict()
+                           confirmed_colours=confirmed_colours or None,
+                           material_context=material_context or None).to_dict()
     if not dry_run and result.get("output_path"):
         summary = result.get("settings_summary") or {}
         _record_fix(
@@ -246,9 +247,64 @@ def _material_inputs(path: str, materials: dict, catalog=None):
     if cfg is None:
         raise ValueError("This file has no project settings, so it has no filament slots to map")
     catalog = catalog if catalog is not None else _orca_catalog()
-    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog,
-                                         pm.project_nozzle(cfg))
-    return presets, colours, catalog
+    nozzle = pm.project_nozzle(cfg)
+    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog, nozzle)
+    return presets, colours, catalog, _material_context(materials.get("selections"), presets, catalog, nozzle)
+
+
+def _text_field(value, limit: int = 120) -> str | None:
+    ok = isinstance(value, (str, int)) and not isinstance(value, bool)
+    text = " ".join(str(value).split())[:limit] if ok else ""
+    return text or None
+
+
+def _clean_spool(spool) -> dict | None:
+    """The selected spool's identity, and nothing else the client sent along with it."""
+    from snapstudio_core import project_materials as pm
+
+    if not isinstance(spool, dict):
+        return None
+    out = {"provider": (_text_field(spool.get("provider"), 40) or "").lower() or None,
+           "id": _text_field(spool.get("id")), "vendor": _text_field(spool.get("vendor")),
+           "material": _text_field(spool.get("material"), 60),
+           "subtype": _text_field(spool.get("subtype"), 60),
+           "colour": pm.hex6(spool.get("colour")), "color_name": _text_field(spool.get("color_name"), 60)}
+    return out if any(out.values()) else None
+
+
+def _material_context(selections, presets: dict, catalog, nozzle: str) -> dict:
+    """Per slot: the selected spool and how its preset was matched, worked out here rather than
+    taken from the request. Feeds the plain-language record and nothing in the prepared file."""
+    from snapstudio_core import material_mapping as mm
+
+    store = _material_store()
+    out: dict[int, dict] = {}
+    for sel in selections or []:
+        slot = sel.get("slot")
+        raw = sel.get("spool") if isinstance(sel.get("spool"), dict) else {}
+        spool = _clean_spool(raw)
+        entry: dict = {"spool": spool}
+        if spool and slot in presets and catalog is not None and spool.get("provider"):
+            chosen = catalog.evaluate(presets[slot], nozzle)
+            probe = {"id": spool.get("id"), "vendor": spool.get("vendor"),
+                     "material": spool.get("material"), "subtype": spool.get("subtype"),
+                     "slicer_filament": _text_field(raw.get("slicer_filament"))}
+            found = mm.resolve(catalog, store, spool["provider"], probe, nozzle)
+            same = found.get("base_name") == chosen.get("base_name")
+            saved = found["match_source"] in (mm.SOURCE_SAVED_SPOOL, mm.SOURCE_SAVED_SIGNATURE)
+            if saved and same and found["status"] == "proven":
+                source = found["match_source"]
+            elif found["match_source"] == mm.SOURCE_EXACT_NAME and same:
+                source = "slicer_filament_confirmed"
+            else:
+                source = "manual"
+            entry["mapping"] = {"source": source, "stale": bool(found.get("stale")),
+                                "saved_base": found.get("base_name") if saved else None}
+        elif slot in presets:
+            entry["mapping"] = {"source": "manual", "stale": False, "saved_base": None}
+        if isinstance(slot, int):
+            out[slot] = entry
+    return out
 
 
 def project_materials(path: str, provider: str | None = None, provider_url: str | None = None,
@@ -597,12 +653,12 @@ def color_plan(path: str, toolheads: int | None = None) -> dict:
     return cp.analyse(path, toolheads=toolheads)
 
 
-def fidelity_audit(original: str, prepared: str) -> dict:
+def fidelity_audit(original: str, prepared: str, materials: dict | None = None) -> dict:
     """What survived preparing a copy, element by element, with the reason for
     anything changed or dropped — and an explicit list of what Studio could not
     verify."""
     from snapstudio_core import fidelity
-    return fidelity.audit(original, prepared)
+    return fidelity.audit(original, prepared, materials)
 
 
 def preflight(path: str, host: str | None = None, port: int = 7125,

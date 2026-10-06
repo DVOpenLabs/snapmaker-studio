@@ -423,8 +423,12 @@ def _prusa_rows(tm) -> list[dict]:
 
 # --- entry point ------------------------------------------------------------
 
-def audit(original: str, prepared: str) -> dict:
-    """Compare an original project with a prepared copy. Never raises."""
+def audit(original: str, prepared: str, materials: dict | None = None) -> dict:
+    """Compare an original project with a prepared copy. Never raises.
+
+    `materials` is the Project Materials record Prepare returned. It is cleaned and checked
+    against the prepared file, then attached as `materials` (the schema becomes fidelity/2).
+    Without it the report is exactly what it always was."""
     try:
         a = ThreeMF.open(original)
     except UnsafeArchive as e:
@@ -478,7 +482,7 @@ def audit(original: str, prepared: str) -> dict:
 
     ordered = sorted(rows, key=lambda r: (_ORDER[r["status"]], r["element"]))
     claims = _claims(counts)
-    return {
+    report = {
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "original": Path(original).name,
@@ -500,6 +504,10 @@ def audit(original: str, prepared: str) -> dict:
                        "could not identify is listed as unverified rather than assumed to "
                        "be fine."),
     }
+    if materials is not None:
+        from . import materials_fidelity
+        report = materials_fidelity.attach(report, materials, b)
+    return report
 
 
 #: Splitting a mesh costs about what preparing it did, so a project far larger

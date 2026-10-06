@@ -306,9 +306,12 @@ def _make_handler(token: str):
                     self._send_exception(exc)
             elif self.path == "/fidelity":
                 try:
+                    materials = data.get("materials")
+                    if materials is not None and not isinstance(materials, dict):
+                        raise ValidationError("Invalid 'materials'")
                     self._send(200, service.fidelity_audit(
                         rv.require_path_string(data, "original"),
-                        rv.require_path_string(data, "prepared")))
+                        rv.require_path_string(data, "prepared"), materials))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
