@@ -4,6 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
+import type {
+  MappingRequest, MaterialGuard, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
+} from "@/lib/projectMaterials";
 
 type ApiInfo = { port: number; token: string };
 let cached: ApiInfo | null = null;
@@ -131,6 +134,34 @@ export interface SettingsSummary {
   warnings: string[];
   recommendations_available: boolean;
   recommended_changes: SettingsChange[];
+  /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
+  project_materials?: ProjectMaterialsSummary;
+}
+
+/** What Prepare reports about Project Materials. `fidelity` is the engine's own record, with its
+ *  plain-language lines already written. */
+export interface ProjectMaterialsSummary {
+  guard?: MaterialGuard | null;
+  fidelity?: MaterialsFidelity;
+  suggestions?: { slot: number; family: string; preset_name: string; base_name: string; status: string; reason: string }[];
+}
+
+export interface MaterialsFidelitySlot {
+  slot: number;
+  label: string;
+  involved: boolean;
+  line: string;
+  verified?: boolean;
+  verification?: string[];
+  discrepancies: { code: string; text: string }[];
+}
+
+export interface MaterialsFidelity {
+  schema: string;
+  mode: string;
+  lines: string[];
+  slots: MaterialsFidelitySlot[];
+  verified?: boolean;
 }
 
 export interface ConversionResult {
@@ -141,14 +172,21 @@ export interface ConversionResult {
   output_name: string;
   validated_ok: boolean;
   errors?: string[];
+  /** True when Prepare refused (a same-preset declaration conflict) and wrote nothing. */
+  blocked?: boolean;
 }
 
-export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false): Promise<ConversionResult> {
+export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false,
+                              materials?: MaterialSelection[]): Promise<ConversionResult> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/convert`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, out_dir: outDir ?? null, prepare_mode: prepareMode, dry_run: dryRun || undefined }),
+    body: JSON.stringify({
+      path, out_dir: outDir ?? null, prepare_mode: prepareMode, dry_run: dryRun || undefined,
+      // Only when the person chose something in Project Materials; absent means Prepare as before.
+      ...(materials && materials.length ? { materials: { selections: materials } } : {}),
+    }),
   });
   if (!r.ok) {
     let msg = `convert failed (${r.status})`;
@@ -1724,6 +1762,26 @@ export interface ProviderStatus {
 
 export function providerTest(url: string, provider: string, key?: string): Promise<ProviderTest> {
   return post("/provider/test", { url, provider, ...(key !== undefined ? { provider_key: key } : {}) }, "provider test");
+}
+
+/** Project Materials: per-slot source facts, ranked spool candidates with the engine's reasons,
+ *  and the same-preset check. Read-only; nothing is selected. */
+export function projectMaterials(path: string, provider: ProviderArgs = {}, limit = 3): Promise<ProjectMaterialsAnalysis> {
+  return post("/project_materials", { path, limit, ...provider }, "project materials");
+}
+
+/** The installed Orca presets that fit the U1 and a nozzle, for the picker. */
+export function materialPresets(nozzle: string): Promise<MaterialPresetList> {
+  return post("/material_presets", { nozzle }, "installed presets");
+}
+
+/** Remember a confirmed spool/preset pair. Only called after the person ticked Remember and went on to prepare. */
+export function confirmMaterialMapping(request: MappingRequest): Promise<{ ok: boolean }> {
+  return post("/material_mapping/confirm", request, "save mapping");
+}
+
+export function removeMaterialMapping(request: Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype">): Promise<{ ok: boolean; removed: boolean }> {
+  return post("/material_mapping/remove", request, "reset mapping");
 }
 
 export function materialPlan(

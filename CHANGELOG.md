@@ -6,6 +6,56 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+**Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**
+
+### Added
+- **Project Materials** (Prepare). For each filament slot of a project Studio shows what the
+  model asks for (material, colour, and the grams when the file's own slice states them), the
+  top three spools from your inventory with the reasons they were suggested, and the installed
+  Snapmaker Orca preset each one maps to. Nothing is chosen for you: you pick a spool, you
+  confirm the preset, you review a plain-language summary, and only then does Studio prepare the
+  copy. Choosing a spool carries its colour into the project.
+- **Built-in and your own Snapmaker Orca presets.** Studio reads Orca's bundled U1 presets and
+  the filament presets you created in Orca (read-only; it never writes to Orca's folders). A
+  preset is "Proven" only when Studio can tell it is for the U1 and your nozzle, including a
+  preset of yours that inherits from a U1 preset. A preset of yours that does not say which
+  printers it is for is "Needs confirmation": it is used only after you say it is a U1 preset.
+  When two presets share a name (built-in and yours, or two of yours) Studio never picks one
+  silently; the picker labels each as "System preset" or "User preset".
+- **Remember this mapping**, for one spool or for similar spools. A remembered mapping is
+  checked again every time: if the preset was deleted, renamed, replaced, became ambiguous or no
+  longer fits, it is not applied. A SpoolEase slicer-filament name only suggests a preset; it
+  is never trusted until you confirm it once.
+- **Same-preset safety.** Snapmaker Orca copies a declared value to every slot that uses the
+  same preset. Studio removes only its own declarations from such a group so the preset stays in
+  charge, never one the original project declared, and stops (writing nothing) if the project's
+  own vendor/type declarations would be copied onto a slot they do not belong to.
+- **A fidelity summary for Project Materials**: per slot, what was mapped, what changed, what
+  was kept, what the preset controls, and anything that did not match (for example a provider
+  vendor that differs from the preset's). Spool details are labelled as what you selected, not
+  as read from the file.
+
+### Changed
+- **Recommended mode no longer silently writes the legacy "Snapmaker PLA" preset** over every
+  filament. A slot keeps the project's own filament identity unless you confirmed an installed
+  preset for it; Studio may suggest a generic preset but never applies one for you.
+- Project Materials appears whenever a project has filament slots, whether or not the
+  compatibility check found anything.
+
+### Known limitation
+- **Presets you made yourself need a manual check in Orca.** Studio can find your own preset,
+  map a spool to it and write its exact name into the copy, but it cannot confirm that Snapmaker
+  Orca will apply that preset's temperature, flow and cooling. In testing, Orca 2.4.0 kept the
+  project's own values and showed the preset as modified (in one profile with a "Customized
+  Preset" prompt). Such presets are marked "Confirmed by you" and "Manual check in Orca
+  required"; check the filament in Orca before slicing. Orca's built-in presets are unaffected.
+
+### Not included
+- Project Materials does not create custom Snapmaker Orca presets.
+- Keeping a project's own print parameters while using a different installed preset is still
+  not supported; Snapmaker Orca applies the named preset's values.
+- Studio does not write to, or take filament from, your spool provider.
+
 ## [1.4.1] - 2026-10-06
 
 **A readable spool picker (#39).**

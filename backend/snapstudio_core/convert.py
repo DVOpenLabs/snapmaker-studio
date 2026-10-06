@@ -109,6 +109,7 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str]]:
               # unexplained mutation and the copy fails its own validation.
               [report["preset_deviations_declared"]]
               if report.get("preset_deviations_declared") else []]
+    groups.append(report.get("project_materials_changes", []))
     identity = report.get("identity", {})
     groups.append(identity.get("changed", []) if isinstance(identity, dict) else [])
     for group in groups:
@@ -331,8 +332,20 @@ def check_structure(tm) -> None:
 
 
 def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
-                  dry_run: bool = False) -> ConversionResult:
-    """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result."""
+                  dry_run: bool = False, confirmed_presets: dict | None = None,
+                  filament_catalog=None, confirmed_colours: dict | None = None,
+                  material_context: dict | None = None) -> ConversionResult:
+    """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
+
+    `confirmed_presets` maps a filament slot to the exact installed Orca preset the
+    person confirmed for it. Slots not listed keep the project's own filament identity
+    in every mode; `filament_catalog` only lets the report suggest a preset for them.
+    `confirmed_colours` maps a slot to the colour of the spool the person selected.
+    `material_context` maps a slot to the selected spool and how its preset was matched; it
+    only feeds the plain-language record of what happened and changes nothing in the copy.
+
+    With `confirmed_presets`, a project whose existing vendor/type declarations Orca would
+    copy between slots sharing a preset is not prepared: the result is `blocked`."""
     src = Path(path)
     if prepare_mode == "u1":
         prepare_mode = "recommended"
@@ -382,18 +395,45 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     src_fp = compute_fingerprint(tm)
     raw_config = tm.read_part(SETTINGS)
     before = load_project_settings(raw_config)
+    material_guard = None
     recommended_tm = copy.deepcopy(tm) if prepare_mode == "preserve" else None
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
-    outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None)
+    outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
+                        confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
+                        confirmed_colours=confirmed_colours)
     after = load_project_settings(tm.read_part(SETTINGS))
+    if confirmed_presets:
+        # Judged on what this mode will actually write, not on what the source declared:
+        # Orca propagates the written declarations. Nothing is saved when this blocks.
+        from . import project_materials as pm
+        material_guard = pm.effective_guard(before, after, confirmed_presets, filament_catalog,
+                                            pm.project_nozzle(before), prepare_mode)
+        if material_guard["blocking"]:
+            return ConversionResult(
+                "blocked", "", "", False, [pm.guard_message(material_guard)], prepare_mode,
+                {"project_materials": {"guard": material_guard}}, blocked=True)
     recommended_after = None
     if recommended_tm is not None:
         # Use the normal repair path on a wholly in-memory project so preview
         # results cannot diverge from a real recommended conversion or write.
-        do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None)
+        do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
+                  confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
+                  confirmed_colours=confirmed_colours)
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    if confirmed_presets or confirmed_colours or filament_catalog is not None:
+        # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
+        summary["project_materials"] = {
+            **(outcome.report.get("filament_identity") or {}), "guard": material_guard}
+        if confirmed_presets or confirmed_colours:
+            from . import materials_fidelity
+            from . import project_materials as pm
+            summary["project_materials"]["fidelity"] = materials_fidelity.build(
+                source=before, prepared=after, report=outcome.report, mode=prepare_mode,
+                confirmed_presets=confirmed_presets, confirmed_colours=confirmed_colours,
+                context=material_context, catalog=filament_catalog, nozzle=pm.project_nozzle(before),
+                guard=material_guard)
     check_structure(tm)
     backup = src.with_suffix(".orig.3mf")
     if not dry_run and not backup.exists():

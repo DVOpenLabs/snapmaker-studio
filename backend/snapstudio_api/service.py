@@ -192,9 +192,22 @@ def first_layer_check(symptom: str) -> dict:
 
 
 def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
-            dry_run: bool = False) -> dict:
-    """Make a file U1-ready and save it next to the source. Returns the result."""
-    result = convert_to_u1(path, out_dir, prepare_mode=prepare_mode, dry_run=dry_run).to_dict()
+            dry_run: bool = False, materials: dict | None = None, *,
+            catalog=None) -> dict:
+    """Make a file U1-ready and save it next to the source. Returns the result.
+
+    `materials` is Project Materials: the person's explicit per-slot choices,
+    ``{"selections": [{"slot": 0, "preset": "<installed preset>"|None, "colour": "#RRGGBB"|None}]}``.
+    Without it this behaves exactly as it always did."""
+    confirmed_presets = confirmed_colours = filament_catalog = material_context = None
+    if materials is not None:
+        confirmed_presets, confirmed_colours, filament_catalog, material_context = _material_inputs(
+            path, materials, catalog)
+    result = convert_to_u1(path, out_dir, prepare_mode=prepare_mode, dry_run=dry_run,
+                           confirmed_presets=confirmed_presets or None,
+                           filament_catalog=filament_catalog,
+                           confirmed_colours=confirmed_colours or None,
+                           material_context=material_context or None).to_dict()
     if not dry_run and result.get("output_path"):
         summary = result.get("settings_summary") or {}
         _record_fix(
@@ -205,6 +218,210 @@ def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve
             validated=result.get("validated_ok"),
             notes=list(summary.get("warnings") or []))
     return result
+
+
+# --- Project Materials -------------------------------------------------------
+
+def _orca_catalog():
+    from snapstudio_core import preset_catalog
+    return preset_catalog.load_default()
+
+
+def _material_store():
+    from snapstudio_core import material_mapping
+    return material_mapping.Store()
+
+
+def _material_inputs(path: str, materials: dict, catalog=None):
+    """The person's selections -> (confirmed_presets, confirmed_colours, catalogue).
+
+    Raises ValueError (a refusal with a sentence a person can read) for anything not proven."""
+    from snapstudio_core import project_materials as pm
+
+    if not isinstance(materials, dict) or not isinstance(materials.get("selections", []), list):
+        raise ValueError("materials must be an object with a 'selections' list")
+    if str(path).lower().endswith(".stl"):
+        raise ValueError("Project Materials needs a 3MF project with filament slots")
+    tm = ThreeMF.open(path)
+    cfg, _plates = pm.read_project(tm)
+    if cfg is None:
+        raise ValueError("This file has no project settings, so it has no filament slots to map")
+    catalog = catalog if catalog is not None else _orca_catalog()
+    nozzle = pm.project_nozzle(cfg)
+    proofs: dict = {}
+    presets, colours = pm.prepare_inputs(materials.get("selections"), cfg, catalog, nozzle, proofs)
+    return presets, colours, catalog, _material_context(materials.get("selections"), presets, catalog, nozzle, proofs)
+
+
+def _text_field(value, limit: int = 120) -> str | None:
+    ok = isinstance(value, (str, int)) and not isinstance(value, bool)
+    text = " ".join(str(value).split())[:limit] if ok else ""
+    return text or None
+
+
+def _clean_spool(spool) -> dict | None:
+    """The selected spool's identity, and nothing else the client sent along with it."""
+    from snapstudio_core import project_materials as pm
+
+    if not isinstance(spool, dict):
+        return None
+    out = {"provider": (_text_field(spool.get("provider"), 40) or "").lower() or None,
+           "id": _text_field(spool.get("id")), "vendor": _text_field(spool.get("vendor")),
+           "material": _text_field(spool.get("material"), 60),
+           "subtype": _text_field(spool.get("subtype"), 60),
+           "colour": pm.hex6(spool.get("colour")), "color_name": _text_field(spool.get("color_name"), 60)}
+    return out if any(out.values()) else None
+
+
+def _material_context(selections, presets: dict, catalog, nozzle: str, proofs: dict | None = None) -> dict:
+    """Per slot: the selected spool and how its preset was matched, worked out here rather than
+    taken from the request. Feeds the plain-language record and nothing in the prepared file."""
+    from snapstudio_core import material_mapping as mm
+
+    store = _material_store()
+    out: dict[int, dict] = {}
+    for sel in selections or []:
+        slot = sel.get("slot")
+        raw = sel.get("spool") if isinstance(sel.get("spool"), dict) else {}
+        spool = _clean_spool(raw)
+        entry: dict = {"spool": spool}
+        if spool and slot in presets and catalog is not None and spool.get("provider"):
+            chosen = catalog.evaluate(presets[slot], nozzle, sel.get("ref"), sel.get("source"))
+            probe = {"id": spool.get("id"), "vendor": spool.get("vendor"),
+                     "material": spool.get("material"), "subtype": spool.get("subtype"),
+                     "slicer_filament": _text_field(raw.get("slicer_filament"))}
+            found = mm.resolve(catalog, store, spool["provider"], probe, nozzle)
+            # the same installed record, not merely the same name: a sibling of one name is a different choice
+            same = (found.get("base_name") == chosen.get("base_name")
+                    and (found.get("ref") is None or found.get("ref") == chosen.get("ref")))
+            saved = found["match_source"] in (mm.SOURCE_SAVED_SPOOL, mm.SOURCE_SAVED_SIGNATURE)
+            if saved and same and found["status"] == "proven":
+                source = found["match_source"]
+            elif found["match_source"] == mm.SOURCE_EXACT_NAME and same:
+                source = "slicer_filament_confirmed"
+            else:
+                source = "manual"
+            entry["mapping"] = {"source": source, "stale": bool(found.get("stale")),
+                                "saved_base": found.get("base_name") if saved else None}
+        elif slot in presets:
+            entry["mapping"] = {"source": "manual", "stale": False, "saved_base": None}
+        if isinstance(slot, int):
+            if proofs and slot in proofs:
+                entry["preset"] = proofs[slot]
+            out[slot] = entry
+    return out
+
+
+def project_materials(path: str, provider: str | None = None, provider_url: str | None = None,
+                      provider_key: str | None = None, slot_map: dict | None = None,
+                      slot_base: int | None = None, spoolman: str | None = None,
+                      limit: int = 5, *, catalog=None, store=None) -> dict:
+    """Which spool and which installed Orca preset could fill each filament slot.
+
+    Read-only. Reads the provider once through the existing seam and never writes to it.
+    Nothing is selected: every slot comes back with ranked candidates and the reasons."""
+    from snapstudio_core import material_providers as providers, project_materials as pm
+
+    if str(path).lower().endswith(".stl"):
+        return {"schema": pm.SCHEMA, "supported": False,
+                "reason": "An STL has no filament slots. Open a 3MF project."}
+    tm = ThreeMF.open(path)
+    cfg, plates = pm.read_project(tm)
+    if cfg is None:
+        return {"schema": pm.SCHEMA, "supported": False,
+                "reason": "This file has no project settings, so it has no filament slots to map."}
+    kind, url = _provider_choice(provider, provider_url, spoolman)
+    state = None
+    if url:
+        try:
+            state = providers.read(kind, providers.validate_provider_url(url), slot_map,
+                                   slot_base=slot_base, key=provider_key)
+        except providers.InvalidProviderAddress:
+            state = {"available": False, "error_code": "invalid_address", "spools": [], "slots": []}
+        except Exception:
+            state = {"available": False, "error_code": "unreachable", "spools": [], "slots": []}
+    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
+                      catalog=catalog if catalog is not None else _orca_catalog(),
+                      store=store if store is not None else _material_store(),
+                      limit=max(1, min(int(limit), 20)))
+
+
+def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
+    """The installed U1-compatible filament presets for a nozzle, for a picker."""
+    catalog = catalog if catalog is not None else _orca_catalog()
+    if nozzle not in ("0.2", "0.4", "0.6", "0.8"):
+        raise ValueError("nozzle must be one of 0.2, 0.4, 0.6, 0.8")
+    if catalog is None:
+        return {"available": False, "nozzle": nozzle, "presets": [], "source": None}
+    rows = []
+    for base in catalog.names_for(nozzle):
+        # ambiguous across every look-alike (case and nozzle suffix aside), so the source pin is always offered
+        ambiguous = catalog.same_name_count(base, nozzle) > 1
+        for r in catalog.records_for(base, nozzle):
+            proven = nozzle in r["nozzles"]
+            rows.append({
+                "base_name": base, "preset_name": r["name"], "vendor": r["vendor"],
+                "filament_type": r["filament_type"], "fingerprint": r["fingerprint"],
+                # what the picker needs to tell two presets of one name apart, and to pin the one chosen; the
+                # pin is opaque - no Orca account folder or file name leaves the backend
+                "source": r["source"], "ref": r["ref"],
+                "proof": r["proof"], "status": "proven" if proven else "needs_confirmation",
+                "reason": None if proven else r["unproven_reason"], "ambiguous": ambiguous,
+            })
+    return {"available": True, "nozzle": nozzle, "presets": rows, "source": catalog.source,
+            "fingerprint": catalog.fingerprint}
+
+
+def _mapping_key(data: dict):
+    from snapstudio_core import material_mapping as mm
+
+    scope = data.get("scope")
+    provider = str(data.get("provider") or "").strip().lower()
+    if scope not in (mm.SCOPE_SPOOL, mm.SCOPE_SIGNATURE) or not provider:
+        raise ValueError("scope must be 'spool' or 'signature' and a provider is required")
+    if scope == mm.SCOPE_SPOOL:
+        spool_id = data.get("spool_id")
+        return scope, provider, "" if spool_id is None else str(spool_id), None
+    return scope, provider, None, mm.signature(data.get("vendor"), data.get("material"),
+                                               data.get("subtype"))
+
+
+def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
+    """Remember that a spool (or a kind of spool) is a real installed Orca preset.
+
+    Only a preset that is proven in the installed catalogue right now can be saved."""
+    from snapstudio_core import material_mapping as mm, preset_catalog
+
+    scope, provider, spool_id, sig = _mapping_key(data)
+    nozzle = str(data.get("nozzle") or "0.4")
+    catalog = catalog if catalog is not None else _orca_catalog()
+    if catalog is None:
+        raise ValueError("Snapmaker Orca's installed filament presets could not be read")
+    ref, source, accept = data.get("ref"), data.get("source"), data.get("accept_unproven")
+    if (ref is not None and not isinstance(ref, str)) or source not in (None, "system", "user") \
+            or (accept is not None and type(accept) is not bool):
+        raise ValueError("ref, source and accept_unproven are not valid")
+    found = catalog.evaluate(data.get("preset"), nozzle, ref, source)
+    proven = found["status"] == preset_catalog.PROVEN
+    if not proven and not (found.get("confirmable") and accept is True):
+        raise ValueError(
+            f"That is not a proven installed preset for the {nozzle} mm nozzle: {found['reason']}")
+    sent = data.get("fingerprint")
+    if (not proven and sent != found["fingerprint"]) or (proven and sent not in (None, found["fingerprint"])):
+        # what the person confirmed is the preset they were shown; it has been replaced since
+        raise ValueError("That preset has changed since you confirmed it. Choose it again to confirm it.")
+    origin = data.get("origin") or mm.SOURCE_MANUAL
+    row = (store if store is not None else _material_store()).put(
+        scope=scope, provider=provider, spool_id=spool_id, sig=sig, preset=found,
+        origin=origin, catalog=catalog, accept_unproven=accept is True)
+    return {"ok": True, "mapping": row}
+
+
+def material_mapping_remove(data: dict, *, store=None) -> dict:
+    scope, provider, spool_id, sig = _mapping_key(data)
+    removed = (store if store is not None else _material_store()).remove(
+        scope=scope, provider=provider, spool_id=spool_id, sig=sig)
+    return {"ok": True, "removed": removed}
 
 
 def prepare_scaled(path: str, scale_percent: float, out_dir: str | None = None) -> dict:
@@ -459,12 +676,12 @@ def color_plan(path: str, toolheads: int | None = None) -> dict:
     return cp.analyse(path, toolheads=toolheads)
 
 
-def fidelity_audit(original: str, prepared: str) -> dict:
+def fidelity_audit(original: str, prepared: str, materials: dict | None = None) -> dict:
     """What survived preparing a copy, element by element, with the reason for
     anything changed or dropped — and an explicit list of what Studio could not
     verify."""
     from snapstudio_core import fidelity
-    return fidelity.audit(original, prepared)
+    return fidelity.audit(original, prepared, materials)
 
 
 def preflight(path: str, host: str | None = None, port: int = 7125,

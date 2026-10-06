@@ -12,7 +12,7 @@ from . import orca_import, preset_deviation
 from .report import RepairOutcome
 from .u1_identity import (
     normalize_project_identity, normalize_values, scrub_foreign, normalize_slice_info,
-    normalize_presets,
+    normalize_presets, FILAMENT_IDENTITY_NOTICE,
 )
 
 SETTINGS = "Metadata/project_settings.config"
@@ -21,7 +21,8 @@ SLICE_INFO = "Metadata/slice_info.config"
 
 def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
            dry_run: bool = False, profile_name: str = "snapmaker_u1",
-           opt_profile: str | None = None) -> RepairOutcome:
+           opt_profile: str | None = None, confirmed_presets: dict | None = None,
+           filament_catalog=None, confirmed_colours: dict | None = None) -> RepairOutcome:
     assert mode in ("safe", "preserve", "u1", "optimize")
     remap = remap or {}
     source = detect_source(tm)
@@ -61,7 +62,16 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         # identity block to known-good values and scrub any leftover
         # Bambu/BBL/H2D strings (e.g. foreign machine G-code).
         report["identity"] = normalize_project_identity(
-            work, filament_count(work), preserve_filament_identity=preserve_creator_settings)
+            work, filament_count(work), confirmed_presets=confirmed_presets,
+            catalog=filament_catalog)
+        report["filament_identity"] = report["identity"].get("filament", {})
+        # The selected spool's colour is project state: Orca keeps it without any
+        # declaration (measured), so it is written and never declared.
+        from . import project_materials
+        report["filament_identity"]["colours"] = project_materials.apply_colours(
+            work, confirmed_colours)
+        report["project_materials_changes"] = project_materials.change_records(
+            report["filament_identity"])
         # When no U1 system preset describes this project, say so rather than
         # letting Snapmaker Orca's "customised preset" notice look like a fault.
         preset = (report["identity"] or {}).get("preset") or {}
@@ -73,6 +83,13 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
             compat_keys=compat_keys)
         report["foreign_cleared"] = report["foreign"]["cleared"]
         report["warnings"] = report["foreign"]["warnings"]
+        # Filament identity is the project's own unless a preset was confirmed for the
+        # slot. Say so once, in the same words in every mode.
+        kept = {k["slot"] for k in report["filament_identity"].get("kept", [])}
+        fsi = work.get("filament_settings_id")
+        if kept and isinstance(fsi, list) and any(
+                not str(fsi[slot]).startswith("Snapmaker") for slot in kept if slot < len(fsi)):
+            report["warnings"].append(FILAMENT_IDENTITY_NOTICE)
         if preserve_creator_settings:
             preserved_changes, preserved_warnings = prepare_preserved_values(
                 work, filament_count(work))
@@ -85,9 +102,6 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
             if (isinstance(dss, list) and any(str(x) for x in dss)) or (isinstance(dss, str) and dss):
                 report["warnings"].append(
                     "Snapmaker Orca may show a 'Customized Preset' notice — that is the creator's tuned settings being kept.")
-            fsi = work.get("filament_settings_id")
-            if isinstance(fsi, list) and not all(str(x).startswith("Snapmaker") for x in fsi):
-                report["warnings"].append("Orca may ask to map an unknown filament preset")
         # Clean-import: clear the "Customized Preset" diff marker and reset the
         # "by object" print sequence (collision warning) to the U1 default.
         report["presets_normalized"] = normalize_presets(
@@ -121,6 +135,7 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
     # keeps the rest — so this declares what Studio changed rather than trying to
     # work out which keys belong to the process preset.
     if mode in ("preserve", "u1", "optimize"):
+        entries_before_declare = copy.deepcopy(work.get("different_settings_to_system"))
         declared = preset_deviation.declare(
             work,
             preset_deviation.keys_from_changes(
@@ -135,6 +150,20 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         )
         if declared:
             report["preset_deviations_declared"] = declared
+        if confirmed_presets:
+            # A slot whose preset the person confirmed takes its print values from that
+            # preset (Orca restores them unless they are declared), so Studio's own
+            # declarations are taken back off those slots. What the slot already declared
+            # before this step is the project's own and stays.
+            from . import project_materials
+            restored = project_materials.withdraw_studio_declarations(
+                work, entries_before_declare, confirmed_presets, filament_count(work),
+                groups=project_materials.same_preset_groups(
+                    work, filament_catalog, project_materials.project_nozzle(cfg)))
+            if restored:
+                report["project_materials_declarations_withdrawn"] = restored
+                if declared:
+                    declared["new"] = copy.deepcopy(work["different_settings_to_system"])
 
     # ThreeMF is in-memory here. Replacing the parts even for dry runs lets the
     # caller validate the exact would-be project without writing an output file.

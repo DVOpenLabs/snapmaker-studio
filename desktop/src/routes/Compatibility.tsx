@@ -11,6 +11,8 @@ import { open3mfDialog, compatibilityCheck, convert, type CompatibilityResult, t
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
+import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
+import type { MaterialSelection } from "@/lib/projectMaterials";
 import { Copy, Stethoscope } from "lucide-react";
 import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
@@ -24,6 +26,8 @@ export default function Compatibility() {
   const [prep, setPrep] = useState<Awaited<ReturnType<typeof convert>> | null>(null);
   const [prepareMode, setPrepareMode] = useState<PrepareMode>("preserve");
   const [preview, setPreview] = useState<ConversionResult | null>(null);
+  // True while Project Materials holds choices: Prepare then goes through its review step, so a plain one is not offered beside it.
+  const [materialsActive, setMaterialsActive] = useState(false);
   const requestGeneration = useRef(0);
 
   const checkM = useMutation({
@@ -32,7 +36,8 @@ export default function Compatibility() {
   });
 
   const prepM = useMutation({
-    mutationFn: ({ path: requestPath, mode }: { path: string; mode: PrepareMode; generation: number }) => convert(requestPath, undefined, mode),
+    mutationFn: ({ path: requestPath, mode, materials }: { path: string; mode: PrepareMode; generation: number; materials?: MaterialSelection[] }) =>
+      convert(requestPath, undefined, mode, false, materials),
     onMutate: () => setPrep(null),
     onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current) setPrep(d); },
   });
@@ -91,6 +96,62 @@ export default function Compatibility() {
           now. Unknowns stay unknown — a firmware that does not publish the fitted
           nozzle produces "check this yourself", never a pass. */}
       {path && <PreflightCard path={path} />}
+
+      {/* Project Materials is a normal part of preparing a model, not a compatibility finding: it appears
+          whenever the engine reports filament slots, whether or not the settings check found anything. */}
+      {path && (
+        <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
+          onActiveChange={setMaterialsActive}
+          onPrepare={(materials) => prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
+      )}
+
+      {/* What Prepare did - success, a refusal or a failure - is shown whether or not the settings check has
+          answered: Project Materials can be used while it is pending or has failed, and its Prepare must never
+          finish without anything on screen. The compatibility findings below stay conditional. */}
+      {path && (prep || prepM.isError) && (
+        <div className="space-y-3" data-testid="prepare-outcome">
+      {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
+
+      {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
+      {prep && !prep.blocked && !prep.output_path && (
+        <p className="text-sm text-risk" role="alert" data-testid="prepare-no-file">
+          Prepare finished but no copy was written, so there is nothing to open. Nothing was changed.
+        </p>
+      )}
+      {prep && !prep.blocked && prep.output_path && (
+        <div className="space-y-3 rounded-md border border-border p-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
+            <CheckCircle2 className="h-4 w-4" /> U1 profile copy created
+          </p>
+          <p className="truncate text-xs text-muted-foreground" title={prep.output_path}>
+            Saved as <b>{prep.output_name}</b> · creator settings kept where possible; review in Orca before slicing. (new file — original untouched).
+          </p>
+          <p className="flex items-start gap-1.5 rounded-md border border-doctor-cost/40 bg-doctor-cost/5 p-2 text-[11px] text-muted-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-doctor-cost" />
+            Layout is not verified — this checks the U1 profile copy, not object placement. Open in
+            Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
+          </p>
+          <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
+          {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+          {prep.errors && prep.errors.length > 0 && (
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {prep.output_path && <OrcaHandoff outputPath={prep.output_path} originalPath={path ?? undefined} />}
+            <Button size="sm" variant="secondary" onClick={() => copyPath(prep.output_path)}>
+              <Copy className="h-4 w-4" /> Copy path
+            </Button>
+            <Button size="sm" variant="secondary" asChild>
+              <Link to="/doctor/project"><Stethoscope className="h-4 w-4" /> Run Project Doctor</Link>
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Advisory — not a print-success guarantee. Studio does not slice; Orca does.</p>
+        </div>
+      )}
+        </div>
+      )}
       {checkM.isError && <p className="text-sm text-risk">Couldn't read that file: {(checkM.error as Error).message}</p>}
 
       {result && (
@@ -135,49 +196,16 @@ export default function Compatibility() {
                 prepare a U1 profile copy so Orca opens it with U1-compatible settings.
               </p>
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
-              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={() => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
-              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path}>
+              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
                 Prepare U1 copy
               </Button>
+              {materialsActive && <p className="text-[11px] text-muted-foreground">You have spool choices above. Use “Review &amp; prepare” there so they are applied.</p>}
               <p className="text-[11px] text-muted-foreground">Creates a new file. Your original is never modified.</p>
             </div>
           )}
-          {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
-
-          {prep && (
-            <div className="space-y-3 rounded-md border border-border p-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-stage-validate">
-                <CheckCircle2 className="h-4 w-4" /> U1 profile copy created
-              </p>
-              <p className="truncate text-xs text-muted-foreground" title={prep.output_path}>
-                Saved as <b>{prep.output_name}</b> · creator settings kept where possible; review in Orca before slicing. (new file — original untouched).
-              </p>
-              <p className="flex items-start gap-1.5 rounded-md border border-doctor-cost/40 bg-doctor-cost/5 p-2 text-[11px] text-muted-foreground">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-doctor-cost" />
-                Layout is not verified — this checks the U1 profile copy, not object placement. Open in
-                Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
-              </p>
-              {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={() => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
-              {prep.errors && prep.errors.length > 0 && (
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}
-                </ul>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                {prep.output_path && <OrcaHandoff outputPath={prep.output_path} originalPath={path ?? undefined} />}
-                <Button size="sm" variant="secondary" onClick={() => copyPath(prep.output_path)}>
-                  <Copy className="h-4 w-4" /> Copy path
-                </Button>
-                <Button size="sm" variant="secondary" asChild>
-                  <Link to="/doctor/project"><Stethoscope className="h-4 w-4" /> Run Project Doctor</Link>
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">Advisory — not a print-success guarantee. Studio does not slice; Orca does.</p>
-            </div>
-          )}
-
           <p className="flex items-start gap-1.5 rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {result.recommendation}
           </p>

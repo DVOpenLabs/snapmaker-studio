@@ -29,6 +29,7 @@ def test_choices_expose_every_identity_field():
                         remaining_quality="estimated")], "spoolease")[0]
     assert c == {"id": 124, "label": "Yoopai PLA Matte", "vendor": "Yoopai", "material": "PLA",
                  "subtype": "Matte", "color": "#FF0000", "color_name": "red", "source": "spoolease",
+                 "slicer_filament": None,
                  "remaining_g": 250.0, "remaining_quality": "estimated", "archived": False}
 
 
@@ -102,3 +103,8 @@ def test_provider_test_returns_the_sorted_identity_choices(monkeypatch):
     assert (first["vendor"], first["material"], first["subtype"], first["color_name"]) == ("Acme", "PLA", "Matte", "red")
     assert second["color_name"] == "Black" and second["source"] == "spoolease"
     assert "192.168" not in repr(out)
+
+
+def test_the_providers_slicer_filament_name_is_passed_through_as_an_input():
+    c = sc.build([spool(1, slicer_filament="  Generic PLA ")], "spoolease")[0]
+    assert c["slicer_filament"] == "Generic PLA"

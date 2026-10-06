@@ -106,6 +106,7 @@ def build(spools: list[dict], source: str) -> list[dict]:
             "color": colour,
             # What the provider calls the colour when it says; otherwise what the colour looks like.
             "color_name": provided or color_name(colour),
+            "slicer_filament": _text(s.get("slicer_filament")),
             "source": source,
             "remaining_g": s.get("remaining_g"),
             "remaining_quality": s.get("remaining_quality"),
