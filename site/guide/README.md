@@ -62,17 +62,16 @@ the copy in `tools/acceptance/`; otherwise run `npm install` in this folder.
 `public/` is plain files with relative URLs, so it works at the root of a domain or in a sub-folder. There is no build
 step on the server; commit the regenerated `public/index.html` and publish `public/`.
 
-* **GitHub Pages** — publish the `site/guide/public` folder with the official Pages actions. `deploy/github-pages.yml.example`
-  is a ready workflow; copy it to `.github/workflows/` and enable Pages (Settings → Pages → Source: GitHub Actions) to start.
-  Nothing in this repository deploys the guide until you do that.
+* **GitHub Pages (how this repository publishes it)** — `.github/workflows/guide-pages.yml` publishes `site/guide/public` on every push to `main`
+  that touches `site/guide/`, after `guide-ci.yml` has built, checked and click-tested it on the pull request. Pages is set to
+  *Source: GitHub Actions*. `deploy/github-pages.yml.example` is the same workflow, kept for people who fork the guide.
 * **Netlify / Cloudflare Pages / any static host** — publish directory `site/guide/public`; no build command is needed (or
   use `node site/guide/tools/build.mjs`).
 * **Recommended headers**: `deploy/security-headers.txt` (a strict Content-Security-Policy that the guide is tested under,
   plus the usual hardening headers). The guide loads no third-party script, font, image or stylesheet.
 
-After you choose a host, set the link used inside Studio's **Help** and **Get Started** pages in one place:
-`desktop/src/lib/guide.ts` (`USER_GUIDE_URL`). It currently points at `https://dvopenlabs.github.io/snapmaker-studio/`
-(the address GitHub Pages would give this repository) and will show a "not found" page until the guide is deployed there.
+The link used inside Studio's **Help** and **Get Started** pages lives in one place: `desktop/src/lib/guide.ts` (`USER_GUIDE_URL`),
+currently `https://dvopenlabs.github.io/snapmaker-studio/`. Change it if the guide is hosted elsewhere.
 
 ## Maintain it
 

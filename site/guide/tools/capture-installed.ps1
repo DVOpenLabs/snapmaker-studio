@@ -38,9 +38,10 @@ try {
     $app = Start-HarnessApp -Lane $lane -Arguments @($example) -SettleSeconds 12 -Label "guide-capture"
     $r = Invoke-HarnessNode -Lane $lane -Environment @{} -ArgumentList @((Join-Path $here "capture-installed.mjs"), $app.CdpUrl)
     $r.Output | ForEach-Object { Write-Host $_ }
-    if ($r.ExitCode -ne 0) { Write-Host "capture reported failures (exit $($r.ExitCode))" }
+    $captureFailed = ($r.ExitCode -ne 0)
     Stop-HarnessApp -Lane $lane | Out-Null
     Start-Sleep -Seconds 3
+    if ($captureFailed) { throw "capture reported failures (exit $($r.ExitCode))" }
 }
 finally {
     Complete-HarnessLane -Lane $lane | Out-Null
