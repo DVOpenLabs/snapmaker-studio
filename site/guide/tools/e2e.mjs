@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // End-to-end checks for the built guide, in a real browser, at desktop and phone widths in both themes.
-//   node tools/e2e.mjs                       serves public/ itself and runs everything
+//   node tools/e2e.mjs                       serves public/ itself (with a strict Content-Security-Policy) and runs everything
 //   node tools/e2e.mjs --shots <folder>      also saves screenshots of the finished guide
+//   node tools/e2e.mjs --url <deployed url>  tests a deployed copy instead of public/
 // Exit code 0 only if every check passed. Needs Microsoft Edge or Chrome installed (channel "msedge" / "chrome").
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
@@ -18,7 +19,7 @@ try { playwright = require("playwright-core"); } catch { playwright = createRequ
 const { chromium } = playwright;
 const args = process.argv.slice(2);
 const shotsDir = args.includes("--shots") ? args[args.indexOf("--shots") + 1] : null;
-const liveUrl = args.includes("--url") ? args[args.indexOf("--url") + 1].replace(/\/?$/, "/") : null; // test a deployed copy instead of public/
+const liveUrl = args.includes("--url") ? args[args.indexOf("--url") + 1].replace(/\/?$/, "/") : null;
 if (shotsDir) mkdirSync(shotsDir, { recursive: true });
 
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -33,12 +34,12 @@ const server = createServer((req, res) => {
 if (!liveUrl) await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = liveUrl ?? `http://127.0.0.1:${server.address().port}/`;
 
-const content = JSON.parse(readFileSync(join(root, "content/lessons.json"), "utf8"));
-const lessons = content.lessons;
+const html = readFileSync(join(pub, "index.html"), "utf8");
+const DATA = JSON.parse(/<script type="application\/json" id="guide-data">([\s\S]*?)<\/script>/.exec(html)[1]);
+const pageIds = [...html.matchAll(/<article class="page [^"]*" id="([^"]+)" data-page=/g)].map((m) => m[1]);
+const pageTypes = Object.fromEntries([...html.matchAll(/<article class="page [^"]*" id="([^"]+)" data-page="[^"]+" data-type="([^"]+)"/g)].map((m) => [m[1], m[2]]));
 const results = [];
 function check(name, ok, detail = "") { results.push({ name, ok: !!ok }); if (!ok) console.log(`FAIL  ${name}${detail ? "  — " + detail : ""}`); }
-
-const center = (loc) => loc.evaluate((e) => { const r = e.getBoundingClientRect(); window.scrollBy(0, r.top + r.height / 2 - window.innerHeight * 0.55); });
 
 async function launch() {
   for (const channel of ["msedge", "chrome"]) { try { return await chromium.launch({ channel, headless: true }); } catch { /* try next */ } }
@@ -49,172 +50,339 @@ const browser = await launch();
 async function run(label, viewport, theme) {
   const ctx = await browser.newContext({ viewport, colorScheme: theme, deviceScaleFactor: 1 });
   await ctx.addInitScript((t) => { try { if (localStorage.getItem("sg.theme") === null && !sessionStorage.getItem("seeded")) { localStorage.setItem("sg.theme", t); sessionStorage.setItem("seeded", "1"); } } catch { /* ignore */ } }, theme);
+  await ctx.addInitScript(() => { const s = new CSSStyleSheet(); s.replaceSync("html{scroll-behavior:auto!important}"); document.addEventListener("DOMContentLoaded", () => { document.adoptedStyleSheets = [...document.adoptedStyleSheets, s]; }); });
   const page = await ctx.newPage();
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   const mobile = viewport.width < 700;
   const T = (n) => `${label}: ${n}`;
-  const active = () => page.evaluate(() => document.querySelector(".lesson.is-active")?.id ?? null);
-  const hash = () => page.evaluate(() => location.hash);
+  const active = () => page.evaluate(() => document.querySelector("article.page.is-active")?.dataset.page ?? null);
+  const nActive = () => page.locator("article.page.is-active").count();
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  const go = async (hash) => { await page.goto(`${base}${hash}`, { waitUntil: "load" }); await page.waitForTimeout(60); };
+  const snap = async (name) => { if (shotsDir) { await page.waitForTimeout(250); await page.screenshot({ path: join(shotsDir, `${name}-${label}.png`) }); } };
+  const eager = () => page.evaluate(() => document.querySelectorAll("img[loading=lazy]").forEach((i) => { i.loading = "eager"; }));
 
-  /* load + theme */
+  /* ---------- home ---------- */
   await page.goto(base, { waitUntil: "networkidle" });
   check(T("theme applied"), (await page.evaluate(() => document.documentElement.dataset.theme)) === theme);
-  check(T("exactly one lesson is shown"), (await page.locator(".lesson.is-active").count()) === 1);
-  check(T("progress reads Lesson 1 of 12"), /Lesson 1 of 12/.test(await page.locator("#tour-count").innerText()));
-  check(T("progress is labelled as tour position"), /Tour position/.test(await page.locator("#tour-sub").innerText()));
-  if (shotsDir) await page.screenshot({ path: join(shotsDir, `welcome-${label}.png`) });
-
-  /* every lesson has a stable deep link */
-  for (const [i, l] of lessons.entries()) {
-    await page.goto(`${base}#${l.id}`, { waitUntil: "load" });
-    await page.waitForTimeout(80);
-    check(T(`deep link #${l.id}`), (await active()) === l.id);
-    check(T(`lesson ${i + 1} count text`), new RegExp(`Lesson ${i + 1} of ${lessons.length}`).test(await page.locator("#tour-count").innerText()));
-    check(T(`lesson ${i + 1} sidebar current`), (await page.locator(`.toc a[aria-current="page"]`).getAttribute("data-lesson")) === l.id);
-    check(T(`lesson ${i + 1} has no horizontal overflow`), await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-    const broken = await page.evaluate(async (id) => {
+  check(T("home is the only page shown"), (await active()) === "home" && (await nActive()) === 1);
+  check(T("exactly one h1"), (await page.locator("h1").count()) === 1);
+  check(T("home offers three ways in"), (await page.locator("#home .door").count()) === 3);
+  check(T("home shows the workflow map with seven stages"), (await page.locator("#home .wf-node").count()) === 7);
+  check(T("home map has Studio, Orca and printer lanes"), (await page.locator("#home .wf-lane").count()) === 3);
+  check(T("home has no horizontal overflow"), !(await overflow()));
+  check(T("home states what the guide does not show"), /No screenshot of a connected printer/.test(await page.locator("#not-shown").innerText()));
+  await snap("home");
+  check(T("home heading is concrete"), (await page.locator("#home-h").innerText()) === "Get your project ready to print");
+  check(T("home description is concrete"), /Check a downloaded model, prepare a U1 copy, and understand what to review before printing./.test(await page.locator("#home .lead").innerText()));
+  const yDoors = await page.locator("#home .doors").evaluate((n) => n.getBoundingClientRect().top);
+  const yMap = await page.locator("#home .home-map").evaluate((n) => n.getBoundingClientRect().top);
+  check(T("the three entry points come before the workflow map"), yDoors < yMap);
+  const fold = page.locator("#home .map-fold");
+  if (mobile) {
+    check(T("phone: the workflow map starts folded"), (await fold.evaluate((n) => n.open)) === false && (await page.locator("#home .wfmap a:visible").count()) === 0);
+    await fold.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    check(T("phone: the map opens from the keyboard and its seven stages are reachable"), (await fold.evaluate((n) => n.open)) && (await page.locator("#home .wfmap a:visible").count()) === 7);
+    check(T("phone: no overflow with the map open"), !(await overflow()));
+    await snap("home-map-open");
+    await page.keyboard.press("Enter");
+    check(T("phone: the map folds again"), (await fold.evaluate((n) => n.open)) === false);
+  } else {
+    check(T("desktop: the map is open and its toggle is hidden"), (await fold.evaluate((n) => n.open)) && !(await fold.locator("summary").isVisible()));
+    const collide = () => page.evaluate(() => {
+      const board = document.querySelector("#home .wf-board");
+      const R = (n) => n.getBoundingClientRect();
+      const boxes = [...board.querySelectorAll(".wf-lane span, .wf-n, .wf-t, .wf-q")].map((n) => ({ n, r: R(n), name: n.className + ":" + n.textContent.slice(0, 14) }));
       const bad = [];
-      for (const im of document.querySelectorAll(`#${id} img`)) {
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const p = boxes[i].r, q = boxes[j].r;
+        if (p.left < q.right - 0.5 && q.left < p.right - 0.5 && p.top < q.bottom - 0.5 && q.top < p.bottom - 0.5) bad.push(boxes[i].name + " x " + boxes[j].name);
+      }
+      const B = R(board);
+      const lanes = [...board.querySelectorAll(".wf-lane")].map(R);
+      for (const nd of board.querySelectorAll(".wf-node")) {
+        const r = R(nd);
+        const lane = lanes.find((l) => nd.classList.contains("wf-" + (nd.className.match(/wf-(studio|orca|printer)/) || [])[1]) && r.top >= l.top - 1 && r.top < l.bottom);
+        if (!lane || r.bottom > lane.bottom + 0.5) bad.push("node leaves its lane: " + nd.textContent.slice(0, 20));
+        if (r.left < B.left || r.right > B.right) bad.push("node leaves the board: " + nd.textContent.slice(0, 20));
+      }
+      // the connecting line must not run through any text
+      const path = board.querySelector(".wf-line"), svg = board.querySelector(".wf-svg");
+      const sb = R(svg), vb = svg.viewBox.baseVal, len = path.getTotalLength();
+      const text = [...board.querySelectorAll(".wf-t, .wf-q")].map((n) => ({ r: R(n), t: n.textContent.slice(0, 14) }));
+      for (let s = 0; s <= len; s += 4) {
+        const pt = path.getPointAtLength(s);
+        const x = sb.left + (pt.x / vb.width) * sb.width, y = sb.top + (pt.y / vb.height) * sb.height;
+        const hit = text.find((t) => x > t.r.left && x < t.r.right && y > t.r.top && y < t.r.bottom);
+        if (hit) { bad.push("line crosses text: " + hit.t); break; }
+      }
+      return [...new Set(bad)];
+    });
+    for (const w of [1280, 1000]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.waitForTimeout(60);
+      const bad = await collide();
+      check(T("workflow map has no collisions at " + w + " px"), bad.length === 0, bad.join("; "));
+    }
+    await page.setViewportSize(viewport);
+    await snap("home-map");
+  }
+
+  /* ---------- every page: deep link, title, focus, overflow, images ---------- */
+  for (const id of pageIds) {
+    await go(`#${id}`);
+    const ok = (await active()) === id && (await nActive()) === 1;
+    check(T(`deep link #${id}`), ok);
+    if (!ok) continue;
+    check(T(`#${id} has a heading and a title`), (await page.locator(`#${id} .ptitle`).count()) === 1 && (await page.title()).includes("Snapmaker Studio guide"));
+    check(T(`#${id} has no horizontal overflow`), !(await overflow()));
+    const broken = await page.evaluate(async (pid) => {
+      const bad = [];
+      for (const im of document.querySelectorAll(`#${pid} img`)) {
         const r = await fetch(im.getAttribute("src"));
         if (!r.ok || !(r.headers.get("content-type") || "").startsWith("image/")) bad.push(im.getAttribute("src"));
       }
       return bad;
-    }, l.id);
-    check(T(`lesson ${i + 1} images load`), broken.length === 0, broken.join(", "));
+    }, id);
+    check(T(`#${id} images load`), broken.length === 0, broken.join(", "));
   }
 
-  /* next / back / browser history */
-  await page.goto(`${base}#${lessons[0].id}`);
-  await page.waitForTimeout(80);
-  check(T("Back is hidden on lesson 1"), await page.locator(`#${lessons[0].id} .js-prev`).count() === 0);
-  await page.locator(`#${lessons[0].id} .js-next`).click();
-  await page.waitForTimeout(150);
-  check(T("Next goes to lesson 2"), (await active()) === lessons[1].id && (await hash()) === `#${lessons[1].id}`);
-  check(T("focus moves to the lesson heading"), await page.evaluate(() => document.activeElement?.matches("h2.title") ?? false));
-  await page.locator(`#${lessons[1].id} .js-prev`).click();
-  await page.waitForTimeout(150);
-  check(T("Back goes to lesson 1"), (await active()) === lessons[0].id);
-  await page.goBack(); await page.waitForTimeout(150);
-  check(T("browser Back returns to lesson 2"), (await active()) === lessons[1].id);
-  await page.goForward(); await page.waitForTimeout(150);
-  check(T("browser Forward returns to lesson 1"), (await active()) === lessons[0].id);
-  await page.goto(`${base}#${lessons[lessons.length - 1].id}`); await page.waitForTimeout(80);
-  check(T("Next is hidden on the last lesson"), await page.locator(`#${lessons[lessons.length - 1].id} .js-next`).count() === 0);
-
-  /* saved position and Start again */
-  await page.goto(`${base}#${lessons[3].id}`); await page.waitForTimeout(80);
-  await page.goto(base); await page.waitForTimeout(150);
-  check(T("saved tour position restored"), (await active()) === lessons[3].id);
-  check(T("start button offers Continue"), /Continue — lesson 4/.test(await page.locator("#start-label").innerText()));
-  await page.locator("#start-again").click(); await page.waitForTimeout(200);
-  check(T("Start again returns to lesson 1"), (await active()) === lessons[0].id);
-  await page.goto(base); await page.waitForTimeout(100);
-  check(T("Start again cleared the saved position"), (await active()) === lessons[0].id);
-
-  /* theme toggle persists */
-  const other = theme === "dark" ? "light" : "dark";
-  if (mobile) { /* the toggle is in the header on every width */ }
-  await page.locator("#theme-btn").click(); await page.waitForTimeout(100);
-  check(T("theme toggle flips the theme"), (await page.evaluate(() => document.documentElement.dataset.theme)) === other);
-  await page.reload({ waitUntil: "load" });
-  check(T("theme choice persists"), (await page.evaluate(() => document.documentElement.dataset.theme)) === other);
-  await page.locator("#theme-btn").click(); await page.waitForTimeout(100);
-
-  /* mobile lesson menu */
-  if (mobile) {
-    await page.goto(`${base}#${lessons[0].id}`); await page.waitForTimeout(100);
-    check(T("lesson menu starts closed"), !(await page.locator("#toc").isVisible()));
-    await page.locator("#menu-btn").click();
-    check(T("lesson menu opens"), await page.locator("#toc").isVisible() && (await page.locator("#menu-btn").getAttribute("aria-expanded")) === "true");
-    await page.locator(`#toc a[data-lesson="${lessons[2].id}"]`).click(); await page.waitForTimeout(200);
-    check(T("choosing a lesson closes the menu and opens it"), (await active()) === lessons[2].id && !(await page.locator("#toc").isVisible()));
+  /* ---------- old lesson links still land somewhere right ---------- */
+  for (const [old, to] of Object.entries(DATA.redirects)) {
+    await go(`#${old}`);
+    check(T(`old link #${old} opens ${to}`), (await active()) === to);
+    check(T(`old link #${old} is rewritten to #${to}`), (await page.evaluate(() => location.hash)) === `#${to}`);
   }
+  await go("#path-prepare--do");
+  check(T("a section link opens its page"), (await active()) === "path-prepare");
+  await go("#no-such-page");
+  check(T("an unknown link falls back to home"), (await active()) === "home");
 
-  /* screenshot viewer: open, focus, Escape, focus restored */
-  await page.goto(`${base}#${lessons[0].id}`); await page.waitForTimeout(100);
-  const opener = page.locator(`#${lessons[0].id} .shot-open`).first();
+  /* ---------- the path: structure of a stage ---------- */
+  await go("#path-prepare");
+  for (const sel of [".evidence img", ".means-table", ".do .steps", ".done .checks", ".wfmap [aria-current=step]", ".example"]) check(T(`stage has ${sel}`), (await page.locator(`#path-prepare ${sel}`).count()) > 0);
+  check(T("stage map marks the current stage"), /Prepare/.test(await page.locator("#path-prepare .wfmap [aria-current=step]").first().textContent()));
+  check(T("stage means table has a certainty word for every row"), await page.evaluate(() => [...document.querySelectorAll("#path-prepare .means-table tbody tr")].every((r) => r.querySelector(".cert")?.textContent.trim().length > 3)));
+  check(T("stage focus lands on the heading after navigating"), await (async () => {
+    await page.locator("#path-prepare .stage-nav a.btn-primary").click();
+    await page.waitForTimeout(80);
+    return (await page.evaluate(() => document.activeElement?.classList.contains("ptitle"))) && (await active()) === "path-review";
+  })());
+  await page.goBack(); await page.waitForTimeout(80);
+  check(T("browser Back returns to the previous stage"), (await active()) === "path-prepare");
+
+  /* numbered notes are optional and explain controls */
+  await go("#path-check");
+  await eager();
+  const toggle = page.locator("#path-check .toggle-notes");
+  check(T("numbered notes are off by default"), (await page.locator("#path-check .hs:visible").count()) === 0 && (await toggle.getAttribute("aria-pressed")) === "false");
+  await toggle.click();
+  const hs = page.locator("#path-check .hs:visible");
+  check(T("numbered notes appear on request"), (await hs.count()) > 0);
+  if (await hs.count()) {
+    await hs.first().scrollIntoViewIfNeeded();
+    await hs.first().click();
+    check(T("a numbered note explains its control"), (await page.locator("#path-check .hs-callout:visible").first().innerText()).length > 30);
+  }
+  await snap("stage-check-notes");
+  await toggle.click();
+
+  /* viewer: open, focus, Escape, focus restored */
+  const opener = page.locator("#path-check .shot-open").first();
+  await opener.scrollIntoViewIfNeeded();
   await opener.focus();
-  await opener.press("Enter"); await page.waitForTimeout(200);
-  check(T("viewer opens"), await page.locator("dialog.viewer[open]").count() === 1);
-  check(T("viewer moves focus inside"), await page.evaluate(() => document.querySelector("dialog.viewer")?.contains(document.activeElement) ?? false));
-  check(T("viewer has hotspots"), (await page.locator("dialog.viewer .hs").count()) > 0);
-  if (shotsDir) await page.screenshot({ path: join(shotsDir, `viewer-${label}.png`) });
-  await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-  check(T("Escape closes the viewer"), await page.locator("dialog.viewer[open]").count() === 0);
-  check(T("focus returns to the screenshot button"), await opener.evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(60);
+  check(T("enlarging a screenshot opens the viewer"), await page.locator("#viewer[open]").count() === 1);
+  check(T("viewer moves focus inside"), (await page.evaluate(() => document.activeElement?.id)) === "viewer-close");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(60);
+  check(T("Escape closes the viewer"), (await page.locator("#viewer[open]").count()) === 0);
+  check(T("focus returns to the screenshot button"), await page.evaluate(() => document.activeElement?.classList.contains("shot-open")));
 
-  /* a small thumbnail has no crowded circles on the page, but its enlarged view does */
-  await page.goto(`${base}#more-tools`); await page.waitForTimeout(80);
-  check(T("more-tools: thumbnails carry no crowded circles"), (await page.locator("#more-tools figure.compact .hs").count()) === 0);
-  await page.locator("#more-tools figure.compact .shot-open").first().click(); await page.waitForTimeout(200);
-  check(T("more-tools: the enlarged view has the circles"), (await page.locator("dialog.viewer[open] .hs").count()) > 0);
-  await page.keyboard.press("Escape"); await page.waitForTimeout(100);
-
-  /* hotspots on the first figure of every lesson that has one */
-  for (const l of lessons) {
-    const fig = page.locator(`#${l.id} figure.shot:not(.compact)`).first();
-    if (!(await fig.count())) continue;
-    await page.goto(`${base}#${l.id}`); await page.waitForTimeout(60);
-    const spots = fig.locator(".hs");
-    const n = await spots.count();
-    check(T(`${l.id}: first figure has hotspots`), n > 0);
-    if (!n) continue;
-    await center(spots.nth(0));
-    await spots.nth(0).click();
-    check(T(`${l.id}: hotspot opens its explanation`), (await spots.nth(0).getAttribute("aria-pressed")) === "true" && /1\./.test(await fig.locator(".hs-callout").innerText()));
-    const ok = await fig.evaluate((f) => Array.from(f.querySelectorAll(".hs")).every((b) => { const x = parseFloat(b.style.left), y = parseFloat(b.style.top); return x >= 0 && x <= 100 && y >= 0 && y <= 100; }));
-    check(T(`${l.id}: hotspots lie inside the picture`), ok);
-    const textItems = await fig.locator(".hs-text li").count();
-    check(T(`${l.id}: every hotspot has ordinary text too`), textItems === n, `${textItems} text items for ${n} hotspots`);
-  }
-
-  /* walkthroughs */
-  for (const l of lessons) {
-    if (!l.demo) continue;
-    await page.goto(`${base}#${l.id}`); await page.waitForTimeout(80);
-    const demo = page.locator(`#${l.id}-demo`);
-    await center(demo);
-    const steps = l.demo.steps.length;
-    let good = true;
-    for (let s = 0; s < steps; s++) {
-      const nxt = demo.locator(".hs.next");
-      if ((await nxt.count()) !== 1) { good = false; break; }
-      await center(nxt);
-      await nxt.click();
-      if (!/what you would see/i.test(await demo.locator(".demo-say").innerText())) { good = false; break; }
-      if (s < steps - 1) { await demo.locator(".demo-next").click(); await page.waitForTimeout(40); }
+  /* ---------- examples ---------- */
+  // placement: choose
+  await go("#path-prepare");
+  await eager();
+  const px = page.locator('#path-prepare .example[data-example="placement"]');
+  await px.scrollIntoViewIfNeeded();
+  check(T("placement example is interactive and the static copy is hidden"), (await px.locator(".ex-live").isVisible()) && !(await px.locator(".ex-static").isVisible()));
+  const placement = DATA.examples.placement;
+  for (let c = 0; c < placement.cases.length; c++) {
+    const cs = placement.cases[c];
+    check(T(`placement case ${c + 1} is announced`), new RegExp(`Case ${c + 1} of ${placement.cases.length}`, "i").test(await px.locator(".ex-progress").innerText()));
+    // first pick a non-best option (if any) to confirm wrong answers are explained, then retry is not offered; next case follows
+    const wrongIdx = cs.options.findIndex((o) => o.verdict !== "best");
+    const bestIdx = cs.options.findIndex((o) => o.verdict === "best");
+    const pick = c === 0 ? wrongIdx : bestIdx;
+    await px.locator("label.opt").nth(pick).click();
+    await px.getByRole("button", { name: "Check my answer" }).click();
+    const fbText = await px.locator(".ex-feedback").innerText();
+    check(T(`placement case ${c + 1}: feedback explains the choice`), fbText.length > 40);
+    if (c === 0) {
+      check(T("placement case 1: a wrong answer also shows the best one"), /The best answer/.test(fbText));
+      await snap("example-placement");
     }
-    check(T(`${l.id}: walkthrough completes in ${steps} steps`), good);
-    check(T(`${l.id}: walkthrough ends cleanly`), /end of this example/i.test(await demo.locator(".demo-say").innerText()));
-    check(T(`${l.id}: walkthrough says it touches nothing`), /never connects to a printer/.test(await demo.locator(".demo-safe").innerText()));
-    await center(demo.locator(".demo-reset"));
-    await demo.locator(".demo-reset").click();
-    check(T(`${l.id}: walkthrough resets`), (await demo.locator(".hs.next").count()) === 1 && /step 1 of/i.test(await demo.locator(".demo-say").innerText()));
-    // a wrong circle is explained, not ignored
-    const idle = demo.locator(".hs.idle").first();
-    if (await idle.count()) { await center(idle); await idle.click(); check(T(`${l.id}: a wrong circle is explained`), /not this one/i.test(await demo.locator(".demo-say").innerText())); await demo.locator(".demo-reset").click(); }
+    check(T(`placement case ${c + 1}: answers lock after checking`), (await px.locator("fieldset input:disabled").count()) === cs.options.length);
+    await px.getByRole("button", { name: c + 1 < placement.cases.length ? "Next case" : "Finish" }).click();
   }
-  if (shotsDir) {
-    await page.evaluate(() => document.querySelectorAll("img[loading=lazy]").forEach((i) => { i.loading = "eager"; }));
-    await page.goto(`${base}#fix-and-prepare`); await page.waitForTimeout(150);
-    await page.locator("#fix-and-prepare figure.shot").first().scrollIntoViewIfNeeded();
-    await page.evaluate(() => { document.querySelector("#fix-and-prepare figure.shot").scrollIntoView({ block: "start" }); window.scrollBy(0, -80); });
-    await page.screenshot({ path: join(shotsDir, `figure-${label}.png`) });
-    const demo = page.locator("#fix-and-prepare-demo");
-    await demo.scrollIntoViewIfNeeded();
-    await demo.locator(".hs.next").click();
-    await page.evaluate(() => { document.querySelector("#fix-and-prepare-demo").scrollIntoView({ block: "start" }); window.scrollBy(0, -80); });
-    await page.screenshot({ path: join(shotsDir, `walkthrough-${label}.png`) });
-    await page.goto(`${base}#more-tools`); await page.waitForTimeout(200);
-    await page.evaluate(() => { document.querySelectorAll("img[loading=lazy]").forEach((i) => { i.loading = "eager"; }); document.querySelector("#more-tools .branches").scrollIntoView({ block: "start" }); window.scrollBy(0, -100); });
-    await page.waitForTimeout(600);
-    await page.screenshot({ path: join(shotsDir, `lesson-more-tools-${label}.png`) });
-    await page.goto(`${base}#troubleshooting`); await page.waitForTimeout(200);
-    await page.screenshot({ path: join(shotsDir, `lesson-troubleshooting-${label}.png`) });
+  check(T("placement example ends with a score"), /of 3 cases/.test(await px.locator(".ex-live").innerText()));
+  await px.getByRole("button", { name: "Try the cases again" }).click();
+  check(T("placement example can be repeated"), /Case 1 of/i.test(await px.locator(".ex-progress").innerText()));
+
+  // assign vs load: multi
+  const ax = page.locator('#path-prepare .example[data-example="assign-vs-load"]');
+  await ax.scrollIntoViewIfNeeded();
+  const al = DATA.examples["assign-vs-load"].items;
+  for (const [i, it] of al.entries()) if (it.answer) await ax.locator("label.opt").nth(i).click();
+  await ax.getByRole("button", { name: "Check my answers" }).click();
+  check(T("assign-vs-load: all correct scores full marks"), new RegExp(`${al.length} of ${al.length} right`).test(await ax.locator(".score").innerText()));
+  check(T("assign-vs-load: every statement gets feedback"), (await ax.locator(".ex-feedback .fb").count()) === al.length);
+  await snap("example-assign");
+
+  // read the change: sort (with a wrong answer first)
+  await go("#path-review");
+  await eager();
+  const rx = page.locator('#path-review .example[data-example="read-change"]');
+  await rx.scrollIntoViewIfNeeded();
+  await rx.getByRole("button", { name: "Check my sorting" }).click();
+  check(T("read-change: an unfinished sort is not marked"), /Not finished/.test(await rx.locator(".ex-feedback").innerText()));
+  const rc = DATA.examples["read-change"];
+  for (const [i, it] of rc.items.entries()) {
+    const ans = i === 0 ? rc.categories.find((c) => c.id !== it.answer).id : it.answer;
+    await rx.locator(`input[name="ex-read-change-i${i}"][value="${ans}"]`).locator("xpath=..").click();
   }
-  check(T("no console errors"), errors.length === 0, errors.join(" | "));
+  await rx.getByRole("button", { name: "Check my sorting" }).click();
+  const rcScore = await rx.locator(".score").innerText();
+  check(T("read-change: score reflects the one deliberate mistake"), new RegExp(`${rc.items.length - 1} of ${rc.items.length}`).test(rcScore));
+  check(T("read-change: the mistake is explained with the right bucket"), /Not quite — this one is/.test(await rx.locator(".sort-row").first().innerText()));
+  await snap("example-read-change");
+
+  // unknown vs confirmed: sort, keyboard only
+  await go("#path-job");
+  await eager();
+  const ux = page.locator('#path-job .example[data-example="unknown-vs-confirmed"]');
+  await ux.scrollIntoViewIfNeeded();
+  const uc = DATA.examples["unknown-vs-confirmed"];
+  await ux.locator(`input[name="ex-unknown-vs-confirmed-i0"]`).first().focus();
+  await page.keyboard.press("Space");
+  check(T("unknown-vs-confirmed: a radio can be chosen from the keyboard"), (await ux.locator('input[name="ex-unknown-vs-confirmed-i0"]:checked').count()) === 1);
+  for (const [i, it] of uc.items.entries()) await ux.locator(`input[name="ex-unknown-vs-confirmed-i${i}"][value="${it.answer}"]`).locator("xpath=..").click();
+  await ux.getByRole("button", { name: "Check my sorting" }).click();
+  check(T("unknown-vs-confirmed: full marks when sorted right"), new RegExp(`${uc.items.length} of ${uc.items.length}`).test(await ux.locator(".score").innerText()));
+  await ux.getByRole("button", { name: "Try again" }).click();
+  check(T("unknown-vs-confirmed: can try again"), (await ux.locator("input:checked").count()) === 0 && (await ux.getByRole("button", { name: "Check my sorting" }).count()) === 1);
+
+  /* ---------- search ---------- */
+  await go("");
+  await page.locator("body").click({ position: { x: 5, y: 300 } });
+  await page.keyboard.press("/");
+  check(T("the / key focuses search"), (await page.evaluate(() => document.activeElement?.id)) === "q");
+  await page.keyboard.type("object off the plate");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(100);
+  check(T("search opens the results page"), (await active()) === "search");
+  const hits = await page.locator("#search-out .result a.rt").evaluateAll((a) => a.map((x) => x.getAttribute("href")));
+  check(T("search for 'object off the plate' finds the placement warning first"), hits[0] === "#problem-object-outside-area" || hits.includes("#problem-object-outside-area"), hits.slice(0, 4).join(","));
+  check(T("search results carry an excerpt"), (await page.locator("#search-out .result p").first().innerText()).length > 20);
+  check(T("search keeps the query in the address (shareable)"), /^#search:/.test(await page.evaluate(() => location.hash)));
+  await snap("search");
+  await page.locator("#search-out .result a.rt").first().click();
+  await page.waitForTimeout(80);
+  check(T("a search result opens its page"), (await active()) === hits[0].slice(1));
+  await go("#search:" + encodeURIComponent("zzqx nothing"));
+  check(T("a search with no match shows an empty state with next steps"), (await page.locator("#search-out .empty").count()) === 1 && (await page.locator("#search-out .empty a").count()) >= 3);
+  for (const [q, want] of [["nozzle", "nozzle"], ["different printer", "sliced-for-different-printer"], ["spool", "spool"], ["watch folder", "watch"]]) {
+    await go("#search:" + encodeURIComponent(q));
+    const r = await page.locator("#search-out .result a.rt").evaluateAll((a) => a.map((x) => x.getAttribute("href")));
+    check(T(`search '${q}' finds something relevant`), r.some((h) => h.includes(want)), r.slice(0, 5).join(","));
+  }
+  for (const s of DATA.suggestions) {
+    await go("#search:" + encodeURIComponent(s));
+    check(T(`suggested search '${s}' returns results`), (await page.locator("#search-out .result").count()) > 0);
+  }
+  await go("#search:" + encodeURIComponent("amp mar colors"));
+  check(T("highlighting never breaks entities or marks"), await page.evaluate(() => { const h = document.querySelector("#search-out").innerHTML; return !/&<mark>|<mark>[^<]*<mark>|<[/]mark>[a-z]*;/.test(h) && !/&amp;<mark>amp/.test(h); }));
+  await go("#search");
+  check(T("empty search offers suggestions"), (await page.locator("#search-out .suggest a").count()) === DATA.suggestions.length);
+  await page.locator("#q").fill("nozzle");
+  await page.waitForTimeout(80);
+  check(T("typing on the search page updates results live"), (await page.locator("#search-out .result").count()) > 0);
+
+  /* ---------- tasks and warnings ---------- */
+  await go("#tasks");
+  const groups = await page.locator("#tasks .tgroup").count();
+  check(T("task list is grouped by need"), groups >= 5);
+  check(T("optional tools are marked optional"), (await page.locator("#tasks .opt-inline").count()) > 0);
+  await snap("tasks");
+  await page.locator('#tasks .filters button[data-filter="prepare"]').click();
+  check(T("task filter narrows the list"), (await page.locator("#tasks .tgroup:visible").count()) === 1 && (await page.locator('#tasks .filters button[aria-pressed="true"]').count()) === 1);
+  await page.locator('#tasks .filters button[data-filter="all"]').click();
+  check(T("task filter can be cleared"), (await page.locator("#tasks .tgroup:visible").count()) === groups);
+  await page.locator("#tasks .tlist a").first().click();
+  await page.waitForTimeout(80);
+  check(T("selecting a task opens it"), pageTypes[await active()] === "task");
+  check(T("task page has steps and a success signal"), (await page.locator("article.page.is-active .steps").count()) > 0 && (await page.locator("article.page.is-active .done .checks li").count()) > 0);
+  await snap("task");
+
+  await go("#problems");
+  check(T("warnings are grouped by how sure Studio is"), (await page.locator("#problems .pgroup").count()) >= 4);
+  await page.locator('#problems .filters button[data-filter="unknown"]').click();
+  check(T("warning filter narrows the list"), (await page.locator("#problems .pgroup:visible").count()) === 1);
+  await go("#problem-studio-cant-tell");
+  check(T("warning page shows how sure Studio is, in words and shape"), (await page.locator("article.page.is-active .howsure .cert").count()) === 1 && (await page.locator("article.page.is-active .meter li").count()) === 5);
+  check(T("warning page says what not to conclude"), (await page.locator("article.page.is-active .dont").count()) === 1);
+  await snap("problem");
+
+  /* ---------- navigation, keyboard, theme ---------- */
+  await go("#path-open");
+  check(T("current section is marked in the top navigation"), (await page.locator('.bar-nav [data-nav="path"][aria-current=page]').count()) === 1);
+  await go("#problem-controls-off");
+  check(T("warning pages mark Warnings as current"), (await page.locator('.bar-nav [data-nav="problems"][aria-current=page]').count()) === 1);
+  await go("");
+  await page.keyboard.press("Tab");
+  check(T("first Tab stop is the skip link"), (await page.evaluate(() => document.activeElement?.className)) === "skip");
+  await page.keyboard.press("Enter");
+  check(T("skip link stays on the page and focuses the main content"), (await active()) === "home" && (await page.evaluate(() => document.activeElement?.id)) === "main");
+  await go("#problem-controls-off");
+  await page.locator(".skip").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(60);
+  check(T("on another page the skip link does not jump to home"), (await active()) === "problem-controls-off" && (await page.evaluate(() => document.activeElement?.id)) === "main");
+  await go("");
+  if (mobile) await page.locator("#home .map-fold summary").click();
+  const mapLink = page.locator("#home .wfmap a[href=\"#path-orca\"]:visible").first();
+  await mapLink.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(80);
+  check(T("a map stage is reachable and opens by keyboard"), (await active()) === "path-orca");
+  await page.locator("#theme-btn").focus();
+  const before = await page.evaluate(() => document.documentElement.dataset.theme);
+  await page.keyboard.press("Enter");
+  const after = await page.evaluate(() => document.documentElement.dataset.theme);
+  check(T("theme switch works from the keyboard"), before !== after);
+  await page.keyboard.press("Enter");
+  check(T("theme switch toggles back"), (await page.evaluate(() => document.documentElement.dataset.theme)) === before);
+  check(T("focus ring is visible on the focused control"), await page.evaluate(() => { const o = getComputedStyle(document.activeElement).outlineStyle; return o !== "none"; }));
+
+  /* readable with a wider fallback font */
+  await page.addInitScript(() => { const s = new CSSStyleSheet(); s.replaceSync("*{font-family:Verdana,sans-serif!important}"); document.adoptedStyleSheets = [...document.adoptedStyleSheets, s]; });
+  for (const id of ["home", "path-prepare", "tasks", "problem-studio-cant-tell", "search"]) {
+    await go(`#${id}`);
+    check(T(`#${id} has no sideways scroll with a wide fallback font`), !(await overflow()));
+    if (id === "home" && !mobile) { const bad = await page.evaluate(() => { const board = document.querySelector("#home .wf-board"); const rs = [...board.querySelectorAll(".wf-lane span, .wf-n, .wf-t, .wf-q")].map((n) => ({ r: n.getBoundingClientRect(), t: n.textContent.slice(0, 12) })); const out = []; for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const p = rs[i].r, q = rs[j].r; if (p.left < q.right - 0.5 && q.left < p.right - 0.5 && p.top < q.bottom - 0.5 && q.top < p.bottom - 0.5) out.push(rs[i].t + " x " + rs[j].t); } const lanes = [...board.querySelectorAll(".wf-lane")].map((l) => l.getBoundingClientRect()); for (const nd of board.querySelectorAll(".wf-node")) { const r = nd.getBoundingClientRect(); const l = lanes.find((x) => r.top >= x.top - 1 && r.top < x.bottom); if (!l || r.bottom > l.bottom + 0.5) out.push("leaves lane: " + nd.textContent.slice(0, 14)); } return out; }); check(T("workflow map has no collisions with a wide fallback font"), bad.length === 0, bad.join("; ")); }
+  }
+  await go("#home");
+  await snap("home-final");
+  await go("#path-prepare");
+  await eager();
+  await page.evaluate(() => document.querySelector("#path-prepare .example")?.scrollIntoView({ block: "start" }));
+  await snap("stage-prepare");
+
+  check(T("no console errors (page served with a strict CSP)"), errors.length === 0, errors.join(" | "));
   await ctx.close();
 }
 
@@ -223,17 +391,18 @@ await run("desktop-light", { width: 1280, height: 900 }, "light");
 await run("phone-dark", { width: 390, height: 844 }, "dark");
 await run("phone-light", { width: 390, height: 844 }, "light");
 
-/* without JavaScript: readable, complete, every hotspot as text */
+/* ---------- without JavaScript: complete and readable ---------- */
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 }, javaScriptEnabled: false });
   const page = await ctx.newPage();
   await page.goto(base, { waitUntil: "load" });
-  const shown = await page.evaluate(() => Array.from(document.querySelectorAll(".lesson")).filter((l) => getComputedStyle(l).display !== "none").length);
-  check("no-JS: all lessons are readable", shown === lessons.length, `${shown} shown`);
-  check("no-JS: explains that examples need JavaScript", await page.locator(".nojs-note").isVisible());
-  check("no-JS: hotspot notes are plain text", (await page.locator(".hs-text li").count()) > 50);
-  check("no-JS: walkthroughs fall back to numbered text", (await page.locator(".demo-static li").count()) > 10);
-  check("no-JS: JavaScript-only controls are hidden", !(await page.locator("#theme-btn").isVisible()));
+  const shown = await page.evaluate(() => Array.from(document.querySelectorAll("article.page")).filter((l) => getComputedStyle(l).display !== "none").length);
+  check("no-JS: every page is readable", shown === pageIds.length, `${shown} of ${pageIds.length}`);
+  check("no-JS: search explains it needs JavaScript and points to lists", /needs JavaScript/.test(await page.locator("#search-out").innerText()));
+  check("no-JS: the search box and theme button are hidden", !(await page.locator("#search-form").isVisible()) && !(await page.locator("#theme-btn").isVisible()));
+  check("no-JS: worked examples are shown as text", (await page.locator(".ex-static:visible").count()) === 4);
+  check("no-JS: control notes are plain text", (await page.locator(".controls-notes").count()) > 10);
+  check("no-JS: every old lesson link has an anchor", (await page.locator(".legacy-anchor").count()) === Object.keys(DATA.redirects).length);
   if (shotsDir) await page.screenshot({ path: join(shotsDir, "no-javascript.png") });
   await ctx.close();
 }

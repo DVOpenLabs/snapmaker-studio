@@ -1,0 +1,93 @@
+{
+  "site": {
+    "title": "Snapmaker Studio guide — decide what to do with your project",
+    "description": "A task-first guide to Snapmaker Studio v1.5.0: follow one example from opening a project to checking a sliced job, find help for what you are doing now, or look up a warning.",
+    "version": "1.5.0",
+    "disclaimer": "Snapmaker Studio is an **independent open-source project — not affiliated with or endorsed by Snapmaker**. “Snapmaker” is a trademark of its respective owner.",
+    "footer": "This guide describes **Snapmaker Studio v1.5.0**, the current stable release. Studio is advisory: it checks and prepares files, Snapmaker Orca slices, and nothing here promises that a print will succeed. Source, release notes and verification: [github.com/DVOpenLabs/snapmaker-studio](@repo)."
+  },
+  "links": {
+    "repo": "https://github.com/DVOpenLabs/snapmaker-studio",
+    "releases": "https://github.com/DVOpenLabs/snapmaker-studio/releases/latest",
+    "metadata": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/RELEASE_METADATA.md",
+    "trust": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/TRUST_STATUS.md",
+    "windows_install": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/windows-install.md",
+    "linux_install": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/linux-install.md",
+    "printers": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/PRINTER_COMPATIBILITY.md",
+    "examples": "https://github.com/DVOpenLabs/snapmaker-studio/tree/main/examples",
+    "issues": "https://github.com/DVOpenLabs/snapmaker-studio/issues/new/choose",
+    "orca": "https://github.com/Snapmaker/OrcaSlicer/releases"
+  },
+  "certainty": {
+    "confirmed": { "label": "Confirmed", "means": "Studio found this in your file. It is a fact about the file, not a guess." },
+    "check": { "label": "Worth checking", "means": "Studio found something that may matter. Decide whether it does for this print." },
+    "unknown": { "label": "Unknown", "means": "Studio has no way to read this. It is not a problem found; it is a gap you fill." },
+    "ok": { "label": "Looks right", "means": "Studio checked and found nothing wrong. Still advice, never a guarantee." },
+    "info": { "label": "Good to know", "means": "Explains what Studio did or what a screen shows. Nothing to fix." }
+  },
+  "lanes": [
+    { "id": "studio", "label": "In Studio" },
+    { "id": "orca", "label": "In Snapmaker Orca" },
+    { "id": "printer", "label": "At the printer" }
+  ],
+  "map": [
+    { "id": "open", "label": "Open", "ask": "Can I use this project?", "lane": "studio", "page": "path-open" },
+    { "id": "check", "label": "Check", "ask": "What needs attention?", "lane": "studio", "page": "path-check" },
+    { "id": "prepare", "label": "Prepare", "ask": "What can Studio fix?", "lane": "studio", "page": "path-prepare" },
+    { "id": "review", "label": "Review", "ask": "What changed?", "lane": "studio", "page": "path-review" },
+    { "id": "orca", "label": "Slice", "ask": "What do I review in Orca?", "lane": "orca", "page": "path-orca" },
+    { "id": "job", "label": "Check the job", "ask": "Does it match my printer?", "lane": "studio", "page": "path-job" },
+    { "id": "print", "label": "Print", "ask": "You, at the printer", "lane": "printer", "page": "task-printer-controls" }
+  ],
+  "home": {
+    "searchPlaceholder": "Search tasks and warnings — try “object off the plate” or “Studio can’t tell”",
+    "suggestions": ["object off the plate", "Studio can’t tell", "Orca", "nozzle", "spool", "update"],
+    "doors": [
+      {
+        "id": "example",
+        "title": "Learn with an example project",
+        "text": "Follow one small project through all six decisions, from opening it to checking the sliced job. About 25 minutes, nothing to install but Studio.",
+        "cta": { "label": "Start the example", "page": "path-open" },
+        "links": []
+      },
+      {
+        "id": "task",
+        "title": "Find help for my current task",
+        "text": "You already know what you are doing. Jump straight to the steps.",
+        "cta": { "label": "Browse all tasks", "page": "tasks" },
+        "links": [
+          { "label": "Fix an object that hangs off the plate", "page": "task-move-onto-plate" },
+          { "label": "Choose spools and presets", "page": "task-project-materials" },
+          { "label": "Open the copy in Snapmaker Orca", "page": "task-open-in-orca" },
+          { "label": "Check a sliced job", "page": "task-check-sliced-job" }
+        ]
+      },
+      {
+        "id": "problem",
+        "title": "Understand a warning or problem",
+        "text": "Studio is careful about what it knows. Look up what a message means and how sure Studio is.",
+        "cta": { "label": "See all warnings", "page": "problems" },
+        "links": [
+          { "label": "“Studio can’t tell”", "page": "problem-studio-cant-tell" },
+          { "label": "NEEDS ATTENTION", "page": "problem-needs-attention" },
+          { "label": "Printer not found", "page": "problem-printer-not-found" },
+          { "label": "Manual check in Orca required", "page": "problem-manual-check-in-orca" }
+        ]
+      }
+    ]
+  },
+  "redirects": {
+    "install": "setup",
+    "open-model": "task-open-model",
+    "this-print": "task-this-print",
+    "read-checks": "path-check",
+    "fix-and-prepare": "path-prepare",
+    "review-changes": "path-review",
+    "colours-materials": "task-colours-toolheads",
+    "orca-handoff": "path-orca",
+    "after-slicing": "path-job",
+    "printer-readiness": "task-connect-printer",
+    "more-tools": "tasks",
+    "troubleshooting": "problems"
+  }
+}
