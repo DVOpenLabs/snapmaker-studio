@@ -47,12 +47,17 @@ function excerpt(seg, ts) {
   let snip = text.slice(start, start + 180);
   if (start > 0) snip = "…" + snip.replace(/^\S*\s/, "");
   if (start + 180 < text.length) snip = snip.replace(/\s\S*$/, "") + "…";
-  let html = escapeHtml(snip);
-  for (const t of ts) {
-    const re = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/s$/, "")}[a-z0-9]*)`, "gi");
-    html = html.replace(re, "<mark>$1</mark>");
+  // highlight on the raw text, then escape each piece, so a term like "amp" can never match inside an entity or a tag
+  const alt = ts.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/s$/, "")).filter(Boolean).join("|");
+  if (!alt) return escapeHtml(snip);
+  const re = new RegExp(`(${alt})[a-z0-9]*`, "gi");
+  let html = "";
+  let last = 0;
+  for (const m of snip.matchAll(re)) {
+    html += escapeHtml(snip.slice(last, m.index)) + "<mark>" + escapeHtml(m[0]) + "</mark>";
+    last = m.index + m[0].length;
   }
-  return html;
+  return html + escapeHtml(snip.slice(last));
 }
 
 export function search(q) {

@@ -91,11 +91,11 @@
     "categories": [
       { "id": "confirmed", "label": "Confirmed in the file", "hint": "Studio read it in your file. It is a fact." },
       { "id": "unknown", "label": "Unknown", "hint": "Studio has no way to read it from a printer." },
-      { "id": "check", "label": "Worth settling first", "hint": "Studio found something that depends on you." },
+      { "id": "check", "label": "Worth checking", "hint": "A possibility, not a fact: it depends on something Studio cannot see." },
       { "id": "ok", "label": "Looks right", "hint": "Studio checked and found nothing wrong." }
     ],
     "items": [
-      { "text": "Sliced for a different printer — “Toolpaths, temperatures and machine commands are generated for one specific machine.” (the job names a Bambu Lab printer)", "answer": "confirmed", "feedback": "Confirmed. The job's own header names another printer, so Studio does not need a printer connected to know this. Action: re-slice the model in Snapmaker Orca with a U1 profile." },
+      { "text": "Sliced for a different printer — “Toolpaths, temperatures and machine commands are generated for one specific machine.” (the job names a Bambu Lab printer)", "answer": "confirmed", "feedback": "Confirmed. The job's own header names another printer, so Studio does not need a printer connected to know this. Action: re-slice the model in Snapmaker Orca with a U1 profile. Studio’s card ranks this “Worth settling first”; that is how urgent it is. This exercise asks how sure Studio is, and here it is sure." },
       { "text": "Tools this job needs — “Studio cannot confirm your printer has the toolheads this job expects.”", "answer": "unknown", "feedback": "Unknown. Studio would have to read your printer to know. This is not a problem found; connect the printer in Printer Hub, or check yourself." },
       { "text": "Nozzle size — “Studio has no way to see which one is installed.”", "answer": "unknown", "feedback": "Unknown. Check the nozzle on the printer. You can also record what is fitted under **Settings → Nozzles**." },
       { "text": "Studio cannot tie this job to your project — “nothing in either file identifies the model.”", "answer": "check", "feedback": "Worth settling. Studio cannot tell whether this is the slice of the project you checked, so it asks you to be sure you picked the right file." },

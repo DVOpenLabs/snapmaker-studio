@@ -304,6 +304,8 @@ async function run(label, viewport, theme) {
     await go("#search:" + encodeURIComponent(s));
     check(T(`suggested search '${s}' returns results`), (await page.locator("#search-out .result").count()) > 0);
   }
+  await go("#search:" + encodeURIComponent("amp mar colors"));
+  check(T("highlighting never breaks entities or marks"), await page.evaluate(() => { const h = document.querySelector("#search-out").innerHTML; return !/&<mark>|<mark>[^<]*<mark>|<[/]mark>[a-z]*;/.test(h) && !/&amp;<mark>amp/.test(h); }));
   await go("#search");
   check(T("empty search offers suggestions"), (await page.locator("#search-out .suggest a").count()) === DATA.suggestions.length);
   await page.locator("#q").fill("nozzle");
@@ -344,7 +346,13 @@ async function run(label, viewport, theme) {
   await page.keyboard.press("Tab");
   check(T("first Tab stop is the skip link"), (await page.evaluate(() => document.activeElement?.className)) === "skip");
   await page.keyboard.press("Enter");
-  check(T("skip link moves to the main content"), (await page.evaluate(() => location.hash)) === "#main" || true);
+  check(T("skip link stays on the page and focuses the main content"), (await active()) === "home" && (await page.evaluate(() => document.activeElement?.id)) === "main");
+  await go("#problem-controls-off");
+  await page.locator(".skip").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(60);
+  check(T("on another page the skip link does not jump to home"), (await active()) === "problem-controls-off" && (await page.evaluate(() => document.activeElement?.id)) === "main");
+  await go("");
   if (mobile) await page.locator("#home .map-fold summary").click();
   const mapLink = page.locator("#home .wfmap a[href=\"#path-orca\"]:visible").first();
   await mapLink.focus();

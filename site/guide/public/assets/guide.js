@@ -37,6 +37,7 @@ function parseHash() {
   const target = document.getElementById(h);
   const host = target?.closest("article.page");
   if (host) return { page: host.dataset.page, section: h };
+  if (target) return { page: current?.dataset.page || "home", section: h };
   const base = h.split("--")[0];
   if (pages.has(base)) return { page: base };
   return { page: "home", missing: h };

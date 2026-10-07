@@ -97,7 +97,7 @@ These are recorded for the maintainer; none is described in the guide as working
 |---|---|
 | `node tools/build.mjs` (content, screenshots, alt text, hotspot positions and overlaps, every link target, every example answer, privacy lint) | 6 stages, 27 tasks, 23 warnings, 4 examples, 30 screenshots, 56 searchable pages, no problems |
 | `node tools/check.mjs` (links, ids, alt text, no third-party requests, no inline script or style, WCAG contrast of every colour pair in both themes) | 49/49 |
-| `node tools/e2e.mjs` (Edge, desktop 1280 px and phone 390 px, dark and light, strict Content-Security-Policy, plus a no-JavaScript run): home order and the folding map, no collisions in the workflow map (also with a wide fallback font), every page by deep link, every old lesson link, search (results, excerpt, empty state, suggestions, `/` shortcut), task and warning filters, all four examples including a deliberate wrong answer, viewer focus handling, numbered notes, keyboard-only paths, theme switch, wide fallback font, overflow, console errors | 1454/1454 |
+| `node tools/e2e.mjs` (Edge, desktop 1280 px and phone 390 px, dark and light, strict Content-Security-Policy, plus a no-JavaScript run): home order and the folding map, no collisions in the workflow map (also with a wide fallback font), every page by deep link, every old lesson link, search (results, excerpt, empty state, suggestions, `/` shortcut), task and warning filters, all four examples including a deliberate wrong answer, viewer focus handling, numbered notes, keyboard-only paths, theme switch, wide fallback font, overflow, console errors | 1462/1462 |
 | `.github/workflows/guide-ci.yml` on GitHub-hosted Linux Chrome | not yet run (needs the pull request) |
 | `node tools/check.mjs --online` | not run (needs the network) |
 | Desktop / backend test suites | not run: this change touches only `site/guide/` and the capture tooling, not Studio itself |
@@ -105,9 +105,9 @@ These are recorded for the maintainer; none is described in the guide as working
 Screenshots of the finished redesign, desktop and phone, both themes: `evidence/redesign/`. The earlier `evidence/screenshots/`
 and `evidence/live/` show the previous, lesson-based guide.
 
-### Previous deployment (2026-10-07)
+### Earlier deployment (2026-10-07)
 
 The lesson-based guide was published with GitHub Pages from `main` by `.github/workflows/guide-pages.yml` after PR #79 passed all
 checks, including `guide-ci.yml` on Linux Chrome; its live run was 727/727. Pages cannot set response headers, so the strict
 Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
-The redesign is not published: it is prepared on branch `docs/guide-redesign` for review.
+The redesign replaces this version when its pull request merges: `main` publishes `site/guide/public` through `guide-pages.yml`.

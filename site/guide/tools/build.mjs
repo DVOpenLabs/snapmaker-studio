@@ -460,7 +460,7 @@ const html = `<!doctype html>
     </nav>
   </div>
 </header>
-<main id="main">
+<main id="main" tabindex="-1">
 <h1 class="vh">Snapmaker Studio user guide</h1>
 ${legacy}
 ${orderedPages.join("\n")}

@@ -140,7 +140,7 @@
       {
         "key": "compat",
         "title": "Compatibility",
-        "text": "The full list of checks for a 3MF, and the **Prepare U1 copy** controls. **After Slicing** sits just below it (lesson 9)."
+        "text": "The full list of checks for a 3MF, and the **Prepare U1 copy** controls. **After Slicing** sits just below it (stage 6 of the example)."
       },
       {
         "key": "colors",
@@ -711,7 +711,7 @@
       {
         "key": "next-line",
         "title": "What happens next",
-        "text": "Slice in Snapmaker Orca, export the `.gcode` file, then bring it back (lesson 9). Studio does not slice."
+        "text": "Slice in Snapmaker Orca, export the `.gcode` file, then bring it back (stage 6 of the example). Studio does not slice."
       }
     ]
   },
