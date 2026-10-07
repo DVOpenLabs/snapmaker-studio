@@ -1,0 +1,35 @@
+# Publishes the user guide (site/guide/public) with GitHub Pages on every push to main that touches site/guide/.
+# No build step on the server: the site is plain files, built and checked by guide-ci.yml before it can merge.
+name: Publish the user guide
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/guide/**", ".github/workflows/guide-pages.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: guide-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/guide/public
+      - id: deployment
+        uses: actions/deploy-pages@v4
