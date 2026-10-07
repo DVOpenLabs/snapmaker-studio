@@ -1,0 +1,13 @@
+# Recommended response headers for the guide (any host that lets you set headers).
+# The guide is tested (tools/e2e.mjs) under exactly this Content-Security-Policy and loads nothing from another site.
+# GitHub Pages cannot set custom headers; the guide is still safe there because it makes no network requests of its own.
+
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+Cross-Origin-Opener-Policy: same-origin
+
+# Netlify (_headers file):           /*   <one header per line, indented>
+# Cloudflare Pages (_headers file):  same format as Netlify.
+# nginx:                             add_header Content-Security-Policy "default-src 'none'; ..." always;

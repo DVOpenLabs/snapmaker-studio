@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { Rocket, ArrowRight } from "lucide-react";
+import { Rocket, ArrowRight, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/layout";
+import { USER_GUIDE_BLURB, USER_GUIDE_LABEL, USER_GUIDE_URL } from "@/lib/guide";
 
 // Lightweight beginner guide: from model to first print. Each step links to the
 // real Studio feature. Studio does NOT slice or send prints — those steps happen
@@ -10,7 +11,7 @@ interface Step { n: number; title: string; body: string; to?: string; link?: str
 
 const STEPS: Step[] = [
   { n: 1, title: "Find a model", inStudio: true, to: "/find-models", link: "Find Models",
-    body: "Search model sites and check the license. Download manually from the source site (v1 doesn't import for you)." },
+    body: "Browse approved model sites inside Studio and check the license. Download with the site's own button and Studio adds supported downloads to your Library." },
   { n: 2, title: "Open it in Studio", inStudio: true, to: "/", link: "Open a model",
     body: "Drag an STL or 3MF in. Studio reads it locally — your file stays on your computer." },
   { n: 3, title: "Run the Project Doctor", inStudio: true, to: "/doctor/project", link: "Project Doctor",
@@ -32,6 +33,15 @@ export default function BeginnerWorkflow() {
     <div className="space-y-6">
       <PageHeader icon={Rocket} title="From model to first print"
         subtitle="A beginner's path through Studio — and where Orca and your printer take over." />
+
+      <Card><CardContent className="space-y-1.5 p-4 text-sm">
+        <p className="font-medium">Prefer a click-through tour?</p>
+        <p className="text-muted-foreground">{USER_GUIDE_BLURB}</p>
+        <a href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+          {USER_GUIDE_LABEL} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      </CardContent></Card>
 
       <div className="space-y-3">
         {STEPS.map((s) => (

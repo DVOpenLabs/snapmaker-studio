@@ -1,0 +1,17 @@
+{
+  "name": "snapmaker-studio-guide",
+  "private": true,
+  "version": "1.5.0",
+  "type": "module",
+  "description": "Interactive user guide for Snapmaker Studio (static site; no runtime dependencies).",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "build:draft": "node tools/build.mjs --draft",
+    "capture": "node tools/capture.mjs",
+    "preview": "node tools/serve.mjs",
+    "check": "node tools/check.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.48.0"
+  }
+}

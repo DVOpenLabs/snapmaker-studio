@@ -1,0 +1,40 @@
+name: User guide checks
+
+# Builds and checks the static user guide in site/guide. It only reads and tests; it never publishes anything.
+# (Publishing is a separate, opt-in step: see site/guide/README.md, "Deploy".)
+on:
+  pull_request:
+    paths: ["site/guide/**", ".github/workflows/guide-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["site/guide/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  guide:
+    name: Build, check and click through the guide
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: site/guide
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build (validates content, screenshots, hotspots and walkthroughs)
+        run: node tools/build.mjs
+      - name: The committed public/index.html is current
+        run: git diff --exit-code -- public/index.html
+      - name: Static checks (links, alt text, no third-party requests, contrast)
+        run: node tools/check.mjs
+      - name: Browser checks in Chrome (desktop and phone, both themes, no JavaScript)
+        run: |
+          npm install --no-save --no-package-lock playwright-core
+          node tools/e2e.mjs

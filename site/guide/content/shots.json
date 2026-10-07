@@ -1,0 +1,754 @@
+{
+  "home": {
+    "file": "home.png",
+    "title": "Studio's Home screen",
+    "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This print, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a model button, and a footer reading Local-only, nothing leaves your network.",
+    "caption": "Home, as it looks the first time you open Studio (Simple view).",
+    "hotspots": [
+      {
+        "key": "open-main",
+        "title": "Open a model",
+        "text": "Press **Open a model** to pick an `.stl` or `.3mf` file. You can also drag a file onto the window."
+      },
+      {
+        "key": "open-sidebar",
+        "title": "Open a model (sidebar)",
+        "text": "The same button lives at the top of the sidebar, so it is always one click away."
+      },
+      {
+        "key": "view-toggle",
+        "title": "Simple and Advanced",
+        "text": "**Simple** shows six everyday items. **Advanced** shows every tool in the sidebar. Switch whenever you like; nothing is lost."
+      },
+      {
+        "key": "help",
+        "title": "Help",
+        "text": "**Help** holds the update check, the support bundle and short pointers to each tool."
+      },
+      {
+        "key": "local-only",
+        "title": "Local only",
+        "text": "Studio runs on your computer. There is no account and nothing is uploaded; this line is always visible."
+      }
+    ]
+  },
+  "workspace-stl": {
+    "file": "workspace-stl.png",
+    "title": "The Workspace after opening an STL",
+    "alt": "Studio's Workspace page for sample_cube.stl. A banner says Can prepare a U1 copy with a blue Prepare U1 copy button. Below it are a Your fix plan list and a What's in this design card showing a plain STL model of 20 by 20 by 20 millimetres.",
+    "caption": "The Workspace for `sample_cube.stl`, a 20 mm cube from the repository's `examples` folder.",
+    "hotspots": [
+      {
+        "key": "file",
+        "title": "The open file",
+        "text": "The file name and a one-line status. Studio read the file on your computer; it was not uploaded anywhere."
+      },
+      {
+        "key": "verdict",
+        "title": "The verdict",
+        "text": "A plain-language verdict with a star rating. It is advice about preparing the file, not a promise about the print."
+      },
+      {
+        "key": "prepare",
+        "title": "Prepare U1 copy",
+        "text": "Writes a **new** file with U1 settings. Your original is never changed."
+      },
+      {
+        "key": "fix-plan",
+        "title": "Your fix plan",
+        "text": "Each step says where it happens: **Do this in Studio** or **Do this in Orca**."
+      },
+      {
+        "key": "contents",
+        "title": "What's in this design",
+        "text": "What Studio measured: kind of file, size, colours, parts and a rough filament cost."
+      }
+    ]
+  },
+  "workspace-3mf": {
+    "file": "workspace-3mf.png",
+    "title": "The Workspace for a 3MF project",
+    "alt": "Studio's Workspace for demo_offplate_foreign.3mf. A Preparation mode card offers Preserve creator settings (recommended), Use Studio's U1 starter settings instead, and Custom. Below are a Needs a fix first banner with a Prepare U1 copy button, a Your fix plan list, and an Object placement card reporting one object outside the printable area.",
+    "caption": "The Workspace for `demo_offplate_foreign.3mf`, a small project whose second object sits off the U1's plate.",
+    "hotspots": [
+      {
+        "key": "mode",
+        "title": "Preparation mode",
+        "text": "A 3MF can carry the creator's print settings. This card decides what Studio does with them."
+      },
+      {
+        "key": "preserve",
+        "title": "Preserve creator settings",
+        "text": "Recommended for a downloaded model: it keeps the creator's settings and changes only what the U1 needs."
+      },
+      {
+        "key": "prepare",
+        "title": "Prepare U1 copy",
+        "text": "Creates the new file using the mode you chose."
+      },
+      {
+        "key": "placement",
+        "title": "Object placement",
+        "text": "Names the object, the edge and the distance when something sits off the plate. The fix button is just below."
+      }
+    ]
+  },
+  "this-print-top": {
+    "file": "this-print-top.png",
+    "title": "This print, stage 1: Before slicing",
+    "alt": "Studio's This print page for demo_offplate_foreign.3mf. Stage 1, Before slicing, shows an Object placement card with a Move onto the plate button, then a Before you slice card listing checks marked Studio can't tell, then the start of a Colours and toolheads card.",
+    "caption": "**This print** for the example project, with no printer connected.",
+    "hotspots": [
+      {
+        "key": "header",
+        "title": "One job, one page",
+        "text": "The page is named after the open file and follows that one job from download to ready-to-send."
+      },
+      {
+        "key": "stage-one",
+        "title": "Stage 1: Before slicing",
+        "text": "What the project is and how it compares with the printer Studio can see."
+      },
+      {
+        "key": "placement",
+        "title": "Object placement",
+        "text": "Where the objects sit on the plate, with a fix when one is needed."
+      },
+      {
+        "key": "printer-check",
+        "title": "Before you slice",
+        "text": "Compares the project with your printer. With no printer connected, each answer is honestly marked **Studio can’t tell**."
+      },
+      {
+        "key": "colours",
+        "title": "Colours and toolheads",
+        "text": "How many colours the project uses against the U1's four toolheads."
+      }
+    ]
+  },
+  "this-print-lower": {
+    "file": "this-print-lower.png",
+    "title": "This print, stages 2 and 3",
+    "alt": "The lower part of Studio's This print page. Stage 2, Prepared, says Nothing prepared yet and explains that preparing writes a new copy. Stage 3, After slicing, shows a Pick up sliced jobs automatically card with a Watch this folder button.",
+    "caption": "Stages 2 and 3 of **This print** before anything has been prepared or sliced.",
+    "hotspots": [
+      {
+        "key": "stage-two",
+        "title": "Stage 2: Prepared",
+        "text": "After you prepare a copy, this stage shows what changed, what survived and the way back to your original."
+      },
+      {
+        "key": "stage-three",
+        "title": "Stage 3: After slicing",
+        "text": "Snapmaker Orca slices. This stage picks the result back up and checks what the printer will actually do."
+      },
+      {
+        "key": "watch-folder",
+        "title": "Watch this folder",
+        "text": "Optional: tell Studio where Orca saves its exports and it looks there while this page is open, never in the background."
+      }
+    ]
+  },
+  "nav-advanced": {
+    "file": "nav-advanced.png",
+    "title": "Advanced view",
+    "alt": "Studio with the Advanced view switched on. The sidebar now lists every tool: Dashboard, This Print, Get Started, Project Doctor, Projects, Ready now, Compatibility, After Slicing, Scale Doctor, Print Quality, Colors and Materials, Cost and Pricing Doctor, Printer Hub, Find Models and Batch Prepare.",
+    "caption": "The sidebar in **Advanced** view.",
+    "hotspots": [
+      {
+        "key": "view-toggle",
+        "title": "View toggle",
+        "text": "Switch between **Simple** and **Advanced** here, or under **Settings → Mode**."
+      },
+      {
+        "key": "compat",
+        "title": "Compatibility",
+        "text": "The full list of checks for a 3MF, and the **Prepare U1 copy** controls. **After Slicing** sits just below it (lesson 9)."
+      },
+      {
+        "key": "colors",
+        "title": "Colors & Materials",
+        "text": "Colour and toolhead planning, Plate Color Remap and Project Materials (lesson 7)."
+      },
+      {
+        "key": "printer-hub",
+        "title": "Printer Hub",
+        "text": "Connect to your U1 and read its live state (lesson 10)."
+      }
+    ]
+  },
+  "compat-top": {
+    "file": "compat-top.png",
+    "title": "Compatibility: placement",
+    "alt": "Studio's Compatibility Doctor for demo_offplate_foreign.3mf. An Object placement card says one object is outside the U1's printable area and offers a Move onto the plate (saves a copy) button. Below is a Before you slice card.",
+    "caption": "The top of **Compatibility** for the example project.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "Compatibility Doctor",
+        "text": "A read-only check of a 3MF for common U1 and Snapmaker Orca problems. It never edits your file."
+      },
+      {
+        "key": "placement",
+        "title": "The placement finding",
+        "text": "States the problem in plain words: one object is outside the U1's printable area."
+      },
+      {
+        "key": "move",
+        "title": "Move onto the plate",
+        "text": "Saves a **new** file with every object shifted onto the plate. Your original stays as it was."
+      },
+      {
+        "key": "before-slice",
+        "title": "Before you slice",
+        "text": "Compares the project with the printer Studio can see right now."
+      }
+    ]
+  },
+  "compat-findings": {
+    "file": "compat-findings.png",
+    "title": "Compatibility: the findings list",
+    "alt": "Studio's Compatibility findings for the example project. A summary line reads Found 5 invalid-value issues and 2 warnings. Findings are cards labelled NEEDS ATTENTION or HEADS UP, each with an explanation, a Do this line and a Technical detail disclosure.",
+    "caption": "The findings list for `demo_offplate_foreign.3mf`.",
+    "hotspots": [
+      {
+        "key": "summary",
+        "title": "The summary",
+        "text": "How many problems and warnings Studio found in total."
+      },
+      {
+        "key": "attention",
+        "title": "NEEDS ATTENTION",
+        "text": "Something in the project is likely to cause trouble in Orca. It does not always mean the model is bad."
+      },
+      {
+        "key": "do-this",
+        "title": "Do this",
+        "text": "Every finding ends with a concrete next step you can act on. Expand **Technical detail** under a card for the exact setting names; you never need it to follow the guide."
+      }
+    ]
+  },
+  "move-result": {
+    "file": "move-result.png",
+    "title": "After Move onto the plate",
+    "alt": "Studio's Object placement card after the fix. The headline says the object sits inside the U1's printable area. A green panel reports that one object was moved onto the U1 plate in a new copy and that the original was not changed, with a Copy file location button.",
+    "caption": "The placement card after pressing **Move onto the plate (saves a copy)**.",
+    "hotspots": [
+      {
+        "key": "summary",
+        "title": "The check now passes",
+        "text": "The object sits inside the printable area. Studio re-checked the file it actually wrote and names the new copy; your original file was not changed."
+      },
+      {
+        "key": "copy-location",
+        "title": "Copy file location",
+        "text": "Copies the new file's location so you can open it in Studio or in Orca."
+      }
+    ]
+  },
+  "fidelity": {
+    "file": "fidelity.png",
+    "title": "What survived preparing",
+    "alt": "Studio's fidelity and change-ledger cards after preparing. What survived preparing this copy reports 14 kept and 2 changed, with expandable lists What Studio changed and What stayed the same. Below, Changes Studio made lists the preparation with a Return to the original button.",
+    "caption": "The fidelity report and the change ledger for a prepared copy.",
+    "hotspots": [
+      {
+        "key": "survived",
+        "title": "What survived preparing this copy",
+        "text": "A before-and-after comparison of everything Studio can identify in the two files, with the counts of what was kept and what changed (here **14 kept · 2 changed**)."
+      },
+      {
+        "key": "changed",
+        "title": "What Studio changed, and what stayed",
+        "text": "Expand **What Studio changed** to see each change; nothing is changed silently. **What stayed the same** lists what was carried over untouched."
+      },
+      {
+        "key": "ledger",
+        "title": "Changes Studio made",
+        "text": "A numbered ledger of each action, with the file it produced and a **Before and after** view."
+      },
+      {
+        "key": "return",
+        "title": "Return to the original",
+        "text": "Points Studio back at your untouched original. The copy stays on disk."
+      }
+    ]
+  },
+  "colours-overview": {
+    "file": "colours-overview.png",
+    "title": "Colours and toolheads",
+    "alt": "Studio's Colors page for demo_u1_showcase.3mf. A Colours and toolheads card says 6 colours, 4 toolheads, possible without repainting. It explains that a toolhead melts one filament and lists colours Not proven separable, which reserve a toolhead each, and colours that appear only higher up and could be a planned swap.",
+    "caption": "**Colors & Materials** for the six-colour example project on a four-toolhead U1.",
+    "hotspots": [
+      {
+        "key": "remap",
+        "title": "Plate Color Remap",
+        "text": "Changes one plate's colour in a verified **copy**. Your original is never changed."
+      },
+      {
+        "key": "verdict",
+        "title": "The verdict",
+        "text": "The count of colours against toolheads, in one sentence."
+      },
+      {
+        "key": "explain",
+        "title": "What a toolhead is",
+        "text": "A toolhead melts one filament. The U1 has four, so it can print four colours at once without a spool swap. Studio counted against the U1's published four toolheads; it did not read this from a printer."
+      }
+    ]
+  },
+  "colours-painted": {
+    "file": "colours-painted.png",
+    "title": "A painted project",
+    "alt": "Studio's Colors page for a painted example project. The card says 4 colours, 4 toolheads, every colour has a toolhead, and that parts of the model are painted with 2 filament colours. Two colours are listed as appearing only higher up, and two are listed under Studio can't tell how these are used.",
+    "caption": "Painted colour, read from the project before slicing.",
+    "hotspots": [
+      {
+        "key": "painted",
+        "title": "Painted colour found",
+        "text": "Studio read the painting stored in the project and tells you how many filament colours it uses. Expand **What Studio read from the painting** for the measurements; they are hidden by default."
+      }
+    ]
+  },
+  "pm-recs": {
+    "file": "pm-recs.png",
+    "title": "Project Materials: suggested spools",
+    "alt": "Studio's Project materials card. For Slot 1, PLA, Red, it lists three suggested spools from a sample inventory with reasons such as Material matches PLA and Colour distance, then an Orca preset area reading Not chosen yet with the buttons Use this preset, Choose an installed preset and Keep project's filament.",
+    "caption": "**Project materials** with a made-up sample inventory. No spool and no preset is selected.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "Project materials",
+        "text": "Appears on the Compatibility page whenever the project has filament slots. It never chooses for you."
+      },
+      {
+        "key": "candidate",
+        "title": "A suggested spool",
+        "text": "Each slot shows what the project asks for (material, colour, and the grams when the file states it). Studio lists up to three spools from your inventory and says **why**. Pick the one that is physically in your hand."
+      },
+      {
+        "key": "preset",
+        "title": "The Orca preset",
+        "text": "Choose an **installed** Snapmaker Orca preset yourself, or keep the project's own filament."
+      }
+    ]
+  },
+  "pm-review": {
+    "file": "pm-review.png",
+    "title": "Project Materials: review before preparing",
+    "alt": "Studio's Review before preparing panel. It lists, slot by slot, what will be written, for example Slot 1 mapped to Generic PLA with the colour changed to red, and notes that the other slots keep the project's filament identity. Buttons read Prepare with these choices and Back to choices.",
+    "caption": "The review panel, written by the same engine that prepares the copy.",
+    "hotspots": [
+      {
+        "key": "review",
+        "title": "Review before preparing",
+        "text": "A plain-language list of exactly what will change. Spool details are labelled as what **you** selected."
+      },
+      {
+        "key": "prepare",
+        "title": "Prepare with these choices",
+        "text": "Writes the new copy. Nothing is written until you press this."
+      },
+      {
+        "key": "back",
+        "title": "Back to choices",
+        "text": "Return and change anything. No file has been written yet."
+      }
+    ]
+  },
+  "after-empty": {
+    "file": "after-empty.png",
+    "title": "After slicing, before a job is loaded",
+    "alt": "Studio's After slicing page with no job loaded. It explains that this page checks the G-code the slicer produced. A Pick up sliced jobs automatically card has a Watch this folder button, and below it an Open the G-code your slicer produced section has a Check this job button.",
+    "caption": "**After Slicing**, waiting for a G-code file.",
+    "hotspots": [
+      {
+        "key": "watch",
+        "title": "Pick up sliced jobs automatically",
+        "text": "Optional. Tell Studio the folder where Orca saves exports, once."
+      },
+      {
+        "key": "watch-btn",
+        "title": "Watch this folder",
+        "text": "While this page is open, Studio looks in that folder only. It never runs in the background."
+      },
+      {
+        "key": "open-gcode",
+        "title": "Open the G-code",
+        "text": "Drag the `.gcode` file onto the window, or paste its full path. Studio reads it and never changes it."
+      },
+      {
+        "key": "check",
+        "title": "Check this job",
+        "text": "Reads the job and compares it with the project and the printer."
+      }
+    ]
+  },
+  "after-result": {
+    "file": "after-result.png",
+    "title": "A checked job",
+    "alt": "Studio's After slicing page after checking an example G-code file against the open project. A Ready to send card says nothing blocks the job but one thing is worth settling first, followed by findings labelled Studio can't check this, such as tools the job needs, whether the slots are loaded, the bed, and nozzle size.",
+    "caption": "A checked example job with **no printer connected**: Studio says what it cannot confirm instead of guessing.",
+    "hotspots": [
+      {
+        "key": "ready",
+        "title": "Ready to send?",
+        "text": "The overall answer, with what is worth settling before you send. It is never a promise that the print will succeed."
+      },
+      {
+        "key": "cant-check",
+        "title": "Studio can’t check this",
+        "text": "Unknown stays unknown. With no printer connected, anything that depends on the machine is listed here."
+      },
+      {
+        "key": "facts",
+        "title": "What the printer will actually do",
+        "text": "Facts read from the sliced file itself (next picture)."
+      },
+      {
+        "key": "choose-another",
+        "title": "Choose another file",
+        "text": "Check a different job without leaving the page."
+      }
+    ]
+  },
+  "after-facts": {
+    "file": "after-facts.png",
+    "title": "What the sliced file says",
+    "alt": "The What the printer will actually do card. It shows facts read from the sliced file: sliced by Snapmaker Orca 2.3.4, for Snapmaker U1, prints from slot 2, 12 layers at 0.2 millimetres, estimated time 4 minutes, filament 0.36 grams, file size 1 kilobyte.",
+    "caption": "Facts read from the example job's G-code.",
+    "hotspots": [
+      {
+        "key": "facts",
+        "title": "Read from the file",
+        "text": "Studio reads these from the G-code itself, then compares them with your printer when one is connected."
+      },
+      {
+        "key": "sliced-by",
+        "title": "Sliced by and for",
+        "text": "Which slicer made the job and which printer it was made for."
+      },
+      {
+        "key": "estimate",
+        "title": "Estimated time",
+        "text": "The slicer's own estimate, not a measurement."
+      },
+      {
+        "key": "filament",
+        "title": "Filament",
+        "text": "How much material the job expects to use."
+      }
+    ]
+  },
+  "printer-hub": {
+    "file": "printer-hub.png",
+    "title": "Printer Hub",
+    "alt": "Studio's Printer Hub with no printer connected. A Connect to your U1 card has a name field showing U1.local, a Connect button and an Auto-detect my U1 button. A Printer controls card says controls are off until the printer is connected and reachable.",
+    "caption": "**Printer Hub** before a printer is connected.",
+    "hotspots": [
+      {
+        "key": "connect-title",
+        "title": "Connect to your U1",
+        "text": "Type the printer's network name or IP address. Studio shows live status and acts only when you confirm."
+      },
+      {
+        "key": "connect",
+        "title": "Connect",
+        "text": "Asks the printer on your own network for its state. Nothing leaves your network."
+      },
+      {
+        "key": "auto",
+        "title": "Auto-detect my U1",
+        "text": "Looks for a U1 on your network. If it cannot find one, type the address instead."
+      },
+      {
+        "key": "controls",
+        "title": "Printer controls",
+        "text": "Pause, Resume, Cancel print, Upload sliced gcode and Emergency stop live here. Controls stay off until the printer is connected and reachable."
+      }
+    ]
+  },
+  "settings-printer": {
+    "file": "settings-printer.png",
+    "title": "Settings: your printer",
+    "alt": "The Printer section of Studio's Settings. It shows Your Snapmaker U1, a network name or IP field, a Printer access section, a Confirmed control section, and a Nozzles section noting that Toolhead 1 feeds slot 1.",
+    "caption": "**Settings → Printer**.",
+    "hotspots": [
+      {
+        "key": "address",
+        "title": "Network name or IP",
+        "text": "The address Printer Hub uses to show live status."
+      },
+      {
+        "key": "confirmed",
+        "title": "Printer access and confirmed control",
+        "text": "Monitoring is read-only. Send, pause, resume and cancel run only when you confirm them, and Studio never auto-starts a print."
+      },
+      {
+        "key": "nozzles",
+        "title": "Nozzles",
+        "text": "If the printer does not report its nozzle sizes, you can tell Studio what is fitted. Those entries are labelled **Confirmed by you**."
+      }
+    ]
+  },
+  "settings-top": {
+    "file": "settings-top.png",
+    "title": "Settings: materials provider",
+    "alt": "The top of Studio's Settings. A Materials provider section offers None, Spoolman, Bambuddy and SpoolEase, followed by a Your spool notes section for the printer.",
+    "caption": "**Settings → Materials provider** and spool notes.",
+    "hotspots": [
+      {
+        "key": "provider",
+        "title": "Materials provider",
+        "text": "Optional. If something on your network tracks spools, Studio can read it. Studio never writes to it."
+      },
+      {
+        "key": "spoolman",
+        "title": "Spoolman",
+        "text": "One of the three supported providers."
+      },
+      {
+        "key": "spoolease",
+        "title": "SpoolEase",
+        "text": "Also supported. Bambuddy is the third."
+      },
+      {
+        "key": "notes",
+        "title": "Your spool notes",
+        "text": "What you know is loaded, slot by slot. The printer always wins about what is loaded."
+      }
+    ]
+  },
+  "ready-now": {
+    "file": "ready-now.png",
+    "title": "Ready now",
+    "alt": "Studio's Ready now page with the title What can I print on my U1 right now. It has a Check my library button and a note that the result is advisory only, based on projects already in the library, the printer's reported state and the filament inventory.",
+    "caption": "**Ready now**, before the library has been checked.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "What can I print right now?",
+        "text": "Sorts your library into Needs preparation, Needs attention, Can’t determine, One change away and Ready now."
+      },
+      {
+        "key": "check",
+        "title": "Check my library",
+        "text": "Checks the projects already in your Studio library against your printer's reported state."
+      },
+      {
+        "key": "advisory",
+        "title": "Advisory only",
+        "text": "Studio does not change your printer, slot mapping or inventory."
+      }
+    ]
+  },
+  "projects": {
+    "file": "projects.png",
+    "title": "My designs",
+    "alt": "Studio's My Designs page listing one design, demo_offplate_foreign.3mf, marked Fixable, with filter buttons All, Profile compatible and Needs prep.",
+    "caption": "**My designs** after one project has been checked.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "My Designs",
+        "text": "Every project you have checked or prepared, with its latest status."
+      },
+      {
+        "key": "filters",
+        "title": "Filters",
+        "text": "Narrow the list to **Profile compatible** or **Needs prep**."
+      },
+      {
+        "key": "card",
+        "title": "A design",
+        "text": "Open it again at any time. **History** shows what you did to it."
+      }
+    ]
+  },
+  "cost": {
+    "file": "cost.png",
+    "title": "Cost & Pricing Doctor",
+    "alt": "Studio's Cost and Pricing Doctor for the open model, showing three figures: Cost Doctor, the true cost to make; Pricing Doctor, a suggested marketplace price; and Profit Doctor, the margin per print, with a Show details and assumptions button.",
+    "caption": "**Cost & Pricing Doctor**.",
+    "hotspots": [
+      {
+        "key": "cost",
+        "title": "Cost Doctor",
+        "text": "A rough cost to make, from your own filament price and the model's size."
+      },
+      {
+        "key": "price",
+        "title": "Pricing Doctor",
+        "text": "A suggested price if you sell prints."
+      },
+      {
+        "key": "profit",
+        "title": "Profit Doctor",
+        "text": "The margin per print."
+      },
+      {
+        "key": "details",
+        "title": "Details and assumptions",
+        "text": "Every number comes from your own assumptions. They are estimates, not financial advice."
+      }
+    ]
+  },
+  "scale": {
+    "file": "scale.png",
+    "title": "Scale Doctor",
+    "alt": "Studio's Scale Doctor for sample_cube.stl. A Scale percent field shows 100 with a Preview button, and a Size options for Snapmaker U1 card has a Show size options button.",
+    "caption": "**Scale Doctor** with the example cube open.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "Scale Doctor",
+        "text": "Preview a uniform resize first. A scaled copy is only written when you ask."
+      },
+      {
+        "key": "preview",
+        "title": "Preview",
+        "text": "Shows how the size fits the U1 before anything is saved."
+      },
+      {
+        "key": "options",
+        "title": "Size options",
+        "text": "Shows sizes that suit the U1."
+      }
+    ]
+  },
+  "print-quality": {
+    "file": "print-quality.png",
+    "title": "Print Quality Doctor",
+    "alt": "Studio's Print Quality Doctor listing symptoms to pick from, such as Stringing, Ringing, Layer shift, Warping and Won't stick to the bed, with a note that the advice is grounded in the open model.",
+    "caption": "**Print Quality Doctor**, for a print that has already gone wrong.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "Pick the symptom",
+        "text": "Studio lists likely causes and safe first checks. It is advisory only."
+      },
+      {
+        "key": "symptom",
+        "title": "A symptom",
+        "text": "Pick the one that looks like your print."
+      },
+      {
+        "key": "model",
+        "title": "Grounded in your model",
+        "text": "When a model is open, the advice uses it. Nothing is changed."
+      }
+    ]
+  },
+  "batch": {
+    "file": "batch.png",
+    "title": "Batch prepare",
+    "alt": "Studio's Batch prepare page with an Add files button and a Prepare button, under the heading Prepare a whole batch at once.",
+    "caption": "**Batch Prepare**.",
+    "hotspots": [
+      {
+        "key": "title",
+        "title": "Prepare a batch",
+        "text": "Studio prepares a U1 copy for each file. Review each one in Orca."
+      },
+      {
+        "key": "add",
+        "title": "Add files",
+        "text": "Choose several `.stl` or `.3mf` files at once."
+      }
+    ]
+  },
+  "find-models": {
+    "file": "find-models.png",
+    "title": "Find Models",
+    "alt": "Studio's Find Models page listing approved sites to browse in Studio's own model browser: Printables, Thingiverse, MyMiniFactory, Cults3D, Thangs and MakerWorld. Four steps explain browsing, using the site's own download button, adding to the Library and checking in Ready Now. An Open downloaded file button and a Clear site data button are shown.",
+    "caption": "**Find Models**.",
+    "hotspots": [
+      {
+        "key": "sites",
+        "title": "Approved sites",
+        "text": "Pick a site to browse inside Studio's locked model browser."
+      },
+      {
+        "key": "steps",
+        "title": "Use the site's own button",
+        "text": "Download the file the usual way. Studio adds supported downloads to your Library."
+      },
+      {
+        "key": "open-file",
+        "title": "Open downloaded file",
+        "text": "Already have a file? Open it here and Studio checks it for your U1."
+      },
+      {
+        "key": "clear",
+        "title": "Clear site data",
+        "text": "Signs you out of every site and deletes the model browser's cookies. It does not touch your library or files."
+      }
+    ]
+  },
+  "help-updates": {
+    "file": "help-updates.png",
+    "title": "Help: updates and reporting",
+    "alt": "The lower part of Studio's Help page. A Check for a newer version card explains that Studio never updates itself and offers an Automatically check for updates checkbox and a Check GitHub now button. A Reporting something Studio got wrong card offers Show me what it contains and Save it to a file buttons.",
+    "caption": "**Help**: the update check and the support bundle.",
+    "hotspots": [
+      {
+        "key": "update",
+        "title": "Check for a newer version",
+        "text": "Studio never updates itself. Checking only tells you a version number and a link."
+      },
+      {
+        "key": "auto",
+        "title": "Automatic check",
+        "text": "Off until you turn it on. At most one version check a day."
+      },
+      {
+        "key": "now",
+        "title": "Check GitHub now",
+        "text": "Makes one request to GitHub asking which release is newest. It sends nothing about you or your files."
+      },
+      {
+        "key": "report",
+        "title": "Reporting a problem",
+        "text": "Gathers the facts a bug report needs."
+      },
+      {
+        "key": "show",
+        "title": "Show me what it contains",
+        "text": "Read the whole bundle before it is written."
+      },
+      {
+        "key": "save",
+        "title": "Save it to a file",
+        "text": "Writes the bundle to a file you can attach to a report. Studio never sends it anywhere."
+      }
+    ]
+  },
+  "handoff": {
+    "file": "handoff.png",
+    "title": "A prepared copy, ready for Snapmaker Orca",
+    "alt": "Studio's Workspace in the installed app after preparing. A heading says U1 copy created, review setup before slicing, and that the original file is not modified. The new file name is shown, then a What now section with two options and a blue Open in Snapmaker Orca button, followed by a Next line explaining to slice in Snapmaker Orca, export the G-code and return to Printer Hub.",
+    "caption": "The result of **Prepare U1 copy**, from the installed Studio. The **Open in Snapmaker Orca** button appears when Studio finds Orca on your computer.",
+    "hotspots": [
+      {
+        "key": "created",
+        "title": "U1 copy created",
+        "text": "The new file has been written and checked for structure. Studio never writes to your original; the copy is a separate file next to it."
+      },
+      {
+        "key": "what-now",
+        "title": "What now?",
+        "text": "Open the copy in Snapmaker Orca with one click, or copy its path and open it from Orca yourself."
+      },
+      {
+        "key": "open-orca",
+        "title": "Open in Snapmaker Orca",
+        "text": "A one-way handoff: Studio opens the prepared file in Orca and does nothing else. If Studio cannot find Orca, this button reads **Install Snapmaker Orca**."
+      },
+      {
+        "key": "next-line",
+        "title": "What happens next",
+        "text": "Slice in Snapmaker Orca, export the `.gcode` file, then bring it back (lesson 9). Studio does not slice."
+      }
+    ]
+  }
+}
