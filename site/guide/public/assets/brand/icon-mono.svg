@@ -1,0 +1,26 @@
+<svg width="320" height="256" viewBox="0 0 320 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapmaker Studio mark (monochrome)">
+  <!-- Monochrome Studio Hub (currentColor). Opacity carries depth without color.
+       Works on dark or light. -->
+  <g fill="currentColor" stroke="currentColor">
+    <g stroke="none" opacity="0.85">
+      <rect x="2" y="58" width="9" height="9" rx="2"/><rect x="2" y="120" width="9" height="9" rx="2"/>
+      <rect x="2" y="186" width="9" height="9" rx="2"/><rect x="18" y="92" width="9" height="9" rx="2"/>
+      <rect x="18" y="156" width="9" height="9" rx="2"/>
+    </g>
+    <g fill="none" stroke-width="15" stroke-linecap="round" opacity="0.8">
+      <path d="M30 62  C80 66 96 104 130 122"/>
+      <path d="M30 96  C84 100 100 116 130 124"/>
+      <path d="M30 128 C90 128 104 128 132 128"/>
+      <path d="M30 160 C84 156 100 140 130 132"/>
+      <path d="M30 194 C80 190 96 152 130 134"/>
+    </g>
+    <circle cx="150" cy="128" r="46" fill="none" stroke-width="9" opacity="0.55"/>
+    <circle cx="150" cy="128" r="36" fill="none" stroke-width="3" opacity="0.9"/>
+    <circle cx="150" cy="128" r="9" stroke="none"/>
+    <g stroke="none" stroke-linejoin="round">
+      <polygon points="236,68 284.5,96 236,124 187.5,96" opacity="1"/>
+      <polygon points="187.5,96 236,124 236,180 187.5,152" opacity="0.55"/>
+      <polygon points="284.5,96 236,124 236,180 284.5,152" opacity="0.78"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,41 @@
+# Sample workflow: publish the guide with GitHub Pages.
+#
+# NOTHING in this repository runs this file. To use it:
+#   1. copy it to .github/workflows/guide-pages.yml
+#   2. enable Pages: repository Settings → Pages → Build and deployment → Source: "GitHub Actions"
+#   3. merge. Every push to main that touches site/guide/ then republishes the guide.
+#
+# The site is plain files: there is no build step on the server. (CI builds and checks it separately; see guide-ci.yml.)
+name: Publish the user guide
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/guide/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: guide-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/guide/public
+      - id: deployment
+        uses: actions/deploy-pages@v4
