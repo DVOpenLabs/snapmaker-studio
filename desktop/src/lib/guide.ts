@@ -5,5 +5,5 @@ export const USER_GUIDE_URL = "https://dvopenlabs.github.io/snapmaker-studio/";
 
 export const USER_GUIDE_LABEL = "Open the step-by-step guide";
 export const USER_GUIDE_BLURB =
-  "A click-through tour from installing Studio to checking a sliced job, with annotated screenshots. " +
+  "A step-by-step guide from installing Studio to checking a sliced job, with real screenshots and worked examples. " +
   "It opens in your browser and works without an account.";

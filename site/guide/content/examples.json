@@ -2,7 +2,7 @@
   "placement": {
     "type": "choose",
     "title": "Misplaced, or too big to fit?",
-    "intro": "Three real projects, three different placement messages. Read what Studio shows, then decide what you would do. The numbers and wording are copied from Studio v1.5.0 run on the guide's example files.",
+    "intro": "Three example projects, three different placement messages. Read what Studio shows, then decide what you would do. The numbers and wording are copied from Studio v1.5.0, run on the guide's example files.",
     "cases": [
       {
         "id": "misplaced",
@@ -15,9 +15,9 @@
         ],
         "question": "What is the right next step?",
         "options": [
-          { "label": "Press **Move onto the plate**, then prepare the moved copy.", "verdict": "best", "feedback": "Right. The object is small and simply sits too far to the right. One shift of the whole layout brings it on, and Studio re-checks the file it wrote. Your original is not touched." },
+          { "label": "Press **Move onto the plate**, then prepare the moved copy.", "verdict": "best", "feedback": "Right. The object is small and simply sits too far to the right. One shift of the whole layout brings it back onto the plate, and Studio re-checks the file it wrote. Your original is not touched." },
           { "label": "Rescale the object in Snapmaker Orca.", "verdict": "wrong", "feedback": "Nothing here says the object is too big: it is 20 mm and the plate is far larger. Rescaling would change your model's real size for no reason." },
-          { "label": "Ignore it: 55 mm is not much.", "verdict": "wrong", "feedback": "Distance does not matter: Orca will still say the object is out of bounds. A small part can pass every size check and still land off the plate, which is why Studio names the edge and the distance." }
+          { "label": "Ignore it: 55 mm is not much.", "verdict": "wrong", "feedback": "Even a small overhang matters: Orca will still say the object is out of bounds. A small part can pass every size check and still land off the plate, which is why Studio names the edge and the distance." }
         ]
       },
       {
@@ -31,7 +31,7 @@
         ],
         "question": "Why is there no Move button, and what do you do?",
         "options": [
-          { "label": "The object overhangs both the left and the right edge, so it is longer than the plate. No position works; Studio will not guess. Change the model in Orca.", "verdict": "best", "feedback": "Right. Overhang on two opposite edges plus a 320 mm length tells you the object itself is longer than the plate, so moving it cannot help. Studio's own advice is to open the project in Snapmaker Orca; if the part really is longer than the plate you will also need to resize, rotate or split it there. Studio does not edit your model." },
+          { "label": "The object overhangs both the left and right edges, so it is longer than the plate. No position works; Studio will not guess. Change the model in Orca.", "verdict": "best", "feedback": "Right. Overhang on two opposite edges plus a 320 mm length tells you the object itself is longer than the plate, so moving it cannot help. Studio's own advice is to open the project in Snapmaker Orca; if the part really is longer than the plate you will also need to resize, rotate or split it there. Studio does not edit your model." },
           { "label": "Look harder for the Move button; it is probably hidden.", "verdict": "wrong", "feedback": "There is none. Studio offers the move only when one shift brings every object on the plate. When it cannot, it says so instead of half-fixing the project." },
           { "label": "Use Scale Doctor to shrink it.", "verdict": "ok", "feedback": "Possible, if you really want a smaller part. Scale Doctor previews a uniform resize, and writes a scaled copy only for an STL; for a 3MF you resize in Orca. Shrinking changes what you print, so make it a deliberate choice, not a way to silence a warning." }
         ]
@@ -47,9 +47,9 @@
         ],
         "question": "Each cube is tiny. What is the real problem?",
         "options": [
-          { "label": "The objects are too far apart: together they are wider than the plate. One shift cannot bring both on, so rearrange them in Orca with Arrange.", "verdict": "best", "feedback": "Right. Neither cube is big; the layout is. Moving them as one piece would push one off the other side, so Studio stops. Arrange in Snapmaker Orca can bring the objects closer together." },
-          { "label": "The cube is too big for the U1.", "verdict": "wrong", "feedback": "The cube is 10 mm. Compare the object's size with how far it hangs over: it is the distance between objects that is the problem." },
-          { "label": "Press Move onto the plate anyway.", "verdict": "wrong", "feedback": "The button is not offered here, on purpose: moving the whole layout could not bring both cubes on." }
+          { "label": "The objects are too far apart: together they are wider than the plate. One shift cannot bring both onto the plate, so rearrange them in Orca with Arrange.", "verdict": "best", "feedback": "Right. Neither cube is big; the layout is. Moving them as one piece would push one off the other side, so Studio stops. Arrange in Snapmaker Orca can bring the objects closer together." },
+          { "label": "The cube is too big for the U1.", "verdict": "wrong", "feedback": "The cube is 10 mm. The problem is the distance between the two objects, not the size of either one." },
+          { "label": "Press Move onto the plate anyway.", "verdict": "wrong", "feedback": "The button is not offered here, on purpose: moving the whole layout could not bring both cubes onto the plate." }
         ]
       }
     ],
@@ -66,7 +66,7 @@
     "shot": "fidelity",
     "categories": [
       { "id": "kept", "label": "Kept from the original file", "hint": "Studio's words: “These settings are kept from the original file.”" },
-      { "id": "adjusted", "label": "Adjusted for U1 compatibility", "hint": "Studio's words: “These settings changed only for U1 compatibility.”" },
+      { "id": "adjusted", "label": "Adjusted for U1 project compatibility", "hint": "Studio's words: “These settings changed only for U1 compatibility.”" },
       { "id": "notapplied", "label": "Optional recommendation, not applied", "hint": "Studio's words: “These optional recommendations are not applied unless you choose them.”" },
       { "id": "yours", "label": "A step for you in Snapmaker Orca", "hint": "Studio's fix plan marks these “Do this in Orca”." }
     ],
@@ -86,7 +86,7 @@
   "unknown-vs-confirmed": {
     "type": "sort",
     "title": "Unknown, or a confirmed problem?",
-    "intro": "Studio's checks of a sliced job come in different strengths. These lines come from two real checks: one job sliced for a U1, one sliced for a different printer, both checked with no printer connected. Decide how sure Studio actually is.",
+    "intro": "Studio is more sure about some findings on a sliced job than about others. These lines come from two real checks: one job sliced for a U1, one sliced for a different printer, both checked with no printer connected. Decide how sure Studio actually is.",
     "shot": "job-other-printer",
     "categories": [
       { "id": "confirmed", "label": "Confirmed in the file", "hint": "Studio read it in your file. It is a fact." },
@@ -98,7 +98,7 @@
       { "text": "Sliced for a different printer — “Toolpaths, temperatures and machine commands are generated for one specific machine.” (the job names a Bambu Lab printer)", "answer": "confirmed", "feedback": "Confirmed. The job's own header names another printer, so Studio does not need a printer connected to know this. Action: re-slice the model in Snapmaker Orca with a U1 profile. Studio’s card ranks this “Worth settling first”; that is how urgent it is. This exercise asks how sure Studio is, and here it is sure." },
       { "text": "Tools this job needs — “Studio cannot confirm your printer has the toolheads this job expects.”", "answer": "unknown", "feedback": "Unknown. Studio would have to read your printer to know. This is not a problem found; connect the printer in Printer Hub, or check yourself." },
       { "text": "Nozzle size — “Studio has no way to see which one is installed.”", "answer": "unknown", "feedback": "Unknown. Check the nozzle on the printer. You can also record what is fitted under **Settings → Nozzles**." },
-      { "text": "Studio cannot tie this job to your project — “nothing in either file identifies the model.”", "answer": "check", "feedback": "Worth settling. Studio cannot tell whether this is the slice of the project you checked, so it asks you to be sure you picked the right file." },
+      { "text": "Studio cannot tie this job to your project — “nothing in either file identifies the model.”", "answer": "check", "feedback": "Worth checking. Studio cannot tell whether this job was sliced from the project you checked, so it asks you to be sure you picked the right file." },
       { "text": "Sliced for the machine Studio prepares for — “The job's commands were generated for a Snapmaker U1.”", "answer": "ok", "feedback": "Looks right. This appears when the job names a U1. Still advice, not a promise that the print will succeed." }
     ],
     "takeaways": [
@@ -110,19 +110,19 @@
   "assign-vs-load": {
     "type": "multi",
     "title": "Assigning a material is not loading it",
-    "intro": "You open a project with Project Materials. For slot 1 you pick a spool from your inventory and confirm an installed Orca preset, tick **Remember this mapping**, and press **Prepare with these choices**. Tick everything Studio did.",
+    "intro": "You open a project with Project Materials. For slot 1 you pick a spool from your inventory and confirm an installed Orca preset, select **Remember this mapping**, and press **Prepare with these choices**. Select everything Studio did.",
     "shot": "pm-review",
     "items": [
-      { "text": "Wrote the spool's colour into the new copy.", "answer": true, "feedback": "Yes. The review says *Colour changed to Red*: the chosen spool's colour is written into the new copy." },
+      { "text": "Wrote the spool's color into the new copy.", "answer": true, "feedback": "Yes. The review says *Colour changed to Red*: the chosen spool's color is written into the new copy." },
       { "text": "Named the installed preset in the new copy.", "answer": true, "feedback": "Yes. The review shows the slot *mapped to* the preset you confirmed, so Orca opens the copy with that preset name." },
-      { "text": "Saved the mapping on this computer, after the copy was written.", "answer": true, "feedback": "Yes, because you ticked **Remember this mapping**. It is saved only after Prepare succeeds, and it is checked again every time it is used." },
+      { "text": "Saved the mapping on this computer, after the copy was written.", "answer": true, "feedback": "Yes, because you selected **Remember this mapping**. It is saved only after Prepare succeeds, and it is checked again every time it is used." },
       { "text": "Loaded that filament into a toolhead.", "answer": false, "feedback": "No. Studio never loads, swaps or changes spools. Putting the right filament in the right toolhead is your job at the printer." },
       { "text": "Changed the spool in your Spoolman, SpoolEase or Bambuddy inventory.", "answer": false, "feedback": "No. Studio only reads a provider; it never writes to it." },
       { "text": "Wrote the spool's ID or remaining weight into the project.", "answer": false, "feedback": "No. The review says spool details are not read from the file and that Studio never writes them into the project." }
     ],
     "takeaways": [
-      "Studio can put a **colour** and a **preset name** into a new copy. It cannot put **filament** into a toolhead.",
-      "The U1 has four toolheads. Studio plans around them, and then you load the colours in the order the project lists them.",
+      "Studio can put a **color** and a **preset name** into a new copy. It cannot put **filament** into a toolhead.",
+      "The U1 has four toolheads. Studio plans around them, and then you load the colors in the order the project lists them.",
       "Your spool inventory is read, never changed."
     ]
   }

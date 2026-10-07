@@ -14,8 +14,8 @@
     "means": [
       { "seen": "**Can prepare a U1 copy**", "meaning": "Studio can write a U1 copy from this file.", "certainty": "ok", "action": "Go on to the checks. This is advice about preparing, not a promise about the print." },
       { "seen": "**Needs a fix first**", "meaning": "The checks found something worth fixing before you slice, such as an object off the plate.", "certainty": "check", "action": "Read the checks (next stage); many problems have a fix in the stage after." },
-      { "seen": "“This STL does not include creator slicer settings.”", "meaning": "An STL is a shape only: no colours and no print settings. Studio uses a U1 starter profile unless you pick another Orca profile.", "certainty": "info", "action": "Nothing is wrong. You choose the settings in Orca." },
-      { "seen": "**Studio could not open this file as a 3MF project.** (on Compatibility)", "meaning": "The file is damaged, or is not really a 3MF.", "certainty": "confirmed", "action": "Download it again. The Workspace can look normal for such a file, so trust Compatibility." }
+      { "seen": "“This STL does not include creator slicer settings.”", "meaning": "An STL is a shape only: no colors and no print settings. Studio uses a U1 starter profile unless you pick another Orca profile.", "certainty": "info", "action": "Nothing is wrong. You choose the settings in Orca." },
+      { "seen": "**Studio could not open this file as a 3MF project.** (in Compatibility)", "meaning": "The file is damaged, or is not really a 3MF.", "certainty": "confirmed", "action": "Download it again. The Workspace can look normal for a damaged file, so trust what Compatibility says." }
     ],
     "steps": [
       "Press **Open a model** (top of the sidebar, or the large button on Home), or drag an `.stl` or `.3mf` onto the Studio window.",
@@ -28,8 +28,8 @@
       "Nothing has been written, and your file is untouched."
     ],
     "differs": [
-      { "if": "Nothing happens after choosing a file.", "then": "The file may be damaged or not an STL or 3MF. Download it again and open **Compatibility**; see **Studio could not open this file as a 3MF project.**" },
-      { "if": "I do not have a project to try.", "then": "Use the guide's examples from the [examples folder](@examples): `demo_offplate_foreign.3mf` for this path." }
+      { "if": "Nothing happens after choosing a file.", "then": "The file may be damaged, or it may not be an STL or 3MF file. Download it again. For a 3MF, open **Compatibility**, which should say “Studio could not open this file as a 3MF project.”" },
+      { "if": "I do not have a project to try.", "then": "Use the example files in the [examples folder](@examples). Open `demo_offplate_foreign.3mf` to follow along." }
     ],
     "notes": [
       { "kind": "safe", "text": "Opening a file never changes it. Studio is local-first: the file is read on your computer and nothing is uploaded." }
@@ -43,7 +43,7 @@
     "id": "check", "page": "path-check", "n": 2, "lane": "studio", "label": "Check",
     "title": "Read the checks",
     "question": "What needs attention before slicing?",
-    "lead": "Studio compares the project with the U1 and with Snapmaker Orca's expectations. The skill is not reading every line; it is telling a confirmed problem from a heads-up, and both from something Studio cannot know.",
+    "lead": "Studio compares the project with the U1 and with Snapmaker Orca's expectations. You do not need to read every line. What matters is telling a confirmed problem from a heads-up, and both from something Studio cannot know.",
     "evidence": {
       "shots": [
         { "shot": "this-print-top", "label": "On “This print”, no printer connected" },
@@ -53,14 +53,14 @@
     },
     "means": [
       { "seen": "**1 object is outside the U1's printable area.**", "meaning": "An object hangs off the plate. Studio names the object, the edge and the distance.", "certainty": "confirmed", "action": "Decide whether it is misplaced or too big (next stage)." },
-      { "seen": "**NEEDS ATTENTION** — “Invalid value for …”", "meaning": "Likely to cause trouble in Orca. For a downloaded 3MF it usually means settings from another printer; the text says the model itself may be fine.", "certainty": "check", "action": "Read **Do this:**. Preparing a U1 copy is designed for this." },
+      { "seen": "**NEEDS ATTENTION** — “Invalid value for …”", "meaning": "Likely to cause trouble in Orca. For a downloaded 3MF it usually means settings from another printer; the text says the model itself may be fine.", "certainty": "check", "action": "Read the **Do this:** line. Preparing a U1 copy is designed to handle this." },
       { "seen": "**HEADS UP**", "meaning": "Worth knowing, often something Studio cannot verify, such as spacing between objects.", "certainty": "check", "action": "Check it in Orca (**Arrange**, collision warnings)." },
       { "seen": "**STUDIO CAN’T TELL** / **STUDIO CAN’T CHECK THIS**", "meaning": "Studio cannot read this from your printer. It is not a problem found; it is a gap.", "certainty": "unknown", "action": "Connect the printer, or check it yourself. See the unknown-versus-confirmed example in stage 6." },
       { "seen": "**LOOKS RIGHT**", "meaning": "Studio checked and found nothing wrong.", "certainty": "ok", "action": "Nothing to do. It is advice, not a guarantee." }
     ],
     "steps": [
-      "Open **This print** for the whole job, or **Compatibility** for the full list (**Open the full checks** links there).",
-      "Read **Object placement** first: it is the one finding with a fix.",
+      "Open **This print** for the whole job, or **Compatibility** for the full list (the **Open the full checks** link takes you there).",
+      "Read **Object placement** first: in this example it is the only finding Studio can fix for you.",
       "Skim the cards. For each, read the label, then its **Do this:** line. Open **Technical detail** only if you are curious.",
       "Make a short list: confirmed problems, things to check in Orca, things Studio cannot tell."
     ],
@@ -95,10 +95,10 @@
       "note": "The example project has one 20 mm object that hangs 55 mm past the right edge."
     },
     "means": [
-      { "seen": "**Move onto the plate (saves a copy)** is offered", "meaning": "One shift of the whole layout brings every object on the plate. Studio can do it and verify the result.", "certainty": "ok", "action": "Press it, then prepare the moved copy." },
+      { "seen": "**Move onto the plate (saves a copy)** is offered", "meaning": "One shift of the whole layout brings every object onto the plate. Studio can do it and verify the result.", "certainty": "ok", "action": "Press it, then prepare the moved copy." },
       { "seen": "No Move button: “Moving the objects as one piece would not bring them all on, so Studio will not guess.”", "meaning": "A single move cannot fix it: an object is longer than the plate, or the layout is wider than the plate.", "certainty": "confirmed", "action": "Open the project in Orca and use **Arrange**; resize or split a part that is itself too big." },
-      { "seen": "**Preserve creator settings** (Recommended)", "meaning": "Keeps the creator's print settings and changes only the minimum for Orca to open the file.", "certainty": "info", "action": "Right for a downloaded model." },
-      { "seen": "**Use Studio's U1 starter settings instead**", "meaning": "Replaces the creator's settings with Studio's U1 defaults: speed, temperature, retraction, supports and cooling change.", "certainty": "check", "action": "Use when the file came from a very different printer." },
+      { "seen": "**Preserve creator settings** (Recommended)", "meaning": "Keeps the creator's print settings and changes only the minimum for Orca to open the file.", "certainty": "info", "action": "The right choice for a downloaded model." },
+      { "seen": "**Use Studio's U1 starter settings instead**", "meaning": "Replaces the creator's settings with Studio's U1 defaults: speed, temperature, retraction, supports and cooling change.", "certainty": "check", "action": "Use this when the file came from a very different printer." },
       { "seen": "“Print-setup risks remain (see the checks)”", "meaning": "Studio prepared the file for the U1, but the checks still list things for you.", "certainty": "info", "action": "Handle them in Orca (stage 5)." }
     ],
     "examples": ["placement", "assign-vs-load"],
@@ -106,12 +106,12 @@
       "If **Object placement** offers **Move onto the plate (saves a copy)**, press it. Studio writes `…_placed_U1.3mf` next to your original.",
       "Press **Open a model** and choose that moved copy. (The move and the U1 preparation are separate actions.)",
       "Leave **Preserve creator settings** selected unless you have a reason, then press **Prepare U1 copy**.",
-      "Optional, if you track spools: pick a spool and an installed preset for each colour under **Project materials**, press **Review & prepare**, read the review, then **Prepare with these choices**."
+      "Optional, if you track spools: pick a spool and an installed preset for each color under **Project materials**, press **Review & prepare**, read the review, then **Prepare with these choices**."
     ],
     "success": [
-      "**U1 copy created — review setup before slicing**, saying your original file is not modified.",
+      "You see **U1 copy created — review setup before slicing**, followed by a note that your original file is not modified.",
       "New files beside your original, for example `…_placed_U1_SnapmakerU1.3mf`. You may also see a `.orig.3mf` snapshot Studio keeps next to a prepared copy.",
-      "Opening the prepared copy, **Object placement** says the object sits inside the printable area."
+      "When you open the prepared copy, **Object placement** says the object sits inside the printable area."
     ],
     "differs": [
       { "if": "There is no Move button.", "then": "Either every object is already on the plate, or one move cannot fix the layout. Work through the placement example above." },
@@ -124,17 +124,17 @@
     ],
     "problems": ["cannot-move-as-one-piece", "object-outside-area", "prepare-stopped", "no-spool-suggestions"],
     "tasks": ["move-onto-plate", "prepare-u1-copy", "project-materials", "plate-colour-remap", "scale-doctor", "batch-prepare"],
-    "keywords": ["move", "plate", "placement", "prepare", "u1 copy", "mode", "preserve", "starter", "spool", "preset", "colour", "material", "oversized"],
+    "keywords": ["move", "plate", "placement", "prepare", "u1 copy", "mode", "preserve", "starter", "spool", "preset", "colour", "material", "oversized", "color"],
     "next": { "page": "path-review", "why": "Next question: what changed in the prepared copy?" }
   },
   {
     "id": "review", "page": "path-review", "n": 4, "lane": "studio", "label": "Review",
     "title": "Review what changed",
     "question": "What changed in the prepared copy?",
-    "lead": "Studio does not ask you to trust the copy. It lists what it kept, what it changed, what it could not carry over and what it could not check, and it keeps the way back to your original.",
+    "lead": "Studio does not ask you to trust the copy. It lists what it kept, what it changed, what it could not carry over and what it could not check, and you can always return to your original.",
     "evidence": {
       "shots": [{ "shot": "fidelity", "label": "The fidelity report and the change ledger" }],
-      "note": "These cards appear on the Workspace right after preparing, and on **This print** under stage 2."
+      "note": "These cards appear on the Workspace right after preparing, and on **This print** under **2. Prepared**."
     },
     "means": [
       { "seen": "**What survived preparing this copy** — 14 kept · 2 changed", "meaning": "A comparison of what Studio can identify in both files.", "certainty": "info", "action": "Expand **What Studio changed** and look at each line." },
@@ -177,16 +177,16 @@
     },
     "means": [
       { "seen": "**Open in Snapmaker Orca**", "meaning": "A one-way handoff. Studio opens the file in Orca and does nothing else with it.", "certainty": "info", "action": "Press it, or use **Copy path** and open the file in Orca yourself." },
-      { "seen": "**Install Snapmaker Orca**", "meaning": "Studio could not find Orca on this computer.", "certainty": "info", "action": "Install it from its releases page, then prepare again or open the file from Orca." },
+      { "seen": "**Install Snapmaker Orca**", "meaning": "Studio could not find Orca on this computer.", "certainty": "info", "action": "Install it from its [releases page](@orca), then use **Copy path** and open the prepared file from inside Orca." },
       { "seen": "**Do this in Orca** (fix plan)", "meaning": "A step Studio cannot do: for example turning on supports, or using Arrange and checking spacing.", "certainty": "check", "action": "Do it before slicing." },
       { "seen": "**Manual check in Orca required**", "meaning": "A preset you made yourself is named in the copy, but Studio cannot confirm Orca applies its temperature, flow and cooling.", "certainty": "unknown", "action": "Check the filament in Orca before slicing." },
-      { "seen": "Orca shows a “Customized Preset” notice", "meaning": "Orca treats the project's settings as a customisation, which can happen when the creator's tuned settings are kept.", "certainty": "info", "action": "Review the settings in Orca before slicing." }
+      { "seen": "Orca shows a “Customized Preset” notice", "meaning": "Orca treats the project's settings as a customization, which can happen when the creator's tuned settings are kept.", "certainty": "info", "action": "Review the settings in Orca before slicing." }
     ],
     "steps": [
       "On the prepared result, press **Open in Snapmaker Orca** (or **Copy path**).",
-      "In Orca, check: the printer is **Snapmaker U1**; the filaments and colours match what you will load; the objects are on the plate (use **Arrange** if unsure); supports are set the way you want.",
+      "In Orca, check: the printer is **Snapmaker U1**; the filaments and colors match what you will load; the objects are on the plate (use **Arrange** if unsure); supports are set the way you want.",
       "Slice in Orca (**Slice plate**).",
-      "Export the G-code with Orca's own export command and note where it is saved. Menu wording can differ between Orca versions.",
+      "Export the G-code (the file of printer instructions) with Orca's own export command and note where it is saved. Menu wording can differ between Orca versions.",
       "Keep the exported `.gcode`. Save the Orca project too if you want your Orca settings kept."
     ],
     "success": [
@@ -222,7 +222,7 @@
     },
     "means": [
       { "seen": "**Sliced for a different printer** (WORTH SETTLING FIRST)", "meaning": "The job names another machine. Its commands are generated for that machine.", "certainty": "confirmed", "action": "Re-slice the model in Orca with a U1 profile." },
-      { "seen": "**Studio cannot tie this job to your project**", "meaning": "Nothing in either file identifies the model, so Studio cannot tell if this is the slice of the project you checked.", "certainty": "check", "action": "Make sure you picked the right file." },
+      { "seen": "**Studio cannot tie this job to your project**", "meaning": "Nothing in either file identifies the model, so Studio cannot tell whether this job was sliced from the project you checked.", "certainty": "check", "action": "Make sure you picked the right file." },
       { "seen": "**Tools this job needs** / **The bed this was sliced for** / **Nozzle size** — STUDIO CAN'T CHECK THIS", "meaning": "These need a reading from your printer.", "certainty": "unknown", "action": "Connect the printer in Printer Hub, or check them yourself." },
       { "seen": "**Sliced for the machine Studio prepares for** — LOOKS RIGHT", "meaning": "The job's commands were generated for a U1.", "certainty": "ok", "action": "Nothing to do. Advice, not a guarantee." },
       { "seen": "**What the printer will actually do**: sliced by, for, layers, estimated time, filament", "meaning": "Facts read from the G-code itself.", "certainty": "info", "action": "Compare them with what you expect." }
@@ -232,7 +232,7 @@
       "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This print**).",
       "Optional: type the folder where Orca saves exports and press **Watch this folder**. Studio looks only while this page is open.",
       "Otherwise drag the `.gcode` onto the window or paste its full path under **Open the G-code your slicer produced**, then press **Check this job**.",
-      "Read **Ready to send?**, then each finding. Sort them into confirmed, worth settling and unknown.",
+      "Read **Ready to send?** and then each finding. Sort them into confirmed, worth checking and unknown.",
       "Read **What the printer will actually do** and **What to load** (what each slot needs)."
     ],
     "success": [
@@ -240,14 +240,14 @@
       "You can say what you will do about each: re-slice, check yourself, or connect the printer."
     ],
     "differs": [
-      { "if": "Nothing appears in the watched folder.", "then": "Check it is the folder Orca exports to, and that this page is open. You can always paste the file's path." },
+      { "if": "Nothing appears in the watched folder.", "then": "Check that it is the folder Orca exports to, and that this page is open. You can always paste the file's path." },
       { "if": "Studio says “that file does not exist”.", "then": "The path is wrong. Copy the full path of the exported `.gcode` again." },
-      { "if": "Many items say “Studio can’t check this”.", "then": "That is what honest looks like with no printer connected. Connect the printer (see the task) or check those items yourself." }
+      { "if": "Many items say “Studio can’t check this”.", "then": "That is expected when no printer is connected. Connect the printer (see the task) or check those items yourself." }
     ],
     "notes": [
-      { "kind": "unknown", "text": "Studio reads the file, not the world. With no printer connected it cannot tell which tools are present, whether slots are loaded, whether the bed matches or which nozzle is fitted." },
+      { "kind": "unknown", "text": "On its own, Studio reads only the file. With no printer connected it cannot tell which tools are present, whether slots are loaded, whether the bed matches or which nozzle is fitted." },
       { "kind": "safe", "text": "Studio reads and never changes your G-code, and it never sends anything on its own. Printing starts only when you start it on the printer or confirm it in Printer Hub." },
-      { "kind": "limit", "text": "This guide has no screenshot of a connected printer: no printer was contacted while it was written." }
+      { "kind": "limit", "text": "This guide shows Printer Hub before a printer is connected; it has no screenshot of a connected printer." }
     ],
     "problems": ["sliced-for-different-printer", "cannot-tie-job-to-project", "studio-cant-check-this", "file-does-not-exist", "nozzle-not-reported"],
     "tasks": ["check-sliced-job", "watch-export-folder", "connect-printer", "printer-controls"],

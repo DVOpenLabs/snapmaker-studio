@@ -111,3 +111,20 @@ The lesson-based guide was published with GitHub Pages from `main` by `.github/w
 checks, including `guide-ci.yml` on Linux Chrome; its live run was 727/727. Pages cannot set response headers, so the strict
 Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
 The redesign replaces this version when its pull request merges: `main` publishes `site/guide/public` through `guide-pages.yml`.
+
+## Editorial review (2026-10-07)
+
+All English text was reviewed in two independent passes, then reread after the corrections: Claude Opus (`claude-opus-5-5`) and Codex Sol (`gpt-5.6-sol`), identities confirmed from the Opus transcript's `message.model` field and the Codex rollout. Corrections were limited to guide copy (American spelling, grammar, unclear or ambiguous wording, stale lesson references, a few sentences that contradicted documented behavior). Quoted product labels and messages were left as the app shows them.
+
+### Product copy issues found (not changed here; for the maintainer)
+
+1. Settings → Printer hint says send, pause, resume and cancel "run only when you confirm"; the code runs Pause and Resume immediately (`PrinterControls.tsx`). The guide follows the code.
+2. Mixed British and American spelling in the app: "Colours and toolheads", "6 colours, 4 toolheads", "Load the colours…", "Colour changed to Red" versus "Colors & Materials" and "Plate Color Remap".
+3. Unresolved plural placeholders: "1 object(s) moved…", "Found 5 invalid-value issue(s) and 2 warning(s).", "1 thing(s) are worth settling…".
+4. "Moving the objects as one piece would not bring them all on…" lacks a destination ("onto the plate").
+5. "Upload sliced gcode" should read "G-code" like the rest of the app.
+6. Cost Doctor says "true cost to make" for an estimate built on user assumptions.
+7. "Not proven separable — reserve a toolhead each" is jargon for beginners.
+8. Capitalization varies for one feature ("This print"/"This Print", "Batch prepare"/"Batch Prepare", "After slicing"/"After Slicing").
+9. The page text for a missing file starts in lowercase and has no final period ("that file does not exist").
+10. Existing observation 2 above (damaged 3MF still shows "Checked — here's what we found…").

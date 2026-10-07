@@ -94,14 +94,14 @@ export function renderSearch(container, q) {
   if (!results.length) {
     const box = el("div", { class: "empty", role: "status" });
     box.innerHTML = `<h3>Nothing matched “${escapeHtml(query)}”</h3>
-      <p>The guide only covers what Studio v1.5.0 does. Try fewer or different words, or browse:</p>
+      <p>This guide describes Studio v1.5.0. Try fewer or different words, or browse:</p>
       <ul><li><a href="#tasks">Find help for my current task</a></li><li><a href="#problems">Understand a warning or problem</a></li><li><a href="#path-open">Follow the example project from the start</a></li></ul>
       <p>Something missing from the guide? <a href="${DATA.links.issues}" rel="noopener noreferrer" target="_blank">Tell us on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>`;
     container.appendChild(box);
     return 0;
   }
   container.appendChild(el("p", { class: "result-count", role: "status" },
-    `${results.length} result${results.length === 1 ? "" : "s"} for “${escapeHtml(query)}”${fallback ? " — none matched every word, so these match some of them" : ""}`));
+    `${results.length} result${results.length === 1 ? "" : "s"} for “${escapeHtml(query)}”${fallback ? " — no result matched every word, so these match some of the words" : ""}`));
   const list = el("ol", { class: "results" });
   for (const r of results) {
     list.appendChild(el("li", { class: "result" },

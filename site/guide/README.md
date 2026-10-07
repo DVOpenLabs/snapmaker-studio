@@ -1,6 +1,6 @@
 # Snapmaker Studio — user guide
 
-A static, task-oriented guide for **Snapmaker Studio v1.5.0**. It is organised around the decisions a person makes before a
+A static, task-oriented guide for **Snapmaker Studio v1.5.0**. It is organized around the decisions a person makes before a
 print, not around the order of the app's menus:
 
 1. **Learn with an example project** — six stages (Open → Check → Prepare → Review → Slice in Orca → Check the sliced job),
@@ -10,9 +10,9 @@ print, not around the order of the app's menus:
    (confirmed, worth checking, unknown, looks right, good to know) and what *not* to conclude.
 
 Four small examples (placement, assigning a material vs loading it, reading a preparation change, unknown vs confirmed
-incompatible) make the reader decide something and explain every answer. They only move between pictures and text.
+incompatibility) make the reader decide something and explain every answer. They only move between pictures and text.
 A workflow map shows which part of the job happens in Studio, in Snapmaker Orca and at the printer. Search covers every
-task and warning. It needs no backend, no account, no Tauri and no printer, and it runs from any static host.
+task and warning. The guide needs no backend, no account, no Tauri and no printer, and it runs from any static host.
 
 > Snapmaker Studio is an independent open-source project — not affiliated with or endorsed by Snapmaker.
 
@@ -27,7 +27,7 @@ site/guide/
     assets/guide.css       ← styles (brand tokens, light/dark themes, workflow map, certainty badges)
     assets/guide.js        ← entry: hash router (incl. old lesson links), theme, filters, "continue the example"
     assets/search.js       ← client-side search over the embedded index (excerpts, empty state)
-    assets/examples.js     ← the four interactive examples (choose / sort / tick-all-true)
+    assets/examples.js     ← the four interactive examples (choose / sort / select-all-that-apply)
     assets/figures.js      ← screenshot viewer and the optional numbered notes on controls
     assets/common.js       ← shared helpers (no network access anywhere)
     assets/theme-init.js   ← applies the saved theme before first paint
@@ -53,7 +53,7 @@ land on the right page). With JavaScript the guide shows one page at a time and 
 
 ## Preview and build
 
-Requires Node 18 or newer. Nothing to install to build or preview.
+Requires Node 18 or newer. No packages are needed to build or preview.
 
 ```bash
 cd site/guide
@@ -69,8 +69,8 @@ tool name or a guarantee claim.
 ## Checks
 
 ```bash
-node tools/check.mjs        # static checks: links, ids, alt text, no third-party requests, strict-CSP readiness, colour contrast
-node tools/check.mjs --online   # also confirms every external link answers
+node tools/check.mjs        # static checks: links, ids, alt text, no third-party requests, strict-CSP readiness, color contrast
+node tools/check.mjs --online   # also confirms that every external link responds
 node tools/e2e.mjs          # browser checks (needs Microsoft Edge or Chrome and `playwright-core`)
 node tools/e2e.mjs --shots ../../some/folder    # also saves screenshots of the finished guide
 node tools/e2e.mjs --url https://example.org/guide/   # test a deployed copy
@@ -103,12 +103,12 @@ currently `https://dvopenlabs.github.io/snapmaker-studio/`. Change it if the gui
 ## Maintain it
 
 * **Change wording** — edit the matching file in `content/` (a stage in `path.json`, a task in `tasks.json`, a warning in
-  `problems.json`), run `node tools/build.mjs`. Inline markup: `**UI label**` (always the exact label shown in Studio),
+  `problems.json`), and run `node tools/build.mjs`. Inline markup: `**UI label**` (always the exact label shown in Studio),
   `` `code` ``, `*emphasis*`, `[text](https://…)` or `[text](@key)` where `key` is in `links`.
 * **Add a task or warning** — add an object with the required fields; the build lists what is missing. Search, the task
   list and the warning list pick it up automatically.
 * **Add an example** — add it to `content/examples.json` and name it in a stage's `examples`. Only add one when each
-  option and each piece of feedback can be traced to real Studio behaviour (record it in `EVIDENCE.md`).
+  option and each piece of feedback can be traced to real Studio behavior (record it in `EVIDENCE.md`).
 * **Keep old links working** — when a page id changes, add the old id to `redirects` in `content/guide.json`.
 * **Change a control's explanation** — edit its `text` in `content/shots.json`, rebuild. Numbers are the order in that list.
 * **Add or move a hotspot, or refresh a screenshot** — edit `tools/spec.mjs` and run the capture below.

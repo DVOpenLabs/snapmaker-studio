@@ -96,7 +96,7 @@ function paintContinue() {
   $(".continue", home)?.remove();
   const last = store.get("sg.last");
   if (!last || !pages.has(last) || !DATA.titles[last]) return;
-  const box = el("p", { class: "continue" }, `You were last on <a href="#${last}">${DATA.titles[last].replace(/</g, "&lt;")}</a>.`);
+  const box = el("p", { class: "continue" }, `Continue where you left off: <a href="#${last}">${DATA.titles[last].replace(/</g, "&lt;")}</a>`);
   $(".home-head .lead", home)?.after(box);
 }
 
