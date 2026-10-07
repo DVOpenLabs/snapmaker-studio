@@ -158,20 +158,27 @@ function figureHtml(shotId, label) {
 }
 
 /* ---------- the workflow map ---------- */
-const MAP_W = 1000, MAP_H = 250;
-const LANE_Y = { studio: 62, orca: 125, printer: 188 };
+const MAP_W = 1000;
+// Pixel geometry (y is never scaled, only x), so text can never collide with lanes or lines:
+// lane height, and the y of the stage marker centre inside a lane, per size.
+const GEO = { full: { laneH: 140, cy: 43 }, compact: { laneH: 88, cy: 33 } };
 const MAP_X = [96, 236, 376, 516, 668, 800, 922];
 function mapHtml({ current = null, compact = false } = {}) {
+  const geo = compact ? GEO.compact : GEO.full;
+  const MAP_H = geo.laneH * 3;
+  const LANE_Y = { studio: geo.cy, orca: geo.laneH + geo.cy, printer: geo.laneH * 2 + geo.cy };
   const pts = G.map.map((m, i) => ({ ...m, x: MAP_X[i], y: LANE_Y[m.lane] }));
+  // Lane changes are drawn so the line never crosses a stage's text (the text sits under its marker):
+  // going down, run level first and drop just before the next marker; going up, rise right after leaving.
   const path = pts.map((p, i) => {
     if (i === 0) return `M ${p.x} ${p.y}`;
     const q = pts[i - 1];
     if (q.y === p.y) return `L ${p.x} ${p.y}`;
-    const mx = (q.x + p.x) / 2;
-    return `C ${mx} ${q.y}, ${mx} ${p.y}, ${p.x} ${p.y}`;
+    if (p.y > q.y) return `L ${p.x - 45} ${q.y} C ${p.x - 23} ${q.y}, ${p.x - 22} ${p.y}, ${p.x} ${p.y}`;
+    return `C ${q.x + 22} ${q.y}, ${q.x + 23} ${p.y}, ${q.x + 45} ${p.y} L ${p.x} ${p.y}`;
   }).join(" ");
   const ribbons = ["#00E1FF", "#FF00FF", "#FFFF00", "#0000FF", "#32CD32", "#FF8500", "#8F00FF"].map((c, i) => {
-    const y0 = 34 + i * 9;
+    const y0 = LANE_Y.studio - 27 + i * 9;
     return `<path d="M 0 ${y0} C 40 ${y0}, 52 ${LANE_Y.studio}, ${MAP_X[0] - 22} ${LANE_Y.studio}" stroke="${c}" stroke-width="2" fill="none" opacity=".85" vector-effect="non-scaling-stroke"/>`;
   }).join("");
   const lanes = G.lanes.map((l) => `<div class="wf-lane wf-lane-${l.id}"><span>${esc(l.label)}</span></div>`).join("");
@@ -340,14 +347,14 @@ function homeHtml() {
   return `<article class="page home" id="home" data-page="home" data-type="home" aria-labelledby="home-h">
   <header class="home-head">
     <p class="eyebrow">Snapmaker Studio · guide for v${esc(G.site.version)}</p>
-    <h2 class="ptitle" id="home-h" tabindex="-1">What do you need to decide about your project?</h2>
-    <p class="lead">Studio checks a project and your U1 before a layer is sliced, prepares a copy, and checks the sliced job. This guide teaches the decisions, not just where the buttons are.</p>
+    <h2 class="ptitle" id="home-h" tabindex="-1">Get your project ready to print</h2>
+    <p class="lead">Check a downloaded model, prepare a U1 copy, and understand what to review before printing.</p>
   </header>
-  <section class="home-map" aria-label="The whole job"><h3 class="vh">The whole job</h3>${mapHtml()}
-    <p class="map-key">Studio works on your computer. <strong>Snapmaker Orca slices.</strong> You start the print at the printer. Studio never slices and never starts a print on its own.</p></section>
   <section class="doors" aria-label="Where to start">
     ${H.doors.map((d, i) => `<div class="door door-${d.id}"><h3>${esc(d.title)}</h3><p>${md(d.text)}</p>${d.links.length ? `<ul>${d.links.map((l) => `<li>${link(l.page, md(l.label))}</li>`).join("")}</ul>` : ""}<a class="btn ${i === 0 ? "btn-primary" : ""} js-nav" href="${href(d.cta.page)}">${esc(d.cta.label)} →</a></div>`).join("")}
   </section>
+  <section class="home-map" aria-label="The whole job"><details class="map-fold" open><summary>See the whole job<small>Studio, Snapmaker Orca and your printer, stage by stage</small></summary>${mapHtml()}</details>
+    <p class="map-key">Studio works on your computer. <strong>Snapmaker Orca slices.</strong> You start the print at the printer. Studio never slices and never starts a print on its own.</p></section>
   <section class="home-foot" aria-label="Before you start">
     <div><h3>Not installed yet?</h3><p>${link("setup", "Install and open Studio")} — about ten minutes. If Studio is already installed, skip it: the example starts from opening a file.</p></div>
     <div><h3>Optional tools</h3><p>Cost, scale, print quality, batch, model sites and spool providers are under ${link("tasks", "Tasks")}, marked optional, so they never interrupt the main path.</p></div>

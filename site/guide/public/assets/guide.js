@@ -132,6 +132,10 @@ for (const bar of $$(".filters")) {
   });
 }
 
+/* ---------- the home map is folded on phones (its stages stay reachable by opening it) ---------- */
+const fold = $(".map-fold");
+if (fold && matchMedia("(max-width: 960px)").matches) fold.open = false;
+
 /* ---------- start ---------- */
 initFigures(document);
 initExamples(document);

@@ -75,6 +75,61 @@ async function run(label, viewport, theme) {
   check(T("home has no horizontal overflow"), !(await overflow()));
   check(T("home states what the guide does not show"), /No screenshot of a connected printer/.test(await page.locator("#not-shown").innerText()));
   await snap("home");
+  check(T("home heading is concrete"), (await page.locator("#home-h").innerText()) === "Get your project ready to print");
+  check(T("home description is concrete"), /Check a downloaded model, prepare a U1 copy, and understand what to review before printing./.test(await page.locator("#home .lead").innerText()));
+  const yDoors = await page.locator("#home .doors").evaluate((n) => n.getBoundingClientRect().top);
+  const yMap = await page.locator("#home .home-map").evaluate((n) => n.getBoundingClientRect().top);
+  check(T("the three entry points come before the workflow map"), yDoors < yMap);
+  const fold = page.locator("#home .map-fold");
+  if (mobile) {
+    check(T("phone: the workflow map starts folded"), (await fold.evaluate((n) => n.open)) === false && (await page.locator("#home .wfmap a:visible").count()) === 0);
+    await fold.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    check(T("phone: the map opens from the keyboard and its seven stages are reachable"), (await fold.evaluate((n) => n.open)) && (await page.locator("#home .wfmap a:visible").count()) === 7);
+    check(T("phone: no overflow with the map open"), !(await overflow()));
+    await snap("home-map-open");
+    await page.keyboard.press("Enter");
+    check(T("phone: the map folds again"), (await fold.evaluate((n) => n.open)) === false);
+  } else {
+    check(T("desktop: the map is open and its toggle is hidden"), (await fold.evaluate((n) => n.open)) && !(await fold.locator("summary").isVisible()));
+    const collide = () => page.evaluate(() => {
+      const board = document.querySelector("#home .wf-board");
+      const R = (n) => n.getBoundingClientRect();
+      const boxes = [...board.querySelectorAll(".wf-lane span, .wf-n, .wf-t, .wf-q")].map((n) => ({ n, r: R(n), name: n.className + ":" + n.textContent.slice(0, 14) }));
+      const bad = [];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const p = boxes[i].r, q = boxes[j].r;
+        if (p.left < q.right - 0.5 && q.left < p.right - 0.5 && p.top < q.bottom - 0.5 && q.top < p.bottom - 0.5) bad.push(boxes[i].name + " x " + boxes[j].name);
+      }
+      const B = R(board);
+      const lanes = [...board.querySelectorAll(".wf-lane")].map(R);
+      for (const nd of board.querySelectorAll(".wf-node")) {
+        const r = R(nd);
+        const lane = lanes.find((l) => nd.classList.contains("wf-" + (nd.className.match(/wf-(studio|orca|printer)/) || [])[1]) && r.top >= l.top - 1 && r.top < l.bottom);
+        if (!lane || r.bottom > lane.bottom + 0.5) bad.push("node leaves its lane: " + nd.textContent.slice(0, 20));
+        if (r.left < B.left || r.right > B.right) bad.push("node leaves the board: " + nd.textContent.slice(0, 20));
+      }
+      // the connecting line must not run through any text
+      const path = board.querySelector(".wf-line"), svg = board.querySelector(".wf-svg");
+      const sb = R(svg), vb = svg.viewBox.baseVal, len = path.getTotalLength();
+      const text = [...board.querySelectorAll(".wf-t, .wf-q")].map((n) => ({ r: R(n), t: n.textContent.slice(0, 14) }));
+      for (let s = 0; s <= len; s += 4) {
+        const pt = path.getPointAtLength(s);
+        const x = sb.left + (pt.x / vb.width) * sb.width, y = sb.top + (pt.y / vb.height) * sb.height;
+        const hit = text.find((t) => x > t.r.left && x < t.r.right && y > t.r.top && y < t.r.bottom);
+        if (hit) { bad.push("line crosses text: " + hit.t); break; }
+      }
+      return [...new Set(bad)];
+    });
+    for (const w of [1280, 1000]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.waitForTimeout(60);
+      const bad = await collide();
+      check(T("workflow map has no collisions at " + w + " px"), bad.length === 0, bad.join("; "));
+    }
+    await page.setViewportSize(viewport);
+    await snap("home-map");
+  }
 
   /* ---------- every page: deep link, title, focus, overflow, images ---------- */
   for (const id of pageIds) {
@@ -290,6 +345,7 @@ async function run(label, viewport, theme) {
   check(T("first Tab stop is the skip link"), (await page.evaluate(() => document.activeElement?.className)) === "skip");
   await page.keyboard.press("Enter");
   check(T("skip link moves to the main content"), (await page.evaluate(() => location.hash)) === "#main" || true);
+  if (mobile) await page.locator("#home .map-fold summary").click();
   const mapLink = page.locator("#home .wfmap a[href=\"#path-orca\"]:visible").first();
   await mapLink.focus();
   await page.keyboard.press("Enter");
@@ -309,6 +365,7 @@ async function run(label, viewport, theme) {
   for (const id of ["home", "path-prepare", "tasks", "problem-studio-cant-tell", "search"]) {
     await go(`#${id}`);
     check(T(`#${id} has no sideways scroll with a wide fallback font`), !(await overflow()));
+    if (id === "home" && !mobile) { const bad = await page.evaluate(() => { const board = document.querySelector("#home .wf-board"); const rs = [...board.querySelectorAll(".wf-lane span, .wf-n, .wf-t, .wf-q")].map((n) => ({ r: n.getBoundingClientRect(), t: n.textContent.slice(0, 12) })); const out = []; for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const p = rs[i].r, q = rs[j].r; if (p.left < q.right - 0.5 && q.left < p.right - 0.5 && p.top < q.bottom - 0.5 && q.top < p.bottom - 0.5) out.push(rs[i].t + " x " + rs[j].t); } const lanes = [...board.querySelectorAll(".wf-lane")].map((l) => l.getBoundingClientRect()); for (const nd of board.querySelectorAll(".wf-node")) { const r = nd.getBoundingClientRect(); const l = lanes.find((x) => r.top >= x.top - 1 && r.top < x.bottom); if (!l || r.bottom > l.bottom + 0.5) out.push("leaves lane: " + nd.textContent.slice(0, 14)); } return out; }); check(T("workflow map has no collisions with a wide fallback font"), bad.length === 0, bad.join("; ")); }
   }
   await go("#home");
   await snap("home-final");

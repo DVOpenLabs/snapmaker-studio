@@ -113,15 +113,15 @@ a.chip:hover, button.chip:hover { border-color: var(--accent); color: var(--text
 
 /* workflow map: one job, three places */
 .wfmap { margin: 0; }
-.wf-board { position: relative; aspect-ratio: 1000 / 250; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; }
-.wfmap.compact .wf-board { aspect-ratio: 1000 / 190; border-radius: 12px; }
+.wf-board { position: relative; height: 420px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.wfmap.compact .wf-board { height: 264px; border-radius: 12px; }
 .wf-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .wf-line { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
-.wf-lane { position: absolute; left: 0; right: 0; height: 24.8%; border-top: 1px solid var(--border); }
+.wf-lane { position: absolute; left: 0; right: 0; height: 140px; border-top: 1px solid var(--border); }
 .wf-lane span { position: absolute; left: 10px; top: 5px; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .wf-lane-studio { background: var(--accent-soft); }
 .wf-lane-orca { background: repeating-linear-gradient(135deg, transparent 0 9px, color-mix(in srgb, var(--muted) 10%, transparent) 9px 10px); }
-.wf-node { position: absolute; transform: translate(-50%, -50%); width: clamp(84px, 13.5%, 150px); display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; text-decoration: none; color: var(--text); padding: 4px; border-radius: 10px; }
+.wf-node { position: absolute; transform: translateX(-50%); width: clamp(84px, 12.5%, 150px); display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; text-decoration: none; color: var(--text); padding: 4px; border-radius: 10px; }
 .wf-node:hover { background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--text); }
 .wf-n { display: grid; place-items: center; width: 30px; height: 30px; font-weight: 800; font-size: 14px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); border: 2px solid var(--bg); }
 .wf-orca .wf-n { border-radius: 8px; background: var(--panel); color: var(--text); border: 2px dashed var(--text); }
@@ -304,8 +304,6 @@ dialog.viewer::backdrop { background: rgba(4, 7, 14, 0.82); }
   .doors, .home-foot { grid-template-columns: minmax(0, 1fr); }
   .door { border-right: 0; border-bottom: 1px solid var(--border); } .door:last-child { border-bottom: 0; }
   .tlist, .plist { grid-template-columns: minmax(0, 1fr); }
-  .wf-board { display: none; }
-  .wf-list { display: block; }
   .means-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .means-table, .means-table tbody, .means-table tr, .means-table td { display: block; width: 100%; }
   .means-table tr { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; background: var(--panel); padding: 4px 0; }
@@ -330,11 +328,28 @@ dialog.viewer::backdrop { background: rgba(4, 7, 14, 0.82); }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (forced-colors: active) { .hs, .wf-n, .cert { border: 2px solid CanvasText; } }
 
-/* workflow map positions (static, so no inline styles are needed) */
-.wf-lane-studio { top: 12.4%; } .wf-lane-orca { top: 37.6%; } .wf-lane-printer { top: 62.8%; }
-.wf-node.wf-studio { top: 24.8%; } .wf-node.wf-orca { top: 50%; } .wf-node.wf-printer { top: 75.2%; }
+/* workflow map positions (static, so no inline styles are needed; y is in pixels, see GEO in tools/build.mjs) */
+.wf-lane-studio { top: 0; } .wf-lane-orca { top: 140px; } .wf-lane-printer { top: 280px; }
+.wf-node.wf-studio { top: 24px; } .wf-node.wf-orca { top: 164px; } .wf-node.wf-printer { top: 304px; }
+.wfmap.compact .wf-lane { height: 88px; } .wfmap.compact .wf-lane span { top: 3px; font-size: 0.6rem; }
+.wfmap.compact .wf-lane-orca { top: 88px; } .wfmap.compact .wf-lane-printer { top: 176px; }
+.wfmap.compact .wf-node.wf-studio { top: 14px; } .wfmap.compact .wf-node.wf-orca { top: 102px; } .wfmap.compact .wf-node.wf-printer { top: 190px; }
 .wf-p0 { left: 9.6%; } .wf-p1 { left: 23.6%; } .wf-p2 { left: 37.6%; } .wf-p3 { left: 51.6%; } .wf-p4 { left: 66.8%; } .wf-p5 { left: 80%; } .wf-p6 { left: 92.2%; }
 
 html:not(.js) .searchbar { display: none; }
 .wf-lane span { left: auto; right: 12px; }
 .ptitle:focus { outline: none; }
+
+@media (max-width: 960px) {
+  .wf-board { display: none; }
+  .wf-list { display: block; }
+}
+/* the home map folds on phones; on wide screens it is always open and the toggle is hidden */
+.map-fold > summary { cursor: pointer; font-weight: 700; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); list-style: none; display: none; }
+.map-fold > summary::-webkit-details-marker { display: none; }
+.map-fold > summary::after { content: "Show"; float: right; font-weight: 600; font-size: 0.85rem; color: var(--muted); }
+.map-fold[open] > summary::after { content: "Hide"; }
+.map-fold > summary small { display: block; font-weight: 400; color: var(--muted); font-size: 0.88rem; margin-top: 2px; }
+@media (max-width: 960px) { .map-fold > summary { display: block; } .map-fold[open] > summary { margin-bottom: 10px; } }
+.home .doors { margin-top: 24px; }
+.wfmap.compact .wf-lane-orca span, .wfmap.compact .wf-lane-printer span { left: 12px; right: auto; }
