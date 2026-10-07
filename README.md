@@ -23,7 +23,7 @@ local network. Your original file is never modified.
 
 **[▶ Real-user rescue example — 65 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-rescue-demo.mp4)** — A real external report ([#67](https://github.com/DVOpenLabs/snapmaker-studio/issues/67)) exposed a class of failure where a project's per-object settings made preparing a U1 copy fail. The recording itself uses our own controlled Bambu fixture with the same four per-object settings (`wall_generator`, `wall_loops`, `support_type`, `support_style`): v1.3.0 shows the generic failure, a pre-release diagnostic build exposes the exact settings, v1.3.1 prepares it, the fidelity report confirms 4 object-specific settings preserved, the original file's hash is unchanged, and the prepared copy opens in Snapmaker Orca. *The final Orca handoff is shown after dismissing unrelated first-run/version prompts.*
 
-**New to Studio? Follow the [step-by-step user guide](site/guide/README.md)** — a click-through tour from installing Studio to checking a sliced job, with annotated screenshots. Run it on your own computer with `node site/guide/tools/serve.mjs`; it needs no account and makes no network requests.
+**New to Studio? [Open the step-by-step user guide](https://dvopenlabs.github.io/snapmaker-studio/)** — an interactive click-through tour from installing Studio to checking a sliced job, with annotated screenshots. It needs no account and makes no network requests of its own. (Source and a local-preview command: [`site/guide`](site/guide/README.md).)
 
 *The Intelligence Layer for Open 3D Printing.*
 

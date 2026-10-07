@@ -81,3 +81,7 @@ These are recorded for the maintainer; none is described in the guide as working
 | `.github/workflows/guide-ci.yml` on GitHub-hosted Linux Chrome | written, not yet run |
 
 Finished-guide screenshots are in `evidence/screenshots/` (desktop and phone, both themes, viewer, walkthrough, no-JavaScript).
+
+### Live deployment (2026-10-07)
+
+Published with GitHub Pages from `main` by `.github/workflows/guide-pages.yml` after PR #79 passed all checks, including `guide-ci.yml` on Linux Chrome. `node tools/e2e.mjs --url https://dvopenlabs.github.io/snapmaker-studio/` against the live site: **727/727** (every lesson deep link, assets, hotspots, walkthroughs, viewer, desktop and phone, both themes, no-JavaScript). Screenshots of the live site: `evidence/live/`. Pages cannot set response headers, so the strict Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
