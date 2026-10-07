@@ -1,4 +1,4 @@
-# Evidence record — what each lesson rests on
+# Evidence record — what each page rests on
 
 The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
 same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
@@ -16,7 +16,9 @@ was read from the named file because it cannot be reached without a printer or t
 * Where older help text or comments disagreed with the running product, the product won (see "Conflicts resolved").
 * Nothing was connected to a printer, nothing was sliced, and Snapmaker Orca was never launched by the capture.
 
-## Lessons
+## Evidence by original topic
+
+The table keeps the original lesson numbering because that is how the evidence was gathered; see "Where the earlier lesson evidence went" for where each topic lives now.
 
 | # | Lesson | Verified in the UI | Verified in source / docs | Screenshots |
 |---|---|---|---|---|
@@ -33,6 +35,27 @@ was read from the named file because it cannot be reached without a printer or t
 | 11 | Additional tools | Cost & Pricing, Scale Doctor (STL export only), Print Quality symptoms, My designs, Batch prepare, Find Models (approved sites), Settings → Materials provider | `desktop/src/routes/*.tsx` | `cost`, `scale`, `print-quality`, `projects`, `batch`, `find-models`, `settings-top` |
 | 12 | When something goes wrong | Help page: update check wording, "Show me what it contains", "Save it to a file", redaction statement | `docs/windows-install.md` (updating, data kept), `.github/ISSUE_TEMPLATE/` | `help-updates` |
 
+## Evidence behind the four interactive examples
+
+An example is only included when every option and every piece of feedback rests on real Studio behaviour. None of them
+calls the engine, a printer or the network: they move between pictures and text.
+
+| Example | What it teaches | Evidence |
+|---|---|---|
+| Misplaced, or too big to fit? (stage 3) | An object hanging off the plate can be shifted back; one that is wider or longer than the plate cannot, and Studio refuses rather than guess | Three real captures (`compat-top`, `placement-oversized`, `placement-spread`) from example files built by `tools/fixtures.py`. The refusal text "Moving the objects as one piece would not bring them all on…" and the offered **Move onto the plate (saves a copy)** button were read from the running app; `backend/snapstudio_core/plate_placement.py` confirms Studio only moves placement and refuses when one move cannot fix it |
+| Assigning a material is not loading it (stage 3) | Project Materials records a choice for the copy; nothing is loaded, heated or sent | `pm-review` capture; `docs/RELEASE_NOTES.md` v1.5.0; Studio's "never takes control" rule |
+| Read the change (stage 4) | Kept / adjusted / not applied / yours to do in Orca | `fidelity` capture: "What survived preparing this copy", "Changes Studio made", "Optional recommendations (not applied)" |
+| Unknown is not incompatible (stage 6) | "Sliced for a different printer" is a confirmed fact from the G-code header; "Studio can't check this" is a gap | `job-other-printer` capture of `example_other_printer.gcode` (a synthetic job whose header names another printer), plus `after-result` for the unknowns |
+
+## Where the earlier lesson evidence went
+
+The first version of the guide was twelve numbered lessons. The redesign keeps all of that verified content, regrouped:
+lessons 2, 4, 5, 6, 8 and 9 became the six stages of the example path (`path.json`); lessons 1, 3, 7, 10, 11 and 12 became
+task pages (`tasks.json`); every warning wording became a page of its own (`problems.json`). Old lesson links
+(`#install`, `#read-checks`, `#fix-and-prepare`, …) are mapped to the new pages in `guide.json` → `redirects`, are tested
+in the browser run, and also work without JavaScript. Two screenshots no longer used by any page (`this-print-lower`,
+`colours-painted`) were removed along with their capture entries.
+
 ## Conflicts resolved (product won over old text)
 
 | Where | Old text | What the product does | Action |
@@ -44,10 +67,10 @@ was read from the named file because it cannot be reached without a printer or t
 
 ## Gaps, stated plainly
 
-* **No connected-printer screenshots.** No printer was contacted. Lesson 10 shows Printer Hub before a printer answers and
+* **No connected-printer screenshots.** No printer was contacted. The printer task shows Printer Hub before a printer answers and
   says so. Live-state wording comes from the app's own text and from the source.
 * **No Snapmaker Orca screenshots.** The maintainer's own Orca was running during capture, so no second Orca instance was
-  started. Lesson 8 describes Orca's side in general terms (printer, filaments, Arrange, **Slice plate**, export) and tells
+  started. The Orca stage describes Orca's side in general terms (printer, filaments, Arrange, **Slice plate**, export) and tells
   readers that Orca's menu wording can differ by version.
 * **Plate Color Remap** controls are documented from `PlateRemap.tsx`, not from a screenshot.
 * **Linux** was not captured: all screenshots are from Windows-hosted runs. The guide cites the Linux install guide's own
@@ -68,20 +91,23 @@ These are recorded for the maintainer; none is described in the guide as working
    tells readers to trust Compatibility.
 3. **Project Materials** with a damaged 3MF shows "project materials failed (500)" under the card.
 
-## Verification run (this commit)
+## Verification run (redesign, local, before review)
 
 | Check | Result |
 |---|---|
-| `node tools/build.mjs` (content, screenshots, alt text, hotspot positions and overlaps, walkthrough circle numbers, privacy lint) | built 12 lessons, 29 screenshots, no problems |
-| `node tools/check.mjs` (links, ids, alt text, no third-party requests, strict-CSP readiness, WCAG contrast of every colour pair in both themes) | 49/49 |
-| `node tools/e2e.mjs` (Edge, desktop 1280 px and phone 390 px, dark and light, plus a no-JavaScript run; strict Content-Security-Policy; every deep link, Next/Back/browser history, saved position, Start again, theme, mobile menu, image viewer focus handling, every hotspot, every walkthrough, overflow, console errors) | 727/727 |
-| Desktop: `npm run test` · `tsc --noEmit` · `npm run build` | 731 passed (725 + 6 new for the Help / Get Started link) · clean · built |
-| Backend: `pytest` | 2805 passed, 13 skipped |
-| `node tools/check.mjs --online` (external links answer) | not run during capture: it needs the network and the guide is not deployed yet |
-| `.github/workflows/guide-ci.yml` on GitHub-hosted Linux Chrome | written, not yet run |
+| `node tools/build.mjs` (content, screenshots, alt text, hotspot positions and overlaps, every link target, every example answer, privacy lint) | 6 stages, 27 tasks, 23 warnings, 4 examples, 30 screenshots, 56 searchable pages, no problems |
+| `node tools/check.mjs` (links, ids, alt text, no third-party requests, no inline script or style, WCAG contrast of every colour pair in both themes) | 49/49 |
+| `node tools/e2e.mjs` (Edge, desktop 1280 px and phone 390 px, dark and light, strict Content-Security-Policy, plus a no-JavaScript run): every page by deep link, every old lesson link, search (results, excerpt, empty state, suggestions, `/` shortcut), task and warning filters, all four examples including a deliberate wrong answer, viewer focus handling, numbered notes, keyboard-only paths, theme switch, wide fallback font, overflow, console errors | 1426/1426 |
+| `.github/workflows/guide-ci.yml` on GitHub-hosted Linux Chrome | not yet run (needs the pull request) |
+| `node tools/check.mjs --online` | not run (needs the network) |
+| Desktop / backend test suites | not run: this change touches only `site/guide/` and the capture tooling, not Studio itself |
 
-Finished-guide screenshots are in `evidence/screenshots/` (desktop and phone, both themes, viewer, walkthrough, no-JavaScript).
+Screenshots of the finished redesign, desktop and phone, both themes: `evidence/redesign/`. The earlier `evidence/screenshots/`
+and `evidence/live/` show the previous, lesson-based guide.
 
-### Live deployment (2026-10-07)
+### Previous deployment (2026-10-07)
 
-Published with GitHub Pages from `main` by `.github/workflows/guide-pages.yml` after PR #79 passed all checks, including `guide-ci.yml` on Linux Chrome. `node tools/e2e.mjs --url https://dvopenlabs.github.io/snapmaker-studio/` against the live site: **727/727** (every lesson deep link, assets, hotspots, walkthroughs, viewer, desktop and phone, both themes, no-JavaScript). Screenshots of the live site: `evidence/live/`. Pages cannot set response headers, so the strict Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
+The lesson-based guide was published with GitHub Pages from `main` by `.github/workflows/guide-pages.yml` after PR #79 passed all
+checks, including `guide-ci.yml` on Linux Chrome; its live run was 727/727. Pages cannot set response headers, so the strict
+Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
+The redesign is not published: it is prepared on branch `docs/guide-redesign` for review.

@@ -126,29 +126,6 @@
       }
     ]
   },
-  "this-print-lower": {
-    "file": "this-print-lower.png",
-    "title": "This print, stages 2 and 3",
-    "alt": "The lower part of Studio's This print page. Stage 2, Prepared, says Nothing prepared yet and explains that preparing writes a new copy. Stage 3, After slicing, shows a Pick up sliced jobs automatically card with a Watch this folder button.",
-    "caption": "Stages 2 and 3 of **This print** before anything has been prepared or sliced.",
-    "hotspots": [
-      {
-        "key": "stage-two",
-        "title": "Stage 2: Prepared",
-        "text": "After you prepare a copy, this stage shows what changed, what survived and the way back to your original."
-      },
-      {
-        "key": "stage-three",
-        "title": "Stage 3: After slicing",
-        "text": "Snapmaker Orca slices. This stage picks the result back up and checks what the printer will actually do."
-      },
-      {
-        "key": "watch-folder",
-        "title": "Watch this folder",
-        "text": "Optional: tell Studio where Orca saves its exports and it looks there while this page is open, never in the background."
-      }
-    ]
-  },
   "nav-advanced": {
     "file": "nav-advanced.png",
     "title": "Advanced view",
@@ -294,19 +271,6 @@
         "key": "explain",
         "title": "What a toolhead is",
         "text": "A toolhead melts one filament. The U1 has four, so it can print four colours at once without a spool swap. Studio counted against the U1's published four toolheads; it did not read this from a printer."
-      }
-    ]
-  },
-  "colours-painted": {
-    "file": "colours-painted.png",
-    "title": "A painted project",
-    "alt": "Studio's Colors page for a painted example project. The card says 4 colours, 4 toolheads, every colour has a toolhead, and that parts of the model are painted with 2 filament colours. Two colours are listed as appearing only higher up, and two are listed under Studio can't tell how these are used.",
-    "caption": "Painted colour, read from the project before slicing.",
-    "hotspots": [
-      {
-        "key": "painted",
-        "title": "Painted colour found",
-        "text": "Studio read the painting stored in the project and tells you how many filament colours it uses. Expand **What Studio read from the painting** for the measurements; they are hidden by default."
       }
     ]
   },
@@ -748,6 +712,70 @@
         "key": "next-line",
         "title": "What happens next",
         "text": "Slice in Snapmaker Orca, export the `.gcode` file, then bring it back (lesson 9). Studio does not slice."
+      }
+    ]
+  },
+  "placement-oversized": {
+    "file": "placement-oversized.png",
+    "title": "Placement: an object longer than the plate",
+    "alt": "Studio's Object placement card for a project with one long bar. It says one object is outside the U1's printable area: Object 1, 320 by 20 by 20 millimetres, hangs 1.0 millimetres past the left edge and 50.0 millimetres past the right edge. A note says moving the objects as one piece would not bring them all on, so Studio will not guess, and to use Arrange in Snapmaker Orca. There is no Move button.",
+    "caption": "`example_oversized.3mf`: one 320 mm bar on a plate about 270 mm wide.",
+    "hotspots": [
+      {
+        "key": "object",
+        "title": "The object and its size",
+        "text": "Studio names the object, its size and how far it hangs over: here **320 mm long**, hanging over **both** the left and the right edge. That means the object is longer than the plate, so no position works."
+      },
+      {
+        "key": "refusal",
+        "title": "Why there is no Move button",
+        "text": "Studio moves everything as one piece and verifies the result, or does nothing. It will not guess."
+      }
+    ]
+  },
+  "placement-spread": {
+    "file": "placement-spread.png",
+    "title": "Placement: a layout wider than the plate",
+    "alt": "Studio's Object placement card for a project with two small cubes far apart. It says one object is outside the U1's printable area: Object 2, 10 by 10 by 10 millimetres, hangs 35.0 millimetres past the right edge. The same note appears: moving the objects as one piece would not bring them all on, so Studio will not guess. There is no Move button.",
+    "caption": "`example_spread.3mf`: two 10 mm cubes about 290 mm apart.",
+    "hotspots": [
+      {
+        "key": "object",
+        "title": "A small object",
+        "text": "Studio names the object, its size and how far it hangs over. The object is only 10 mm, so size is not the problem; it hangs over one edge while another object sits near the opposite edge."
+      },
+      {
+        "key": "refusal",
+        "title": "Studio will not guess",
+        "text": "Rearranging separate objects is a job for **Arrange** in Snapmaker Orca."
+      }
+    ]
+  },
+  "job-other-printer": {
+    "file": "job-other-printer.png",
+    "title": "A job sliced for a different printer",
+    "alt": "Studio's After slicing page checking an example G-code file that names a different printer. A Ready to send card says nothing blocks the job but two things are worth settling. The first finding, Sliced for a different printer, is marked worth settling first and says to re-slice the model in Snapmaker Orca with a U1 profile. Below it, other findings are marked Studio can't check this.",
+    "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected.",
+    "hotspots": [
+      {
+        "key": "ready",
+        "title": "Ready to send?",
+        "text": "The overall answer with what is worth settling. It is never a promise that the print will succeed."
+      },
+      {
+        "key": "different",
+        "title": "A confirmed finding",
+        "text": "Studio read the printer named in the job. This is a fact about the file, and it needs no printer to know."
+      },
+      {
+        "key": "do-this",
+        "title": "What to do about it",
+        "text": "Re-slice the model in Orca with a U1 profile."
+      },
+      {
+        "key": "cant-check",
+        "title": "Unknown, not wrong",
+        "text": "These need a reading from your printer. They are gaps, not problems found."
       }
     ]
   }

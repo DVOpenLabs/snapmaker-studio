@@ -10,7 +10,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pub = join(root, "public");
 const html = readFileSync(join(pub, "index.html"), "utf8");
 const css = readFileSync(join(pub, "assets/guide.css"), "utf8");
-const js = readFileSync(join(pub, "assets/guide.js"), "utf8");
+const js = readdirSync(join(pub, "assets")).filter((f) => f.endsWith(".js")).map((f) => readFileSync(join(pub, "assets", f), "utf8")).join(String.fromCharCode(10));
 const online = process.argv.includes("--online");
 const results = [];
 const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`); };

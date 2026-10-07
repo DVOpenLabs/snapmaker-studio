@@ -46,12 +46,6 @@ export const SHOTS = [
     },
   },
   {
-    id: "this-print-lower", file: "this-print-lower.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 960 },
-    setup: waitText(/Printer not found/),
-    scroll: T("2. Prepared"),
-    targets: { "stage-two": T("2. Prepared"), "stage-three": T("3. After slicing"), "watch-folder": btn("Watch this folder") },
-  },
-  {
     id: "nav-advanced", file: "nav-advanced.png", route: "/", size: { width: 1230, height: 1100 },
     setup: async (p) => { await p.getByRole("button", { name: "Advanced" }).click(); await p.waitForTimeout(800); },
     targets: {
@@ -112,12 +106,6 @@ export const SHOTS = [
     targets: {
       "remap": T("Plate Color Remap"), "verdict": T(/\d+ colours?, \d+ toolheads?/), "explain": T(/^A toolhead is the part/),
     },
-  },
-  {
-    id: "colours-painted", file: "colours-painted.png", open: "example_painted.3mf", route: "/colors", size: { width: 1230, height: 1000 },
-    setup: waitText(/painted with \d+ filament/i),
-    scroll: T(/painted with \d+ filament/i),
-    targets: { "painted": T(/painted with \d+ filament/i) },
   },
   {
     id: "pm-recs", file: "pm-recs.png", open: "demo_u1_showcase.3mf", route: "/compatibility", provider: true, size: { width: 1230, height: 1100 },
@@ -252,6 +240,36 @@ export const SHOTS = [
     targets: {
       "created": T(/U1 copy created/), "what-now": T("What now?"), "open-orca": btn(/Open in Snapmaker Orca/),
       "next-line": (p) => p.getByText(/Next:\s*slice in Snapmaker Orca/).first(),
+    },
+  },
+
+  /* ---- decision examples: real placement refusals and a real job sliced for another printer ---- */
+  {
+    id: "placement-oversized", file: "placement-oversized.png", open: "example_oversized.3mf", route: "/compatibility", size: { width: 1230, height: 640 },
+    setup: waitText(/Moving the objects as one piece/, 120000),
+    scroll: T("Object placement"),
+    targets: {
+      "object": T(/^Object 1 · 320/), "overhang": T(/Hangs 1\.0 mm past the left edge/), "refusal": T(/Moving the objects as one piece/),
+    },
+  },
+  {
+    id: "placement-spread", file: "placement-spread.png", open: "example_spread.3mf", route: "/compatibility", size: { width: 1230, height: 640 },
+    setup: waitText(/Moving the objects as one piece/, 120000),
+    scroll: T("Object placement"),
+    targets: {
+      "object": T(/^Object 2 · 10/), "overhang": T(/Hangs 35\.0 mm past the right edge/), "refusal": T(/Moving the objects as one piece/),
+    },
+  },
+  {
+    id: "job-other-printer", file: "job-other-printer.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 1000 },
+    setup: async (p, env) => {
+      await p.locator("input").last().fill(env.inputs + "\\example_other_printer.gcode");
+      await p.getByRole("button", { name: "Check this job" }).click();
+      await p.getByText("Sliced for a different printer").first().waitFor({ timeout: 120000 });
+    },
+    targets: {
+      "ready": T("Ready to send?"), "different": T("Sliced for a different printer"), "do-this": T(/Re-slice this model in Snapmaker Orca/),
+      "cant-check": T(/studio can.t check this/i),
     },
   },
 ];
