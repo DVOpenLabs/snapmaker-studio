@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
-import { BookOpen, ArrowRight } from "lucide-react";
+import { BookOpen, ArrowRight, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/layout";
 import { PRIMARY_DOCTORS } from "@/lib/doctors";
 import { SupportBundle } from "@/components/SupportBundle";
 import { UpdateCheck } from "@/components/UpdateCheck";
+import { USER_GUIDE_BLURB, USER_GUIDE_LABEL, USER_GUIDE_URL } from "@/lib/guide";
 
 // Lightweight help/about hub. Honest pointers only — links to in-app surfaces
 // that actually exist; no fabricated documentation.
@@ -13,6 +14,15 @@ export default function Help() {
     <div className="space-y-6">
       <PageHeader icon={BookOpen} title="Docs / Help"
         subtitle="What Snapmaker Studio does and where to find each tool." />
+
+      <Card><CardContent className="space-y-2 p-5 text-sm">
+        <p className="font-semibold">New here? Follow the guide</p>
+        <p className="text-muted-foreground">{USER_GUIDE_BLURB}</p>
+        <a href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
+          className="inline-flex items-center gap-1 text-primary hover:underline">
+          {USER_GUIDE_LABEL} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      </CardContent></Card>
 
       <Card><CardContent className="space-y-3 p-5 text-sm">
         <p className="font-semibold">The Intelligence Layer for Open 3D Printing</p>
@@ -62,7 +72,7 @@ export default function Help() {
           </li>
           <li>
             <Link to="/find-models" className="text-primary hover:underline">Find Models</Link>
-            <span className="text-muted-foreground"> — search model sites + link out; check license before you use a model. No downloads yet.</span>
+            <span className="text-muted-foreground"> — browse approved model sites inside Studio and download with the site's own button; Studio adds supported downloads to your Library. Check the license before you use a model.</span>
           </li>
         </ul>
       </CardContent></Card>
