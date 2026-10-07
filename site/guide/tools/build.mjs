@@ -117,6 +117,15 @@ if (/[A-Za-z]:\\\\Users\\\\(?!you\\\\)/i.test(allText) || /\/home\/[a-z]/i.test(
 if (/\b(octo|codex|sonnet|opus|fable|gemini|antigravity)\b/i.test(allText)) fail("content contains an internal tooling term");
 if (/\b100% (print )?success\b|guaranteed print/i.test(allText.replace(/not a guarantee|never claims|does not guarantee|never a guarantee|not a promise/gi, ""))) fail("content makes a guarantee claim");
 
+// overclaims that earlier versions made and review corrected; they must not come back
+const OVERCLAIMS = [
+  [/(pause|resume)[^.]{0,80}\b(take(s)? effect|immediately|instantly)/i, "says Pause or Resume take effect (a sent request is not an executed one)"],
+  [/carries over only what it can verify/i, "says Studio carries over only what it can verify (unsupported data is copied unchecked)"],
+  [/nothing is wrong with the job/i, "says nothing is wrong with a job Studio could not read"],
+  [/\bneed no action\b|nothing to review unless/i, "says kept settings need no action (preserved is not verified in Orca)"],
+];
+for (const [re, why] of OVERCLAIMS) if (re.test(allText)) fail("content " + why);
+
 if (bad.length) { console.error("Guide build failed:\n - " + bad.join("\n - ")); process.exit(1); }
 for (const w of warn) console.warn("warning:", w);
 
@@ -150,7 +159,7 @@ function figureHtml(shotId, label) {
   const rows = items.map((h) => `<li><span class="num" aria-hidden="true">${h.n}</span><span><strong class="t">${esc(h.title)}</strong>${md(h.text)}</span></li>`).join("");
   return `<figure class="shot" data-shot="${esc(shotId)}">
   ${label ? `<p class="shot-label">${md(label)}</p>` : ""}
-  <p class="swipe-hint">Swipe sideways to see the whole screenshot, or tap it to enlarge.</p>
+  <p class="swipe-hint">Swipe sideways to see the whole screenshot. With JavaScript on, tap it to enlarge.</p>
   <div class="shot-scroll"><div class="shot-frame"><img src="assets/img/${esc(s.file)}" alt="${esc(s.alt)}" width="${g.width}" height="${g.height}" loading="lazy" decoding="async"></div></div>
   <figcaption>${md(s.caption)}</figcaption>
   ${items.length ? `<details class="controls-notes"><summary>Notes on the controls in this screenshot</summary><ol class="hs-text">${rows}</ol></details>` : ""}
@@ -365,7 +374,7 @@ function homeHtml() {
 function searchHtml() {
   return `<article class="page search" id="search" data-page="search" data-type="search" aria-labelledby="search-h">
   <header class="index-head"><p class="crumb"><a href="#home">Guide</a> <span aria-hidden="true">›</span> Search</p><h2 class="ptitle" id="search-h" tabindex="-1">Search the guide</h2></header>
-  <div id="search-out" class="search-out" aria-live="polite"><p class="nojs-note">Search needs JavaScript. Without it, use the <a href="#tasks">task list</a> and the <a href="#problems">list of warnings</a>, which contain everything searchable.</p></div>
+  <div id="search-out" class="search-out" aria-live="polite"><p class="nojs-note">Search needs JavaScript. Without it, use the <a href="#tasks">task list</a> and the <a href="#problems">list of warnings</a>, plus the example stages; search covers nothing else.</p></div>
 </article>`;
 }
 

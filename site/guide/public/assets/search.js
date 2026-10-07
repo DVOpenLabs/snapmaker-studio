@@ -101,7 +101,7 @@ export function renderSearch(container, q) {
     return 0;
   }
   container.appendChild(el("p", { class: "result-count", role: "status" },
-    `${results.length} result${results.length === 1 ? "" : "s"} for “${escapeHtml(query)}”${fallback ? " — no result matched every word, so these match some of the words" : ""}`));
+    `${results.length} result${results.length === 1 ? "" : "s"} for “${escapeHtml(query)}”${fallback ? " — nothing matched every word, so these match all but one" : ""}`));
   const list = el("ol", { class: "results" });
   for (const r of results) {
     list.appendChild(el("li", { class: "result" },

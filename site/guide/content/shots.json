@@ -51,7 +51,7 @@
       {
         "key": "prepare",
         "title": "Prepare U1 copy",
-        "text": "Writes a **new** file with U1 settings. Your original is never changed."
+        "text": "Writes a *new* file with U1 settings. Your original is never changed."
       },
       {
         "key": "fix-plan",
@@ -69,7 +69,7 @@
     "file": "workspace-3mf.png",
     "title": "The Workspace for a 3MF project",
     "alt": "Studio's Workspace for demo_offplate_foreign.3mf. A Preparation mode card offers Preserve creator settings (recommended), Use Studio's U1 starter settings instead, and Custom. Below are a Needs a fix first banner with a Prepare U1 copy button, a Your fix plan list, and an Object placement card reporting one object outside the printable area.",
-    "caption": "The Workspace for `demo_offplate_foreign.3mf`, a small project whose second object sits off the U1's plate.",
+    "caption": "The Workspace for `demo_offplate_foreign.3mf`, a small project whose object labeled Object 2 sits off the U1's plate.",
     "hotspots": [
       {
         "key": "mode",
@@ -117,7 +117,7 @@
       {
         "key": "printer-check",
         "title": "Before you slice",
-        "text": "Compares the project with your printer. With no printer connected, each answer is marked **Studio can’t tell**."
+        "text": "Compares the project with what Studio knows about the printer. Checks that need a fact from the printer say **Studio can’t tell** when Studio does not have it; checks that use only the file still answer."
       },
       {
         "key": "colours",
@@ -145,7 +145,7 @@
       {
         "key": "colors",
         "title": "Colors & Materials",
-        "text": "Color and toolhead planning, Plate Color Remap and Project Materials."
+        "text": "Color and toolhead planning and Plate Color Remap. Find Project Materials on Compatibility."
       },
       {
         "key": "printer-hub",
@@ -173,7 +173,7 @@
       {
         "key": "move",
         "title": "Move onto the plate",
-        "text": "Saves a **new** file with every object shifted onto the plate. Your original stays as it was."
+        "text": "Saves a *new* file with every object shifted onto the plate. Your original stays as it was."
       },
       {
         "key": "before-slice",
@@ -237,7 +237,7 @@
       {
         "key": "changed",
         "title": "What Studio changed, and what stayed",
-        "text": "Expand **What Studio changed** to see each change; every change Studio made is listed. **What stayed the same** lists what was carried over untouched."
+        "text": "Expand **What Studio changed** to see each change Studio identified. **What stayed the same** includes both identical data and data with the same meaning. Also read anything under **What Studio could not check**."
       },
       {
         "key": "ledger",
@@ -260,7 +260,7 @@
       {
         "key": "remap",
         "title": "Plate Color Remap",
-        "text": "Changes one plate's color in a verified **copy**. Your original is never changed."
+        "text": "Changes one plate's color in a new copy. Your original is never changed."
       },
       {
         "key": "verdict",
@@ -278,7 +278,7 @@
     "file": "pm-recs.png",
     "title": "Project Materials: suggested spools",
     "alt": "Studio's Project materials card. For Slot 1, PLA, Red, it lists three suggested spools from a sample inventory with reasons such as Material matches PLA and Colour distance, then an Orca preset area reading Not chosen yet with the buttons Use this preset, Choose an installed preset and Keep project's filament.",
-    "caption": "**Project materials** with a made-up sample inventory. No spool and no preset is selected.",
+    "caption": "**Project materials** with a made-up sample inventory. No spool or preset is selected yet.",
     "hotspots": [
       {
         "key": "title",
@@ -288,12 +288,12 @@
       {
         "key": "candidate",
         "title": "A suggested spool",
-        "text": "Each slot shows what the project asks for (material, color and, when the file states it, the weight in grams). Studio lists up to three spools from your inventory and says **why**. Pick the one that is physically in your hand."
+        "text": "Each slot shows what the project asks for (material, color and, when the file states it, the weight in grams). Studio lists up to three spools from your inventory and says *why*. Pick the one that is physically in your hand."
       },
       {
         "key": "preset",
         "title": "The Orca preset",
-        "text": "Choose an **installed** Snapmaker Orca preset yourself, or keep the project's own filament."
+        "text": "Choose an *installed* Snapmaker Orca preset yourself, or keep the project's own filament."
       }
     ]
   },
@@ -306,7 +306,7 @@
       {
         "key": "review",
         "title": "Review before preparing",
-        "text": "A plain-language list of exactly what will change. Spool details are labeled as what **you** selected."
+        "text": "A plain-language list of exactly what will change. Spool details are labeled as what *you* selected."
       },
       {
         "key": "prepare",
@@ -334,7 +334,7 @@
       {
         "key": "watch-btn",
         "title": "Watch this folder",
-        "text": "Studio looks in that folder only while this page is open, and never in the background."
+        "text": "Studio looks in that folder only while this page is open; it does not keep watching after you leave it."
       },
       {
         "key": "open-gcode",
@@ -362,7 +362,7 @@
       {
         "key": "cant-check",
         "title": "Studio can’t check this",
-        "text": "Unknown stays unknown. With no printer connected, anything that depends on the machine is listed here."
+        "text": "Unknown stays unknown. With no printer connected, anything that depends on the machine and that you have not confirmed yourself is listed here."
       },
       {
         "key": "facts",
@@ -446,7 +446,7 @@
       {
         "key": "confirmed",
         "title": "Printer access and confirmed control",
-        "text": "Monitoring is read-only. Pause and resume take effect when you press them; cancel, emergency stop and starting a print ask you to confirm first. Studio never starts a print on its own."
+        "text": "Monitoring is read-only. Pause and resume are sent as soon as you press them, with no second prompt; cancel, emergency stop and starting a print ask you to confirm first. Studio never starts a print on its own."
       },
       {
         "key": "nozzles",
@@ -553,7 +553,7 @@
       {
         "key": "details",
         "title": "Details and assumptions",
-        "text": "Every number comes from your own assumptions. They are estimates, not financial advice."
+        "text": "The figures combine file data with default or edited assumptions. Review the assumptions; they are estimates, not financial advice."
       }
     ]
   },
@@ -605,8 +605,8 @@
   },
   "batch": {
     "file": "batch.png",
-    "title": "Batch prepare",
-    "alt": "Studio's Batch prepare page with an Add files button and a Prepare button, under the heading Prepare a whole batch at once.",
+    "title": "Batch Prepare",
+    "alt": "Studio's Batch Prepare page with an Add files button and a Prepare button, under the heading Prepare a whole batch at once.",
     "caption": "**Batch Prepare**.",
     "hotspots": [
       {
@@ -696,7 +696,7 @@
       {
         "key": "created",
         "title": "U1 copy created",
-        "text": "The new file has been written and checked for structure. Studio never writes to your original; the copy is a separate file next to it."
+        "text": "The new file has been written. Studio never writes to your original; the copy is a separate file next to it."
       },
       {
         "key": "what-now",
@@ -724,7 +724,7 @@
       {
         "key": "object",
         "title": "The object and its size",
-        "text": "Studio names the object, its size and how far it hangs over: here **320 mm long**, hanging over **both** the left and the right edge. That means the object is longer than the plate, so no position works."
+        "text": "Studio names the object, its size and how far it hangs over: here *320 mm long*, hanging over *both* the left and right edges. Shifting cannot fit it as it is oriented; rotate, resize or split it in Orca."
       },
       {
         "key": "refusal",
@@ -753,7 +753,7 @@
   },
   "job-other-printer": {
     "file": "job-other-printer.png",
-    "title": "A job sliced for a different printer",
+    "title": "An example job whose header names a different printer",
     "alt": "Studio's After slicing page checking an example G-code file that names a different printer. A Ready to send card says nothing blocks the job but two things are worth settling. The first finding, Sliced for a different printer, is marked worth settling first and says to re-slice the model in Snapmaker Orca with a U1 profile. Below it, other findings are marked Studio can't check this.",
     "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected.",
     "hotspots": [
@@ -764,8 +764,8 @@
       },
       {
         "key": "different",
-        "title": "A confirmed finding",
-        "text": "Studio read the printer named in the job. This is a fact about the file, and Studio does not need a connected printer to know it."
+        "title": "A name read from the file",
+        "text": "Studio read the printer named in the job. That is a fact about the file, and Studio does not need a connected printer to read it. It does not recognize the name as the U1 (the card's Evidence line says so), so Studio rates the finding likely, not confirmed."
       },
       {
         "key": "do-this",

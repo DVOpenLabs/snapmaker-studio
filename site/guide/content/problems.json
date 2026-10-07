@@ -3,31 +3,31 @@
     "id": "needs-attention", "label": "NEEDS ATTENTION", "certainty": "check", "seen": ["check"],
     "means": "Something in the project is likely to cause trouble in Snapmaker Orca. For a downloaded 3MF it usually means settings that came from another printer.",
     "why": "Studio compares the project's settings with what the U1 and Orca expect. The text on the card says: *The model may be fine; the project settings are the problem.*",
-    "do": ["Read the card's **Do this:** line. For a project made for another printer, it usually says to import the model into a clean U1 project or to prepare a U1 copy.", "Press **Prepare U1 copy** (Preserve creator settings is the safe default) and review the result."],
+    "do": ["Read the card's **Do this:** line. For a project made for another printer, it usually says to import the model into a clean U1 project or to prepare a U1 copy.", "Press **Prepare U1 copy** (**Preserve creator settings** is the recommended default) and review the result."],
     "dont": "Do not conclude your model is broken: the card says the model may be fine.",
     "shot": "compat-findings", "tasks": ["prepare-u1-copy"], "keywords": ["invalid value", "foreign", "settings from another printer", "bambu", "makerworld", "warning"]
   },
   {
     "id": "heads-up", "label": "HEADS UP", "certainty": "check", "seen": ["check"],
-    "means": "Worth knowing, often something Studio cannot verify, such as spacing between objects or whether the profile is for a U1.",
+    "means": "Worth knowing, often something Studio cannot fully assess, such as spacing between objects or whether the profile is for a U1.",
     "why": "Studio does not yet check spacing between objects in a multi-part layout, and says so rather than guessing.",
     "do": ["Open the project in Snapmaker Orca and use **Arrange**; watch for collision warnings.", "If it says **Profile may not be a Snapmaker U1 profile**, make sure the active printer profile is Snapmaker U1, or prepare a U1 copy."],
-    "dont": "A heads-up is not a failure; it is something Studio cannot check for you.",
+    "dont": "A heads-up is not a failure. It is something to look at, and often something Studio cannot check for you.",
     "shot": "compat-findings", "tasks": ["review-in-orca"], "keywords": ["spacing", "collision", "profile", "not a u1 profile", "warning"]
   },
   {
     "id": "studio-cant-tell", "label": "STUDIO CAN’T TELL", "certainty": "unknown", "seen": ["check", "job"],
-    "means": "Studio has no way to read this fact from your printer, so it does not guess.",
-    "why": "Most often no printer is connected. The app's own line says: “Studio can’t tell” means Studio has no way to read that from your printer — not that your printer can’t do it.",
+    "means": "Studio lacks information it needs for this check, often because no printer is connected, so it does not guess.",
+    "why": "Most often no printer is connected. The app's own line says: *“Studio can’t tell” means Studio has no way to read that from your printer — not that your printer can’t do it.* Studio can also say it when the file itself leaves a fact out.",
     "do": ["Connect your printer in Printer Hub so Studio can compare it with the project.", "Or check the item yourself at the printer; the card says what to check."],
-    "dont": "Do not read it as “incompatible”. A confirmed problem has evidence in a file Studio can read, such as the printer named in the G-code.",
+    "dont": "Do not read it as “incompatible”. A confirmed problem rests on evidence Studio actually has: something read from a file, such as the printer named in the G-code, or something your connected printer reported.",
     "shot": "this-print-top", "tasks": ["connect-printer", "check-sliced-job"], "keywords": ["unknown", "cannot tell", "can't tell", "no printer", "unreachable", "unknown stays unknown"]
   },
   {
     "id": "studio-cant-check-this", "label": "STUDIO CAN’T CHECK THIS", "certainty": "unknown", "seen": ["job"],
-    "means": "On a sliced job: the check needs a reading from your printer, such as the toolheads it has, whether the slots are loaded, the bed, or the nozzle fitted.",
-    "why": "On its own, Studio reads only the file. With no printer connected, anything that depends on the machine stays unknown.",
-    "do": ["Connect the printer in Printer Hub and check the job again.", "Or check each item yourself: toolheads, loaded slots, bed, nozzle (the card tells you what to look for)."],
+    "means": "On a sliced job: the check needs information Studio does not have, such as the toolheads the printer has, whether the slots are loaded, the bed, or the nozzle fitted.",
+    "why": "On its own, Studio reads only the file. With no printer connected, anything that depends on the machine stays unknown unless you confirmed it yourself, such as a nozzle size.",
+    "do": ["If the check needs the printer, connect it in Printer Hub and check the job again.", "Or check each item yourself: toolheads, loaded slots, bed, nozzle (the card tells you what to look for)."],
     "dont": "It is not a failed check. It is a check Studio could not run.",
     "shot": "after-result", "tasks": ["connect-printer", "confirm-nozzles"], "keywords": ["after slicing", "toolheads", "slots loaded", "bed", "nozzle", "unknown"]
   },
@@ -35,7 +35,7 @@
     "id": "looks-right", "label": "LOOKS RIGHT", "certainty": "ok", "seen": ["check", "job"],
     "means": "Studio checked this and found nothing wrong.",
     "why": "For example, when a sliced job names a U1, Studio shows **Sliced for the machine Studio prepares for**.",
-    "do": ["Nothing to do for this item."],
+    "do": ["Read any action listed on the card; a result that looks right can still have a next step."],
     "dont": "It is advice, not a guarantee. Studio never promises a print will succeed.",
     "shot": null, "tasks": [], "keywords": ["ok", "fine", "passed", "green"]
   },
@@ -57,15 +57,15 @@
   },
   {
     "id": "cannot-move-as-one-piece", "label": "Moving the objects as one piece would not bring them all on, so Studio will not guess.", "certainty": "confirmed", "seen": ["prepare"],
-    "means": "One shift of the whole layout cannot bring every object onto the plate. Either an object is longer than the plate, or the layout is wider than the plate.",
-    "why": "Studio moves everything as one piece and verifies the copy, or does nothing. It will not half-fix a project. There is no **Move** button in this case.",
+    "means": "One shift of the whole layout cannot bring every object onto the plate: the layout is wider than the plate in its current orientation.",
+    "why": "Studio moves everything as one piece and verifies the copy, or does nothing. It will not half-fix a project. There is no **Move onto the plate (saves a copy)** button in this case.",
     "do": ["Open the project in Snapmaker Orca and use **Arrange**, as Studio says.", "If one object is longer than the plate, resize, rotate or split it in Orca; Studio does not edit your model."],
     "dont": "Do not hunt for a hidden Move button.",
     "shot": "placement-oversized", "tasks": ["move-onto-plate", "review-in-orca"], "keywords": ["oversized", "too big", "too large", "will not guess", "arrange", "no move button", "wider than the plate"]
   },
   {
     "id": "could-not-open-3mf", "label": "Studio could not open this file as a 3MF project.", "certainty": "confirmed", "seen": ["open"],
-    "means": "The file is damaged, or is not really a 3MF.",
+    "means": "Studio could not read the file as a 3MF. It may be damaged, inaccessible or not a 3MF.",
     "why": "Studio could not read the 3MF structure. The Workspace can still look normal for such a file, so check Compatibility.",
     "do": ["Download the file again.", "Try it in Snapmaker Orca to see whether it opens there."],
     "dont": "Do not trust the Workspace's “Checked” status for a file Compatibility cannot open.",
@@ -73,7 +73,7 @@
   },
   {
     "id": "printer-not-found", "label": "Printer not found", "certainty": "unknown", "seen": ["check"],
-    "means": "Studio tried to reach the printer at that address and nothing answered, so it checked your project without the printer.",
+    "means": "Studio could not get a usable answer from the printer at that address, so it checked your project without live printer information.",
     "why": "The printer may be off, on another network, at a different address, or its network interface may be closed.",
     "do": ["Check that the printer is on and on this network.", "Check that the address is the one the printer shows.", "On a U1, turn on Advanced Mode under **Settings → Maintenance** on the touchscreen.", "Press **Connect** again."],
     "dont": "It does not mean the project is incompatible: with no printer, everything that needs one is marked **Studio can’t tell**.",
@@ -84,7 +84,7 @@
     "means": "Printer Hub's controls are disabled because no printer is connected.",
     "why": "That is deliberate: nothing can move the printer until Studio can reach it.",
     "do": ["Connect the printer in Printer Hub."],
-    "dont": "It is not an error.",
+    "dont": "Do not read it as a verdict on your project: the controls are off on purpose. If the printer should be reachable, check the connection status for an error.",
     "shot": "printer-hub", "tasks": ["connect-printer", "printer-controls"], "keywords": ["controls", "greyed out", "disabled", "pause", "cancel", "grayed out"]
   },
   {
@@ -100,7 +100,7 @@
     "means": "In Project Materials: two or more slots use the same installed preset, but the project declares different vendors or types for those slots, and Orca copies a declared value to every slot that uses the same preset.",
     "why": "Rather than copy one slot's vendor or type onto another, Studio writes nothing. The panel names the slots and the conflict.",
     "do": ["Choose a different preset for one slot.", "Or remove the conflicting vendor or type in the original project yourself. Studio does not edit it for you."],
-    "dont": "Nothing was written: your original and any earlier copy are untouched.",
+    "dont": "Do not assume a copy was written: nothing was, and your original and any earlier copy are untouched.",
     "shot": "pm-review", "tasks": ["project-materials"], "keywords": ["prepare stopped", "same preset", "vendor", "conflict", "project materials", "guard"]
   },
   {
@@ -128,19 +128,19 @@
     "shot": null, "tasks": ["confirm-nozzles"], "keywords": ["confirmed by you", "proven", "user preset"]
   },
   {
-    "id": "unverified", "label": "Unverified", "certainty": "unknown", "seen": ["review"],
-    "means": "In the preparation report: Studio could not identify the setting in both files, so it did not call it fine.",
-    "why": "Studio lists anything it could not identify as unverified rather than assuming it is fine.",
-    "do": ["Look at that setting in Orca before slicing."],
-    "dont": "It is not an error; Studio is telling you what it could not confirm.",
+    "id": "unverified", "label": "What Studio could not check", "certainty": "unknown", "seen": ["review"],
+    "means": "In the preparation report: Studio could not verify this item. It may be an unexplained change, or something Studio could not compare, so it did not call it fine.",
+    "why": "Studio lists anything it cannot account for rather than assuming it is fine. Its own line asks you to open the prepared copy in Snapmaker Orca and compare it with your original before printing, and to report the change: Studio should be able to account for everything it changed.",
+    "do": ["Open the prepared copy in Snapmaker Orca and compare that setting with your original before slicing.", "Report it on the [Studio issues page](@issues): Studio should be able to account for everything it changed."],
+    "dont": "It is not proof that the copy is bad, but it is not a pass either: Studio is telling you it could not verify this item.",
     "shot": "fidelity", "tasks": ["review-changes"], "keywords": ["unverified", "fidelity", "could not identify", "unknown"]
   },
   {
     "id": "could-not-carry-over", "label": "What Studio could not carry over", "certainty": "check", "seen": ["review"],
-    "means": "Something in the original could not be moved into the prepared copy.",
-    "why": "Studio carries over only what it can verify, and lists the rest.",
+    "means": "Either something in the original has no place in the prepared copy (for example a PrusaSlicer setting Snapmaker Orca has no equivalent for), or the original carries data Studio cannot read, so Studio cannot say what happened to it.",
+    "why": "Studio writes the copy, then compares what it can identify in both files. Anything it has no reader for, such as a 3MF extension it does not understand, is listed here as well, because Studio cannot say what happened to it. Some of that data is copied as it was but never checked; some, such as PrusaSlicer settings Orca does not use, is left out. Those rows say *Not checked — Studio can’t read it*, with the reason.",
     "do": ["Check that setting in Orca, and set it there if it matters."],
-    "dont": "Your original is unchanged either way.",
+    "dont": "Do not read every row as lost, or as safe: a row marked *Not checked — Studio can’t read it* means Studio could not establish what happened to that data, so read the row's reason. Your original is unchanged either way.",
     "shot": "fidelity", "tasks": ["review-changes"], "keywords": ["not carried over", "lost", "missing setting", "fidelity", "dropped"]
   },
   {
@@ -148,7 +148,7 @@
     "means": "Studio could not find Snapmaker Orca on this computer, so the handoff button reads **Install Snapmaker Orca**.",
     "why": "The error text is: “Snapmaker Orca isn’t installed yet — use Install Snapmaker Orca.”",
     "do": ["Install Orca from its releases page, or press **Copy path** and open the file from Orca if it is installed somewhere Studio did not look."],
-    "dont": "Studio does not install anything for you.",
+    "dont": "Do not wait for Studio to install Orca; it never installs anything for you.",
     "shot": "handoff", "tasks": ["open-in-orca"], "keywords": ["orca not found", "install orca", "cannot launch", "handoff"]
   },
   {
@@ -160,11 +160,11 @@
     "shot": null, "tasks": ["review-in-orca"], "keywords": ["customized preset", "orca notice", "popup", "modified preset"]
   },
   {
-    "id": "sliced-for-different-printer", "label": "Sliced for a different printer", "certainty": "confirmed", "seen": ["job"],
-    "means": "The sliced job names another machine. Toolpaths, temperatures and machine commands are generated for one specific machine.",
-    "why": "Studio read the printer named in the G-code. It does not need a printer connected to know this. Sending another printer's job to a U1 usually fails immediately and can crash the toolhead.",
+    "id": "sliced-for-different-printer", "label": "Sliced for a different printer", "certainty": "check", "seen": ["job"],
+    "means": "The sliced job names a printer other than the U1, or a printer name Studio does not recognize as the U1. Toolpaths, temperatures and machine commands are generated for one specific machine.",
+    "why": "Studio reads the printer name in the G-code and does not need a printer connected to do so. A job made for another printer may contain commands or settings that do not suit the U1, so re-slice it with a U1 profile.",
     "do": ["Re-slice the model in Snapmaker Orca with a U1 profile, and check the new job."],
-    "dont": "Do not send the job anyway.",
+    "dont": "Do not send the job anyway. When the name is one Studio does not recognize, the mismatch is likely rather than proven: find out in your slicer which printer profile made the file, and re-slice unless it really was a U1 profile.",
     "shot": "job-other-printer", "tasks": ["check-sliced-job", "review-in-orca"], "keywords": ["different printer", "wrong printer", "re-slice", "x1", "bambu", "profile", "gcode"]
   },
   {
@@ -180,7 +180,7 @@
     "means": "On After Slicing: the path you typed or pasted does not point to a file.",
     "why": "The path may contain a typo or a missing folder separator, or the file may have been moved.",
     "do": ["Copy the exported `.gcode` file's full path again, or drag the file onto the window."],
-    "dont": "Nothing is wrong with the job.",
+    "dont": "Do not read it as a verdict on the job: Studio has not checked it, because it could not find the file. Fix the path, then check the job again.",
     "shot": null, "tasks": ["check-sliced-job"], "keywords": ["file does not exist", "path", "gcode", "after slicing", "cannot find"]
   }
 ]

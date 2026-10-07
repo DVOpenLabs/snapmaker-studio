@@ -17,7 +17,7 @@
         "options": [
           { "label": "Press **Move onto the plate**, then prepare the moved copy.", "verdict": "best", "feedback": "Right. The object is small and simply sits too far to the right. One shift of the whole layout brings it back onto the plate, and Studio re-checks the file it wrote. Your original is not touched." },
           { "label": "Rescale the object in Snapmaker Orca.", "verdict": "wrong", "feedback": "Nothing here says the object is too big: it is 20 mm and the plate is far larger. Rescaling would change your model's real size for no reason." },
-          { "label": "Ignore it: 55 mm is not much.", "verdict": "wrong", "feedback": "Even a small overhang matters: Orca will still say the object is out of bounds. A small part can pass every size check and still land off the plate, which is why Studio names the edge and the distance." }
+          { "label": "Ignore it: 55 mm is not much.", "verdict": "wrong", "feedback": "Even a small overhang matters: part of the object would be off the plate. A small part can pass every size check and still land off the plate, which is why Studio names the edge and the distance." }
         ]
       },
       {
@@ -27,11 +27,11 @@
         "facts": [
           "**Object 1 · 320 × 20 × 20 mm** — *Hangs 1.0 mm past the left edge and 50.0 mm past the right edge.*",
           "Studio says: *Moving the objects as one piece would not bring them all on, so Studio will not guess. Open the project in Snapmaker Orca and use Arrange.*",
-          "There is **no** Move button."
+          "There is *no* Move button."
         ],
         "question": "Why is there no Move button, and what do you do?",
         "options": [
-          { "label": "The object overhangs both the left and right edges, so it is longer than the plate. No position works; Studio will not guess. Change the model in Orca.", "verdict": "best", "feedback": "Right. Overhang on two opposite edges plus a 320 mm length tells you the object itself is longer than the plate, so moving it cannot help. Studio's own advice is to open the project in Snapmaker Orca; if the part really is longer than the plate you will also need to resize, rotate or split it there. Studio does not edit your model." },
+          { "label": "The object overhangs both the left and right edges, so shifting it cannot make it fit. Studio does not rotate or resize it; open it in Orca.", "verdict": "best", "feedback": "Right. Overhang on two opposite edges plus a 320 mm length tells you no shift can fit the object as it is oriented, so the Move button would not help. Studio's own advice is to open the project in Snapmaker Orca; if the part really is longer than the plate you will also need to resize, rotate or split it there. Studio does not edit your model." },
           { "label": "Look harder for the Move button; it is probably hidden.", "verdict": "wrong", "feedback": "There is none. Studio offers the move only when one shift brings every object on the plate. When it cannot, it says so instead of half-fixing the project." },
           { "label": "Use Scale Doctor to shrink it.", "verdict": "ok", "feedback": "Possible, if you really want a smaller part. Scale Doctor previews a uniform resize, and writes a scaled copy only for an STL; for a 3MF you resize in Orca. Shrinking changes what you print, so make it a deliberate choice, not a way to silence a warning." }
         ]
@@ -43,7 +43,7 @@
         "facts": [
           "**Object 2 · 10 × 10 × 10 mm** — *Hangs 35.0 mm past the right edge.* (Object 1 is on the plate.)",
           "Studio says the same thing as in case 2: *Moving the objects as one piece would not bring them all on, so Studio will not guess.*",
-          "There is **no** Move button."
+          "There is *no* Move button."
         ],
         "question": "Each cube is tiny. What is the real problem?",
         "options": [
@@ -54,9 +54,9 @@
       }
     ],
     "takeaways": [
-      "Check the **size** of the object against the overhang: a small object that hangs off one edge is misplaced.",
-      "Overhang on **two opposite edges** means the object is longer than the plate.",
-      "If Studio offers **Move onto the plate**, one shift is enough. If it does not, it will say so and send you to Orca's **Arrange**."
+      "Check the *size* of the object against the overhang: a small object that hangs off one edge is misplaced.",
+      "Overhang on *two opposite edges* means shifting alone cannot fit the object; it may need rotating, resizing or splitting.",
+      "If Studio offers **Move onto the plate**, its check found a single shift that fits. If it does not, read the placement card: either everything already fits, the layout needs changes in Orca, or it is a multi-plate project, which Studio never repositions."
     ]
   },
   "read-change": {
@@ -71,57 +71,57 @@
       { "id": "yours", "label": "A step for you in Snapmaker Orca", "hint": "Studio's fix plan marks these “Do this in Orca”." }
     ],
     "items": [
-      { "text": "Printer identity changed to Snapmaker U1", "answer": "adjusted", "feedback": "Adjusted. The copy now says it is for a U1. You do not need to act on it; it is why Orca can open the file with U1 settings." },
-      { "text": "533 creator settings kept", "answer": "kept", "feedback": "Kept. These are the creator's own print settings, carried over because you chose **Preserve creator settings**. Nothing to review unless you want to change them in Orca." },
+      { "text": "Printer identity changed to Snapmaker U1", "answer": "adjusted", "feedback": "Adjusted. Studio changed the printer identity to Snapmaker U1. That is why Orca can open the copy with U1 settings; the identity change alone does not check every setting." },
+      { "text": "533 creator settings kept", "answer": "kept", "feedback": "Kept. These are the creator's own print settings, carried over because you chose **Preserve creator settings**. Kept means the value reached the copy; where Snapmaker Orca rebuilds or ignores a setting, the row says so; still glance at the printer and filament settings in Orca." },
       { "text": "nozzle_type: stainless_steel → hardened_steel", "answer": "adjusted", "feedback": "Adjusted. A before → after pair under **Adjusted for U1 project compatibility** is a real change Studio made. Skim **Before and after** for any line that surprises you." },
       { "text": "24 optional recommendations available, including tower placement and tower wall type", "answer": "notapplied", "feedback": "Not applied. Recommendations change nothing unless you choose them, for example with **Prepare another copy with recommended settings**." },
       { "text": "Turn on supports — Do this in Orca", "answer": "yours", "feedback": "Yours. Studio cannot choose supports for you; its fix plan marks this step **Do this in Orca**, so review it there before slicing." }
     ],
     "takeaways": [
-      "**Kept** and **not applied** need no action. **Adjusted** is worth a skim. **Do this in Orca** is your job.",
-      "Anything Studio could not identify in both files is listed as unverified rather than assumed fine.",
+      "*Kept* means the value reached the copy, not that Orca uses it: read any note on the row. *Not applied* recommendations stay unapplied until you choose them. *Adjusted* is worth a skim. **Do this in Orca** is your job.",
+      "Anything Studio could not verify is listed under **What Studio could not check** rather than assumed fine; compare it with your original in Orca and report anything unexplained.",
       "Your original is never modified: **Return to the original** points Studio back at it."
     ]
   },
   "unknown-vs-confirmed": {
     "type": "sort",
     "title": "Unknown, or a confirmed problem?",
-    "intro": "Studio is more sure about some findings on a sliced job than about others. These lines come from two real checks: one job sliced for a U1, one sliced for a different printer, both checked with no printer connected. Decide how sure Studio actually is.",
+    "intro": "Studio is more sure about some findings on a sliced job than about others. These lines come from Studio's checks of two example files written for this guide: one whose header names a U1, one whose header names a Bambu Lab printer. Neither was checked against a connected printer. Decide how sure Studio actually is.",
     "shot": "job-other-printer",
     "categories": [
       { "id": "confirmed", "label": "Confirmed in the file", "hint": "Studio read it in your file. It is a fact." },
-      { "id": "unknown", "label": "Unknown", "hint": "Studio has no way to read it from a printer." },
+      { "id": "unknown", "label": "Unknown", "hint": "Studio lacks the information needed to establish this." },
       { "id": "check", "label": "Worth checking", "hint": "A possibility, not a fact: it depends on something Studio cannot see." },
       { "id": "ok", "label": "Looks right", "hint": "Studio checked and found nothing wrong." }
     ],
     "items": [
-      { "text": "Sliced for a different printer — “Toolpaths, temperatures and machine commands are generated for one specific machine.” (the job names a Bambu Lab printer)", "answer": "confirmed", "feedback": "Confirmed. The job's own header names another printer, so Studio does not need a printer connected to know this. Action: re-slice the model in Snapmaker Orca with a U1 profile. Studio’s card ranks this “Worth settling first”; that is how urgent it is. This exercise asks how sure Studio is, and here it is sure." },
-      { "text": "Tools this job needs — “Studio cannot confirm your printer has the toolheads this job expects.”", "answer": "unknown", "feedback": "Unknown. Studio would have to read your printer to know. This is not a problem found; connect the printer in Printer Hub, or check yourself." },
+      { "text": "The G-code header names a Bambu Lab printer.", "answer": "confirmed", "feedback": "Confirmed in the file. Studio read the printer name in the G-code header; no printer needs to be connected for that. What follows from it is a separate finding: Studio does not recognize that name as the U1, so its card says **Sliced for a different printer**, marked “Worth settling first”, and its Evidence line says the name is not one Studio recognizes. Studio rates that mismatch *likely*, not confirmed, though the card does not print that rating. Action: re-slice the model in Snapmaker Orca with a U1 profile." },
+      { "text": "Tools this job needs — “Studio cannot confirm your printer has the toolheads this job expects.”", "answer": "unknown", "feedback": "Unknown. Studio would need information from your printer to know. This is not a problem found; connect the printer in Printer Hub, or check yourself." },
       { "text": "Nozzle size — “Studio has no way to see which one is installed.”", "answer": "unknown", "feedback": "Unknown. Check the nozzle on the printer. You can also record what is fitted under **Settings → Nozzles**." },
       { "text": "Studio cannot tie this job to your project — “nothing in either file identifies the model.”", "answer": "check", "feedback": "Worth checking. Studio cannot tell whether this job was sliced from the project you checked, so it asks you to be sure you picked the right file." },
-      { "text": "Sliced for the machine Studio prepares for — “The job's commands were generated for a Snapmaker U1.”", "answer": "ok", "feedback": "Looks right. This appears when the job names a U1. Still advice, not a promise that the print will succeed." }
+      { "text": "Sliced for the machine Studio prepares for — “The job's commands were generated for a Snapmaker U1.”", "answer": "ok", "feedback": "Looks right. This appears when the job's header names a U1. Still advice, not a promise that the print will succeed." }
     ],
     "takeaways": [
-      "**“Studio can’t tell” is not “incompatible”.** It means Studio has no way to read it, usually because no printer is connected.",
-      "A problem is **confirmed** only when the evidence is in the file Studio can read, such as the printer named in the G-code.",
-      "For unknowns, either connect the printer or check them yourself. For confirmed problems, fix the cause in Orca and slice again."
+      "*“Studio can’t tell” is not “incompatible”.* It means Studio lacks information it needs, often because no printer is connected.",
+      "A problem is *confirmed* only when Studio has the evidence in hand: something read from the file (the printer named in the G-code); something your connected printer reported (its bed size or toolhead count); or something you confirmed yourself (a nozzle size). When the header names a printer Studio does not recognize, the mismatch is rated *likely*, not confirmed.",
+      "For unknowns, check the item yourself or connect the printer. For a confirmed problem, follow the card's action, then check the job again."
     ]
   },
   "assign-vs-load": {
     "type": "multi",
     "title": "Assigning a material is not loading it",
-    "intro": "You open a project with Project Materials. For slot 1 you pick a spool from your inventory and confirm an installed Orca preset, select **Remember this mapping**, and press **Prepare with these choices**. Select everything Studio did.",
+    "intro": "You open a project with Project Materials. For slot 1 you pick a spool from your inventory and confirm an installed Orca preset, select **Remember this mapping**, and press **Prepare with these choices**. The copy is created and the mapping is saved. Select everything Studio did.",
     "shot": "pm-review",
     "items": [
       { "text": "Wrote the spool's color into the new copy.", "answer": true, "feedback": "Yes. The review says *Colour changed to Red*: the chosen spool's color is written into the new copy." },
-      { "text": "Named the installed preset in the new copy.", "answer": true, "feedback": "Yes. The review shows the slot *mapped to* the preset you confirmed, so Orca opens the copy with that preset name." },
-      { "text": "Saved the mapping on this computer, after the copy was written.", "answer": true, "feedback": "Yes, because you selected **Remember this mapping**. It is saved only after Prepare succeeds, and it is checked again every time it is used." },
+      { "text": "Named the installed preset in the new copy.", "answer": true, "feedback": "Yes. Studio writes the confirmed preset name into the copy. For a preset you made yourself, that does not prove Orca applies its temperature, flow or cooling; check those in Orca." },
+      { "text": "Saved the mapping on this computer, after the copy was written.", "answer": true, "feedback": "Yes: in this example the mapping was saved after the copy was created. Saving can fail separately; Studio then warns that the copy was made but the mapping could not be saved. Saved mappings are checked again when reused." },
       { "text": "Loaded that filament into a toolhead.", "answer": false, "feedback": "No. Studio never loads, swaps or changes spools. Putting the right filament in the right toolhead is your job at the printer." },
       { "text": "Changed the spool in your Spoolman, SpoolEase or Bambuddy inventory.", "answer": false, "feedback": "No. Studio only reads a provider; it never writes to it." },
       { "text": "Wrote the spool's ID or remaining weight into the project.", "answer": false, "feedback": "No. The review says spool details are not read from the file and that Studio never writes them into the project." }
     ],
     "takeaways": [
-      "Studio can put a **color** and a **preset name** into a new copy. It cannot put **filament** into a toolhead.",
+      "Studio can put a *color* and a *preset name* into a new copy. It cannot put *filament* into a toolhead.",
       "The U1 has four toolheads. Studio plans around them, and then you load the colors in the order the project lists them.",
       "Your spool inventory is read, never changed."
     ]

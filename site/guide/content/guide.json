@@ -19,9 +19,9 @@
     "orca": "https://github.com/Snapmaker/OrcaSlicer/releases"
   },
   "certainty": {
-    "confirmed": { "label": "Confirmed", "means": "Studio found this in your file. It is a fact about the file, not a guess." },
+    "confirmed": { "label": "Confirmed", "means": "Studio has direct evidence: it read this in your file or from your printer, or you confirmed it yourself. The finding says which. It is a fact, not a guess." },
     "check": { "label": "Worth checking", "means": "Studio found something that may matter. Decide whether it does for this print." },
-    "unknown": { "label": "Unknown", "means": "Studio has no way to read this. It does not mean a problem was found; it is a gap for you to fill." },
+    "unknown": { "label": "Unknown", "means": "Studio could not establish this from what it has. It does not mean a problem was found; it is a gap for you to fill." },
     "ok": { "label": "Looks right", "means": "Studio checked and found nothing wrong. Still advice, never a guarantee." },
     "info": { "label": "Good to know", "means": "Explains what Studio did or what a screen shows. Nothing to fix." }
   },
