@@ -18,6 +18,7 @@ try { playwright = require("playwright-core"); } catch { playwright = createRequ
 const { chromium } = playwright;
 const args = process.argv.slice(2);
 const shotsDir = args.includes("--shots") ? args[args.indexOf("--shots") + 1] : null;
+const liveUrl = args.includes("--url") ? args[args.indexOf("--url") + 1].replace(/\/?$/, "/") : null; // test a deployed copy instead of public/
 if (shotsDir) mkdirSync(shotsDir, { recursive: true });
 
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -29,8 +30,8 @@ const server = createServer((req, res) => {
   if (!f.startsWith(pub + sep) || !existsSync(f)) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[extname(f)] || "application/octet-stream", "content-security-policy": CSP }).end(readFileSync(f));
 });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base = `http://127.0.0.1:${server.address().port}/`;
+if (!liveUrl) await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const base = liveUrl ?? `http://127.0.0.1:${server.address().port}/`;
 
 const content = JSON.parse(readFileSync(join(root, "content/lessons.json"), "utf8"));
 const lessons = content.lessons;

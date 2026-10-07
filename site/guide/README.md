@@ -6,6 +6,8 @@ backend, no account, no Tauri and no printer, and it runs from any static host (
 
 > Snapmaker Studio is an independent open-source project — not affiliated with or endorsed by Snapmaker.
 
+**Live guide: <https://dvopenlabs.github.io/snapmaker-studio/>** (published by GitHub Pages from `main`).
+
 ## What is in this folder
 
 ```
