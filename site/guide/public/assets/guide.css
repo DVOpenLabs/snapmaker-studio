@@ -311,6 +311,7 @@ dialog.viewer::backdrop { background: rgba(4, 7, 14, 0.82); }
   .top-in { padding: 8px 14px; gap: 10px; }
   .brand { font-size: 15px; white-space: nowrap; }
   .brand .mark, .brand .mark-mono { width: 28px; height: 28px; }
-  .top-nav { gap: 6px; flex-wrap: nowrap; }
+  .top-in { flex-wrap: wrap; }
+  .top-nav { gap: 6px; flex-wrap: wrap; }
   .top-nav .btn-ghost { padding: 6px 9px; font-size: 14px; white-space: nowrap; }
 }
