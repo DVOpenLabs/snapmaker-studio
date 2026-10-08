@@ -67,3 +67,43 @@ export function toPrintState(s: string | null | undefined): PrintState {
   const known: readonly string[] = ["standby", "printing", "paused", "complete", "cancelled", "error"];
   return known.includes(v) ? (v as PrintState) : "unknown";
 }
+
+/**
+ * A confirmation that is waiting for the user's answer. It remembers exactly what the user was
+ * shown: which action, on which printer, and (for Start) which file. Confirming sends this and
+ * nothing else, so a later change of printer can never redirect it.
+ */
+export interface PendingConfirm {
+  id: number;
+  action: ControlAction;
+  host: string;
+  filename?: string;
+}
+
+/** What Studio can see right now: the connected printer, whether it answers, and what it is doing. */
+export interface ControlContext {
+  host: string | null;
+  online: boolean;
+  printState: PrintState;
+}
+
+/**
+ * Is a pending confirmation still about the thing the user is looking at? It is not when the
+ * connected printer changed, the printer stopped answering, or the printer's state no longer
+ * allows the action (for example the print finished while the prompt was open).
+ */
+export function confirmStillValid(pending: PendingConfirm, now: ControlContext): boolean {
+  if (!now.host || now.host !== pending.host) return false;
+  return availableActions(now.printState, now.online).includes(pending.action);
+}
+
+/** Short action name for messages ("Start", "Cancel", "Emergency stop"). */
+export function actionName(action: ControlAction): string {
+  switch (action) {
+    case "start": return "Start";
+    case "cancel": return "Cancel";
+    case "emergency_stop": return "Emergency stop";
+    case "pause": return "Pause";
+    case "resume": return "Resume";
+  }
+}

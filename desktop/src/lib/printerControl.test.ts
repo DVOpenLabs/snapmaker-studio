@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  availableActions, needsConfirm, confirmCopy, canStart, toPrintState,
+  availableActions, needsConfirm, confirmCopy, canStart, toPrintState, confirmStillValid,
 } from "./printerControl";
 
 describe("Printer control gating (Phase B safety)", () => {
@@ -56,5 +56,38 @@ describe("Printer control gating (Phase B safety)", () => {
     expect(toPrintState("Printing")).toBe("printing");
     expect(toPrintState(null)).toBe("unknown");
     expect(toPrintState("weird")).toBe("unknown");
+  });
+});
+
+describe("confirmation binding", () => {
+  const cancel = { id: 1, action: "cancel" as const, host: "printer-a" };
+
+  it("stays valid for the same printer while it still allows the action", () => {
+    expect(confirmStillValid(cancel, { host: "printer-a", online: true, printState: "printing" })).toBe(true);
+    expect(confirmStillValid(cancel, { host: "printer-a", online: true, printState: "paused" })).toBe(true);
+  });
+
+  it("is withdrawn when the connected printer changes or disappears", () => {
+    expect(confirmStillValid(cancel, { host: "printer-b", online: true, printState: "printing" })).toBe(false);
+    expect(confirmStillValid(cancel, { host: null, online: true, printState: "printing" })).toBe(false);
+  });
+
+  it("is withdrawn when the printer stops answering", () => {
+    expect(confirmStillValid(cancel, { host: "printer-a", online: false, printState: "printing" })).toBe(false);
+  });
+
+  it("is withdrawn when the printer can no longer take that action", () => {
+    // the print finished while the prompt was open: there is nothing left to cancel
+    expect(confirmStillValid(cancel, { host: "printer-a", online: true, printState: "complete" })).toBe(false);
+    // starting needs an idle printer
+    const start = { id: 2, action: "start" as const, host: "printer-a", filename: "job.gcode" };
+    expect(confirmStillValid(start, { host: "printer-a", online: true, printState: "printing" })).toBe(false);
+    expect(confirmStillValid(start, { host: "printer-a", online: true, printState: "standby" })).toBe(true);
+  });
+
+  it("emergency stop only needs a reachable printer", () => {
+    const stop = { id: 3, action: "emergency_stop" as const, host: "printer-a" };
+    expect(confirmStillValid(stop, { host: "printer-a", online: true, printState: "error" })).toBe(true);
+    expect(confirmStillValid(stop, { host: "printer-a", online: false, printState: "error" })).toBe(false);
   });
 });
