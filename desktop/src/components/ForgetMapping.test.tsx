@@ -64,7 +64,7 @@ describe("the Forget control", () => {
     expect(forgetButtons()).toHaveLength(2);                       // the spool-saved one and the signature-saved one
     expect(forgetButtons()[0].textContent).toBe("Forget saved mapping");
     expect(forgetButtons()[1].textContent).toBe("Forget saved mapping (similar spools)");
-    expect(forgetButtons()[1].getAttribute("aria-label")).toContain("and similar spools");
+    expect(forgetButtons()[1].getAttribute("aria-label")).toContain("Forget saved mapping (similar spools)");
   });
 
   it("is a separate button from the spool row, so choosing a spool and forgetting its mapping stay distinct", async () => {
@@ -91,7 +91,7 @@ describe("asking first", () => {
     await mount(analysis([candidate({ spool_id: "9", mapping: SAVED_SIG })]));
     openFor(0);
     const d = screen.getByRole("alertdialog", { name: "Forget the saved mapping for similar spools?" });
-    expect(d.textContent).toContain("every Yoopai PLA Matte spool, not only this one");
+    expect(d.textContent).toContain("mapping saved for every Yoopai PLA Matte spool");
   });
 
   it("Cancel removes nothing, closes the prompt and gives focus back to the Forget control", async () => {

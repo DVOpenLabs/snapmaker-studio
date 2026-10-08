@@ -125,6 +125,9 @@ export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList
 /** Identifies one candidate's row, so focus can come back to it. */
 export const candidateKey = (c: { provider: string; spool_id: number | string }) => `${c.provider}:${c.spool_id}`;
 
+/** CSS.escape where the platform has it; otherwise the quote and backslash that would end an attribute value. */
+const cssEscape = (v: string) => (typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
+
 function CandidateRow({ c, selected, onChoose, onForget, forgetDisabled }: {
   c: MaterialCandidate; selected: boolean; onChoose: () => void;
   onForget?: (opener: HTMLButtonElement) => void; forgetDisabled?: boolean;
@@ -154,7 +157,7 @@ function CandidateRow({ c, selected, onChoose, onForget, forgetDisabled }: {
       {saved && onForget && (
         <div className="flex justify-end px-1">
           <button type="button" disabled={forgetDisabled} data-testid="forget-mapping"
-            aria-label={`Forget the saved mapping for ${[c.vendor, materialText(c)].filter(Boolean).join(" ")} #${c.spool_id}${saved === "signature" ? " and similar spools" : ""}`}
+            aria-label={`Forget saved mapping${saved === "signature" ? " (similar spools)" : ""} for ${[c.vendor, materialText(c)].filter(Boolean).join(" ")} #${c.spool_id}`}
             className="text-[11px] text-primary hover:underline disabled:opacity-50"
             onClick={(e) => onForget(e.currentTarget)}>
             {saved === "signature" ? "Forget saved mapping (similar spools)" : "Forget saved mapping"}
@@ -663,7 +666,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
         onConfirm: doForget,
         // Back to the control that opened the prompt; if it is gone (the saved label is), to that spool's row.
         returnFocusTo: () => (forget.opener.isConnected && !forget.opener.disabled ? forget.opener
-          : document.querySelector<HTMLElement>(`[data-candidate-key="${candidateKey(forget.candidate)}"]`)),
+          : document.querySelector<HTMLElement>(`[data-candidate-key="${cssEscape(candidateKey(forget.candidate))}"]`)),
       }} />
   );
 }

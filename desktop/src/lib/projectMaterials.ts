@@ -239,13 +239,13 @@ export function forgetWording(c: MaterialCandidate): { title: string; body: stri
   if (savedScope(c) === "signature") {
     return {
       title: "Forget the saved mapping for similar spools?",
-      body: `Studio will stop suggesting “${preset}” for every ${kind || "spool"} spool, not only this one. ${unchanged}`,
+      body: `Studio will no longer use the mapping saved for every ${kind || "such"} spool, which names “${preset}”. A spool that has a mapping of its own keeps it. ${unchanged}`,
       details: [`Spools: ${kind || "similar spools"}`, `Saved preset: ${preset}`],
     };
   }
   return {
     title: "Forget the saved mapping for this spool?",
-    body: `Studio will stop suggesting “${preset}” for this spool. ${unchanged}`,
+    body: `Studio will no longer use the mapping saved for this spool, which names “${preset}”. A mapping saved for similar spools, if there is one, still applies. ${unchanged}`,
     details: [`Spool: ${[kind, `#${c.spool_id}`].filter(Boolean).join(" ")}`, `Saved preset: ${preset}`],
   };
 }
