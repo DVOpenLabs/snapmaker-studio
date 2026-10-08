@@ -419,8 +419,11 @@ def material_mapping_confirm(data: dict, *, catalog=None, store=None) -> dict:
 
 def material_mapping_remove(data: dict, *, store=None) -> dict:
     scope, provider, spool_id, sig = _mapping_key(data)
+    expect = data.get("expect_preset_base")
+    if expect is not None and not isinstance(expect, str):
+        raise ValueError("expect_preset_base must be text")
     removed = (store if store is not None else _material_store()).remove(
-        scope=scope, provider=provider, spool_id=spool_id, sig=sig)
+        scope=scope, provider=provider, spool_id=spool_id, sig=sig, expect_preset_base=expect)
     return {"ok": True, "removed": removed}
 
 

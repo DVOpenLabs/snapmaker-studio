@@ -185,7 +185,7 @@ export interface MappingRequest {
 // --- forgetting a saved mapping ------------------------------------------------------------------
 
 /** What identifies one saved mapping to the engine's remove route. */
-export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype">;
+export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string };
 
 /** Which kind of saved mapping a candidate's preset came from, if it came from one. */
 export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
@@ -197,14 +197,22 @@ export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
 export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
   const scope = savedScope(c);
   if (!scope) return null;
+  // The preset the person was shown: the engine forgets the mapping only if it still names it.
+  const expect = c.mapping.base_name ? { expect_preset_base: c.mapping.base_name } : {};
   return scope === "spool"
-    ? { scope, provider: c.provider, spool_id: c.spool_id }
-    : { scope, provider: c.provider, vendor: c.vendor, material: c.material, subtype: c.subtype };
+    ? { scope, provider: c.provider, spool_id: c.spool_id, ...expect }
+    : { scope, provider: c.provider, vendor: c.vendor, material: c.material, subtype: c.subtype, ...expect };
 }
 
-const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+// The engine's own normalisation of a spool kind: whitespace collapsed, case folded.
+const fold = (v: string | null | undefined) => (v ?? "").split(/\s+/).filter(Boolean).join(" ").toLowerCase().replace(/ß/g, "ss");
+const same = (a: string | null | undefined, b: string | null | undefined) => fold(a) === fold(b);
 
-/** The slots whose chosen spool is covered by the mapping a candidate came from, and so lose their choice when it is forgotten. */
+/**
+ * The slots whose choice rests on the mapping a candidate came from, and so lose it when that mapping is forgotten: the
+ * chosen spool got its preset from this very kind of saved mapping, and the slot still holds that preset. A slot whose
+ * preset the person changed, or whose spool has a mapping of its own, does not depend on it and is left alone.
+ */
 export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[] {
   const scope = savedScope(c);
   if (!scope) return [];
@@ -212,6 +220,9 @@ export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[]
     .filter(([, choice]) => {
       const s = choice.spool;
       if (!s || s.provider !== c.provider) return false;
+      if (savedScope(s) !== scope) return false;
+      const offered = s.mapping.base_name ?? s.mapping.preset_name;
+      if (!choice.preset || choice.preset.name !== offered || (choice.preset.fingerprint ?? null) !== (s.mapping.fingerprint ?? null)) return false;
       return scope === "spool"
         ? String(s.spool_id) === String(c.spool_id)
         : same(s.vendor, c.vendor) && same(s.material, c.material) && same(s.subtype, c.subtype);

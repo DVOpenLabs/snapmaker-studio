@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import time
 
 from . import paths, preset_catalog
@@ -58,6 +59,15 @@ def signature(vendor, material, subtype) -> dict:
 
 def default_path(explicit_dir: str | None = None) -> str:
     return os.path.join(paths.data_dir(explicit_dir), FILE_NAME)
+
+
+# The API serves requests on threads; a read-modify-replace of the file must not interleave with another,
+# or a save could be lost or a forgotten mapping come back. One process owns the file, so one lock is enough.
+_WRITE_LOCK = threading.RLock()
+
+
+class StaleMapping(ValueError):
+    """The saved mapping is no longer the one the person was shown."""
 
 
 class Store:
@@ -135,23 +145,31 @@ class Store:
             if not sig or not any(sig.values()):
                 raise ValueError("a signature mapping needs vendor, material or subtype")
             row["signature"] = {k: _norm(v) for k, v in sig.items()}
-        rows, damaged = self._read()
-        rows = [r for r in rows if not _same_key(r, row)] + [row]
-        self._write(rows, keep_damaged=damaged)
+        with _WRITE_LOCK:
+            rows, damaged = self._read()
+            rows = [r for r in rows if not _same_key(r, row)] + [row]
+            self._write(rows, keep_damaged=damaged)
         return row
 
-    def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None) -> bool:
+    def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None,
+               expect_preset_base: str | None = None) -> bool:
+        """Forget one mapping. With `expect_preset_base`, only if it still names that preset: a mapping
+        replaced since the person was shown it raises :class:`StaleMapping` and is left alone."""
         probe = {"scope": scope, "provider": _text(provider)}
         if scope == SCOPE_SPOOL:
             probe["spool_id"] = _text(spool_id)
         else:
             probe["signature"] = sig
-        rows, damaged = self._read()
-        kept = [r for r in rows if not _same_key(r, probe)]
-        if len(kept) == len(rows):
-            return False
-        self._write(kept, keep_damaged=damaged)
-        return True
+        with _WRITE_LOCK:
+            rows, damaged = self._read()
+            hit = [r for r in rows if _same_key(r, probe)]
+            if not hit:
+                return False
+            if expect_preset_base is not None and any(r.get("preset_base") != expect_preset_base for r in hit):
+                raise StaleMapping("That saved mapping has changed since it was shown. Nothing was forgotten.")
+            kept = [r for r in rows if not _same_key(r, probe)]
+            self._write(kept, keep_damaged=damaged)
+            return True
 
     def _write(self, rows: list[dict], *, keep_damaged: bool) -> None:
         folder = os.path.dirname(self.path) or "."

@@ -604,8 +604,15 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
       setForget(null);
     } catch (e: any) {
       if (gen === generation.current) {
-        setForgetNote({ kind: "error", text: `Couldn't forget the saved mapping: ${String(e?.message ?? e)}. Nothing was changed.` });
-        setForget(null);
+        // A lost or malformed reply does not prove the engine left the file alone, so read the project again and say so.
+        try {
+          const a = await projectMaterials(path, args, 3);
+          if (gen === generation.current) setAnalysis(a);
+        } catch { /* the note below already says what is known */ }
+        if (gen === generation.current) {
+          setForgetNote({ kind: "error", text: `Couldn't confirm the saved mapping was forgotten: ${String(e?.message ?? e).replace(/[.\s]+$/, "")}. The list shows what Studio read afterwards.` });
+          setForget(null);
+        }
       }
     } finally {
       forgetInFlight.current = false;

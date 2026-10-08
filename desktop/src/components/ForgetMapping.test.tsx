@@ -129,7 +129,7 @@ describe("forgetting", () => {
     openFor(0);
     await act(async () => { fireEvent.click(confirm()); });
     expect(api.removeMaterialMapping).toHaveBeenCalledTimes(1);
-    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "spool", provider: "spoolease", spool_id: "124" });
+    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "spool", provider: "spoolease", spool_id: "124", expect_preset_base: "Snapmaker PLA Matte @U1" });
     await waitFor(() => expect(api.projectMaterials).toHaveBeenCalledTimes(2));
     expect(api.projectMaterials).toHaveBeenLastCalledWith("C:/p/x.3mf", expect.objectContaining({ provider: "spoolease" }), 3);
     await waitFor(() => expect(dialog()).toBeNull());
@@ -146,7 +146,7 @@ describe("forgetting", () => {
     api.projectMaterials.mockResolvedValueOnce(analysis([candidate({ spool_id: "9", mapping: mapping() })]));
     openFor(0);
     await act(async () => { fireEvent.click(confirm()); });
-    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA", subtype: "Matte" });
+    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA", subtype: "Matte", expect_preset_base: "Snapmaker PLA Matte @U1" });
   });
 
   it("leaves other saved mappings alone", async () => {
@@ -198,16 +198,17 @@ describe("forgetting", () => {
     expect(api.projectMaterials).toHaveBeenCalledTimes(2);
   });
 
-  it("reports a failure, changes nothing and does not re-read the project", async () => {
+  it("reports a failure it cannot confirm, then reads the project again so the list is what the engine now says", async () => {
     await mount();
     api.removeMaterialMapping.mockRejectedValue(new Error("disk is read-only"));
+    api.projectMaterials.mockResolvedValueOnce(analysis());
     openFor(0);
     await act(async () => { fireEvent.click(confirm()); });
     await waitFor(() => expect(dialog()).toBeNull());
     const note = screen.getByTestId("forget-note");
     expect(note.getAttribute("role")).toBe("alert");
-    expect(note.textContent).toBe("Couldn't forget the saved mapping: disk is read-only. Nothing was changed.");
-    expect(api.projectMaterials).toHaveBeenCalledTimes(1);
+    expect(note.textContent).toBe("Couldn't confirm the saved mapping was forgotten: disk is read-only. The list shows what Studio read afterwards.");
+    expect(api.projectMaterials).toHaveBeenCalledTimes(2);
     expect(forgetButtons()).toHaveLength(2);                                            // still shown: it is still saved
     // and it can be tried again
     api.removeMaterialMapping.mockResolvedValue({ ok: true, removed: true });
@@ -252,20 +253,36 @@ describe("the rules in the library", () => {
     expect(forgetRequest(candidate({ mapping: NAMED }))).toBeNull();
     expect(forgetRequest(candidate({ mapping: mapping() }))).toBeNull();
     expect(savedScope(candidate({ mapping: SAVED_SPOOL }))).toBe("spool");
-    expect(forgetRequest(candidate({ spool_id: "5", mapping: SAVED_SPOOL }))).toEqual({ scope: "spool", provider: "spoolease", spool_id: "5" });
+    expect(forgetRequest(candidate({ spool_id: "5", mapping: SAVED_SPOOL }))).toEqual({ scope: "spool", provider: "spoolease", spool_id: "5", expect_preset_base: "Snapmaker PLA Matte @U1" });
   });
 
-  it("covers a spool by id for a spool mapping and by kind for a signature mapping, ignoring case", () => {
+  const held = (spool: ReturnType<typeof candidate>, name = "Snapmaker PLA Matte @U1") =>
+    ({ spool, preset: { name, confirmed: true, fingerprint: spool.mapping.fingerprint ?? null }, keepOwn: false, remember: "off" as const });
+
+  it("covers a spool by id for a spool mapping and by kind for a signature mapping, ignoring case and spacing", () => {
     const sig = candidate({ spool_id: "1", vendor: "Yoopai", material: "PLA", subtype: "Matte", mapping: SAVED_SIG });
     const choices: Choices = {
-      0: { spool: candidate({ spool_id: "2", vendor: "yoopai", subtype: "matte" }), preset: null, keepOwn: false, remember: "off" },
-      1: { spool: candidate({ spool_id: "3", vendor: "Other", subtype: "Matte" }), preset: null, keepOwn: false, remember: "off" },
-      2: { spool: candidate({ spool_id: "4", provider: "spoolman", vendor: "Yoopai", subtype: "Matte" }), preset: null, keepOwn: false, remember: "off" },
+      0: held(candidate({ spool_id: "2", vendor: "  yoopai ", subtype: "matte", mapping: SAVED_SIG })),
+      1: held(candidate({ spool_id: "3", vendor: "Other", subtype: "Matte", mapping: SAVED_SIG })),
+      2: held(candidate({ spool_id: "4", provider: "spoolman", vendor: "Yoopai", subtype: "Matte", mapping: SAVED_SIG })),
     };
     expect(slotsCoveredBy(choices, sig)).toEqual([0]);
-    expect(slotsCoveredBy(choices, candidate({ spool_id: "3", mapping: SAVED_SPOOL }))).toEqual([1]);
+    const byId: Choices = { 1: held(candidate({ spool_id: "3", mapping: SAVED_SPOOL })), 0: held(candidate({ spool_id: "9", mapping: SAVED_SPOOL })) };
+    expect(slotsCoveredBy(byId, candidate({ spool_id: "3", mapping: SAVED_SPOOL }))).toEqual([1]);
     expect(slotsCoveredBy(choices, candidate({ mapping: NAMED }))).toEqual([]);
     expect(choiceReduce(choices, { type: "discardSlots", slots: [0, 2] })).toEqual({ 1: choices[1] });
+  });
+
+  it("leaves a slot alone when its preset was changed by hand or its spool has a mapping of its own", () => {
+    const sig = candidate({ spool_id: "1", vendor: "Yoopai", material: "PLA", subtype: "Matte", mapping: SAVED_SIG });
+    const own = candidate({ spool_id: "2", vendor: "Yoopai", material: "PLA", subtype: "Matte", mapping: SAVED_SPOOL });
+    const changedByHand = held(candidate({ spool_id: "3", vendor: "Yoopai", material: "PLA", subtype: "Matte", mapping: SAVED_SIG }), "Some other preset");
+    const choices: Choices = { 0: held(own), 1: changedByHand, 2: { ...held(sig), preset: null } };
+    expect(slotsCoveredBy(choices, sig)).toEqual([]);
+  });
+
+  it("refers the engine to the preset the person was shown, so a mapping replaced since is not removed", () => {
+    expect(forgetRequest(candidate({ spool_id: "5", mapping: SAVED_SPOOL }))?.expect_preset_base).toBe("Snapmaker PLA Matte @U1");
   });
 
   it("describes only what the control does", () => {
