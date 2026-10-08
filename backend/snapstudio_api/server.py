@@ -781,7 +781,8 @@ def _make_handler(token: str):
                           else service.material_mapping_remove)
                     self._send(200, fn(data))
                 except (ValidationError, ValueError) as e:
-                    self._send(400, {"error": str(e)})
+                    # `message` is what the person reads (a stale mapping explains itself); `error` stays a code.
+                    self._send(400, {"error": "mapping_refused", "message": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
             elif self.path == "/prepare_scaled":

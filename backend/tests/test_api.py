@@ -617,3 +617,24 @@ def test_server_local_spools_rejects_bad_input(tmp_path, monkeypatch):
         assert status == 400
     finally:
         httpd.shutdown()
+
+
+def test_server_mapping_refusal_carries_a_message_the_person_can_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "nope", "provider": "spoolman"}, token)
+        assert status == 400
+        assert body["error"] == "mapping_refused" and body["message"]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1",
+                                 "expect_preset_base": 5}, token)
+        assert status == 400 and "text" in body["message"]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1"}, token)
+        assert status == 200 and body["removed"] is False
+    finally:
+        httpd.shutdown()

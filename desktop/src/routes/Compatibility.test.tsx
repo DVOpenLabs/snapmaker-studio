@@ -139,7 +139,7 @@ describe("Project Materials never dead-ends Prepare", () => {
     api.compatibilityCheck.mockResolvedValue(WITH_FINDINGS);
     api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
     page();
-    const row = await screen.findByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = await screen.findByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByTestId("selected-spool")).toBeNull();
     expect(plainPrepare()?.disabled).toBe(false);
@@ -168,7 +168,7 @@ describe("one-click Prepare in the other mode never drops the person's choices",
         recommendations_available: true,
         recommended_changes: [{ key: "print_sequence", old: "by object", new: "by layer", reason: "available with the recommended U1 profile" }] } });
     page();
-    const row = await screen.findByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = await screen.findByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     fireEvent.click(plainPrepare()!);
     await screen.findByText("U1 profile copy created");
     expect(screen.getAllByRole("button", { name: /recommended/i }).length).toBeGreaterThan(0);   // offered with no choices held
@@ -191,7 +191,7 @@ describe("what Project Materials' Prepare did is always visible", () => {
       status: "proven", match_source: "saved_spool", preset_name: "P @U1", base_name: "P @U1", reason: "", candidates: [], stale: false } })] })] }));
     api.convert.mockImplementation(async (_p: string, _o: unknown, _m: string, dry: boolean) => (dry ? REVIEW : real()));
     page();
-    fireEvent.click(await screen.findByRole("button", { name: /Yoopai PLA Matte/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ }));
     fireEvent.click(screen.getByRole("button", { name: /Review & prepare/ }));
     await screen.findByText("Slot 1: mapped.");
     fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" }));
@@ -248,7 +248,7 @@ describe("a Prepare that wrote nothing is not reported as a success", () => {
     api.convert.mockImplementation(async (_p: string, _o: unknown, _m: string, dry: boolean) => ({
       schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true, errors: [], settings_summary: summary, dry }));
     page();
-    fireEvent.click(await screen.findByRole("button", { name: /Yoopai PLA Matte/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ }));
     fireEvent.click(screen.getByRole("button", { name: /Review & prepare/ }));
     await screen.findByText("Slot 1: mapped.");
     fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" }));

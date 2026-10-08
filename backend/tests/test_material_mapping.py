@@ -171,3 +171,143 @@ def test_a_spoolease_generic_name_without_the_u1_suffix_is_not_an_installed_pres
     # the catalogue can still SUGGEST it, as a suggestion that needs confirming
     s = catalog.suggest_generic("ASA", "0.4")
     assert s["status"] == NEEDS_CONFIRMATION and s["base_name"] == "Generic ASA @U1"
+
+
+def test_remove_with_an_expected_preset_refuses_a_mapping_replaced_since_it_was_shown(catalog, store):
+    kw = dict(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", origin=mm.SOURCE_MANUAL, catalog=catalog)
+    store.put(preset=_proven(catalog), **kw)
+    store.put(preset=_proven(catalog, "Snapmaker PLA SnapSpeed @U1"), **kw)      # replaced in another window
+    with pytest.raises(mm.StaleMapping):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12",
+                     expect_preset_base="Snapmaker PLA Matte @U1")
+    assert [r["preset_base"] for r in store.all()] == ["Snapmaker PLA SnapSpeed @U1"]
+    assert store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12",
+                        expect_preset_base="Snapmaker PLA SnapSpeed @U1") is True
+    assert store.all() == []
+
+
+def test_remove_leaves_every_unrelated_mapping_alone(catalog, store):
+    for sid in ("1", "2", "3"):
+        store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=sid, preset=_proven(catalog),
+                  origin=mm.SOURCE_MANUAL, catalog=catalog)
+    store.put(scope=mm.SCOPE_SPOOL, provider="spoolease", spool_id="2", preset=_proven(catalog),
+              origin=mm.SOURCE_MANUAL, catalog=catalog)
+    store.put(scope=mm.SCOPE_SIGNATURE, provider="spoolman", sig=mm.signature("Yoopai", "PLA", "Matte"),
+              preset=_proven(catalog), origin=mm.SOURCE_MANUAL, catalog=catalog)
+    assert store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="2") is True
+    left = sorted((r["scope"], r["provider"], r.get("spool_id")) for r in store.all())
+    assert left == [("signature", "spoolman", None), ("spool", "spoolease", "2"),
+                    ("spool", "spoolman", "1"), ("spool", "spoolman", "3")]
+
+
+def test_concurrent_saves_and_removals_never_lose_or_resurrect_a_mapping(catalog, store):
+    import threading
+    preset = _proven(catalog)
+    for sid in range(40):
+        store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"old{sid}", preset=preset,
+                  origin=mm.SOURCE_MANUAL, catalog=catalog)
+    errors = []
+
+    def save(sid):
+        try:
+            store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"new{sid}", preset=preset,
+                      origin=mm.SOURCE_MANUAL, catalog=catalog)
+        except Exception as e:  # pragma: no cover - reported below
+            errors.append(e)
+
+    def forget(sid):
+        try:
+            store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"old{sid}")
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    threads = [threading.Thread(target=save, args=(i,)) for i in range(40)] + \
+              [threading.Thread(target=forget, args=(i,)) for i in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    ids = sorted(r["spool_id"] for r in store.all())
+    assert ids == sorted(f"new{i}" for i in range(40))
+
+
+def test_remove_compares_the_full_saved_identity_not_only_the_base_name(catalog, store):
+    kw = dict(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", origin=mm.SOURCE_MANUAL, catalog=catalog)
+    store.put(preset=_proven(catalog), **kw)
+    shown = store.all()[0]
+    # replaced by the SAME base name but another installed record / fingerprint
+    row = dict(_proven(catalog))
+    row["ref"] = "another/record.json"
+    row["fingerprint"] = "different"
+    store.put(preset=row, **kw)
+    with pytest.raises(mm.StaleMapping):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12",
+                     expect_preset_base=shown["preset_base"], expect_ref=shown["ref"],
+                     expect_fingerprint=shown["fingerprint"])
+    assert len(store.all()) == 1
+    now = store.all()[0]
+    assert store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12",
+                        expect_preset_base=now["preset_base"], expect_ref=now["ref"],
+                        expect_fingerprint=now["fingerprint"]) is True
+
+
+def test_resolve_hands_back_the_stored_row_for_a_later_forget(catalog, store):
+    store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", preset=_proven(catalog),
+              origin=mm.SOURCE_MANUAL, catalog=catalog)
+    out = mm.resolve(catalog, store, "spoolman", SPOOL, "0.4")
+    stored = store.all()[0]
+    assert out["saved"] == {"preset_base": stored["preset_base"], "ref": stored["ref"],
+                            "fingerprint": stored["fingerprint"]}
+
+
+def test_two_processes_cannot_interleave_a_save_and_a_forget(catalog, store, tmp_path):
+    """A second PYTHON PROCESS (a second running Studio) writes while this one does: nothing is lost."""
+    import subprocess, sys, textwrap
+    preset = _proven(catalog)
+    for i in range(30):
+        store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"old{i}", preset=preset,
+                  origin=mm.SOURCE_MANUAL, catalog=catalog)
+    script = textwrap.dedent("""
+        import sys, json
+        from snapstudio_core import material_mapping as mm
+        path, = sys.argv[1:]
+        s = mm.Store(path)
+        preset = json.loads(sys.stdin.read())
+        for i in range(30):
+            s.put(scope="spool", provider="spoolman", spool_id=f"new{i}", preset=preset, origin="manual")
+    """)
+    child = subprocess.Popen([sys.executable, "-c", script, store.path], stdin=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+    child.stdin.write(json.dumps(preset)); child.stdin.close()
+    for i in range(30):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"old{i}")
+    assert child.wait(timeout=60) == 0, child.stderr.read()
+    assert sorted(r["spool_id"] for r in store.all()) == sorted(f"new{i}" for i in range(30))
+
+
+def test_exclusive_can_be_nested_without_waiting_for_itself(store):
+    import threading
+    done = []
+
+    def run():
+        with mm._exclusive(store.path):
+            with mm._exclusive(store.path):
+                done.append(True)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=10)
+    assert done == [True] and not t.is_alive()
+
+
+def test_an_expected_null_identity_is_compared_not_skipped(catalog, store):
+    kw = dict(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", origin=mm.SOURCE_MANUAL, catalog=catalog)
+    row = dict(_proven(catalog)); row["ref"] = None
+    store.put(preset=row, **kw)
+    assert store.all()[0]["ref"] is None
+    row2 = dict(_proven(catalog)); row2["ref"] = "now/a/real/ref.json"
+    store.put(preset=row2, **kw)                                   # replaced meanwhile
+    with pytest.raises(mm.StaleMapping):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", expect_ref=None)
+    assert len(store.all()) == 1
