@@ -11,6 +11,7 @@ import { useProvider } from "@/store/provider";
 
 const api = vi.hoisted(() => ({
   projectMaterials: vi.fn(), materialPresets: vi.fn(), convert: vi.fn(), confirmMaterialMapping: vi.fn(),
+  projectMaterialsInventory: vi.fn(),
 }));
 vi.mock("@/api", () => api);
 
@@ -67,7 +68,7 @@ describe("one slot, happy path", () => {
     expect(screen.getByText("Slot 1")).toBeTruthy();                                   // 1-based
     expect(screen.getByText("180 g needed (the source file's own slice)")).toBeTruthy();
     expect(screen.getByText(/now “Generic PLA @BBL H2D”/)).toBeTruthy();
-    const row = screen.getByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = screen.getByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     expect(row.getAttribute("aria-pressed")).toBe("false");                           // no auto-selection
     expect(within(row).getByText("Red")).toBeTruthy();
     expect(within(row).getByText("#124")).toBeTruthy();
@@ -81,7 +82,7 @@ describe("one slot, happy path", () => {
 
   it("choosing the spool selects it with its remembered, proven preset, and Review becomes available", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: PROVEN })] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     const selected = screen.getByTestId("selected-spool");
     expect(selected.textContent).toContain("Selected spool · from SpoolEase at selection time");
     expect(within(screen.getByTestId("preset-area")).getByText("Snapmaker PLA Matte @U1")).toBeTruthy();
@@ -121,7 +122,7 @@ describe("no candidates", () => {
 describe("a preset that needs confirmation", () => {
   it("is obvious, holds Review back, and is only sent once the person confirms it", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: NAMED })] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     const area = screen.getByTestId("preset-area");
     expect(within(area).getByText("Needs confirmation").getAttribute("data-status")).toBe("needs_confirmation");
     expect(within(area).getByText(NAMED.reason)).toBeTruthy();                         // the engine's words, verbatim
@@ -138,11 +139,11 @@ describe("a preset that needs confirmation", () => {
     const stale = mapping({ status: "needs_confirmation", match_source: "saved_spool", stale: true, preset_name: "Snapmaker PLA Matte @U1",
       base_name: "Snapmaker PLA Matte @U1", reason: "The installed preset with this name is no longer the one you confirmed." });
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: stale })] })] })} />);
-    const row = screen.getByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = screen.getByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     expect(within(row).getByText("Saved mapping is out of date")).toBeTruthy();
     expect(within(row).getByText("Needs confirmation")).toBeTruthy();
     expect(within(row).getByText(stale.reason)).toBeTruthy();
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     expect(request()[0].preset).toBeNull();
     expect(reviewButton().disabled).toBe(true);
   });
@@ -151,7 +152,7 @@ describe("a preset that needs confirmation", () => {
 describe("choosing a preset by hand", () => {
   it("searches the installed presets the engine returned and takes the pick as the confirmation", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     expect(within(screen.getByTestId("preset-area")).getByText("No match")).toBeTruthy();
     expect(request()[0].preset).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
@@ -186,7 +187,7 @@ describe("choosing a preset by hand", () => {
 describe("Remember this mapping", () => {
   it("is offered only for a confirmed pair, saves nothing itself, and offers the two scopes", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     expect(screen.queryByTestId("remember")).toBeNull();                               // no confirmed preset yet
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
@@ -202,7 +203,7 @@ describe("Remember this mapping", () => {
 
   it("is not offered for Keep project's filament", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: PROVEN })] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
     expect(screen.queryByTestId("remember")).toBeNull();
   });
@@ -211,7 +212,7 @@ describe("Remember this mapping", () => {
 describe("Keep project's filament", () => {
   it("shows the exact notice and sends no preset", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: PROVEN })] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
     expect(screen.getByTestId("keep-own-notice").textContent).toBe(KEEP_OWN_NOTICE);
     expect(request()).toEqual([expect.objectContaining({ slot: 0, preset: null, colour: "#FF0000" })]);   // only the spool's colour
@@ -266,7 +267,7 @@ describe("what the engine says is shown as it was sent", () => {
       { code: "weight_enough", text: "Enough filament: 412 g available / 180 g needed" },
     ];
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ reasons })] })] })} />);
-    const row = screen.getByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = screen.getByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     const items = within(row).getAllByRole("listitem").map((li) => li.textContent);
     expect(items).toEqual(reasons.map((r) => r.text));
   });
@@ -281,7 +282,7 @@ describe("what the engine says is shown as it was sent", () => {
 
   it("the physical spool is labelled as selected and provider data, never as verified", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: PROVEN })] })] })} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     const text = screen.getByTestId("selected-spool").textContent ?? "";
     expect(text).toContain("Selected spool");
     expect(text).toContain("from SpoolEase at selection time");
@@ -370,7 +371,7 @@ describe("the card end to end", () => {
     api.confirmMaterialMapping.mockImplementation(async () => { order.push("save"); return { ok: true }; });
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="recommended" onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
     fireEvent.click(screen.getByLabelText("Remember this mapping"));
@@ -395,7 +396,7 @@ describe("the card end to end", () => {
     const onPrepare = vi.fn();
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
     await act(async () => { fireEvent.click(reviewButton()); });
     await screen.findByText("A line.");
@@ -412,7 +413,7 @@ describe("the card end to end", () => {
         resolution: "Engine resolution text.", conflicts: [{ key: "filament_type", preset: "P @U1", slots: [0, 2], declared_in: [0], values: {} }] } } } });
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={vi.fn()} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
     await act(async () => { fireEvent.click(reviewButton()); });
     await screen.findByTestId("blocked");
@@ -433,7 +434,7 @@ describe("the card end to end", () => {
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={vi.fn()} onActiveChange={active} />);
     await screen.findByText("Slot 1");
     expect(active).toHaveBeenLastCalledWith(false);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     await waitFor(() => expect(active).toHaveBeenLastCalledWith(true));
   });
 
@@ -457,7 +458,7 @@ describe("the card after the review repairs", () => {
     api.confirmMaterialMapping.mockResolvedValue({ ok: true });
     const view = render(<ProjectMaterialsCard path="C:/p/x.3mf" mode={mode} onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
     fireEvent.click(screen.getByLabelText("Remember this mapping"));
@@ -508,7 +509,7 @@ describe("the person's own presets in the picker", () => {
 
   it("shows enough source context to tell a collision apart, and marks what needs confirming", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     const opts = optionsOf();
     expect(opts[0]).toContain("Yoopai PLA+ — System preset");
@@ -521,7 +522,7 @@ describe("the person's own presets in the picker", () => {
 
   it("picking the user one of two same-named presets pins it, and a proven one needs no extra step", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[1].querySelector("button")!);
     expect(request()[0]).toMatchObject({ preset: "Yoopai PLA+", source: "user", ref: "user:default/Yoopai PLA+.json" });
@@ -532,7 +533,7 @@ describe("the person's own presets in the picker", () => {
 
   it("a user preset Studio cannot prove is held until the person says it is a U1 preset", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={LIST} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
     const area = screen.getByTestId("preset-area");
@@ -552,7 +553,7 @@ describe("the review repairs in the card", () => {
     const vouched = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Mystery PLA", base_name: "Mystery PLA", source: "user",
       ref: "user:abc", proof: "user_confirmed", fingerprint: "fp", reason: "" });
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate({ mapping: vouched })] })] })} />);
-    const row = screen.getByRole("button", { name: /Yoopai PLA Matte/ });
+    const row = screen.getByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ });
     expect(within(row).getByText("Confirmed by you")).toBeTruthy();
     expect(within(row).queryByText("Proven")).toBeNull();
     fireEvent.click(row);
@@ -569,7 +570,7 @@ describe("the review repairs in the card", () => {
     api.convert.mockReturnValue(new Promise((resolve) => { release = resolve; }));
     const view = render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="recommended" onPrepare={vi.fn()} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: /Keep project's filament/ }));
     await act(async () => { fireEvent.click(reviewButton()); });
     expect(screen.getByText(/Checking your choices/)).toBeTruthy();
@@ -609,7 +610,7 @@ describe("two of Orca's own presets with one name", () => {
 
   it("are listed apart, and picking one pins exactly that one", () => {
     render(<Harness a={analysis({ slots: [slot({ candidates: [candidate()] })] })} presets={DUP} />);
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     expect(texts[0]).toContain("Dup PLA @U1 — System preset (1 of 2)");
@@ -631,7 +632,7 @@ describe("a completed review cannot be used again", () => {
     api.confirmMaterialMapping.mockResolvedValue({ ok: true });
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     await act(async () => { fireEvent.click(reviewButton()); });
     await screen.findByText("A line.");
   };
@@ -660,8 +661,12 @@ describe("a completed review cannot be used again", () => {
     await act(async () => { finish({ output_path: "C:/p/out.3mf" }); });
   });
 
-  it("when saving the mapping fails after the copy was made it warns, and does not reopen the old review", async () => {
-    api.confirmMaterialMapping.mockRejectedValue(new Error("disk full"));
+  it.each([
+    [new Error("disk full"), /Your copy was made, but a mapping could not be saved \(disk full\)/],
+    [Object.assign(new Error("Studio could not read its saved mappings just now. Nothing was changed."), { code: "mapping_file_unavailable" }),
+      /Your copy was made, but Studio could not read its saved mappings just now, so this choice was not remembered\. Prepare again to save it\./],
+  ])("when saving the mapping fails after the copy was made it warns, and does not reopen the old review (%#)", async (failure, warning) => {
+    api.confirmMaterialMapping.mockRejectedValue(failure);
     const onPrepare = vi.fn(async () => ({ output_path: "C:/p/out.3mf", blocked: false }) as any);
     api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
     api.materialPresets.mockResolvedValue(PRESETS);
@@ -669,14 +674,14 @@ describe("a completed review cannot be used again", () => {
       settings_summary: { project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["A line."], slots: [] } } } });
     render(<ProjectMaterialsCard path="C:/p/x.3mf" mode="preserve" onPrepare={onPrepare} />);
     await screen.findByText("Slot 1");
-    choose(/Yoopai PLA Matte/);
+    choose(/^(?!Forget).*Yoopai PLA Matte/);
     fireEvent.click(screen.getByRole("button", { name: "Choose an installed preset" }));
     fireEvent.click(screen.getAllByRole("option")[2].querySelector("button")!);
     fireEvent.click(screen.getByLabelText("Remember this mapping"));
     await act(async () => { fireEvent.click(reviewButton()); });
     await screen.findByText("A line.");
     await act(async () => { fireEvent.click(prepareButton()!); });
-    await screen.findByText(/Your copy was made, but a mapping could not be saved \(disk full\)/);
+    await screen.findByText(warning);
     expect(screen.queryByTestId("review")).toBeNull();
     expect(prepareButton()).toBeNull();
     expect(onPrepare).toHaveBeenCalledTimes(1);

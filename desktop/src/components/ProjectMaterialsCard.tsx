@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Loader2, Layers, AlertTriangle, Info, Check } from "lucide-react";
 import {
-  confirmMaterialMapping, convert, materialPresets, projectMaterials,
+  confirmMaterialMapping, convert, materialPresets, projectMaterials, projectMaterialsInventory, removeMaterialMapping,
   type ConversionResult, type PrepareMode, type ProjectMaterialsSummary,
 } from "@/api";
+import SlotInventoryPicker, { INVENTORY_COPY } from "@/components/SlotInventoryPicker";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText, presetSourceLabel,
-  presetStatusFor, samePreset, slotNumber, unconfirmedSlots,
-  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
+  KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, choiceReduce, colourWord, emptyChoice, filterPresets, forgetRequest, forgetWording, stillSaved, holdsChoices, mappingRequests, materialText,
+  presetSourceLabel, presetStatusFor, samePreset, savedScope, slotNumber, slotsCoveredBy, unconfirmedSlots,
+  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialInventory, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
 } from "@/lib/projectMaterials";
 import { PROVIDERS, providerArgs, useProvider, type ProviderKind } from "@/store/provider";
@@ -121,11 +123,21 @@ export function PresetPicker({ list, onPick, label }: { list: MaterialPresetList
 
 // --- one candidate spool -----------------------------------------------------------------------------
 
-function CandidateRow({ c, selected, onChoose }: { c: MaterialCandidate; selected: boolean; onChoose: () => void }) {
+/** Identifies one candidate's row, so focus can come back to it. */
+export const candidateKey = (c: { provider: string; spool_id: number | string }) => `${c.provider}:${c.spool_id}`;
+
+/** CSS.escape where the platform has it; otherwise the quote and backslash that would end an attribute value. */
+const cssEscape = (v: string) => (typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
+
+function CandidateRow({ c, selected, onChoose, onForget, forgetDisabled }: {
+  c: MaterialCandidate; selected: boolean; onChoose: () => void;
+  onForget?: (opener: HTMLButtonElement) => void; forgetDisabled?: boolean;
+}) {
   const colour = colourWord(c);
+  const saved = savedScope(c);
   return (
-    <li>
-      <button type="button" aria-pressed={selected} onClick={onChoose}
+    <li className="space-y-1">
+      <button type="button" aria-pressed={selected} onClick={onChoose} data-candidate-key={candidateKey(c)}
         className={`w-full rounded-md border p-2 text-left text-sm ${selected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Swatch colour={c.colour} />
@@ -143,6 +155,16 @@ function CandidateRow({ c, selected, onChoose }: { c: MaterialCandidate; selecte
           <span className="mt-1 block text-[11px] text-muted-foreground">{c.mapping.reason}</span>
         )}
       </button>
+      {saved && onForget && (
+        <div className="flex justify-end px-1">
+          <button type="button" disabled={forgetDisabled} data-testid="forget-mapping"
+            aria-label={`Forget saved mapping${saved === "signature" ? " (similar spools)" : ""} for ${[c.vendor, materialText(c)].filter(Boolean).join(" ")} #${c.spool_id}`}
+            className="text-[11px] text-primary hover:underline disabled:opacity-50"
+            onClick={(e) => onForget(e.currentTarget)}>
+            {saved === "signature" ? "Forget saved mapping (similar spools)" : "Forget saved mapping"}
+          </button>
+        </div>
+      )}
     </li>
   );
 }
@@ -155,10 +177,23 @@ export interface SlotRowProps {
   presets: MaterialPresetList | null;
   providerLabel: string | null;
   dispatch: (a: ChoiceAction) => void;
+  /** Reads the provider's whole inventory for a slot. Absent when there is no readable provider. */
+  loadInventory?: (slot: number) => Promise<MaterialInventory>;
+  /** Asks to forget the saved mapping a candidate's preset came from. Absent where forgetting is not offered. */
+  onForget?: (candidate: MaterialCandidate, opener: HTMLButtonElement) => void;
+  forgetDisabled?: boolean;
 }
 
-export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: SlotRowProps) {
+export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadInventory, onForget, forgetDisabled }: SlotRowProps) {
   const [picking, setPicking] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const browseToggle = useRef<HTMLButtonElement>(null);
+  const wasBrowsing = useRef(false);
+  // The list unmounts when it closes; focus goes back to the control that opened it.
+  useEffect(() => {
+    if (wasBrowsing.current && !browsing) browseToggle.current?.focus();
+    wasBrowsing.current = browsing;
+  }, [browsing]);
   const n = slotNumber(slot.slot);
   const sourceColour = colorName(slot.colour);
   const status = presetStatusFor(choice, slot);
@@ -187,7 +222,8 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
             {slot.candidates.map((c) => (
               <CandidateRow key={`${c.provider}:${c.spool_id}`} c={c}
                 selected={!!spool && spool.provider === c.provider && String(spool.spool_id) === String(c.spool_id)}
-                onChoose={() => dispatch({ type: "chooseSpool", slot: slot.slot, spool: c })} />
+                onChoose={() => dispatch({ type: "chooseSpool", slot: slot.slot, spool: c })}
+                onForget={onForget ? (opener) => onForget(c, opener) : undefined} forgetDisabled={forgetDisabled} />
             ))}
           </ul>
           {slot.candidate_count > slot.candidates.length && (
@@ -196,6 +232,20 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
         </div>
       ) : (
         <p className="text-xs text-muted-foreground" data-testid="no-candidates">{COPY.noCandidates}</p>
+      )}
+
+      {loadInventory && (
+        <div className="space-y-1">
+          {!browsing && (
+            <button ref={browseToggle} type="button" className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
+              {INVENTORY_COPY.button}
+            </button>
+          )}
+          {browsing && (
+            <SlotInventoryPicker slot={slot.slot} load={loadInventory} onClose={() => setBrowsing(false)}
+              onChoose={(c) => { setBrowsing(false); dispatch({ type: "chooseSpool", slot: slot.slot, spool: c }); }} />
+          )}
+        </div>
       )}
 
       {spool && (
@@ -232,7 +282,15 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
           )}
         </div>
 
-        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{KEEP_OWN_NOTICE}</p>}
+        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{slot.settings_id ? KEEP_OWN_NOTICE : KEEP_OWN_NOTICE_NONE_EXISTING}</p>}
+
+        {/* A spool decides the colour. Without an Orca preset it does not change the filament preset, and the person is told so. */}
+        {spool && !choice.preset && !choice.keepOwn && (
+          <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{slot.settings_id ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}` : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
+          </p>
+        )}
 
         {choice.preset && !choice.preset.confirmed && !choice.keepOwn && (
           <div className="flex flex-wrap items-center gap-2">
@@ -401,6 +459,11 @@ export interface ViewProps {
   onPrepare: () => void;
   busy?: boolean;
   warning?: string | null;
+  loadInventory?: (slot: number) => Promise<MaterialInventory>;
+  /** Forget a saved mapping: the request to confirm (if one is open), how it is going, and what to do about it. */
+  forget?: { candidate: MaterialCandidate; busy: boolean; returnFocusTo: () => HTMLElement | null; onCancel: () => void; onConfirm: () => void } | null;
+  onForget?: (candidate: MaterialCandidate, opener: HTMLButtonElement) => void;
+  forgetNote?: { kind: "ok" | "error"; text: string } | null;
 }
 
 export function ProjectMaterialsView(p: ViewProps) {
@@ -431,8 +494,17 @@ export function ProjectMaterialsView(p: ViewProps) {
         {!analysis.provider && <p className="text-xs text-muted-foreground" data-testid="no-provider">{COPY.noProvider}</p>}
         {(analysis.slots ?? []).map((slot) => (
           <SlotRow key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
-            providerLabel={p.providerLabel} dispatch={p.dispatch} />
+            providerLabel={p.providerLabel} dispatch={p.dispatch} onForget={p.onForget} forgetDisabled={!!p.forget}
+            loadInventory={analysis.provider?.available ? p.loadInventory : undefined} />
         ))}
+        {p.forgetNote && (
+          <p className={`text-xs ${p.forgetNote.kind === "error" ? "text-risk" : "text-muted-foreground"}`}
+            role={p.forgetNote.kind === "error" ? "alert" : "status"} data-testid="forget-note">{p.forgetNote.text}</p>
+        )}
+        {p.forget && (
+          <ConfirmDialog {...forgetWording(p.forget.candidate)} danger={false} busy={p.forget.busy}
+            onCancel={p.forget.onCancel} onConfirm={p.forget.onConfirm} returnFocusTo={p.forget.returnFocusTo} />
+        )}
         {p.review.status === "idle" ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={p.onReview} disabled={selections.length === 0 || pending.length > 0}>Review &amp; prepare</Button>
@@ -476,7 +548,7 @@ interface CardProps {
 export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
-  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base]);
+  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
   const [load, setLoad] = useState<ViewProps["load"]>({ status: "loading" });
   const [analysis, setAnalysis] = useState<ProjectMaterialsAnalysis | null>(null);
   const [presets, setPresets] = useState<MaterialPresetList | null>(null);
@@ -484,6 +556,10 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   const [review, setReview] = useState<ReviewState>({ status: "idle" });
   const [warning, setWarning] = useState<string | null>(null);
   const generation = useRef(0);
+  const [forget, setForget] = useState<{ candidate: MaterialCandidate; opener: HTMLButtonElement } | null>(null);
+  const [forgetBusy, setForgetBusy] = useState(false);
+  const [forgetNote, setForgetNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const forgetInFlight = useRef(false);
   const providerLabel = provider.kind !== "none" ? PROVIDERS[provider.kind as Exclude<ProviderKind, "none">]?.label ?? null : null;
 
   useEffect(() => {
@@ -492,6 +568,8 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
     setAnalysis(null);
     setPresets(null);
     setReview({ status: "idle" });
+    setForget(null);
+    setForgetNote(null);
     dispatch({ type: "reset" });
     (async () => {
       try {
@@ -511,6 +589,10 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, argsKey]);
+
+  const loadInventory = useCallback((slot: number) => projectMaterialsInventory(path, slot, args),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [path, argsKey]);
 
   const selections = useMemo(() => buildSelections(choices), [choices]);
   const holding = holdsChoices(choices);
@@ -532,6 +614,67 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
       if (gen === reviewGen.current) setReview({ status: "done", result });
     } catch (e: any) {
       if (gen === reviewGen.current) setReview({ status: "error", error: String(e?.message ?? e) });
+    }
+  }
+
+  // Forgetting removes ONE saved mapping through the engine's own route, then reads the project again so what is shown is what
+  // the engine now says. Nothing else is touched: not the provider, not Orca's presets, not the project file, not other mappings.
+  async function doForget() {
+    if (!forget || forgetInFlight.current) return;                  // one request per confirmation, however often it is pressed
+    const request = forgetRequest(forget.candidate);
+    if (!request) { setForget(null); return; }
+    forgetInFlight.current = true;
+    setForgetBusy(true);
+    const gen = generation.current;
+    const affected = slotsCoveredBy(choices, forget.candidate);
+    try {
+      const result = await removeMaterialMapping(request);
+      if (gen !== generation.current) return;                       // the project or provider changed meanwhile: the new load is what is shown
+      let refreshed = true;
+      try {
+        const a = await projectMaterials(path, args, 3);
+        if (gen === generation.current) setAnalysis(a);
+      } catch { refreshed = false; }
+      if (gen !== generation.current) return;
+      // A choice that rested on the forgotten mapping no longer does; the person chooses again rather than keeping a preset
+      // Studio would no longer have suggested.
+      if (affected.length) dispatch({ type: "discardSlots", slots: affected });
+      const cleared = affected.length ? ` Your choice for slot${affected.length > 1 ? "s" : ""} ${affected.map((s) => s + 1).join(", ")} was cleared.` : "";
+      setForgetNote(refreshed
+        ? { kind: "ok", text: (result.removed ? "Saved mapping forgotten." : "That saved mapping was already gone.") + cleared }
+        : { kind: "error", text: `The saved mapping was forgotten, but Studio could not read the project again to refresh this list.${cleared}` });
+      setForget(null);
+    } catch (e: any) {
+      if (gen === generation.current && e?.code === "mapping_file_unavailable") {
+        // The engine could not read its saved mappings and changed nothing. Reading the project now would show the same
+        // unreadable file as "no saved mappings", so the list is left exactly as it was.
+        setForgetNote({ kind: "error", text: `${String(e?.message ?? e).replace(/[.\s]+$/, "")}.` });
+        setForget(null);
+      } else if (gen === generation.current) {
+        // A lost or malformed reply does not prove the engine left the file alone, so read the project again and say so.
+        let reread = true;
+        let fresh: ProjectMaterialsAnalysis | null = null;
+        try {
+          fresh = await projectMaterials(path, args, 3);
+          if (gen === generation.current) setAnalysis(fresh);
+        } catch { reread = false; }
+        // The engine refusing (a mapping that changed since it was shown) is certain: it wrote nothing. A lost reply is not.
+        const refused = e?.code === "mapping_refused";
+        const reason = String(e?.message ?? e).replace(/[.\s]+$/, "");
+        // If the re-read shows the mapping did go (a reply lost after the delete), the choices that rested on it go too.
+        const gone = fresh ? affected.filter((slot) => !stillSaved(fresh!, forget.candidate, choices[slot]?.spool ?? null)) : [];
+        if (gen === generation.current && gone.length) dispatch({ type: "discardSlots", slots: gone });
+        const cleared = gone.length ? ` Your choice for slot${gone.length > 1 ? "s" : ""} ${gone.map((s) => s + 1).join(", ")} was cleared.` : "";
+        if (gen === generation.current) {
+          setForgetNote({ kind: "error", text: refused
+            ? `${reason}.${reread ? " The list shows what is saved now." : ""}${cleared}`
+            : `Couldn't confirm the saved mapping was forgotten: ${reason}. ${reread ? "The list shows what Studio read afterwards." : "Studio could not read the project again either, so the list may be out of date."}${cleared}` });
+          setForget(null);
+        }
+      }
+    } finally {
+      forgetInFlight.current = false;
+      setForgetBusy(false);
     }
   }
 
@@ -558,7 +701,11 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
       setReview({ status: "idle" });
       for (const request of mappingRequests(choices, analysis?.nozzle ?? "0.4")) {
         try { await confirmMaterialMapping(request); }
-        catch (e: any) { setWarning(`Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`); }
+        catch (e: any) {
+          setWarning(e?.code === "mapping_file_unavailable"
+            ? "Your copy was made, but Studio could not read its saved mappings just now, so this choice was not remembered. Prepare again to save it."
+            : `Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`);
+        }
       }
     } finally {
       submitting.current = false;
@@ -569,7 +716,17 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   return (
     <ProjectMaterialsView load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
-      onPrepare={doPrepare} busy={busy || preparing} warning={warning} />
+      onPrepare={doPrepare} busy={busy || preparing} warning={warning} loadInventory={loadInventory}
+      onForget={(candidate, opener) => { setForgetNote(null); setForget({ candidate, opener }); }}
+      forgetNote={forgetNote}
+      forget={forget && {
+        candidate: forget.candidate, busy: forgetBusy,
+        onCancel: () => { if (!forgetInFlight.current) setForget(null); },
+        onConfirm: doForget,
+        // Back to the control that opened the prompt; if it is gone (the saved label is), to that spool's row.
+        returnFocusTo: () => (forget.opener.isConnected && !forget.opener.disabled ? forget.opener
+          : document.querySelector<HTMLElement>(`[data-candidate-key="${cssEscape(candidateKey(forget.candidate))}"]`)),
+      }} />
   );
 }
 

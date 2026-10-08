@@ -23,6 +23,8 @@ export interface MaterialMapping {
   match_source: "saved_spool" | "saved_signature" | "exact_name" | "manual" | "none" | string;
   preset_name: string | null;
   base_name: string | null;
+  /** The saved row exactly as stored, when this preset came from a saved mapping. */
+  saved?: { preset_base: string; ref: string | null; fingerprint: string | null };
   reason: string;
   candidates: string[];
   stale: boolean;
@@ -43,11 +45,14 @@ export interface MaterialMapping {
 export interface MaterialCandidate {
   provider: string;
   spool_id: number | string;
-  rank: number;
+  /** Position in the engine's short list; the full inventory has none. */
+  rank?: number;
   label: string;
   vendor: string | null;
   material: string | null;
   subtype: string | null;
+  /** The engine's own key for this kind of spool; present on everything the engine returns. */
+  signature?: { vendor: string; family: string; subtype: string };
   colour: string | null;
   color_name: string | null;
   remaining_g: number | null;
@@ -56,6 +61,21 @@ export interface MaterialCandidate {
   slicer_filament: string | null;
   mapping: MaterialMapping;
   reasons: MaterialReason[];
+  /** False for a spool of another material family (only the full inventory returns those). Absent means it matches. */
+  family_match?: boolean;
+  /** The engine's warnings. One with `requires_confirmation` must be accepted by the person before the spool is used. */
+  warnings?: { code: string; text: string; requires_confirmation?: boolean }[];
+}
+
+/** Every spool the provider lists, as options for one slot: the manual override beside the ranked suggestions. */
+export interface MaterialInventory {
+  supported: boolean;
+  reason?: string;
+  slot?: number;
+  provider?: { kind: string; available: boolean; error_code: string | null } | null;
+  entries: MaterialCandidate[];
+  count?: number;
+  same_family_count?: number;
 }
 
 export interface MaterialSuggestion {
@@ -182,6 +202,121 @@ export interface MappingRequest {
   fingerprint?: string;
 }
 
+/** Said beside a slot that has a spool and no Orca preset. The engine says the same in the review. */
+export const SPOOL_WITHOUT_PRESET =
+  "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.";
+
+/** Said with it: what Studio did and did not establish about the preset it leaves alone. */
+export const SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it.";
+
+/** The same, when the project names no filament preset for the slot: there is nothing that "will remain". */
+export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
+  "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you.";
+
+/** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */
+export function needsSpoolConfirmation(c: MaterialCandidate): string | null {
+  const w = (c.warnings ?? []).find((x) => x.requires_confirmation);
+  return w ? w.text : null;
+}
+
+/** A candidate in the shape the spool picker's own helpers describe, sort and search. */
+export function candidateAsSpool(c: MaterialCandidate): ProviderSpool {
+  return {
+    id: c.spool_id, label: c.label, vendor: c.vendor, material: c.material, subtype: c.subtype,
+    color: c.colour, color_name: c.color_name, remaining_g: c.remaining_g,
+    remaining_quality: c.remaining_quality, archived: false,
+  } as unknown as ProviderSpool;
+}
+
+/** The same, for a slot that keeps its own filament when the project names no preset for it. */
+export const KEEP_OWN_NOTICE_NONE_EXISTING =
+  "Studio keeps this slot as the project has it. The project names no filament preset for it, and Studio does not choose one for you.";
+
+
+// --- forgetting a saved mapping ------------------------------------------------------------------
+
+/** What identifies one saved mapping to the engine's remove route. */
+export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string | null; expect_ref?: string | null; expect_fingerprint?: string | null };
+
+/** Which kind of saved mapping a candidate's preset came from, if it came from one. */
+export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
+  const source = c.mapping.match_source;
+  return source === "saved_spool" ? "spool" : source === "saved_signature" ? "signature" : null;
+}
+
+/** The request that removes exactly the mapping this candidate's preset came from. Null when it came from none. */
+export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
+  const scope = savedScope(c);
+  if (!scope) return null;
+  // The preset the person was shown: the engine forgets the mapping only if it still names it.
+  const saved = c.mapping.saved;
+  const expect = saved
+    ? { expect_preset_base: saved.preset_base, expect_ref: saved.ref ?? null, expect_fingerprint: saved.fingerprint ?? null }
+    : {};
+  return scope === "spool"
+    ? { scope, provider: c.provider, spool_id: c.spool_id, ...expect }
+    : { scope, provider: c.provider, vendor: c.vendor, material: c.material, subtype: c.subtype, ...expect };
+}
+
+// The engine's own normalisation of a spool kind: whitespace collapsed, case folded.
+const fold = (v: string | null | undefined) => (v ?? "").split(/\s+/).filter(Boolean).join(" ").toLowerCase().replace(/ß/g, "ss");
+const same = (a: string | null | undefined, b: string | null | undefined) => fold(a) === fold(b);
+/** Whether two spools are the same kind. The engine's own key decides; the local fold is only for data without one. */
+const sameKind = (a: MaterialCandidate, b: MaterialCandidate) =>
+  a.signature && b.signature
+    ? a.signature.vendor === b.signature.vendor && a.signature.family === b.signature.family && a.signature.subtype === b.signature.subtype
+    : same(a.vendor, b.vendor) && same(a.material, b.material) && same(a.subtype, b.subtype);
+
+/**
+ * The slots whose choice rests on the mapping a candidate came from, and so lose it when that mapping is forgotten: the
+ * chosen spool got its preset from this very kind of saved mapping, and the slot still holds that preset. A slot whose
+ * preset the person changed, or whose spool has a mapping of its own, does not depend on it and is left alone.
+ */
+export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[] {
+  const scope = savedScope(c);
+  if (!scope) return [];
+  return Object.entries(choices)
+    .filter(([, choice]) => {
+      const s = choice.spool;
+      if (!s || s.provider !== c.provider) return false;
+      if (savedScope(s) !== scope) return false;
+      const offered = s.mapping.base_name ?? s.mapping.preset_name;
+      if (!choice.preset || choice.preset.name !== offered || (choice.preset.fingerprint ?? null) !== (s.mapping.fingerprint ?? null)) return false;
+      return scope === "spool"
+        ? String(s.spool_id) === String(c.spool_id)
+        : sameKind(s, c);
+    })
+    .map(([slot]) => Number(slot))
+    .sort((a, b) => a - b);
+}
+
+/** Whether the spool a slot chose still has a saved mapping of the same kind after the project was read again. */
+export function stillSaved(a: ProjectMaterialsAnalysis, c: MaterialCandidate, chosen: MaterialCandidate | null): boolean {
+  if (!chosen) return true;
+  const scope = savedScope(c);
+  return (a.slots ?? []).some((sl) => sl.candidates.some((k) =>
+    k.provider === chosen.provider && String(k.spool_id) === String(chosen.spool_id) && savedScope(k) === scope));
+}
+
+/** The words of the confirmation. The engine decides nothing here; these describe only what the control does. */
+export function forgetWording(c: MaterialCandidate): { title: string; body: string; details: string[] } {
+  const preset = c.mapping.base_name ?? c.mapping.preset_name ?? "the saved preset";
+  const kind = [c.vendor, materialText(c)].filter(Boolean).join(" ");
+  const unchanged = "Your spool inventory, your Orca presets and this project are not changed. You can choose a preset for it again at any time.";
+  if (savedScope(c) === "signature") {
+    return {
+      title: "Forget the saved mapping for similar spools?",
+      body: `Studio will no longer use the mapping saved for every ${kind || "such"} spool, which names “${preset}”. A spool that has a mapping of its own keeps it. ${unchanged}`,
+      details: [`Spools: ${kind || "similar spools"}`, `Saved preset: ${preset}`],
+    };
+  }
+  return {
+    title: "Forget the saved mapping for this spool?",
+    body: `Studio will no longer use the mapping saved for this spool, which names “${preset}”. A mapping saved for similar spools, if there is one, still applies. ${unchanged}`,
+    details: [`Spool: ${[kind, `#${c.spool_id}`].filter(Boolean).join(" ")}`, `Saved preset: ${preset}`],
+  };
+}
+
 /** The exact sentence for a slot that keeps its own filament. */
 export const KEEP_OWN_NOTICE =
   "Studio keeps the project's existing filament identity. If Snapmaker Orca does not recognize that preset, Orca may treat it as a Customized Preset and rename it.";
@@ -237,10 +372,16 @@ export type ChoiceAction =
   | { type: "clearPreset"; slot: number }
   | { type: "keepOwn"; slot: number }
   | { type: "remember"; slot: number; mode: RememberMode }
+  | { type: "discardSlots"; slots: number[] }
   | { type: "reset" };
 
 export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
   if (action.type === "reset") return {};
+  if (action.type === "discardSlots") {
+    const next = { ...state };
+    for (const slot of action.slots) delete next[slot];
+    return next;
+  }
   const current = state[action.slot] ?? emptyChoice;
   const put = (next: SlotChoice): Choices => ({ ...state, [action.slot]: next });
   switch (action.type) {
@@ -256,8 +397,12 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       if ((m.choices?.length ?? 0) > 1) return put({ spool: action.spool, preset: null, keepOwn: false, remember: "off" });
       // A remembered mapping the person confirmed (even one they said was a U1 preset) stays confirmed; a
       // preset the engine could not prove, or the provider merely names, waits for them.
+      // A preset that came with a spool of ANOTHER material is not confirmed for the person: they confirm it, or pick another.
+      const sameMaterial = action.spool.family_match !== false;
       const preset: PresetChoice | null =
-        name && m.status === "proven" ? { name, confirmed: true, ...pin, needsSayso: m.proof === "user_confirmed" }
+        name && m.status === "proven"
+          ? { name, confirmed: sameMaterial, ...pin, needsSayso: m.proof === "user_confirmed",
+              note: sameMaterial ? undefined : "This preset came with a spool of a different material. Confirm it, or choose another preset." }
         : name && m.status === "needs_confirmation" ? { name, confirmed: false, ...pin, needsSayso: !!m.confirmable, note: m.reason }
         : null;
       return put({ spool: action.spool, preset, keepOwn: false, remember: "off" });
