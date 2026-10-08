@@ -954,27 +954,67 @@ struct UpdateCheckPref {
 
 const AUTO_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
-fn update_pref_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("update_check.json"))
+/// Where the update-check preference may live.
+#[derive(Debug, PartialEq)]
+enum UpdateStateRoot {
+    /// `SNAPSTUDIO_DATA_DIR` is not set: the app's own config directory.
+    Default,
+    /// `SNAPSTUDIO_DATA_DIR` names an absolute directory (the engine and the Model Browser honour
+    /// the same variable), so an isolated harness run never touches the per-user config folder.
+    Override(PathBuf),
+    /// `SNAPSTUDIO_DATA_DIR` is set but unusable (empty, not valid text, or not an absolute path).
+    /// An explicit override that cannot be honoured must never fall back to the real per-user
+    /// state, so the preference is treated as unavailable: reads return the default (off), writes
+    /// fail, and no automatic check can run.
+    Invalid,
 }
 
-fn read_update_pref(app: &tauri::AppHandle) -> UpdateCheckPref {
-    update_pref_path(app)
-        .and_then(|p| std::fs::read(p).ok())
+fn resolve_update_state_root(raw: Option<std::ffi::OsString>) -> UpdateStateRoot {
+    let Some(raw) = raw else { return UpdateStateRoot::Default };
+    let path = PathBuf::from(&raw);
+    if raw.to_str().map_or(true, |t| t.trim().is_empty()) || !path.is_absolute() {
+        return UpdateStateRoot::Invalid;
+    }
+    UpdateStateRoot::Override(path)
+}
+
+/// The preference file for a root, or `None` when no location may be used.
+fn update_pref_file(root: &UpdateStateRoot, config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    match root {
+        UpdateStateRoot::Default => config_dir,
+        UpdateStateRoot::Override(dir) => Some(dir.clone()),
+        UpdateStateRoot::Invalid => None,
+    }
+    .map(|d| d.join("update_check.json"))
+}
+
+fn update_pref_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let root = resolve_update_state_root(std::env::var_os("SNAPSTUDIO_DATA_DIR"));
+    update_pref_file(&root, app.path().app_config_dir().ok())
+}
+
+/// A missing, unreadable or corrupt file (or no usable location) reads as the default: off.
+fn read_pref_at(path: Option<&std::path::Path>) -> UpdateCheckPref {
+    path.and_then(|p| std::fs::read(p).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default()
 }
 
-fn write_update_pref(app: &tauri::AppHandle, pref: &UpdateCheckPref) {
-    let Some(path) = update_pref_path(app) else { return };
+fn write_pref_at(path: Option<&std::path::Path>, pref: &UpdateCheckPref) -> Result<(), String> {
+    let path = path.ok_or_else(|| "the update-check preference has no usable location".to_string())?;
     if let Some(parent) = path.parent() {
-        if std::fs::create_dir_all(parent).is_err() {
-            return;
-        }
+        std::fs::create_dir_all(parent).map_err(|e| format!("could not create the preference folder: {e}"))?;
     }
-    if let Ok(text) = serde_json::to_vec(pref) {
-        let _ = std::fs::write(path, text);
-    }
+    let text = serde_json::to_vec(pref).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| format!("could not save the update-check preference: {e}"))
+}
+
+fn read_update_pref(app: &tauri::AppHandle) -> UpdateCheckPref {
+    read_pref_at(update_pref_path(app).as_deref())
+}
+
+fn write_update_pref(app: &tauri::AppHandle, pref: &UpdateCheckPref) -> Result<(), String> {
+    write_pref_at(update_pref_path(app).as_deref(), pref)
 }
 
 fn now_unix() -> u64 {
@@ -998,8 +1038,7 @@ fn get_update_check_pref(app: tauri::AppHandle) -> UpdateCheckPref {
 fn set_auto_check_updates(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let mut pref = read_update_pref(&app);
     pref.auto_check = enabled;
-    write_update_pref(&app, &pref);
-    Ok(())
+    write_update_pref(&app, &pref)
 }
 
 /// Pure throttle decision, kept separate from the file/network I/O around it so
@@ -1027,7 +1066,10 @@ async fn maybe_auto_check_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
         return None;
     }
     pref.last_checked_at_unix = Some(now);
-    write_update_pref(&app, &pref);
+    // Without a saved timestamp the once-a-day limit cannot hold, so do not check.
+    if write_update_pref(&app, &pref).is_err() {
+        return None;
+    }
     check_for_update().await.ok()
 }
 
@@ -1236,6 +1278,96 @@ mod tests {
         let parsed: Option<UpdateCheckPref> = serde_json::from_slice(corrupt).ok();
         assert!(parsed.is_none());
         assert_eq!(parsed.unwrap_or_default().auto_check, false);
+    }
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("snapstudio-updpref-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn state_root_resolution_never_turns_a_bad_override_into_production_state() {
+        use std::ffi::OsString;
+        assert_eq!(resolve_update_state_root(None), UpdateStateRoot::Default);
+        let abs = std::env::temp_dir();
+        assert_eq!(
+            resolve_update_state_root(Some(abs.clone().into_os_string())),
+            UpdateStateRoot::Override(abs)
+        );
+        assert_eq!(resolve_update_state_root(Some(OsString::new())), UpdateStateRoot::Invalid);
+        assert_eq!(resolve_update_state_root(Some(OsString::from("   "))), UpdateStateRoot::Invalid);
+        assert_eq!(resolve_update_state_root(Some(OsString::from("relative/dir"))), UpdateStateRoot::Invalid);
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            assert_eq!(
+                resolve_update_state_root(Some(OsString::from_vec(vec![b'/', 0xff, 0xfe]))),
+                UpdateStateRoot::Invalid
+            );
+        }
+        // An invalid override has no file at all, even though a config dir exists.
+        assert_eq!(update_pref_file(&UpdateStateRoot::Invalid, Some(PathBuf::from("prod"))), None);
+        assert_eq!(
+            update_pref_file(&UpdateStateRoot::Default, Some(PathBuf::from("prod"))),
+            Some(PathBuf::from("prod").join("update_check.json"))
+        );
+    }
+
+    #[test]
+    fn override_reads_and_writes_only_inside_the_override_and_leaves_production_untouched() {
+        let prod = tmp("prod");
+        let iso = tmp("iso");
+        let prod_file = prod.join("update_check.json");
+        let prod_bytes = br#"{"auto_check":true,"last_checked_at_unix":42}"#;
+        std::fs::write(&prod_file, prod_bytes).unwrap();
+
+        let root = UpdateStateRoot::Override(iso.clone());
+        let path = update_pref_file(&root, Some(prod.clone()));
+        assert_eq!(path, Some(iso.join("update_check.json")));
+        // The isolated run does not inherit production's opt-in.
+        assert!(!read_pref_at(path.as_deref()).auto_check);
+
+        let pref = UpdateCheckPref { auto_check: true, last_checked_at_unix: Some(7) };
+        write_pref_at(path.as_deref(), &pref).unwrap();
+        let back = read_pref_at(path.as_deref());
+        assert!(back.auto_check);
+        assert_eq!(back.last_checked_at_unix, Some(7));
+        assert!(iso.join("update_check.json").is_file());
+        assert_eq!(std::fs::read(&prod_file).unwrap(), prod_bytes, "production state must be byte-identical");
+        std::fs::remove_dir_all(&prod).ok();
+        std::fs::remove_dir_all(&iso).ok();
+    }
+
+    #[test]
+    fn without_an_override_the_config_directory_is_used_as_before() {
+        let cfg = tmp("cfg");
+        let path = update_pref_file(&UpdateStateRoot::Default, Some(cfg.clone()));
+        assert_eq!(path, Some(cfg.join("update_check.json")));
+        assert!(!read_pref_at(path.as_deref()).auto_check);
+        write_pref_at(path.as_deref(), &UpdateCheckPref { auto_check: true, last_checked_at_unix: None }).unwrap();
+        assert!(read_pref_at(path.as_deref()).auto_check);
+        std::fs::remove_dir_all(&cfg).ok();
+    }
+
+    #[test]
+    fn an_unusable_location_fails_loudly_and_writes_nothing_elsewhere() {
+        let prod = tmp("prod2");
+        let blocker_dir = tmp("blk");
+        let blocker = blocker_dir.join("not-a-dir");
+        std::fs::write(&blocker, b"a file, not a folder").unwrap();
+        // Override root is a regular file: the folder cannot be created.
+        let path = update_pref_file(&UpdateStateRoot::Override(blocker.clone()), Some(prod.clone()));
+        let err = write_pref_at(path.as_deref(), &UpdateCheckPref { auto_check: true, last_checked_at_unix: None });
+        assert!(err.is_err());
+        assert!(!read_pref_at(path.as_deref()).auto_check);
+        // Invalid override: no path, write refused, nothing lands in the config dir.
+        let none = update_pref_file(&UpdateStateRoot::Invalid, Some(prod.clone()));
+        assert!(write_pref_at(none.as_deref(), &UpdateCheckPref::default()).is_err());
+        assert!(!prod.join("update_check.json").exists());
+        std::fs::remove_dir_all(&prod).ok();
+        std::fs::remove_dir_all(&blocker_dir).ok();
     }
 
     #[cfg(unix)]
