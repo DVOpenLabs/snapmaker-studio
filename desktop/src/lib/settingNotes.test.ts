@@ -18,6 +18,7 @@ describe("settingNote", () => {
       "carried over to U1 toolheads (values preserved)",
       "available with the recommended U1 profile",
       "U1 machine profile setting applied",
+      "U1 project identity normalized",
       "U1 compatibility clamp: -1 → 5",
     ]) expect(settingNote(change({ reason }))).toBeNull();
   });

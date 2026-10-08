@@ -14,6 +14,8 @@ import zipfile
 import pytest
 
 from snapstudio_core import compatibility, orca_import
+from snapstudio_core.container import ThreeMF
+from snapstudio_core.repair import repair
 from snapstudio_core.convert import convert_to_u1
 from snapstudio_core.rules import apply_clamps, clamp_explanation, load_rules
 
@@ -78,6 +80,18 @@ def test_a_negative_raft_expansion_has_one_owner_per_run_and_one_explained_recor
     assert records[0]["explanation"] == orca_import.RAFT_EXPANSION_WHY
     # the reason is the engine's own, never empty, and never shown instead of the explanation
     assert records[0]["reason"]
+
+
+@pytest.mark.parametrize("mode", ["safe", "preserve", "u1", "optimize"])
+def test_the_repair_report_itself_holds_one_raft_record_in_every_mode(tmp_path, mode):
+    """The summary dedupes by key, so count in the raw repair report, where two owners would show up as two records."""
+    report = repair(ThreeMF.open(_project(tmp_path, {"raft_first_layer_expansion": "-1"})), mode=mode, dry_run=True).report
+    records = [item for group in report.values() if isinstance(group, list) for item in group
+               if isinstance(item, dict) and item.get("key") == "raft_first_layer_expansion"]
+    identity = report.get("identity")
+    if isinstance(identity, dict):
+        records += [i for i in identity.get("changed", []) if i.get("key") == "raft_first_layer_expansion"]
+    assert len(records) == 1, f"{mode}: {len(records)} records for the raft key: {records}"
 
 
 def test_each_clamped_setting_reaches_the_summary_with_its_explanation(tmp_path):
