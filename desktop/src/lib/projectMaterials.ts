@@ -182,6 +182,63 @@ export interface MappingRequest {
   fingerprint?: string;
 }
 
+// --- forgetting a saved mapping ------------------------------------------------------------------
+
+/** What identifies one saved mapping to the engine's remove route. */
+export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype">;
+
+/** Which kind of saved mapping a candidate's preset came from, if it came from one. */
+export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
+  const source = c.mapping.match_source;
+  return source === "saved_spool" ? "spool" : source === "saved_signature" ? "signature" : null;
+}
+
+/** The request that removes exactly the mapping this candidate's preset came from. Null when it came from none. */
+export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
+  const scope = savedScope(c);
+  if (!scope) return null;
+  return scope === "spool"
+    ? { scope, provider: c.provider, spool_id: c.spool_id }
+    : { scope, provider: c.provider, vendor: c.vendor, material: c.material, subtype: c.subtype };
+}
+
+const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+/** The slots whose chosen spool is covered by the mapping a candidate came from, and so lose their choice when it is forgotten. */
+export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[] {
+  const scope = savedScope(c);
+  if (!scope) return [];
+  return Object.entries(choices)
+    .filter(([, choice]) => {
+      const s = choice.spool;
+      if (!s || s.provider !== c.provider) return false;
+      return scope === "spool"
+        ? String(s.spool_id) === String(c.spool_id)
+        : same(s.vendor, c.vendor) && same(s.material, c.material) && same(s.subtype, c.subtype);
+    })
+    .map(([slot]) => Number(slot))
+    .sort((a, b) => a - b);
+}
+
+/** The words of the confirmation. The engine decides nothing here; these describe only what the control does. */
+export function forgetWording(c: MaterialCandidate): { title: string; body: string; details: string[] } {
+  const preset = c.mapping.base_name ?? c.mapping.preset_name ?? "the saved preset";
+  const kind = [c.vendor, materialText(c)].filter(Boolean).join(" ");
+  const unchanged = "Your spool inventory, your Orca presets and this project are not changed. You can choose a preset for it again at any time.";
+  if (savedScope(c) === "signature") {
+    return {
+      title: "Forget the saved mapping for similar spools?",
+      body: `Studio will stop suggesting “${preset}” for every ${kind || "spool"} spool, not only this one. ${unchanged}`,
+      details: [`Spools: ${kind || "similar spools"}`, `Saved preset: ${preset}`],
+    };
+  }
+  return {
+    title: "Forget the saved mapping for this spool?",
+    body: `Studio will stop suggesting “${preset}” for this spool. ${unchanged}`,
+    details: [`Spool: ${[kind, `#${c.spool_id}`].filter(Boolean).join(" ")}`, `Saved preset: ${preset}`],
+  };
+}
+
 /** The exact sentence for a slot that keeps its own filament. */
 export const KEEP_OWN_NOTICE =
   "Studio keeps the project's existing filament identity. If Snapmaker Orca does not recognize that preset, Orca may treat it as a Customized Preset and rename it.";
@@ -237,10 +294,16 @@ export type ChoiceAction =
   | { type: "clearPreset"; slot: number }
   | { type: "keepOwn"; slot: number }
   | { type: "remember"; slot: number; mode: RememberMode }
+  | { type: "discardSlots"; slots: number[] }
   | { type: "reset" };
 
 export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
   if (action.type === "reset") return {};
+  if (action.type === "discardSlots") {
+    const next = { ...state };
+    for (const slot of action.slots) delete next[slot];
+    return next;
+  }
   const current = state[action.slot] ?? emptyChoice;
   const put = (next: SlotChoice): Choices => ({ ...state, [action.slot]: next });
   switch (action.type) {
