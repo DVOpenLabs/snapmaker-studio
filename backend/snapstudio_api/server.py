@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from snapstudio_core import paths as _paths
 from snapstudio_core.errors import SnapStudioError
+from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
 from . import service
 from . import request_validation as rv
@@ -747,6 +748,27 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
+            elif self.path == "/project_materials/inventory":
+                try:
+                    if not isinstance(data, dict):
+                        raise ValidationError("request must be a JSON object")
+                    slot_map = data.get("slot_map")
+                    if slot_map is not None and not isinstance(slot_map, dict):
+                        raise ValidationError("slot_map must be an object")
+                    if type(data.get("slot")) is not int or data["slot"] < 0:
+                        raise ValidationError("slot must be a whole number, 0 or more")
+                    self._send(200, service.project_materials_inventory(
+                        rv.require_path_string(data),
+                        data["slot"],
+                        provider=rv.optional_str(data, "provider", "") or None,
+                        provider_url=rv.optional_str(data, "provider_url", "") or None,
+                        provider_key=rv.optional_str(data, "provider_key", "") or None,
+                        slot_map=slot_map if isinstance(slot_map, dict) else None,
+                        slot_base=rv.optional_int(data, "slot_base", 0)))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/material_presets":
                 try:
                     self._send(200, service.material_presets(rv.optional_str(data, "nozzle", "0.4")))
@@ -759,8 +781,12 @@ def _make_handler(token: str):
                     fn = (service.material_mapping_confirm if self.path.endswith("confirm")
                           else service.material_mapping_remove)
                     self._send(200, fn(data))
+                except MappingFileUnavailable as e:
+                    # Nothing was written: the saved mappings could not be read. Retrying later may work.
+                    self._send(503, {"error": "mapping_file_unavailable", "message": str(e)})
                 except (ValidationError, ValueError) as e:
-                    self._send(400, {"error": str(e)})
+                    # `message` is what the person reads (a stale mapping explains itself); `error` stays a code.
+                    self._send(400, {"error": "mapping_refused", "message": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
             elif self.path == "/prepare_scaled":

@@ -1,0 +1,256 @@
+{
+  "browser": "Microsoft Edge (Chromium), headless",
+  "ui": "http://localhost:53468",
+  "results": [
+    {
+      "name": "a spool with a saved mapping offers 'Forget saved mapping'",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "spools sharing a kind-wide saved mapping say so ('similar spools')",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a named confirmation opens",
+      "ok": true,
+      "detail": "Forget the saved mapping for this spool?"
+    },
+    {
+      "name": "it says exactly what is affected and what is not",
+      "ok": true,
+      "detail": "Forget the saved mapping for this spool? Studio will no longer use the mapping saved for this spool, which names “Snapmaker PLA Matte @U1”. A mapping saved for "
+    },
+    {
+      "name": "initial focus is on Cancel",
+      "ok": true,
+      "detail": "Cancel"
+    },
+    {
+      "name": "nothing was sent just by asking",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Cancel closes it and removes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to the Forget control that opened it",
+      "ok": true,
+      "detail": "Forget saved mapping for Example Polymers PLA Matte #3"
+    },
+    {
+      "name": "Escape closes it and removes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to the Forget control after Escape",
+      "ok": true,
+      "detail": "Forget saved mapping for Example Polymers PLA Matte #3"
+    },
+    {
+      "name": "a failed removal is reported as unconfirmed, not as done",
+      "ok": true,
+      "detail": "Couldn't confirm the saved mapping was forgotten: reset mapping failed (500). The list shows what Studio read afterwards."
+    },
+    {
+      "name": "the saved mappings are untouched and still listed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a refused removal says plainly that nothing was forgotten",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the saved mappings are still there",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a file the engine cannot read is reported accurately: nothing was changed, try again",
+      "ok": true,
+      "detail": "Studio could not read its saved mappings just now (the file may be in use by another program). Nothing was changed. Try again in a moment."
+    },
+    {
+      "name": "it was not treated as corruption: the file is byte-identical and no .damaged file exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "and nothing was lost: both mappings are still saved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a spool can be chosen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the request names exactly one mapping and the preset shown",
+      "ok": true,
+      "detail": "{\"scope\":\"spool\",\"provider\":\"spoolman\",\"spool_id\":3,\"expect_preset_base\":\"Snapmaker PLA Matte @U1\",\"expect_ref\":\"sys:cb2f2e9ace5d7055\",\"expect_fingerprint\":\"ec018ef6a8fc5302e8b9bd9c\"}"
+    },
+    {
+      "name": "only the forgotten mapping left the engine's file",
+      "ok": true,
+      "detail": "[[\"signature\",{\"family\":\"pla\",\"subtype\":\"\",\"vendor\":\"acme filament\"}]]"
+    },
+    {
+      "name": "the list was read again: no Forget control remains for that spool",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the chosen spool (kind-wide mapping, not the forgotten one) kept its choice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus is not lost to the page body",
+      "ok": true,
+      "detail": "GreenExample Polymers PLA Matte#3420 g estimatedNo matchMaterial matches: PLASubtype not c"
+    },
+    {
+      "name": "the kind-wide confirmation says it reaches every such spool, and a spool's own mapping keeps it",
+      "ok": true,
+      "detail": "Forget the saved mapping for similar spools? Studio will no longer use the mapping saved for every Acme Filament PLA spool, which names “Snapmaker PLA SnapSpeed @U1”. A spool that has a mapping of its"
+    },
+    {
+      "name": "the choice that rested on the forgotten mapping was cleared, and the note says so",
+      "ok": true,
+      "detail": "Saved mapping forgotten. Your choice for slot 1 was cleared."
+    },
+    {
+      "name": "no saved mappings remain, and no Forget control",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "(picker build) a kind-wide mapping can be saved again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "(picker build) a spool chosen through the inventory picker is selected",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "(picker build) forgetting the mapping it rested on clears that choice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "(picker build) focus is not lost to the page body",
+      "ok": true,
+      "detail": "RedAcme Filament PLA#1640 g estimatedNo matchMaterial matches: PLASubtype not compared: th"
+    },
+    {
+      "name": "no request named another provider, a printer, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the provider look-alike was read and never written",
+      "ok": true,
+      "detail": "GET /api/v1/spool?allow_archived=true"
+    },
+    {
+      "name": "no unexpected console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "removeRequests": [
+    {
+      "body": {
+        "scope": "spool",
+        "provider": "spoolman",
+        "spool_id": 3,
+        "expect_preset_base": "Snapmaker PLA Matte @U1",
+        "expect_ref": "sys:cb2f2e9ace5d7055",
+        "expect_fingerprint": "ec018ef6a8fc5302e8b9bd9c"
+      },
+      "injected": true
+    },
+    {
+      "body": {
+        "scope": "spool",
+        "provider": "spoolman",
+        "spool_id": 3,
+        "expect_preset_base": "Snapmaker PLA Matte @U1",
+        "expect_ref": "sys:cb2f2e9ace5d7055",
+        "expect_fingerprint": "ec018ef6a8fc5302e8b9bd9c"
+      },
+      "injected": true
+    },
+    {
+      "body": {
+        "scope": "spool",
+        "provider": "spoolman",
+        "spool_id": 3,
+        "expect_preset_base": "Snapmaker PLA Matte @U1",
+        "expect_ref": "sys:cb2f2e9ace5d7055",
+        "expect_fingerprint": "ec018ef6a8fc5302e8b9bd9c"
+      },
+      "injected": false
+    },
+    {
+      "body": {
+        "scope": "spool",
+        "provider": "spoolman",
+        "spool_id": 3,
+        "expect_preset_base": "Snapmaker PLA Matte @U1",
+        "expect_ref": "sys:cb2f2e9ace5d7055",
+        "expect_fingerprint": "ec018ef6a8fc5302e8b9bd9c"
+      },
+      "injected": false
+    },
+    {
+      "body": {
+        "scope": "signature",
+        "provider": "spoolman",
+        "vendor": "Acme Filament",
+        "material": "PLA",
+        "subtype": null,
+        "expect_preset_base": "Snapmaker PLA SnapSpeed @U1",
+        "expect_ref": "sys:b89e5081eafe32dd",
+        "expect_fingerprint": "3ea8ed80f6f5f5301cfaffaa"
+      },
+      "injected": false
+    },
+    {
+      "body": {
+        "scope": "signature",
+        "provider": "spoolman",
+        "vendor": "Acme Filament",
+        "material": "PLA",
+        "subtype": null,
+        "expect_preset_base": "Snapmaker PLA SnapSpeed @U1",
+        "expect_ref": "sys:b89e5081eafe32dd",
+        "expect_fingerprint": "3ea8ed80f6f5f5301cfaffaa"
+      },
+      "injected": false
+    }
+  ],
+  "providerCalls": [
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true",
+    "GET /api/v1/spool?allow_archived=true"
+  ]
+}

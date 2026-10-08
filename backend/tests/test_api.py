@@ -617,3 +617,80 @@ def test_server_local_spools_rejects_bad_input(tmp_path, monkeypatch):
         assert status == 400
     finally:
         httpd.shutdown()
+
+
+def test_server_mapping_refusal_carries_a_message_the_person_can_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "nope", "provider": "spoolman"}, token)
+        assert status == 400
+        assert body["error"] == "mapping_refused" and body["message"]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1",
+                                 "expect_preset_base": 5}, token)
+        assert status == 400 and "text" in body["message"]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1"}, token)
+        assert status == 200 and body["removed"] is False
+    finally:
+        httpd.shutdown()
+
+
+def test_server_reports_an_unreadable_mapping_file_as_503_and_changes_nothing(tmp_path, monkeypatch):
+    import builtins
+    from snapstudio_core import material_mapping as mm
+    data = tmp_path / "data"
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(data))
+    data.mkdir()
+    mapping_file = data / mm.FILE_NAME
+    original = json.dumps({"schema": mm.SCHEMA, "mappings": [
+        {"scope": "spool", "provider": "spoolman", "spool_id": "1", "preset_base": "P", "ref": None, "fingerprint": None}]})
+    mapping_file.write_text(original, "utf-8")
+    real_open = builtins.open
+
+    def locked(file, *a, **k):
+        if str(file) == str(mapping_file) and (not a or "r" in str(a[0])):
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real_open(file, *a, **k)
+
+    monkeypatch.setattr(mm.time, "sleep", lambda s: None)
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        monkeypatch.setattr(builtins, "open", locked)
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1"}, token)
+        assert status == 503
+        assert body["error"] == "mapping_file_unavailable"
+        assert "could not read its saved mappings" in body["message"] and "Nothing was changed" in body["message"]
+        monkeypatch.undo()
+        assert mapping_file.read_text("utf-8") == original
+        assert not (data / (mm.FILE_NAME + ".damaged")).exists()
+    finally:
+        httpd.shutdown()
+
+
+def test_server_reports_a_store_that_cannot_be_read_as_503_for_a_save_too(tmp_path, monkeypatch):
+    from snapstudio_core import material_mapping as mm
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+
+    def unreadable(self, retry=True):
+        raise mm.MappingFileUnavailable("Studio could not read its saved mappings just now. Nothing was changed.")
+    monkeypatch.setattr(mm.Store, "_read_checked", unreadable)
+    monkeypatch.setattr(mm.Store, "put", lambda self, **k: self._read_checked())
+    # Store.put is stubbed to read first, as the real one does; the route (shared by confirm and remove) answers 503.
+    # (The /confirm route itself needs an Orca catalogue to get as far as the store.)
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1"}, token)
+        assert status == 503 and body["error"] == "mapping_file_unavailable"
+    finally:
+        httpd.shutdown()

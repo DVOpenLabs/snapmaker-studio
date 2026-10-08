@@ -18,9 +18,12 @@ never the key.
 """
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import os
 import tempfile
+import threading
 import time
 
 from . import paths, preset_catalog
@@ -60,24 +63,147 @@ def default_path(explicit_dir: str | None = None) -> str:
     return os.path.join(paths.data_dir(explicit_dir), FILE_NAME)
 
 
+# The API serves requests on threads; a read-modify-replace of the file must not interleave with another,
+# or a save could be lost or a forgotten mapping come back. One process owns the file, so one lock is enough.
+_WRITE_LOCK = threading.RLock()
+_HELD = threading.local()      # per-thread nesting depth, so only the outermost entry takes the OS lock
+_ABSENT = object()            # 'no expectation sent' - distinct from 'expected null'
+
+
+@contextlib.contextmanager
+def _exclusive(path: str):
+    """Hold the thread lock AND an OS file lock for the mapping file's folder, so two running copies of
+    Studio (each with its own engine process) cannot interleave a read-modify-replace either. The lock is
+    on a side file, never on the data file, which is replaced atomically."""
+    with _WRITE_LOCK:
+        depth = getattr(_HELD, "depth", 0)
+        if depth:                      # already inside: a second handle's byte lock would wait for ourselves
+            _HELD.depth = depth + 1
+            try:
+                yield
+            finally:
+                _HELD.depth = depth
+            return
+        folder = os.path.dirname(path) or "."
+        try:
+            os.makedirs(folder, exist_ok=True)
+            fh = open(os.path.join(folder, ".material-mappings.lock"), "a+b")
+        except OSError as exc:
+            raise _unavailable(exc) from exc
+        try:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    fh.seek(0)
+                    for attempt in range(6):
+                        try:
+                            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)   # blocks ~10 s per try, then raises
+                            break
+                        except OSError:
+                            if attempt == 5:       # a minute without the lock is not contention: say so, never hang
+                                raise
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            except OSError as exc:
+                raise _unavailable(exc) from exc
+            _HELD.depth = 1
+            yield
+        finally:
+            _HELD.depth = 0
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+            fh.close()
+
+
+class StaleMapping(ValueError):
+    """The saved mapping is no longer the one the person was shown."""
+
+
+class MappingFileUnavailable(RuntimeError):
+    """The mapping file exists but could not be read, so nothing was changed.
+
+    This is not corruption: nothing was learned about the file's content. A save or a forget that
+    cannot read the current mappings must stop, because writing from an unread state would replace
+    mappings it never saw."""
+
+
+# Access failures that are expected to pass on their own: another program (antivirus, a sync client,
+# another Studio) holds the file for a moment. Everything else that fails to read is permanent.
+_TRANSIENT_ERRNO = {errno.EACCES, errno.EBUSY, errno.EAGAIN, errno.EINTR}
+_TRANSIENT_WINERROR = {5, 32, 33}          # access denied, sharing violation, lock violation
+_READ_ATTEMPTS = 5
+_READ_BACKOFF_SECONDS = (0.02, 0.04, 0.08, 0.16)       # about 0.3 s in all, then give up
+
+
+def _unavailable(exc: OSError, transient: bool | None = None) -> "MappingFileUnavailable":
+    """Nothing was changed. Only a failure that is expected to pass says that trying again may help."""
+    if _is_transient(exc) if transient is None else transient:
+        return MappingFileUnavailable("Studio could not read its saved mappings just now (the file may be in use by "
+                                      "another program). Nothing was changed. Try again in a moment.")
+    return MappingFileUnavailable("Studio could not read its saved mappings (the file or its folder could not be "
+                                  "accessed). Nothing was changed.")
+
+
+def _is_transient(exc: OSError) -> bool:
+    if isinstance(exc, (IsADirectoryError, NotADirectoryError, FileNotFoundError)):
+        return False
+    return (isinstance(exc, PermissionError) or exc.errno in _TRANSIENT_ERRNO
+            or getattr(exc, "winerror", None) in _TRANSIENT_WINERROR)
+
+
 class Store:
-    """The mapping file. Reads never raise; a damaged file reads as empty."""
+    """The mapping file. Looking never raises: a damaged or unreadable file reads as empty for that call (only a
+    damaged one is ever set aside, and only by a save or forget that has read it)."""
 
     def __init__(self, path: str | None = None):
         self.path = path or default_path()
 
-    def _read(self) -> tuple[list[dict], bool]:
-        try:
-            with open(self.path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        except FileNotFoundError:
-            return [], False
-        except (OSError, ValueError):
-            return [], True
+    def _read_checked(self, retry: bool = True) -> tuple[list[dict], bool]:
+        """The saved mappings and whether the file is confirmed damaged.
+
+        - missing file: no mappings, not damaged
+        - read in full but not valid (bad JSON, bytes that are not text, wrong schema): no mappings, DAMAGED
+        - cannot be read (access denied, in use, a folder where the file should be, an I/O error): after a
+          short bounded retry for the transient ones only, raises :class:`MappingFileUnavailable`. It is never
+          reported as damaged, because nothing was read.
+        """
+        data = None
+        for attempt in range(_READ_ATTEMPTS):
+            try:
+                try:
+                    fh = open(self.path, "r", encoding="utf-8")
+                except FileNotFoundError:           # only OPENING can say the file is missing
+                    return [], False
+                with fh:
+                    data = json.load(fh)            # an error here, even ENOENT, is a failed read, not a missing file
+                break
+            except ValueError:                      # includes JSONDecodeError and UnicodeDecodeError: content was read
+                return [], True
+            except OSError as exc:
+                # Windows reports a folder where the file should be as "access denied": that is permanent, not a hold.
+                transient = _is_transient(exc) and not os.path.isdir(self.path)
+                if transient and retry and attempt < _READ_ATTEMPTS - 1:
+                    time.sleep(_READ_BACKOFF_SECONDS[attempt])
+                    continue
+                raise _unavailable(exc, transient) from exc
         rows = data.get("mappings") if isinstance(data, dict) else None
         if not isinstance(rows, list) or (isinstance(data, dict) and data.get("schema") != SCHEMA):
             return [], True
         return [r for r in rows if isinstance(r, dict) and r.get("preset_base")], False
+
+    def _read(self) -> tuple[list[dict], bool]:
+        """For callers that only look: an unreadable file reads as no mappings for this call (and is not
+        marked damaged), so a momentary access failure never changes anything on disk."""
+        try:
+            return self._read_checked(retry=False)      # one attempt: a lookup per spool must not each wait out a back-off
+        except MappingFileUnavailable:
+            return [], False
 
     def all(self) -> list[dict]:
         return self._read()[0]
@@ -135,23 +261,34 @@ class Store:
             if not sig or not any(sig.values()):
                 raise ValueError("a signature mapping needs vendor, material or subtype")
             row["signature"] = {k: _norm(v) for k, v in sig.items()}
-        rows, damaged = self._read()
-        rows = [r for r in rows if not _same_key(r, row)] + [row]
-        self._write(rows, keep_damaged=damaged)
+        with _exclusive(self.path):
+            rows, damaged = self._read_checked()
+            rows = [r for r in rows if not _same_key(r, row)] + [row]
+            self._write(rows, keep_damaged=damaged)
         return row
 
-    def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None) -> bool:
+    def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None,
+               expect_preset_base=_ABSENT, expect_ref=_ABSENT, expect_fingerprint=_ABSENT) -> bool:
+        """Forget one mapping. With the `expect_*` values (the preset, its installed record and its
+        fingerprint, as the person was shown them), only if the saved mapping is still exactly that: one
+        replaced since raises :class:`StaleMapping` and is left alone."""
         probe = {"scope": scope, "provider": _text(provider)}
         if scope == SCOPE_SPOOL:
             probe["spool_id"] = _text(spool_id)
         else:
             probe["signature"] = sig
-        rows, damaged = self._read()
-        kept = [r for r in rows if not _same_key(r, probe)]
-        if len(kept) == len(rows):
-            return False
-        self._write(kept, keep_damaged=damaged)
-        return True
+        expected = {k: v for k, v in (("preset_base", expect_preset_base), ("ref", expect_ref),
+                                      ("fingerprint", expect_fingerprint)) if v is not _ABSENT}
+        with _exclusive(self.path):
+            rows, damaged = self._read_checked()
+            hit = [r for r in rows if _same_key(r, probe)]
+            if not hit:
+                return False
+            if any(r.get(k) != v for r in hit for k, v in expected.items()):
+                raise StaleMapping("That saved mapping has changed since it was shown. Nothing was forgotten.")
+            kept = [r for r in rows if not _same_key(r, probe)]
+            self._write(kept, keep_damaged=damaged)
+            return True
 
     def _write(self, rows: list[dict], *, keep_damaged: bool) -> None:
         folder = os.path.dirname(self.path) or "."
@@ -165,7 +302,15 @@ class Store:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump({"schema": SCHEMA, "mappings": rows}, fh, indent=2, sort_keys=True)
-            os.replace(tmp, self.path)
+            for attempt in range(20):
+                try:
+                    os.replace(tmp, self.path)
+                    break
+                except PermissionError:
+                    # Windows refuses to replace a file another thread has open for reading; wait it out.
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.025)
         except BaseException:
             try:
                 os.unlink(tmp)
@@ -204,6 +349,9 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
                                saved.get("proof"), saved.get("source"))
         out.update(_carry(found))
         out["match_source"] = SOURCE_NONE if found["status"] == NO_MATCH else source
+        # The saved row exactly as stored: what a later Forget compares against, so a mapping replaced
+        # in the meantime is never removed by a confirmation that described the old one.
+        out["saved"] = {k: saved.get(k) for k in ("preset_base", "ref", "fingerprint")}
         if found["status"] == NO_MATCH:
             out["reason"] = ("The preset you confirmed earlier is not available for this nozzle "
                              "or is no longer installed. " + found["reason"])
