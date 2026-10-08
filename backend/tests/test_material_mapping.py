@@ -1,5 +1,6 @@
 """Remembered spool -> installed Orca preset mappings."""
 import json
+import os
 
 import pytest
 
@@ -311,3 +312,138 @@ def test_an_expected_null_identity_is_compared_not_skipped(catalog, store):
     with pytest.raises(mm.StaleMapping):
         store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", expect_ref=None)
     assert len(store.all()) == 1
+
+
+# ---- unreadable is not corrupt (#89) ------------------------------------------------------------
+
+import builtins
+import errno as _errno
+
+
+def _seed(store, n=5):
+    rows = [{"scope": "spool", "provider": "spoolman", "spool_id": str(i), "preset_base": "P", "ref": None,
+             "fingerprint": None} for i in range(n)]
+    os.makedirs(os.path.dirname(store.path), exist_ok=True)
+    with open(store.path, "w", encoding="utf-8") as fh:
+        json.dump({"schema": mm.SCHEMA, "mappings": rows}, fh)
+    with open(store.path, "rb") as fh:
+        return fh.read()
+
+
+class _Flaky:
+    """Make the first `fail` opens of the mapping file (for reading) raise `exc`; count every attempt."""
+
+    def __init__(self, monkeypatch, path, exc, fail):
+        self.attempts, self.fail, self.exc = 0, fail, exc
+        real = builtins.open
+
+        def opener(file, *a, **k):
+            if str(file) == path and (not a or "r" in str(a[0])):
+                self.attempts += 1
+                if self.attempts <= self.fail:
+                    raise exc
+            return real(file, *a, **k)
+        monkeypatch.setattr(builtins, "open", opener)
+        monkeypatch.setattr(mm.time, "sleep", lambda s: None)       # the bounded back-off, without waiting
+
+
+_PRESET = {"status": "proven", "base_name": "P", "fingerprint": None, "ref": None, "source": None}
+_SHARING = PermissionError(_errno.EACCES, "The process cannot access the file because it is being used by another process")
+
+
+def _put(store, sid="new"):
+    return store.put(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=sid, preset=dict(_PRESET), origin=mm.SOURCE_MANUAL)
+
+
+def test_a_transient_read_failure_is_retried_and_a_save_keeps_every_other_mapping(store, monkeypatch):
+    _seed(store)
+    flaky = _Flaky(monkeypatch, store.path, _SHARING, fail=2)
+    _put(store)
+    assert flaky.attempts == 3
+    assert sorted(r["spool_id"] for r in store.all()) == ["0", "1", "2", "3", "4", "new"]
+    assert not os.path.exists(store.path + ".damaged")
+
+
+def test_a_transient_read_failure_is_retried_and_a_forget_removes_only_the_requested_mapping(store, monkeypatch):
+    _seed(store)
+    flaky = _Flaky(monkeypatch, store.path, _SHARING, fail=3)
+    assert store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="2") is True
+    assert flaky.attempts == 4
+    assert sorted(r["spool_id"] for r in store.all()) == ["0", "1", "3", "4"]
+    assert not os.path.exists(store.path + ".damaged")
+
+
+def test_a_persistent_access_failure_fails_the_save_and_leaves_the_live_file_alone(store, monkeypatch):
+    before = _seed(store)
+    flaky = _Flaky(monkeypatch, store.path, _SHARING, fail=10 ** 6)
+    with pytest.raises(mm.MappingFileUnavailable) as err:
+        _put(store)
+    assert flaky.attempts == mm._READ_ATTEMPTS                       # bounded
+    assert "in use by another program" in str(err.value) and "Nothing was changed" in str(err.value)
+    monkeypatch.undo()
+    with open(store.path, "rb") as fh:
+        assert fh.read() == before
+    assert not os.path.exists(store.path + ".damaged")
+
+
+def test_a_persistent_access_failure_fails_the_forget_and_leaves_the_live_file_alone(store, monkeypatch):
+    before = _seed(store)
+    _Flaky(monkeypatch, store.path, _SHARING, fail=10 ** 6)
+    with pytest.raises(mm.MappingFileUnavailable):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="1")
+    monkeypatch.undo()
+    with open(store.path, "rb") as fh:
+        assert fh.read() == before
+    assert not os.path.exists(store.path + ".damaged")
+
+
+def test_a_permanent_read_error_is_not_retried_and_is_not_corruption(store, monkeypatch):
+    before = _seed(store)
+    flaky = _Flaky(monkeypatch, store.path, OSError(_errno.EIO, "input/output error"), fail=10 ** 6)
+    with pytest.raises(mm.MappingFileUnavailable) as err:
+        _put(store)
+    assert flaky.attempts == 1                                       # permanent: no retry
+    assert "in use by another program" not in str(err.value)         # and no false promise that waiting helps
+    monkeypatch.undo()
+    with open(store.path, "rb") as fh:
+        assert fh.read() == before
+    assert not os.path.exists(store.path + ".damaged")
+
+
+def test_a_folder_where_the_file_should_be_is_unreadable_not_damaged(store):
+    os.makedirs(store.path)                                          # a directory named like the mapping file
+    with pytest.raises(mm.MappingFileUnavailable):
+        _put(store)
+    assert os.path.isdir(store.path) and not os.path.exists(store.path + ".damaged")
+
+
+def test_reading_only_never_changes_anything_when_the_file_cannot_be_read(store, monkeypatch):
+    before = _seed(store)
+    _Flaky(monkeypatch, store.path, _SHARING, fail=10 ** 6)
+    assert store.all() == [] and store.find("spoolman", "1", None)[0] is None
+    monkeypatch.undo()
+    with open(store.path, "rb") as fh:
+        assert fh.read() == before
+    assert not os.path.exists(store.path + ".damaged")
+
+
+@pytest.mark.parametrize("content", [b"{not json", b"\xff\xfe\x00bad bytes", b'{"schema": "other", "mappings": []}', b"[]", b""])
+def test_content_that_was_read_and_is_invalid_is_still_confirmed_corruption(store, content):
+    os.makedirs(os.path.dirname(store.path))
+    with open(store.path, "wb") as fh:
+        fh.write(content)
+    assert store.all() == []
+    _put(store)
+    assert os.path.exists(store.path + ".damaged")
+    with open(store.path + ".damaged", "rb") as fh:
+        assert fh.read() == content                                   # set aside intact, not lost
+    assert [r["spool_id"] for r in store.all()] == ["new"]
+
+
+def test_which_errors_count_as_transient():
+    assert mm._is_transient(PermissionError(13, "x"))
+    assert mm._is_transient(OSError(_errno.EBUSY, "busy"))
+    err = OSError(0, "sharing violation"); err.winerror = 32
+    assert mm._is_transient(err)
+    for permanent in (IsADirectoryError(21, "dir"), NotADirectoryError(20, "nd"), FileNotFoundError(2, "gone"), OSError(_errno.EIO, "io")):
+        assert not mm._is_transient(permanent)

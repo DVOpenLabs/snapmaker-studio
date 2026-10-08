@@ -230,6 +230,19 @@ describe("forgetting", () => {
       "That saved mapping has changed since it was shown. Nothing was forgotten. The list shows what is saved now.");
   });
 
+  it("says plainly that nothing was changed when the engine could not read its saved mappings", async () => {
+    await mount();
+    const unreadable = Object.assign(new Error("Studio could not read its saved mappings just now (the file may be in use by another program). Nothing was changed. Try again in a moment."), { code: "mapping_file_unavailable" });
+    api.removeMaterialMapping.mockRejectedValue(unreadable);
+    openFor(0);
+    await act(async () => { fireEvent.click(confirm()); });
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(screen.getByTestId("forget-note").textContent).toBe(
+      "Studio could not read its saved mappings just now (the file may be in use by another program). Nothing was changed. Try again in a moment.");
+    expect(api.projectMaterials).toHaveBeenCalledTimes(1);                      // not read again: it would show the same unreadable file as "no saved mappings"
+    expect(forgetButtons()).toHaveLength(2);                                    // the list is exactly as it was
+  });
+
   it("clears the choice that rested on a mapping when a lost reply hid a removal that did happen", async () => {
     await mount();
     fireEvent.click(screen.getAllByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ })[0]);   // slot 1 chooses spool 124 via its saved mapping

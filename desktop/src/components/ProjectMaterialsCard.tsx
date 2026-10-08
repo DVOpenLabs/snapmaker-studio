@@ -645,7 +645,12 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
         : { kind: "error", text: `The saved mapping was forgotten, but Studio could not read the project again to refresh this list.${cleared}` });
       setForget(null);
     } catch (e: any) {
-      if (gen === generation.current) {
+      if (gen === generation.current && e?.code === "mapping_file_unavailable") {
+        // The engine could not read its saved mappings and changed nothing. Reading the project now would show the same
+        // unreadable file as "no saved mappings", so the list is left exactly as it was.
+        setForgetNote({ kind: "error", text: `${String(e?.message ?? e).replace(/[.\s]+$/, "")}.` });
+        setForget(null);
+      } else if (gen === generation.current) {
         // A lost or malformed reply does not prove the engine left the file alone, so read the project again and say so.
         let reread = true;
         let fresh: ProjectMaterialsAnalysis | null = null;

@@ -19,6 +19,7 @@ never the key.
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import tempfile
@@ -118,24 +119,74 @@ class StaleMapping(ValueError):
     """The saved mapping is no longer the one the person was shown."""
 
 
+class MappingFileUnavailable(RuntimeError):
+    """The mapping file exists but could not be read, so nothing was changed.
+
+    This is not corruption: nothing was learned about the file's content. A save or a forget that
+    cannot read the current mappings must stop, because writing from an unread state would replace
+    mappings it never saw."""
+
+
+# Access failures that are expected to pass on their own: another program (antivirus, a sync client,
+# another Studio) holds the file for a moment. Everything else that fails to read is permanent.
+_TRANSIENT_ERRNO = {errno.EACCES, errno.EBUSY, errno.EAGAIN, errno.EINTR}
+_TRANSIENT_WINERROR = {5, 32, 33}          # access denied, sharing violation, lock violation
+_READ_ATTEMPTS = 5
+_READ_BACKOFF_SECONDS = (0.02, 0.04, 0.08, 0.16)       # about 0.3 s in all, then give up
+
+
+def _is_transient(exc: OSError) -> bool:
+    if isinstance(exc, (IsADirectoryError, NotADirectoryError, FileNotFoundError)):
+        return False
+    return (isinstance(exc, PermissionError) or exc.errno in _TRANSIENT_ERRNO
+            or getattr(exc, "winerror", None) in _TRANSIENT_WINERROR)
+
+
 class Store:
     """The mapping file. Reads never raise; a damaged file reads as empty."""
 
     def __init__(self, path: str | None = None):
         self.path = path or default_path()
 
-    def _read(self) -> tuple[list[dict], bool]:
-        try:
-            with open(self.path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        except FileNotFoundError:
-            return [], False
-        except (OSError, ValueError):
-            return [], True
+    def _read_checked(self) -> tuple[list[dict], bool]:
+        """The saved mappings and whether the file is confirmed damaged.
+
+        - missing file: no mappings, not damaged
+        - read in full but not valid (bad JSON, bytes that are not text, wrong schema): no mappings, DAMAGED
+        - cannot be read (access denied, in use, a folder where the file should be, an I/O error): after a
+          short bounded retry for the transient ones only, raises :class:`MappingFileUnavailable`. It is never
+          reported as damaged, because nothing was read.
+        """
+        data = None
+        for attempt in range(_READ_ATTEMPTS):
+            try:
+                with open(self.path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                break
+            except FileNotFoundError:
+                return [], False
+            except ValueError:                      # includes JSONDecodeError and UnicodeDecodeError: content was read
+                return [], True
+            except OSError as exc:
+                if _is_transient(exc) and attempt < _READ_ATTEMPTS - 1:
+                    time.sleep(_READ_BACKOFF_SECONDS[attempt])
+                    continue
+                raise MappingFileUnavailable(
+                    "Studio could not read its saved mappings just now"
+                    + (" (the file may be in use by another program)" if _is_transient(exc) else "")
+                    + ". Nothing was changed. Try again in a moment.") from exc
         rows = data.get("mappings") if isinstance(data, dict) else None
         if not isinstance(rows, list) or (isinstance(data, dict) and data.get("schema") != SCHEMA):
             return [], True
         return [r for r in rows if isinstance(r, dict) and r.get("preset_base")], False
+
+    def _read(self) -> tuple[list[dict], bool]:
+        """For callers that only look: an unreadable file reads as no mappings for this call (and is not
+        marked damaged), so a momentary access failure never changes anything on disk."""
+        try:
+            return self._read_checked()
+        except MappingFileUnavailable:
+            return [], False
 
     def all(self) -> list[dict]:
         return self._read()[0]
@@ -194,7 +245,7 @@ class Store:
                 raise ValueError("a signature mapping needs vendor, material or subtype")
             row["signature"] = {k: _norm(v) for k, v in sig.items()}
         with _exclusive(self.path):
-            rows, damaged = self._read()
+            rows, damaged = self._read_checked()
             rows = [r for r in rows if not _same_key(r, row)] + [row]
             self._write(rows, keep_damaged=damaged)
         return row
@@ -212,7 +263,7 @@ class Store:
         expected = {k: v for k, v in (("preset_base", expect_preset_base), ("ref", expect_ref),
                                       ("fingerprint", expect_fingerprint)) if v is not _ABSENT}
         with _exclusive(self.path):
-            rows, damaged = self._read()
+            rows, damaged = self._read_checked()
             hit = [r for r in rows if _same_key(r, probe)]
             if not hit:
                 return False
