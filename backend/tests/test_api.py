@@ -675,7 +675,7 @@ def test_server_reports_an_unreadable_mapping_file_as_503_and_changes_nothing(tm
         httpd.shutdown()
 
 
-def test_server_confirm_route_also_reports_an_unreadable_mapping_file_as_503(tmp_path, monkeypatch):
+def test_server_reports_a_store_that_cannot_be_read_as_503_for_a_save_too(tmp_path, monkeypatch):
     from snapstudio_core import material_mapping as mm
     monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
 
@@ -683,6 +683,8 @@ def test_server_confirm_route_also_reports_an_unreadable_mapping_file_as_503(tmp
         raise mm.MappingFileUnavailable("Studio could not read its saved mappings just now. Nothing was changed.")
     monkeypatch.setattr(mm.Store, "_read_checked", unreadable)
     monkeypatch.setattr(mm.Store, "put", lambda self, **k: self._read_checked())
+    # Store.put is stubbed to read first, as the real one does; the route (shared by confirm and remove) answers 503.
+    # (The /confirm route itself needs an Orca catalogue to get as far as the store.)
     httpd, token = build_server(port=0)
     _run(httpd)
     try:
