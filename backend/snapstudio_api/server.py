@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from snapstudio_core import paths as _paths
 from snapstudio_core.errors import SnapStudioError
+from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
 from . import service
 from . import request_validation as rv
@@ -780,6 +781,9 @@ def _make_handler(token: str):
                     fn = (service.material_mapping_confirm if self.path.endswith("confirm")
                           else service.material_mapping_remove)
                     self._send(200, fn(data))
+                except MappingFileUnavailable as e:
+                    # Nothing was written: the saved mappings could not be read. Retrying later may work.
+                    self._send(503, {"error": "mapping_file_unavailable", "message": str(e)})
                 except (ValidationError, ValueError) as e:
                     # `message` is what the person reads (a stale mapping explains itself); `error` stays a code.
                     self._send(400, {"error": "mapping_refused", "message": str(e)})

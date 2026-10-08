@@ -17,7 +17,7 @@
 // The browser is Microsoft Edge, not the Tauri window, WebKitGTK or a screen reader.
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -237,6 +237,29 @@ try {
   await note().filter({ hasText: "changed since it was shown" }).waitFor();
   check("a refused removal says plainly that nothing was forgotten", /Nothing was forgotten\./.test(await note().innerText()));
   check("the saved mappings are still there", mappingFile().length === 2);
+
+  /* the engine cannot read its saved mappings (another program holds the file): nothing may change, and the message is accurate */
+  const beforeBytes = readFileSync(join(dataDir, "material-mappings.json"));
+  const holder = spawn(process.env.PYTHON || "py", ["-c", [
+    "import msvcrt, os, sys",
+    "fd = os.open(sys.argv[1], os.O_RDWR)",
+    "msvcrt.locking(fd, msvcrt.LK_NBLCK, 4096)",          // a byte-range lock: other readers get a lock violation
+    "print('locked', flush=True)",
+    "sys.stdin.read()"].join("\n"), join(dataDir, "material-mappings.json")], { stdio: ["pipe", "pipe", "ignore"] });
+  children.push(holder);
+  await new Promise((resolve, reject) => { holder.stdout.once("data", resolve); setTimeout(() => reject(new Error("could not hold the mapping file")), 15000); });
+  await forgetSpool().first().focus();
+  await page.keyboard.press("Enter");
+  await dialog().waitFor();
+  await page.getByRole("button", { name: "Confirm" }).click();
+  await note().filter({ hasText: "could not read its saved mappings" }).waitFor({ timeout: 20000 });
+  const lockedNote = (await note().innerText()).replace(/\s+/g, " ");
+  check("a file the engine cannot read is reported accurately: nothing was changed, try again", /in use by another program/.test(lockedNote) && /Nothing was changed\./.test(lockedNote) && !/Couldn.t confirm/.test(lockedNote), lockedNote);
+  await shotNote("03b-saved-mappings-unreadable");
+  holder.stdin.end();
+  await sleep(500);
+  check("it was not treated as corruption: the file is byte-identical and no .damaged file exists", Buffer.compare(readFileSync(join(dataDir, "material-mappings.json")), beforeBytes) === 0 && !existsSync(join(dataDir, "material-mappings.json.damaged")));
+  check("and nothing was lost: both mappings are still saved", mappingFile().length === 2);
 
   /* choose a spool that rests on the kind-wide mapping, so forgetting it should clear that choice */
   await slot1().getByRole("button", { name: /^(?!Forget).*Red/ }).first().click();
