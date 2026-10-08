@@ -94,6 +94,51 @@ def test_the_object_list_is_read_as_xml_whatever_the_quoting_or_attribute_order(
     assert cfg_slots[3]["object_extruder"] == ["7"] and cfg_slots[2]["part_extruder"][0]["part"] == "1"
 
 
+def test_a_missing_or_empty_object_list_is_unknown_not_no_reference_found(tmp_path):
+    for name, content in (("missing", None), ("empty", "  ")):
+        path = tmp_path / f"{name}.3mf"
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("3D/3dmodel.model", "<model/>")
+            z.writestr("Metadata/project_settings.config", json.dumps(_cfg(filament_colour=["#FF0000", "#00FF00"])))
+            if content is not None:
+                z.writestr("Metadata/model_settings.config", content)
+        snap = pc.snapshot(path)
+        assert [s["usage"]["verdict"] for s in snap["slots"]] == ["unknown", "unknown"], name
+        assert snap["object_list_readable"] is False
+
+
+def test_an_oversized_or_huge_object_list_is_refused_not_expanded(tmp_path, monkeypatch):
+    monkeypatch.setattr(pc, "MAX_OBJECT_LIST_BYTES", 200)
+    big = _five_colour_project(tmp_path, model_settings="<config>" + "<object id='1'/>" * 50 + "</config>")
+    assert pc.snapshot(big)["slots"][4]["usage"]["verdict"] == "unknown"
+    monkeypatch.setattr(pc, "MAX_OBJECT_LIST_BYTES", 8 * 1024 * 1024)
+    monkeypatch.setattr(pc, "MAX_OBJECT_LIST_NODES", 10)
+    many = _five_colour_project(tmp_path, name="many.3mf", model_settings="<config>" + "<object id='1'/>" * 50 + "</config>")
+    snap = pc.snapshot(many)
+    assert snap["slots"][4]["usage"]["verdict"] == "unknown" and snap["object_list_readable"] is False
+
+
+def test_an_id_that_is_not_a_number_is_never_printed(tmp_path, capsys):
+    ms = ("<config><object id='Secret Client Bracket.stl'><metadata key='extruder' value='2'/>"
+          "<part id='Another Name' subtype='Secret Subtype'><metadata key='extruder' value='3'/></part></object></config>")
+    pc.main([str(_five_colour_project(tmp_path, model_settings=ms))])
+    out = capsys.readouterr().out
+    assert "Secret" not in out and "Another" not in out and "Bracket" not in out
+
+
+def test_a_part_level_filament_override_counts_and_inherit_zero_does_not_count_as_naming_a_slot(tmp_path):
+    ms = ("<config><object id='1'><part id='2' subtype='normal_part'><metadata key='extruder' value='0'/>"
+          "<metadata key='wall_filament' value='3'/></part></object></config>")
+    by = {s["slot"]: s["usage"] for s in pc.snapshot(_five_colour_project(tmp_path, model_settings=ms))["slots"]}
+    assert "wall_filament (set on part 2 of object 1)" in by[3]["process_roles"]
+    assert "default_extruder" in by[1]["referenced_by"]            # an extruder of 0 inherits, so the first filament prints
+
+
+def test_the_digest_is_streamed_and_names_no_file(tmp_path):
+    snap = pc.snapshot(_five_colour_project(tmp_path, name="Client Name.3mf"), "source")
+    assert snap["file"].startswith("source (sha256 ") and "Client" not in snap["file"]
+
+
 def test_an_unreadable_object_list_is_unknown_not_no_reference_found(tmp_path):
     path = tmp_path / "bad.3mf"
     with zipfile.ZipFile(path, "w") as z:

@@ -4,7 +4,7 @@ import { useReducer } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { candidate, mapping, slot } from "@/lib/projectMaterials.fixtures";
 import {
-  SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
+  KEEP_OWN_NOTICE, KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 import { useProvider } from "@/store/provider";
 
@@ -150,6 +150,17 @@ describe("Choose another spool", () => {
     expect(document.activeElement).toBe(within(picker()).getByRole("button", { name: /Green/ }));
   });
 
+  it("describes the confirmation by the engine's warning, and drops it when the search hides that spool", async () => {
+    await open();
+    fireEvent.click(within(screen.getByTestId("inventory-picker")).getByRole("button", { name: /Green/ }));
+    const confirm = screen.getByTestId("family-confirm");
+    expect(document.getElementById(confirm.getAttribute("aria-describedby")!)!.textContent).toContain(PETG_WARNING);
+    fireEvent.change(screen.getByLabelText(/Find a spool for slot 1/), { target: { value: "blue" } });
+    expect(screen.queryByTestId("family-confirm")).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Find a spool for slot 1/), { target: { value: "" } });
+    expect(screen.queryByTestId("family-confirm")).toBeNull();            // it does not come back by itself
+  });
+
   it("returns focus to the button that opened the list once it closes", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Close the spool list" }));
@@ -203,7 +214,9 @@ describe("a spool with no Orca preset", () => {
   it("says the project's existing filament preset will remain, in the exact words", () => {
     render(<Harness a={analysis()} />);
     fireEvent.click(screen.getByRole("button", { name: /Yoopai PLA Matte/ }));
-    expect(screen.getByTestId("spool-without-preset").textContent).toBe(SPOOL_WITHOUT_PRESET);
+    // the maintainer's sentence first, then what Studio did not establish about the preset it leaves alone
+    expect(screen.getByTestId("spool-without-preset").textContent).toBe(`${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}`);
+    expect(SPOOL_PRESET_CAVEAT).toContain("does not check how Snapmaker Orca will treat it");
     expect(SPOOL_WITHOUT_PRESET).toBe("Spool selected, but no Orca preset selected. The project's existing filament preset will remain.");
     expect(request()).toEqual([expect.objectContaining({ slot: 0, preset: null, colour: "#FF0000" })]);   // colour only
   });
@@ -224,6 +237,16 @@ describe("a spool with no Orca preset", () => {
     const text = screen.getByTestId("spool-without-preset").textContent ?? "";
     expect(text).toBe(SPOOL_WITHOUT_PRESET_NONE_EXISTING);
     expect(text).not.toContain("will remain");
+  });
+
+  it("keep-the-project's-filament does not claim an existing preset when the project names none", () => {
+    render(<Harness a={analysis({ slots: [slot({ settings_id: null, candidates: [RED], candidate_count: 1 })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Keep project's filament" }));
+    expect(screen.getByTestId("keep-own-notice").textContent).toBe(KEEP_OWN_NOTICE_NONE_EXISTING);
+    cleanup();
+    render(<Harness a={analysis()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Keep project's filament" }));
+    expect(screen.getByTestId("keep-own-notice").textContent).toBe(KEEP_OWN_NOTICE);
   });
 
   it("says nothing will change when the spool has no colour either", () => {

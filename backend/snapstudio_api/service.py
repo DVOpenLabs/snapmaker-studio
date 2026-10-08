@@ -340,7 +340,7 @@ def project_materials_inventory(path: str, slot: int, provider: str | None = Non
     ranked suggestions. Read-only; the provider is read once and never written to."""
     from snapstudio_core import project_materials as pm
 
-    opened = _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman)
+    opened = _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman, slot=int(slot))
     if "supported" in opened:
         return opened
     cfg, plates, kind, url, state = (opened[k] for k in ("cfg", "plates", "kind", "url", "state"))
@@ -350,8 +350,10 @@ def project_materials_inventory(path: str, slot: int, provider: str | None = Non
         store=store if store is not None else _material_store())}
 
 
-def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman) -> dict:
-    """The project's settings and one provider read, or an unsupported-project answer."""
+def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman, slot=None) -> dict:
+    """The project's settings and one provider read, or an unsupported-project answer.
+
+    A `slot` the project does not have is refused before the provider is contacted."""
     from snapstudio_core import material_providers as providers, project_materials as pm
 
     if str(path).lower().endswith(".stl"):
@@ -362,6 +364,10 @@ def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_b
     if cfg is None:
         return {"schema": pm.SCHEMA, "supported": False,
                 "reason": "This file has no project settings, so it has no filament slots to map."}
+    if slot is not None:
+        from snapstudio_core.filaments import filament_count
+        if not 0 <= slot < filament_count(cfg):
+            raise ValueError(f"slot {slot} is not one of this project's {filament_count(cfg)} filaments")
     kind, url = _provider_choice(provider, provider_url, spoolman)
     state = None
     if url:

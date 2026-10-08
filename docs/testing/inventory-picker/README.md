@@ -14,7 +14,7 @@ data. Script: `tools/acceptance/inventory-picker-keyboard.mjs` (Windows; Edge/Ch
 - **Not tested:** a real SpoolEase, Spoolman or Bambuddy instance; Orca opening a prepared copy; the Tauri window or
   WebKitGTK for this picker (the printer-confirmation prompt has its own Linux run in `../linux-webkitgtk-dialog`); a screen reader.
 - **Fail-closed:** the run aborts any engine request naming another provider, a printer other than the loopback address,
-  or network discovery. (An earlier run of this script correctly blocked four `/preflight` requests that carried the
+  or network discovery. (An earlier run correctly blocked four `/preflight` requests that carried the
   default printer name; the script now seeds the loopback address first, as the other acceptance scripts do.)
 
 ## Per case

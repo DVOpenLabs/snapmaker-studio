@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText,
+  KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText,
   presetSourceLabel, presetStatusFor, samePreset, slotNumber, unconfirmedSlots,
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialInventory, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
@@ -212,7 +212,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadIn
       {loadInventory && (
         <div className="space-y-1">
           {!browsing && (
-            <button ref={browseToggle} type="button" aria-expanded={false} className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
+            <button ref={browseToggle} type="button" className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
               {INVENTORY_COPY.button}
             </button>
           )}
@@ -257,13 +257,13 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadIn
           )}
         </div>
 
-        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{KEEP_OWN_NOTICE}</p>}
+        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{slot.settings_id ? KEEP_OWN_NOTICE : KEEP_OWN_NOTICE_NONE_EXISTING}</p>}
 
         {/* A spool decides the colour. Without an Orca preset it does not change the filament preset, and the person is told so. */}
         {spool && !choice.preset && !choice.keepOwn && (
           <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{slot.settings_id ? SPOOL_WITHOUT_PRESET : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
+            <span>{slot.settings_id ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}` : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
           </p>
         )}
 

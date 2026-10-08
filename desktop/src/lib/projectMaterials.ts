@@ -202,6 +202,9 @@ export interface MappingRequest {
 export const SPOOL_WITHOUT_PRESET =
   "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.";
 
+/** Said with it: what Studio did and did not establish about the preset it leaves alone. */
+export const SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it.";
+
 /** The same, when the project names no filament preset for the slot: there is nothing that "will remain". */
 export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
   "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you.";
@@ -220,6 +223,10 @@ export function candidateAsSpool(c: MaterialCandidate): ProviderSpool {
     remaining_quality: c.remaining_quality, archived: false,
   } as unknown as ProviderSpool;
 }
+
+/** The same, for a slot that keeps its own filament when the project names no preset for it. */
+export const KEEP_OWN_NOTICE_NONE_EXISTING =
+  "Studio keeps this slot as the project has it. The project names no filament preset for it, and Studio does not choose one for you.";
 
 /** The exact sentence for a slot that keeps its own filament. */
 export const KEEP_OWN_NOTICE =

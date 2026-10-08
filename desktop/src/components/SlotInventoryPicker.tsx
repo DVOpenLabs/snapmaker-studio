@@ -108,9 +108,9 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
           )}
         </button>
         {confirming && warning && (
-          <div className="space-y-2 border-t border-border bg-repairable/10 p-2 text-xs" role="alertdialog" aria-label="Confirm a different material" data-testid="family-confirm"
+          <div className="space-y-2 border-t border-border bg-repairable/10 p-2 text-xs" role="alertdialog" aria-label="Confirm a different material" aria-describedby={`${uid}-warn`} data-testid="family-confirm"
             onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); dismissConfirm(); } }}>
-            <p className="flex items-start gap-1.5 text-repairable"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>
+            <p id={`${uid}-warn`} className="flex items-start gap-1.5 text-repairable"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>
             <div className="flex gap-2">
               <button type="button" className="rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground" onClick={() => { setPending(null); onChoose(c); }}>{INVENTORY_COPY.useAnyway}</button>
               <button ref={cancelRef} type="button" className="rounded-md bg-secondary px-2 py-1" onClick={dismissConfirm}>{INVENTORY_COPY.cancel}</button>
@@ -129,7 +129,7 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
         <>
           <div className="flex items-center gap-2 border-b border-border pb-1">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+            <input ref={searchRef} type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPending(null); }}
               placeholder="Type to find a spool — vendor, material, colour, #id" aria-label={`Find a spool for slot ${slotNumber(slot)}`}
               aria-controls={`${uid}-list`} className="h-8 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />
           </div>

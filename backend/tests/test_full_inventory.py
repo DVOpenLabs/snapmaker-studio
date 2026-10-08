@@ -100,10 +100,11 @@ def test_the_inventory_never_selects_and_never_writes_to_the_provider(env, tmp_p
     assert not (tmp_path / "data").exists() or not list((tmp_path / "data").glob("**/material*"))
 
 
-def test_a_slot_the_project_does_not_have_is_refused(env, tmp_path, monkeypatch):
-    Provider(monkeypatch, spools=STOCK)
+def test_a_slot_the_project_does_not_have_is_refused_before_the_provider_is_contacted(env, tmp_path, monkeypatch):
+    fake = Provider(monkeypatch, spools=STOCK)
     with pytest.raises(ValueError, match="slot 9"):
         service.project_materials_inventory(str(_project(tmp_path)), 9, provider="spoolman", provider_url=URL)
+    assert fake.reads == []
 
 
 def test_an_stl_has_no_inventory(env, tmp_path):
@@ -157,7 +158,8 @@ def test_a_spool_with_no_recorded_material_is_noted_when_the_model_names_one(env
            "spool": {"provider": "spoolman", "id": 9, "vendor": "Yoopai", "material": None, "subtype": None,
                      "colour": "#00FF00"}}
     rec = _convert(tmp_path, [sel])["settings_summary"]["project_materials"]["fidelity"]["slots"][0]
-    assert "spool_material_differs" in [d["code"] for d in rec["discrepancies"]]
+    codes = [d["code"] for d in rec["discrepancies"]]
+    assert "spool_material_unknown" in codes and "spool_material_differs" not in codes     # nothing was compared
 
 
 def test_a_same_material_spool_of_another_colour_adds_no_material_note(env, tmp_path):
@@ -199,6 +201,8 @@ def test_case_1_a_spool_without_a_preset_keeps_the_project_preset_and_says_so(en
     # and the review says it in the exact words, for that slot
     rec = result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]
     assert SENTENCE in rec["line"] and SPOOL_WITHOUT_PRESET == SENTENCE
+    # what Studio did NOT establish is said with it: the name is left alone, Orca's treatment of it is not checked
+    assert "does not check how Snapmaker Orca will treat it" in rec["line"]
     assert rec["output"]["preset_written"] is None and rec["output"]["vendor_type_origin"] == "project"
 
 
@@ -211,6 +215,8 @@ def test_case_1_when_the_project_names_no_preset_nothing_is_said_to_remain(env, 
     line = result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
     assert NONE_EXISTING in line and "no filament preset for this slot" in line
     assert "will remain" not in line and "Customized Preset" not in line     # there is no preset to remain or to rename
+    texts = " ".join(d["text"] for d in result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["discrepancies"])
+    assert "Customized Preset" not in texts and "existing filament identity" not in texts   # nor does any note say so
 
 
 def test_case_1_wording_is_absent_when_no_spool_was_chosen(env, tmp_path):

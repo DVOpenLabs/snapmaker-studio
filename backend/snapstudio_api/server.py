@@ -388,7 +388,7 @@ def _make_handler(token: str):
 
                     self._send(200, {"rows": service.save_local_spool(
                         rv.require_str(data, "host"),
-                        rv.require_slot_index(data),
+                        data["slot"],
                         material=_or_none(rv.optional_nullable_str(data, "material")),
                         subtype=_or_none(rv.optional_nullable_str(data, "subtype")),
                         color=_or_none(rv.optional_color(data, "color")),
@@ -754,8 +754,8 @@ def _make_handler(token: str):
                     slot_map = data.get("slot_map")
                     if slot_map is not None and not isinstance(slot_map, dict):
                         raise ValidationError("slot_map must be an object")
-                    if type(data.get("slot")) is not int:
-                        raise ValidationError("slot must be a whole number")
+                    if type(data.get("slot")) is not int or data["slot"] < 0:
+                        raise ValidationError("slot must be a whole number, 0 or more")
                     self._send(200, service.project_materials_inventory(
                         rv.require_path_string(data),
                         rv.require_slot_index(data),

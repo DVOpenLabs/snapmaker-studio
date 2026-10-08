@@ -98,7 +98,11 @@ const handshake = await new Promise((resolve, reject) => {
 });
 let uiUp = false;
 try { const r = await fetch("http://localhost:1420/"); uiUp = r.ok; } catch { /* start our own */ }
-console.log(uiUp ? "UI: using the dev server already running on :1420 (it may be a different checkout)" : "UI: started a dev server from this checkout");
+if (uiUp && !process.argv.includes("--allow-existing-ui")) {
+  console.error("A server is already answering on :1420, and it may be a different checkout. Stop it, or pass --allow-existing-ui to accept that (the result then records it).");
+  process.exit(2);
+}
+console.log(uiUp ? "UI: using the dev server already running on :1420 (--allow-existing-ui)" : "UI: started a dev server from this checkout");
 if (!uiUp) {
   children.push(spawn("npx.cmd", ["vite"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
   for (let i = 0; i < 80; i++) { try { const r = await fetch("http://localhost:1420/"); if (r.ok) break; } catch { /* not yet */ } await sleep(500); }
@@ -204,7 +208,8 @@ try {
   check("the list closes once a spool is chosen", (await picker().count()) === 0);
   check("focus returns to 'Choose another spool'", /Choose another spool/.test((await active()) || ""), await active());
   const notice = await slot2().getByTestId("spool-without-preset").innerText();
-  check("the no-preset notice names the project's existing preset", notice === "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.", notice);
+  check("the no-preset notice names the project's existing preset and what Studio did not check",
+    notice === "Spool selected, but no Orca preset selected. The project's existing filament preset will remain. Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it.", notice);
   await shot("03-selected-with-notice");
 
   /* a project that names no preset must not say one will remain */
@@ -231,6 +236,7 @@ try {
   cleanup();
 }
 const failed = results.filter((r) => !r.ok).length;
-writeFileSync(join(out, "results.json"), JSON.stringify({ browser: "Microsoft Edge (Chromium), headless", results }, null, 2));
+writeFileSync(join(out, "results.json"), JSON.stringify({ browser: "Microsoft Edge (Chromium), headless", uiStartedByThisRun: !uiUp,
+  commit: spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim(), results }, null, 2));
 console.log(`${results.length - failed}/${results.length} keyboard checks passed`);
 process.exit(failed ? 1 : 0);

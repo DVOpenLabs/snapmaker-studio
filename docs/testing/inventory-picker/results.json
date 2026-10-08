@@ -1,5 +1,7 @@
 {
   "browser": "Microsoft Edge (Chromium), headless",
+  "uiStartedByThisRun": true,
+  "commit": "6101e3713a61769a502367e571b3ed6fed3cd08e",
   "results": [
     {
       "name": "Enter on 'Choose another spool' opens the list",
@@ -82,9 +84,9 @@
       "detail": "Choose another spool"
     },
     {
-      "name": "the no-preset notice names the project's existing preset",
+      "name": "the no-preset notice names the project's existing preset and what Studio did not check",
       "ok": true,
-      "detail": "Spool selected, but no Orca preset selected. The project's existing filament preset will remain."
+      "detail": "Spool selected, but no Orca preset selected. The project's existing filament preset will remain. Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it."
     },
     {
       "name": "with no existing preset the notice does not claim one will remain",

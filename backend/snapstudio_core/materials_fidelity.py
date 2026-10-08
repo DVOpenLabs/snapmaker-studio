@@ -191,7 +191,7 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                              "project's author made.")})
     if spool and not spool.get("material") and src_slot.get("family"):
         discrepancies.append({
-            "code": "spool_material_differs",
+            "code": "spool_material_unknown",
             "text": (f"The spool's material is not recorded; the model asks for {src_slot['material']}. "
                      "You chose it deliberately.")})
     if spool and spool.get("material") and src_slot.get("family"):
@@ -220,7 +220,8 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     if not preset:
         name = _at(prepared, "filament_settings_id", s)
         known = (catalog.evaluate(name, nozzle)["status"] != NO_MATCH) if (catalog and name) else False
-        if not known:
+        # With no preset named there is nothing Orca could fail to recognize, so the "Customized Preset" warning does not apply.
+        if name and not known:
             discrepancies.append({"code": "customized_preset_possible", "text": FILAMENT_IDENTITY_NOTICE})
 
     selection = None
@@ -261,6 +262,8 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
 #: Said wherever a spool is chosen for a slot and no installed Orca preset is: the spool decides the colour only.
 SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
                         "The project's existing filament preset will remain.")
+#: Said with it: what Studio did and did not establish about the preset it leaves alone.
+SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it."
 #: The same, for a slot whose project names no filament preset at all: there is nothing to "remain".
 SPOOL_WITHOUT_PRESET_NONE_EXISTING = ("Spool selected, but no Orca preset selected. "
                                       "The project names no filament preset for this slot, and Studio does not choose one for you.")
@@ -320,7 +323,7 @@ def _line(rec: dict, spool: dict | None) -> str:
     if who and not identity:
         return text + " " + SPOOL_WITHOUT_PRESET_NONE_EXISTING
     if who:
-        text += " " + SPOOL_WITHOUT_PRESET
+        text += " " + SPOOL_WITHOUT_PRESET + " " + SPOOL_PRESET_CAVEAT
     text += f" Studio keeps the project's filament identity '{identity}'." if identity else \
         " Studio keeps the project's filament identity."
     if any(d["code"] == "customized_preset_possible" for d in rec["discrepancies"]):

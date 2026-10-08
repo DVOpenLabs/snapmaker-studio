@@ -53,7 +53,19 @@ PROCESS_ROLES = ("wall_filament", "sparse_infill_filament", "solid_infill_filame
 _ATTR = re.compile(r'([A-Za-z_:][\w.:-]*)\s*=\s*"([^"]*)"')
 _FILAMENT = re.compile(r'<filament\b([^>]*)/?>')
 
+_SUBTYPES = ("normal_part", "negative_part", "modifier_part", "support_blocker", "support_enforcer")
 IDENTITY_FIELDS = ("settings_id", "colour", "type", "vendor", "filament_id")
+
+#: The object list is read only up to these limits; past either, it is reported as not read (never as "no objects").
+MAX_OBJECT_LIST_BYTES = 8 * 1024 * 1024
+MAX_OBJECT_LIST_NODES = 200_000
+
+
+def _text_strict(tm: ThreeMF, part: str) -> str:
+    """The part's text, or an error: a part that is absent or cannot be read is NOT an empty one."""
+    if not tm.has_part(part):
+        raise ValueError(f"{part} is not in the project")
+    return tm.read_part(part).decode("utf-8", "ignore")
 
 
 def _text(tm: ThreeMF, part: str) -> str:
@@ -89,10 +101,16 @@ def _declared(cfg: dict, index: int) -> list[str]:
 
 
 def _extruder(node) -> int | None:
+    """The slot an object or part names for itself. 0 means "inherit", the same as naming none."""
     for meta in node.findall("metadata"):
         if meta.get("key") == "extruder" and str(meta.get("value", "")).isdigit():
-            return int(meta.get("value"))
+            return int(meta.get("value")) or None
     return None
+
+
+def _id(value) -> str | None:
+    """Object and part ids are printed, so only a plain number is: anything else could carry a name."""
+    return value if isinstance(value, str) and value.isdigit() and len(value) <= 9 else None
 
 
 def _override_slots(node) -> dict[str, int]:
@@ -107,13 +125,21 @@ def _objects(model_settings: str) -> list[dict]:
     yields no objects, and :func:`slot_usage` then says so instead of calling slots unreferenced."""
     from lxml import etree
 
-    if not model_settings.strip():
-        return []
-    root = etree.fromstring(model_settings.encode("utf-8"), etree.XMLParser(resolve_entities=False, no_network=True))
+    raw = model_settings.encode("utf-8")
+    if not raw.strip():
+        raise ValueError("the object list is empty")
+    if len(raw) > MAX_OBJECT_LIST_BYTES:
+        raise ValueError("the object list is too large to read here")
+    root = etree.fromstring(raw, etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False))
     out = []
+    nodes = 0
     for obj in root.iter("object"):
-        parts = [{"id": p.get("id"), "subtype": p.get("subtype"), "extruder": _extruder(p)} for p in obj.findall("part")]
-        out.append({"id": obj.get("id"), "extruder": _extruder(obj), "parts": parts,
+        nodes += 1 + len(obj)
+        if nodes > MAX_OBJECT_LIST_NODES:
+            raise ValueError("the object list has too many entries to read here")
+        parts = [{"id": _id(p.get("id")), "subtype": p.get("subtype") if p.get("subtype") in _SUBTYPES else None,
+                  "extruder": _extruder(p), "overrides": _override_slots(p)} for p in obj.findall("part")]
+        out.append({"id": _id(obj.get("id")), "extruder": _extruder(obj), "parts": parts,
                     "overrides": _override_slots(obj)})
     return out
 
@@ -137,7 +163,7 @@ def slot_usage(tm: ThreeMF) -> dict:
                                   "process_roles": [], "sliced_g": None} for i in range(1, count + 1)}
 
     try:
-        objects = _objects(_text(tm, MODEL_SETTINGS))
+        objects = _objects(_text_strict(tm, MODEL_SETTINGS))
         readable = True
     except Exception:
         objects, readable = [], False
@@ -159,6 +185,10 @@ def slot_usage(tm: ThreeMF) -> dict:
         for key, value in o["overrides"].items():
             if value in slots:
                 slots[value]["process_roles"].append(f"{key} (set on object {o['id']})")
+        for part in o["parts"]:
+            for key, value in part["overrides"].items():
+                if value in slots:
+                    slots[value]["process_roles"].append(f"{key} (set on part {part['id']} of object {o['id']})")
 
     paint = painted_color.read_container(tm)
     painted_slots = set(paint.get("slots_referenced") or [])
@@ -202,7 +232,11 @@ def slot_usage(tm: ThreeMF) -> dict:
 def snapshot(path: str | Path, label: str = "file") -> dict:
     """`label` names the file in the output together with a short digest, never its real name: a 3MF's file name is
     usually the model's name, and this output is meant to be pasted into a support thread."""
-    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
+    hasher = hashlib.sha256()
+    with open(path, "rb") as fh:                                # streamed: the file is not held in memory for its digest
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    digest = hasher.hexdigest()[:12]
     tm = ThreeMF.open(path)
     cfg = _settings(tm)
     usage = slot_usage(tm)
@@ -218,7 +252,7 @@ def snapshot(path: str | Path, label: str = "file") -> dict:
         })
     return {"file": f"{label} (sha256 {digest}…)", "filament_count": len(slots),
             "default_filament_profile": cfg.get("default_filament_profile"), "slots": slots,
-            "painting": usage["painting"],
+            "painting": usage["painting"], "object_list_readable": usage["object_list_readable"],
             "filament_settings": {k: v for k, v in sorted(cfg.items())
                                   if k.startswith(("filament_", "default_filament")) and k != "filament_notes"}}
 
