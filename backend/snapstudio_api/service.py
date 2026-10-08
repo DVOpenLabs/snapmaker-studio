@@ -421,9 +421,11 @@ def material_mapping_remove(data: dict, *, store=None) -> dict:
     scope, provider, spool_id, sig = _mapping_key(data)
     expect = {}
     for key in ("expect_preset_base", "expect_ref", "expect_fingerprint"):
-        value = data.get(key)
+        if key not in data:
+            continue                      # no expectation sent; an explicit null means 'expected none'
+        value = data[key]
         if value is not None and not isinstance(value, str):
-            raise ValueError(f"{key} must be text")
+            raise ValueError(f"{key} must be text or null")
         expect[key] = value
     removed = (store if store is not None else _material_store()).remove(
         scope=scope, provider=provider, spool_id=spool_id, sig=sig, **expect)

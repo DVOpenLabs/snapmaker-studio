@@ -284,3 +284,30 @@ def test_two_processes_cannot_interleave_a_save_and_a_forget(catalog, store, tmp
         store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id=f"old{i}")
     assert child.wait(timeout=60) == 0, child.stderr.read()
     assert sorted(r["spool_id"] for r in store.all()) == sorted(f"new{i}" for i in range(30))
+
+
+def test_exclusive_can_be_nested_without_waiting_for_itself(store):
+    import threading
+    done = []
+
+    def run():
+        with mm._exclusive(store.path):
+            with mm._exclusive(store.path):
+                done.append(True)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=10)
+    assert done == [True] and not t.is_alive()
+
+
+def test_an_expected_null_identity_is_compared_not_skipped(catalog, store):
+    kw = dict(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", origin=mm.SOURCE_MANUAL, catalog=catalog)
+    row = dict(_proven(catalog)); row["ref"] = None
+    store.put(preset=row, **kw)
+    assert store.all()[0]["ref"] is None
+    row2 = dict(_proven(catalog)); row2["ref"] = "now/a/real/ref.json"
+    store.put(preset=row2, **kw)                                   # replaced meanwhile
+    with pytest.raises(mm.StaleMapping):
+        store.remove(scope=mm.SCOPE_SPOOL, provider="spoolman", spool_id="12", expect_ref=None)
+    assert len(store.all()) == 1

@@ -1784,7 +1784,7 @@ export function confirmMaterialMapping(request: MappingRequest): Promise<{ ok: b
   return post("/material_mapping/confirm", request, "save mapping");
 }
 
-export function removeMaterialMapping(request: Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string }): Promise<{ ok: boolean; removed: boolean }> {
+export function removeMaterialMapping(request: Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string | null; expect_ref?: string | null; expect_fingerprint?: string | null }): Promise<{ ok: boolean; removed: boolean }> {
   return post("/material_mapping/remove", request, "reset mapping");
 }
 

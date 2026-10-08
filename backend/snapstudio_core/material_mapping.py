@@ -65,6 +65,8 @@ def default_path(explicit_dir: str | None = None) -> str:
 # The API serves requests on threads; a read-modify-replace of the file must not interleave with another,
 # or a save could be lost or a forgotten mapping come back. One process owns the file, so one lock is enough.
 _WRITE_LOCK = threading.RLock()
+_HELD = threading.local()      # per-thread nesting depth, so only the outermost entry takes the OS lock
+_ABSENT = object()            # 'no expectation sent' - distinct from 'expected null'
 
 
 @contextlib.contextmanager
@@ -73,6 +75,14 @@ def _exclusive(path: str):
     Studio (each with its own engine process) cannot interleave a read-modify-replace either. The lock is
     on a side file, never on the data file, which is replaced atomically."""
     with _WRITE_LOCK:
+        depth = getattr(_HELD, "depth", 0)
+        if depth:                      # already inside: a second handle's byte lock would wait for ourselves
+            _HELD.depth = depth + 1
+            try:
+                yield
+            finally:
+                _HELD.depth = depth
+            return
         folder = os.path.dirname(path) or "."
         os.makedirs(folder, exist_ok=True)
         fh = open(os.path.join(folder, ".material-mappings.lock"), "a+b")
@@ -80,17 +90,20 @@ def _exclusive(path: str):
             if os.name == "nt":
                 import msvcrt
                 fh.seek(0)
-                while True:
+                for attempt in range(6):
                     try:
                         msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)   # blocks ~10 s per try, then raises
                         break
                     except OSError:
-                        continue
+                        if attempt == 5:       # a minute without the lock is not contention: say so, never hang
+                            raise
             else:
                 import fcntl
                 fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            _HELD.depth = 1
             yield
         finally:
+            _HELD.depth = 0
             try:
                 if os.name == "nt":
                     import msvcrt
@@ -187,8 +200,7 @@ class Store:
         return row
 
     def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None,
-               expect_preset_base: str | None = None, expect_ref: str | None = None,
-               expect_fingerprint: str | None = None) -> bool:
+               expect_preset_base=_ABSENT, expect_ref=_ABSENT, expect_fingerprint=_ABSENT) -> bool:
         """Forget one mapping. With the `expect_*` values (the preset, its installed record and its
         fingerprint, as the person was shown them), only if the saved mapping is still exactly that: one
         replaced since raises :class:`StaleMapping` and is left alone."""
@@ -198,7 +210,7 @@ class Store:
         else:
             probe["signature"] = sig
         expected = {k: v for k, v in (("preset_base", expect_preset_base), ("ref", expect_ref),
-                                      ("fingerprint", expect_fingerprint)) if v is not None}
+                                      ("fingerprint", expect_fingerprint)) if v is not _ABSENT}
         with _exclusive(self.path):
             rows, damaged = self._read()
             hit = [r for r in rows if _same_key(r, probe)]

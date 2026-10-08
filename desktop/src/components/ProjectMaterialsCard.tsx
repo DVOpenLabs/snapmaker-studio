@@ -623,7 +623,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
         const cleared = gone.length ? ` Your choice for slot${gone.length > 1 ? "s" : ""} ${gone.map((s) => s + 1).join(", ")} was cleared.` : "";
         if (gen === generation.current) {
           setForgetNote({ kind: "error", text: refused
-            ? `${reason}.${reread ? " The list shows what is saved now." : ""}`
+            ? `${reason}.${reread ? " The list shows what is saved now." : ""}${cleared}`
             : `Couldn't confirm the saved mapping was forgotten: ${reason}. ${reread ? "The list shows what Studio read afterwards." : "Studio could not read the project again either, so the list may be out of date."}${cleared}` });
           setForget(null);
         }

@@ -189,7 +189,7 @@ export interface MappingRequest {
 // --- forgetting a saved mapping ------------------------------------------------------------------
 
 /** What identifies one saved mapping to the engine's remove route. */
-export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string; expect_ref?: string; expect_fingerprint?: string };
+export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string | null; expect_ref?: string | null; expect_fingerprint?: string | null };
 
 /** Which kind of saved mapping a candidate's preset came from, if it came from one. */
 export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
@@ -204,7 +204,7 @@ export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
   // The preset the person was shown: the engine forgets the mapping only if it still names it.
   const saved = c.mapping.saved;
   const expect = saved
-    ? { expect_preset_base: saved.preset_base, ...(saved.ref ? { expect_ref: saved.ref } : {}), ...(saved.fingerprint ? { expect_fingerprint: saved.fingerprint } : {}) }
+    ? { expect_preset_base: saved.preset_base, expect_ref: saved.ref ?? null, expect_fingerprint: saved.fingerprint ?? null }
     : {};
   return scope === "spool"
     ? { scope, provider: c.provider, spool_id: c.spool_id, ...expect }
