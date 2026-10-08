@@ -28,7 +28,8 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- the loopback printer ---------- */
-const calls = [];
+const calls = [];          // requests since the last deliberate reset between scenarios
+const allCalls = [];       // every request the look-alikes received, in order, never reset
 const seenHosts = new Set();
 const printers = {
   "127.0.0.1": { state: "printing", up: true, delayMs: 700 },
@@ -44,6 +45,7 @@ for (const host of Object.keys(printers)) {
     const path = (req.url || "").split("?")[0];
     if (req.method === "POST") {
       calls.push({ host, method: "POST", path: req.url });
+      allCalls.push({ host, method: "POST", path: req.url });
       const finish = () => send(200, { result: "ok" });
       return printer.delayMs ? setTimeout(finish, printer.delayMs) : finish();
     }
@@ -273,6 +275,6 @@ try {
   cleanup();
 }
 const failed = results.filter((r) => !r.ok).length;
-writeFileSync(join(OUT, "results.json"), JSON.stringify({ app: APP, results, calls, driverLog: driverLog.slice(-2000) }, null, 2));
+writeFileSync(join(OUT, "results.json"), JSON.stringify({ app: APP, results, callsSinceLastReset: calls, allPosts: allCalls, driverLog: driverLog.slice(-2000) }, null, 2));
 console.log(`${results.length - failed}/${results.length} integrated WebKitGTK checks passed`);
 process.exit(failed || fatal ? 1 : 0);

@@ -27,14 +27,18 @@ echo "routes: $(ip route | wc -l)"
 
 home="$(mktemp -d /tmp/u1-webkit-home.XXXXXX)"
 chown "$user" "$home"
+# A runtime dir the test user owns, so desktop libraries do not try to write under the root user's /run/user.
+runtime="$(mktemp -d /tmp/u1-webkit-run.XXXXXX)"
+chown "$user" "$runtime"
+chmod 700 "$runtime"
 display=":$((120 + RANDOM % 60))"
 Xvfb "$display" -screen 0 1280x900x24 -nolisten tcp -noreset >/dev/null 2>&1 &
 xpid=$!
-cleanup() { kill "$xpid" 2>/dev/null || true; rm -rf "$home"; }
+cleanup() { kill "$xpid" 2>/dev/null || true; rm -rf "$home" "$runtime"; }
 trap cleanup EXIT
 sleep 1
 
-runuser -u "$user" -- env HOME="$home" XDG_DATA_HOME="$home/data" XDG_CONFIG_HOME="$home/config" XDG_CACHE_HOME="$home/cache" \
+runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="$runtime" XDG_DATA_HOME="$home/data" XDG_CONFIG_HOME="$home/config" XDG_CACHE_HOME="$home/cache" \
   DISPLAY="$display" LANG=C.UTF-8 LC_ALL=C.UTF-8 WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
   SNAPSTUDIO_DATA_DIR="$home/studio-data" PATH="/home/$user/.cargo/bin:$PATH" \
   node "$here/printer-confirm-dialog-webkit.mjs" --app "$app" --out "$out" --driver "/home/$user/.cargo/bin/tauri-driver"
