@@ -37,7 +37,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
     report["normalizations"] = apply_clamps(work, load_rules())
     for change in report["normalizations"]:
         change["reason"] = (
-            f"U1 compatibility clamp: {change['old']} → {change['new']}")
+            orca_import.RAFT_EXPANSION_REASON if change["key"] == "raft_first_layer_expansion"
+            else f"U1 compatibility clamp: {change['old']} → {change['new']}")
         change["explanation"] = clamp_explanation(change)
 
     # U1 supports >4 filament colours (verified: real U1 files carry 8 colours

@@ -122,6 +122,7 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], d
             reason = item.get("reason")
             if isinstance(reason, str) and reason:
                 reasons[item["key"]] = reason
+                explanations.pop(item["key"], None)  # an explanation belongs to the reason it came with
                 explanation = item.get("explanation")
                 if isinstance(explanation, str) and explanation:
                     explanations[item["key"]] = explanation

@@ -112,7 +112,7 @@ describe("PrepareSettingsSummary explanations", () => {
     kept_count: 12,
     mapped_to_u1: [{ key: "nozzle_temperature", old: "[200]", new: "[200,200,200,200]", reason: "carried over to U1 toolheads (values preserved)" }],
     compat_changed: [
-      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 profile's value." },
+      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 default." },
       { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses." },
       { key: "some_setting", old: "1", new: "2", reason: "changed only for U1 compatibility" },
     ],
@@ -127,7 +127,11 @@ describe("PrepareSettingsSummary explanations", () => {
 
   it("does not repeat a reason that only restates the change", () => {
     const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
-    expect(html).not.toContain("changed only for U1 compatibility</p>");
+    // a change whose only reason restates it gets no note element at all
+    const restating = { ...withNotes, compat_changed: [withNotes.compat_changed[2]] };
+    const bare = renderToStaticMarkup(<PrepareSettingsSummary summary={restating} mode="preserve" />);
+    expect(bare).toContain("some_setting");
+    expect(bare).not.toContain('class="pl-2 leading-snug"');
     expect(html).not.toContain("U1 compatibility clamp");
   });
 

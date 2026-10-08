@@ -28,8 +28,8 @@ def clamp_explanation(change: dict) -> str:
         return orca_import.RAFT_EXPANSION_WHY
     span = compatibility.valid_range(key)
     if span is None:
-        return f"{old} is not a value Studio accepts for this setting; Studio used {new}, the U1 profile's value."
+        return f"{old} is not a value Studio accepts for this setting; Studio used {new}, the U1 default."
     lo, hi = span
     allowed = f"{lo} or more" if hi >= 2147483647 else f"{lo} to {hi}"
     return (f"{old} is outside the valid range for this setting ({allowed}), which the Compatibility check flags as an "
-            f"invalid value. Studio used {new}, the U1 profile's value.")
+            f"invalid value. Studio used {new}, the U1 default.")

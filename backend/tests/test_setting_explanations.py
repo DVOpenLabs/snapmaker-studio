@@ -45,6 +45,8 @@ def test_every_clamp_replaces_a_value_the_compatibility_check_calls_invalid():
         lo, hi = span
         assert not lo <= float(clamp["bad"]) <= hi, f"{clamp['key']}: the 'bad' value is inside the valid range"
         assert lo <= float(clamp["good"]) <= hi, f"{clamp['key']}: the 'good' value is outside the valid range"
+        # the explanation says Studio used "the U1 default", so that has to be what it used
+        assert clamp["good"] == orca_import.u1_template()[clamp["key"]], f"{clamp['key']}: 'good' is not the U1 default"
 
 
 def test_the_raft_clamp_and_the_orca_import_rule_use_the_same_value():
@@ -79,7 +81,7 @@ def test_a_negative_raft_expansion_has_one_owner_per_run_and_one_explained_recor
     assert records[0]["old"] == bad and records[0]["new"] == expected
     assert records[0]["explanation"] == orca_import.RAFT_EXPANSION_WHY
     # the reason is the engine's own, never empty, and never shown instead of the explanation
-    assert records[0]["reason"]
+    assert records[0]["reason"] == orca_import.RAFT_EXPANSION_REASON
 
 
 @pytest.mark.parametrize("mode", ["safe", "preserve", "u1", "optimize"])
@@ -111,7 +113,7 @@ def test_an_ordinary_orca_import_change_keeps_its_own_explanation(tmp_path):
     assert brim["reason"] and brim["reason"] != brim["explanation"]
 
 
-def test_changes_with_no_explanation_carry_none_and_kept_settings_carry_no_reason(tmp_path):
+def test_explanations_are_absent_or_non_empty_and_recommendations_carry_none(tmp_path):
     summary, _ = _prepare(tmp_path, {"layer_height": "0.16", "printer_settings_id": "Bambu Lab X1 Carbon 0.4 nozzle"})
     assert isinstance(summary["kept_count"], int)
     for change in summary["compat_changed"]:
