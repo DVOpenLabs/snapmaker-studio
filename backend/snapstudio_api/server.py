@@ -388,7 +388,7 @@ def _make_handler(token: str):
 
                     self._send(200, {"rows": service.save_local_spool(
                         rv.require_str(data, "host"),
-                        data["slot"],
+                        rv.require_slot_index(data),
                         material=_or_none(rv.optional_nullable_str(data, "material")),
                         subtype=_or_none(rv.optional_nullable_str(data, "subtype")),
                         color=_or_none(rv.optional_color(data, "color")),
@@ -758,7 +758,7 @@ def _make_handler(token: str):
                         raise ValidationError("slot must be a whole number, 0 or more")
                     self._send(200, service.project_materials_inventory(
                         rv.require_path_string(data),
-                        rv.require_slot_index(data),
+                        data["slot"],
                         provider=rv.optional_str(data, "provider", "") or None,
                         provider_url=rv.optional_str(data, "provider_url", "") or None,
                         provider_key=rv.optional_str(data, "provider_key", "") or None,
