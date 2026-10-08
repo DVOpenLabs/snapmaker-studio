@@ -232,10 +232,23 @@ Menu and Desktop shortcut) and never the production keys or the shared publisher
   confirmed after launch (exactly `<profile>\EBWebView`) and the tripwire watches the production profile. If the shipped
   WebView2 writes a different layout when `WEBVIEW2_USER_DATA_FOLDER` is set, the launch fails closed; the first
   controlled run will confirm the layout and must be reviewed.
-- **`update_check.json` is shared state.** The published app resolves its config folder through the OS known-folder API and
-  has no state-root override, so the file cannot be redirected. The lane refuses to launch unless the file is absent or
-  `auto_check` is `false`, and the tripwire detects a change. A product-side override is a **separate follow-up product
-  issue**; the published payload does not have it.
+- **`update_check.json` is shared state for older artifacts.** Artifacts built before the override (everything published
+  up to v1.5.0) resolve their config folder through the OS known-folder API and cannot redirect the file. The lane
+  therefore still refuses to launch unless the production file is absent or `auto_check` is `false`, and the tripwire
+  still detects a change. **These protections stay in place until override support is verified in the acceptance
+  artifact; do not relax them on the strength of the source change alone.**
+  - *Product side (done in source, unreleased):* a build that includes the override reads and writes
+    `update_check.json` under `SNAPSTUDIO_DATA_DIR` when it is set. An explicit value that is empty, not valid text or
+    not absolute is treated as unusable, never as "unset": the preference reads as off, saving fails, and no automatic
+    check runs, so a bad value cannot select production state. Covered by temp-directory tests in `main.rs`.
+  - *Harness side (already in place):* `Start-HarnessProcess` passes `SNAPSTUDIO_DATA_DIR = <lane>\engine-data` to the
+    child only (`HarnessLauncher.psm1`, environment block next to `WEBVIEW2_USER_DATA_FOLDER`), so an override-aware
+    build would write the file inside the lane with no further plumbing.
+  - *What remains:* (1) ship the override in a build and rewrap it as the acceptance artifact; (2) verify, on that
+    artifact, that `update_check.json` appears under the lane data dir and the production file is unchanged (extend the
+    tripwire to assert the lane file, and attest the build contains the override, for example by build identity);
+    (3) only then let the preflight skip the production check, and only for artifacts proven override-aware, keeping
+    it for older ones. Full harness integration is **not** claimed yet.
 - **Manual interference.** Launching the production exe by hand after the preflight, or using the auto-check UI during a
   harness session, is a detection-only case.
 - **Journal content** is validated on read, not on save, and the TEMP-misconfiguration case widens the override allowlist
