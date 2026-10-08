@@ -1,14 +1,27 @@
 import type { SettingsChange, SettingsSummary } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { settingNote } from "@/lib/settingNotes";
 
 function value(value: unknown) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return (text ?? String(value)).slice(0, 80);
 }
 
-function Changes({ changes }: { changes: SettingsChange[] }) {
-  return <ul className="space-y-1 text-xs text-muted-foreground">{changes.map((change) => <li key={change.key} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-1"><span className="truncate font-mono">{change.key}</span><span>:</span><span className="truncate">{value(change.old)} → {value(change.new)}</span></li>)}</ul>;
+function Changes({ changes, explain = false }: { changes: SettingsChange[]; explain?: boolean }) {
+  return (
+    <ul className="space-y-1 text-xs text-muted-foreground">
+      {changes.map((change) => {
+        const note = explain ? settingNote(change) : null;
+        return (
+          <li key={change.key} className="space-y-0.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-1"><span className="truncate font-mono">{change.key}</span><span>:</span><span className="truncate">{value(change.old)} → {value(change.new)}</span></div>
+            {note && <p className="pl-2 leading-snug">{note}</p>}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function compatibilitySummary(changes: SettingsChange[]) {
@@ -73,7 +86,7 @@ export function PrepareSettingsSummary({ summary, mode, preview = false, onPrepa
       <CardContent className="space-y-4 p-4">
         {preview && <p className="text-sm font-medium">Settings preview</p>}
         {(summary.kept_count > 0 || mappedToU1.length > 0) && <section><h3 className="text-sm font-semibold">Kept from the original file</h3><p className="text-xs text-muted-foreground">{summary.kept_count} creator settings kept</p><p className="mt-1 text-xs text-muted-foreground">These settings are kept from the original file.</p>{hasMappedTemperatures && <p className="mt-1 text-xs text-muted-foreground">Creator temperature values were preserved and mapped to the U1 toolhead layout.</p>}{mappedToU1.length > 0 && <>{!hasMappedTemperatures && <p className="mt-1 text-xs text-muted-foreground">Creator values preserved and mapped to the U1 toolhead layout.</p>}<details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Technical detail</summary><div className="mt-1"><Changes changes={mappedToU1} /></div></details></>}</section>}
-        {summary.compat_changed.length > 0 && <section><h3 className="text-sm font-semibold">Adjusted for U1 project compatibility</h3><p className="mb-1 text-xs text-muted-foreground">These settings changed only for U1 compatibility.</p><ul className="space-y-1 text-xs text-muted-foreground">{compat.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}</ul>{compat.unmatched.length > 0 && <div className="mt-2"><Changes changes={compat.unmatched} /></div>}<details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Technical detail</summary><div className="mt-1"><Changes changes={summary.compat_changed} /></div></details></section>}
+        {summary.compat_changed.length > 0 && <section><h3 className="text-sm font-semibold">Adjusted for U1 project compatibility</h3><p className="mb-1 text-xs text-muted-foreground">These settings changed only for U1 compatibility.</p><ul className="space-y-1 text-xs text-muted-foreground">{compat.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}</ul>{compat.unmatched.length > 0 && <div className="mt-2"><Changes changes={compat.unmatched} explain /></div>}<details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Technical detail</summary><div className="mt-1"><Changes changes={summary.compat_changed} explain /></div></details></section>}
         {summary.could_not_carry.length > 0 && <section><h3 className="text-sm font-semibold">Could not carry over</h3><ul className="space-y-1 text-xs text-muted-foreground">{summary.could_not_carry.map((item) => <li key={item.key}><span className="font-mono">{item.key}</span>: {item.reason}</li>)}</ul></section>}
         {mode === "preserve" && summary.recommendations_available && summary.recommended_changes.length > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Optional recommendations (not applied)</h3><p className="text-xs text-muted-foreground">These optional recommendations are not applied unless you choose them.</p><p className="text-xs text-muted-foreground">{recommendationSummary(summary.recommended_changes)}</p><details className="text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Technical detail</summary><div className="mt-1"><Changes changes={summary.recommended_changes} /></div></details>{onPrepareRecommended && <Button size="sm" variant="secondary" onClick={onPrepareRecommended}>Prepare another copy with recommended settings</Button>}</section>}
         {preview && <div className="flex flex-wrap gap-2">{onPreparePreserve && <Button size="sm" onClick={onPreparePreserve}>Prepare with preserved settings</Button>}{onPrepareRecommended && <Button size="sm" variant="secondary" onClick={onPrepareRecommended}>Prepare with recommended settings</Button>}</div>}

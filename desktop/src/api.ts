@@ -123,6 +123,10 @@ export interface SettingsChange {
   key: string;
   old: unknown;
   new: unknown;
+  /** Short reason the engine recorded for the change. Present on compatibility changes. */
+  reason?: string;
+  /** Plain-language explanation some steps add next to the reason. */
+  explanation?: string;
 }
 
 export interface SettingsSummary {

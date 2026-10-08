@@ -30,6 +30,14 @@ _RANGE_RULES: list[tuple[str, int, int]] = [
 ]
 
 
+def valid_range(key: str) -> tuple[int, int] | None:
+    """The inclusive valid range the Compatibility check applies to a setting, or None if it has none."""
+    for k, lo, hi in _RANGE_RULES:
+        if k == key:
+            return lo, hi
+    return None
+
+
 def _first(v):
     """Orca stores most values as strings or single-element lists; normalize."""
     if isinstance(v, list):

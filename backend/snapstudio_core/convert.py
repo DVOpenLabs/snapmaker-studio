@@ -94,9 +94,12 @@ def _starter_summary(*, geometry_only: bool) -> dict:
     }
 
 
-def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str]]:
-    """Consume RepairOutcome detail while the independent diff remains authoritative."""
+def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], dict[str, str]]:
+    """Consume RepairOutcome detail while the independent diff remains authoritative.
+
+    The last item is the plain-language explanation some pipeline steps write next to their reason."""
     reasons: dict[str, str] = {}
+    explanations: dict[str, str] = {}
     cleared: set[str] = set()
     mapped: set[str] = set()
     groups = [report.get("normalizations", []), report.get("profile_changes", []),
@@ -119,12 +122,16 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str]]:
             reason = item.get("reason")
             if isinstance(reason, str) and reason:
                 reasons[item["key"]] = reason
+                explanations.pop(item["key"], None)  # an explanation belongs to the reason it came with
+                explanation = item.get("explanation")
+                if isinstance(explanation, str) and explanation:
+                    explanations[item["key"]] = explanation
             if item.get("category") == "mapped":
                 mapped.add(item["key"])
     for item in report.get("foreign_cleared", []):
         if isinstance(item, dict):
             cleared.add(item["key"])
-    return reasons, cleared, mapped
+    return reasons, cleared, mapped, explanations
 
 
 def _strict_value_equal(a, b) -> bool:
@@ -167,7 +174,7 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                       recommended_after: dict | None = None) -> dict:
     profile = load_profile(profile_name)
     diffs = config_diff(before, after)  # independent source of truth (A13)
-    reasons, cleared, mapped_keys = _action_reasons(outcome.report)
+    reasons, cleared, mapped_keys, explanations = _action_reasons(outcome.report)
     allowlist = machine_compat_keys(profile)
     slice_info = {
         item["key"]: item["reason"]
@@ -190,9 +197,12 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                 "reason": "carried over to U1 toolheads (values preserved)",
             })
         elif key in reasons:
-            compat.append({"key": key, "old": display_value(item["old"], key=key),
-                           "new": display_value(item["new"], key=key),
-                           "reason": reasons[key]})
+            entry = {"key": key, "old": display_value(item["old"], key=key),
+                     "new": display_value(item["new"], key=key),
+                     "reason": reasons[key]}
+            if key in explanations:
+                entry["explanation"] = explanations[key]
+            compat.append(entry)
         elif key in allowlist:
             compat.append({"key": key, "old": display_value(item["old"], key=key),
                            "new": display_value(item["new"], key=key),
