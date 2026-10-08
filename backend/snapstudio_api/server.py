@@ -749,10 +749,16 @@ def _make_handler(token: str):
                     self._send_exception(exc)
             elif self.path == "/project_materials/inventory":
                 try:
+                    if not isinstance(data, dict):
+                        raise ValidationError("request must be a JSON object")
                     slot_map = data.get("slot_map")
+                    if slot_map is not None and not isinstance(slot_map, dict):
+                        raise ValidationError("slot_map must be an object")
+                    if type(data.get("slot")) is not int:
+                        raise ValidationError("slot must be a whole number")
                     self._send(200, service.project_materials_inventory(
                         rv.require_path_string(data),
-                        rv.optional_int(data, "slot", 0),
+                        rv.require_slot_index(data),
                         provider=rv.optional_str(data, "provider", "") or None,
                         provider_url=rv.optional_str(data, "provider_url", "") or None,
                         provider_key=rv.optional_str(data, "provider_key", "") or None,

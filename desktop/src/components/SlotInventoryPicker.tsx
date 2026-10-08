@@ -17,6 +17,8 @@ export const INVENTORY_COPY = {
   close: "Close the spool list",
   loading: "Reading your spool inventory…",
   empty: "The provider lists no spools that can be used.",
+  unavailable: "Studio could not read your spool provider just now, so there is no inventory to show.",
+  unsupported: "This project can no longer be read for its filament slots.",
   sameFamily: "Same material",
   otherFamily: "Different material — you will be asked to confirm",
   useAnyway: "Use this spool anyway",
@@ -53,7 +55,14 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
 
   useEffect(() => { if (state.status === "ready") searchRef.current?.focus(); }, [state.status]);
 
-  const entries = state.status === "ready" ? state.inventory.entries : [];
+  const inventory = state.status === "ready" ? state.inventory : null;
+  const entries = Array.isArray(inventory?.entries) ? inventory!.entries : [];
+  // The engine answers "could not read the provider" and "not a project" as ordinary replies with no entries;
+  // neither is an empty inventory.
+  const problem = !inventory ? null
+    : inventory.supported === false ? INVENTORY_COPY.unsupported
+    : inventory.provider && !inventory.provider.available ? INVENTORY_COPY.unavailable
+    : null;
   // The picker's own search over the picker's own description of each spool, applied to the engine's order.
   const shown = useMemo(() => {
     const byId = new Map(entries.map((c) => [String(c.spool_id), c]));
@@ -113,7 +122,8 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
               aria-controls={`${uid}-list`} className="h-8 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />
           </div>
           <div id={`${uid}-list`} className="max-h-72 space-y-2 overflow-auto">
-            {entries.length === 0 && <p className="px-1 py-1 text-xs text-muted-foreground" data-testid="inventory-empty">{INVENTORY_COPY.empty}</p>}
+            {problem && <p className="px-1 py-1 text-xs text-risk" role="alert" data-testid="inventory-problem">{problem}</p>}
+            {!problem && entries.length === 0 && <p className="px-1 py-1 text-xs text-muted-foreground" data-testid="inventory-empty">{INVENTORY_COPY.empty}</p>}
             {entries.length > 0 && shown.length === 0 && <p className="px-1 py-1 text-xs text-muted-foreground">No spool matches “{query}”.</p>}
             {same.length > 0 && (
               <div>

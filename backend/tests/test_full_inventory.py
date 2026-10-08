@@ -121,6 +121,11 @@ def test_inventory_http_route_needs_the_token(monkeypatch, env, tmp_path):
         st, out = _request(port, "/project_materials/inventory", body, token)
         assert st == 200 and [e["spool_id"] for e in out["entries"]] == ["1", "2", "3"]
         assert _request(port, "/project_materials/inventory", {**body, "slot": 9}, token)[0] == 400
+        # a malformed request is a 400, never a 500 and never a silent slot 0
+        without_slot = {k: v for k, v in body.items() if k != "slot"}
+        for bad in (without_slot, {**body, "slot": "0"}, {**body, "slot": True}, {**body, "slot": 1.5},
+                    {**body, "slot": None}, {**body, "slot_map": [1]}, [1, 2]):
+            assert _request(port, "/project_materials/inventory", bad, token)[0] == 400, bad
     finally:
         httpd.shutdown()
 

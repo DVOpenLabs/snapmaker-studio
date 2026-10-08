@@ -19,7 +19,7 @@ CUSTOM = ('<?xml version="1.0"?><custom_gcodes_per_layer><plate><plate_info id="
 SLICE = ('<config><plate><filament id="1" used_g="12.5"/><filament id="2" used_g="3"/></plate></config>')
 
 
-def _five_colour_project(tmp_path, name="p.3mf", **cfg_over):
+def _five_colour_project(tmp_path, name="p.3mf", model_settings=None, **cfg_over):
     cfg = _cfg(filament_colour=["#FF0000", "#00FF00", "#0000FF", "#FFFFFF", "#FFFF00"],
                filament_type=["PLA"] * 5, filament_vendor=["Bambu Lab"] * 5,
                filament_settings_id=["Bambu PLA Basic @BBL H2D"] * 5, filament_ids=["GFA00"] * 5,
@@ -29,7 +29,7 @@ def _five_colour_project(tmp_path, name="p.3mf", **cfg_over):
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("3D/3dmodel.model", '<?xml version="1.0"?><model/>')
         z.writestr("Metadata/project_settings.config", json.dumps(cfg))
-        z.writestr("Metadata/model_settings.config", MODEL_SETTINGS)
+        z.writestr("Metadata/model_settings.config", model_settings or MODEL_SETTINGS)
         z.writestr("Metadata/custom_gcode_per_layer.xml", CUSTOM)
         z.writestr("Metadata/slice_info.config", SLICE)
     return path
@@ -61,6 +61,25 @@ def test_an_unreadable_painting_withholds_the_no_reference_answer(tmp_path, monk
     monkeypatch.setattr(pc.painted_color, "read_container", lambda tm: {"available": True, "truncated": True, "slots_referenced": []})
     snap = pc.snapshot(_five_colour_project(tmp_path))
     assert snap["slots"][4]["usage"]["verdict"] == "unknown" and snap["painting"]["complete"] is False
+
+
+def test_the_object_list_is_read_as_xml_whatever_the_quoting_or_attribute_order(tmp_path):
+    reordered = ("<?xml version='1.0'?><config>"
+                 "<object name='X' id='7'><metadata value='3' key='extruder'/>"
+                 "<part subtype='normal_part' id='1'><metadata value='2' key='extruder'/></part></object></config>")
+    path = _five_colour_project(tmp_path, model_settings=reordered)
+    cfg_slots = pc.slot_usage(pc.ThreeMF.open(path))["slots"]
+    assert cfg_slots[3]["object_extruder"] == ["7"] and cfg_slots[2]["part_extruder"][0]["part"] == "1"
+
+
+def test_an_unreadable_object_list_is_unknown_not_no_reference_found(tmp_path):
+    path = tmp_path / "bad.3mf"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("3D/3dmodel.model", "<model/>")
+        z.writestr("Metadata/project_settings.config", json.dumps(_cfg(filament_colour=["#FF0000", "#00FF00"])))
+        z.writestr("Metadata/model_settings.config", "<config><object id='1'><metadata key='extruder' value='2'/>")
+    snap = pc.snapshot(path)
+    assert [s["usage"]["verdict"] for s in snap["slots"]] == ["unknown", "unknown"]
 
 
 def test_object_and_part_names_are_never_printed(tmp_path, capsys):

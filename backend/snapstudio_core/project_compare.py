@@ -19,7 +19,7 @@ What it reports, per filament slot (numbered from 1, as Orca shows them):
   support, support interface, wipe tower), and the grams the project's own slice reports;
 * whether any reference was found. `no_reference_found` is the strongest thing this can say - it means none of the
   places above names the slot, not that the slot is certainly unused - and it is withheld (`unknown`) whenever
-  the painting could not be read in full.
+  the painting or the object list could not be read in full.
 
 Compared across the two files: the slot count, each slot's identity fields, the declarations, and every top-level
 setting whose name starts with `filament_` or `default_filament`, so exactly what Project Materials changed is
@@ -46,9 +46,6 @@ CUSTOM_GCODE = "Metadata/custom_gcode_per_layer.xml"
 PROCESS_ROLES = ("wall_filament", "sparse_infill_filament", "solid_infill_filament", "support_filament",
                  "support_interface_filament", "wipe_tower_filament")
 
-_OBJECT = re.compile(r'<object\b[^>]*\bid="(\d+)"[^>]*>(.*?)</object>', re.S)
-_PART = re.compile(r'<part\b([^>]*)>(.*?)</part>', re.S)
-_METADATA = re.compile(r'<metadata\b[^>]*\bkey="([^"]+)"[^>]*\bvalue="([^"]*)"')
 _ATTR = re.compile(r'([A-Za-z_:][\w.:-]*)\s*=\s*"([^"]*)"')
 _FILAMENT = re.compile(r'<filament\b([^>]*)/?>')
 
@@ -87,21 +84,27 @@ def _declared(cfg: dict, index: int) -> list[str]:
     return sorted({p.strip() for p in str(entries[1 + index] or "").split(";") if p.strip()})
 
 
+def _extruder(node) -> int | None:
+    for meta in node.findall("metadata"):
+        if meta.get("key") == "extruder" and str(meta.get("value", "")).isdigit():
+            return int(meta.get("value"))
+    return None
+
+
 def _objects(model_settings: str) -> list[dict]:
-    """Each object's extruder and each part's extruder + subtype, by id. Names are deliberately not read."""
+    """Each object's extruder and each part's extruder + subtype, by id. Names are deliberately not read.
+
+    Parsed as XML, so quoting style and attribute order do not matter. A file that is not well-formed XML
+    yields no objects, and :func:`slot_usage` then says so instead of calling slots unreferenced."""
+    from lxml import etree
+
+    if not model_settings.strip():
+        return []
+    root = etree.fromstring(model_settings.encode("utf-8"), etree.XMLParser(resolve_entities=False, no_network=True))
     out = []
-    for object_id, body in _OBJECT.findall(model_settings):
-        head = body.split("<part", 1)[0]
-        meta = dict(_METADATA.findall(head))
-        parts = []
-        for attrs, part_body in _PART.findall(body):
-            attributes = dict(_ATTR.findall(attrs))
-            pmeta = dict(_METADATA.findall(part_body))
-            parts.append({"id": attributes.get("id"), "subtype": attributes.get("subtype"),
-                          "extruder": int(pmeta["extruder"]) if str(pmeta.get("extruder", "")).isdigit() else None})
-        out.append({"id": object_id,
-                    "extruder": int(meta["extruder"]) if str(meta.get("extruder", "")).isdigit() else None,
-                    "parts": parts})
+    for obj in root.iter("object"):
+        parts = [{"id": p.get("id"), "subtype": p.get("subtype"), "extruder": _extruder(p)} for p in obj.findall("part")]
+        out.append({"id": obj.get("id"), "extruder": _extruder(obj), "parts": parts})
     return out
 
 
@@ -123,7 +126,11 @@ def slot_usage(tm: ThreeMF) -> dict:
     slots: dict[int, dict] = {i: {"object_extruder": [], "part_extruder": [], "painted": False, "colour_changes": [],
                                   "process_roles": [], "sliced_g": None} for i in range(1, count + 1)}
 
-    objects = _objects(_text(tm, MODEL_SETTINGS))
+    try:
+        objects = _objects(_text(tm, MODEL_SETTINGS))
+        readable = True
+    except Exception:
+        objects, readable = [], False
     without_extruder = [o["id"] for o in objects if o["extruder"] is None and not any(p["extruder"] for p in o["parts"])]
     for o in objects:
         if o["extruder"] in slots:
@@ -142,6 +149,7 @@ def slot_usage(tm: ThreeMF) -> dict:
             slots[i]["painted"] = True
     paint_complete = not paint.get("truncated") and bool(paint.get("default_slot_resolved", True)) \
         if paint.get("available") else True          # no painting in the file: nothing was left unread
+    complete = paint_complete and readable            # an unreadable object list is not evidence of absence
 
     for change in color_plan._layer_changes(_text(tm, CUSTOM_GCODE)):
         if change.get("extruder") in slots:
@@ -166,9 +174,10 @@ def slot_usage(tm: ThreeMF) -> dict:
         if s["sliced_g"]:
             kinds.append("sliced_usage")
         s["referenced_by"] = kinds
-        s["verdict"] = "referenced" if kinds else ("no_reference_found" if paint_complete else "unknown")
+        s["verdict"] = "referenced" if kinds else ("no_reference_found" if complete else "unknown")
     return {"slots": slots, "painting": {"present": bool(paint.get("painted_triangle_count")), "complete": paint_complete,
-                                         "truncated": bool(paint.get("truncated"))}}
+                                         "truncated": bool(paint.get("truncated"))},
+            "object_list_readable": readable}
 
 
 def snapshot(path: str | Path) -> dict:

@@ -137,6 +137,23 @@ describe("Choose another spool", () => {
     expect(request()).toEqual([]);
   });
 
+  it("does not call an unreadable provider an empty inventory", async () => {
+    const load = vi.fn().mockResolvedValue({ supported: true, slot: 0, entries: [], count: 0,
+      provider: { kind: "spoolease", available: false, error_code: "unreachable" } });
+    render(<Harness a={analysis()} load={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose another spool" }));
+    expect((await screen.findByTestId("inventory-problem")).textContent).toContain("could not read your spool provider");
+    expect(screen.queryByTestId("inventory-empty")).toBeNull();
+  });
+
+  it("survives a reply with no entries when the project can no longer be read", async () => {
+    const load = vi.fn().mockResolvedValue({ supported: false, reason: "gone" });
+    render(<Harness a={analysis()} load={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose another spool" }));
+    expect((await screen.findByTestId("inventory-problem")).textContent).toContain("can no longer be read");
+    expect(request()).toEqual([]);
+  });
+
   it("can be closed without choosing", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Close the spool list" }));
