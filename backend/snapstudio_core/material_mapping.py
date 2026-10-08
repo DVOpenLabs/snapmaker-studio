@@ -18,6 +18,7 @@ never the key.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -64,6 +65,40 @@ def default_path(explicit_dir: str | None = None) -> str:
 # The API serves requests on threads; a read-modify-replace of the file must not interleave with another,
 # or a save could be lost or a forgotten mapping come back. One process owns the file, so one lock is enough.
 _WRITE_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def _exclusive(path: str):
+    """Hold the thread lock AND an OS file lock for the mapping file's folder, so two running copies of
+    Studio (each with its own engine process) cannot interleave a read-modify-replace either. The lock is
+    on a side file, never on the data file, which is replaced atomically."""
+    with _WRITE_LOCK:
+        folder = os.path.dirname(path) or "."
+        os.makedirs(folder, exist_ok=True)
+        fh = open(os.path.join(folder, ".material-mappings.lock"), "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                while True:
+                    try:
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)   # blocks ~10 s per try, then raises
+                        break
+                    except OSError:
+                        continue
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+            fh.close()
 
 
 class StaleMapping(ValueError):
@@ -145,27 +180,31 @@ class Store:
             if not sig or not any(sig.values()):
                 raise ValueError("a signature mapping needs vendor, material or subtype")
             row["signature"] = {k: _norm(v) for k, v in sig.items()}
-        with _WRITE_LOCK:
+        with _exclusive(self.path):
             rows, damaged = self._read()
             rows = [r for r in rows if not _same_key(r, row)] + [row]
             self._write(rows, keep_damaged=damaged)
         return row
 
     def remove(self, *, scope: str, provider: str, spool_id=None, sig: dict | None = None,
-               expect_preset_base: str | None = None) -> bool:
-        """Forget one mapping. With `expect_preset_base`, only if it still names that preset: a mapping
-        replaced since the person was shown it raises :class:`StaleMapping` and is left alone."""
+               expect_preset_base: str | None = None, expect_ref: str | None = None,
+               expect_fingerprint: str | None = None) -> bool:
+        """Forget one mapping. With the `expect_*` values (the preset, its installed record and its
+        fingerprint, as the person was shown them), only if the saved mapping is still exactly that: one
+        replaced since raises :class:`StaleMapping` and is left alone."""
         probe = {"scope": scope, "provider": _text(provider)}
         if scope == SCOPE_SPOOL:
             probe["spool_id"] = _text(spool_id)
         else:
             probe["signature"] = sig
-        with _WRITE_LOCK:
+        expected = {k: v for k, v in (("preset_base", expect_preset_base), ("ref", expect_ref),
+                                      ("fingerprint", expect_fingerprint)) if v is not None}
+        with _exclusive(self.path):
             rows, damaged = self._read()
             hit = [r for r in rows if _same_key(r, probe)]
             if not hit:
                 return False
-            if expect_preset_base is not None and any(r.get("preset_base") != expect_preset_base for r in hit):
+            if any(r.get(k) != v for r in hit for k, v in expected.items()):
                 raise StaleMapping("That saved mapping has changed since it was shown. Nothing was forgotten.")
             kept = [r for r in rows if not _same_key(r, probe)]
             self._write(kept, keep_damaged=damaged)
@@ -222,6 +261,9 @@ def resolve(catalog, store: Store | None, provider: str, spool: dict, nozzle: st
                                saved.get("proof"), saved.get("source"))
         out.update(_carry(found))
         out["match_source"] = SOURCE_NONE if found["status"] == NO_MATCH else source
+        # The saved row exactly as stored: what a later Forget compares against, so a mapping replaced
+        # in the meantime is never removed by a confirmation that described the old one.
+        out["saved"] = {k: saved.get(k) for k in ("preset_base", "ref", "fingerprint")}
         if found["status"] == NO_MATCH:
             out["reason"] = ("The preset you confirmed earlier is not available for this nozzle "
                              "or is no longer installed. " + found["reason"])

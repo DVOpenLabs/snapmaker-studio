@@ -608,12 +608,13 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
     } catch (e: any) {
       if (gen === generation.current) {
         // A lost or malformed reply does not prove the engine left the file alone, so read the project again and say so.
+        let reread = true;
         try {
           const a = await projectMaterials(path, args, 3);
           if (gen === generation.current) setAnalysis(a);
-        } catch { /* the note below already says what is known */ }
+        } catch { reread = false; }
         if (gen === generation.current) {
-          setForgetNote({ kind: "error", text: `Couldn't confirm the saved mapping was forgotten: ${String(e?.message ?? e).replace(/[.\s]+$/, "")}. The list shows what Studio read afterwards.` });
+          setForgetNote({ kind: "error", text: `Couldn't confirm the saved mapping was forgotten: ${String(e?.message ?? e).replace(/[.\s]+$/, "")}. ${reread ? "The list shows what Studio read afterwards." : "Studio could not read the project again either, so the list may be out of date."}` });
           setForget(null);
         }
       }

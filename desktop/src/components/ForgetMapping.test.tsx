@@ -30,8 +30,8 @@ beforeEach(() => {
   api.materialPresets.mockResolvedValue({ available: true, nozzle: "0.4", presets: [] });
 });
 
-const SAVED_SPOOL = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Snapmaker PLA Matte @U1", base_name: "Snapmaker PLA Matte @U1", reason: "" });
-const SAVED_SIG = mapping({ status: "proven", match_source: "saved_signature", preset_name: "Snapmaker PLA Matte @U1", base_name: "Snapmaker PLA Matte @U1", reason: "" });
+const SAVED_SPOOL = mapping({ status: "proven", match_source: "saved_spool", preset_name: "Snapmaker PLA Matte @U1", base_name: "Snapmaker PLA Matte @U1", reason: "", saved: { preset_base: "Snapmaker PLA Matte @U1", ref: "r1", fingerprint: "f1" } });
+const SAVED_SIG = mapping({ status: "proven", match_source: "saved_signature", preset_name: "Snapmaker PLA Matte @U1", base_name: "Snapmaker PLA Matte @U1", reason: "", saved: { preset_base: "Snapmaker PLA Matte @U1", ref: "r1", fingerprint: "f1" } });
 const NAMED = mapping({ status: "needs_confirmation", match_source: "exact_name", preset_name: "Snapmaker PLA Matte @U1", base_name: "Snapmaker PLA Matte @U1", reason: "named" });
 
 const A = candidate({ spool_id: "124", label: "Yoopai PLA Matte", mapping: SAVED_SPOOL });
@@ -129,7 +129,7 @@ describe("forgetting", () => {
     openFor(0);
     await act(async () => { fireEvent.click(confirm()); });
     expect(api.removeMaterialMapping).toHaveBeenCalledTimes(1);
-    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "spool", provider: "spoolease", spool_id: "124", expect_preset_base: "Snapmaker PLA Matte @U1" });
+    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "spool", provider: "spoolease", spool_id: "124", expect_preset_base: "Snapmaker PLA Matte @U1", expect_ref: "r1", expect_fingerprint: "f1" });
     await waitFor(() => expect(api.projectMaterials).toHaveBeenCalledTimes(2));
     expect(api.projectMaterials).toHaveBeenLastCalledWith("C:/p/x.3mf", expect.objectContaining({ provider: "spoolease" }), 3);
     await waitFor(() => expect(dialog()).toBeNull());
@@ -146,7 +146,7 @@ describe("forgetting", () => {
     api.projectMaterials.mockResolvedValueOnce(analysis([candidate({ spool_id: "9", mapping: mapping() })]));
     openFor(0);
     await act(async () => { fireEvent.click(confirm()); });
-    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA", subtype: "Matte", expect_preset_base: "Snapmaker PLA Matte @U1" });
+    expect(api.removeMaterialMapping).toHaveBeenCalledWith({ scope: "signature", provider: "spoolease", vendor: "Yoopai", material: "PLA", subtype: "Matte", expect_preset_base: "Snapmaker PLA Matte @U1", expect_ref: "r1", expect_fingerprint: "f1" });
   });
 
   it("leaves other saved mappings alone", async () => {
@@ -253,7 +253,7 @@ describe("the rules in the library", () => {
     expect(forgetRequest(candidate({ mapping: NAMED }))).toBeNull();
     expect(forgetRequest(candidate({ mapping: mapping() }))).toBeNull();
     expect(savedScope(candidate({ mapping: SAVED_SPOOL }))).toBe("spool");
-    expect(forgetRequest(candidate({ spool_id: "5", mapping: SAVED_SPOOL }))).toEqual({ scope: "spool", provider: "spoolease", spool_id: "5", expect_preset_base: "Snapmaker PLA Matte @U1" });
+    expect(forgetRequest(candidate({ spool_id: "5", mapping: SAVED_SPOOL }))).toEqual({ scope: "spool", provider: "spoolease", spool_id: "5", expect_preset_base: "Snapmaker PLA Matte @U1", expect_ref: "r1", expect_fingerprint: "f1" });
   });
 
   const held = (spool: ReturnType<typeof candidate>, name = "Snapmaker PLA Matte @U1") =>
@@ -279,6 +279,15 @@ describe("the rules in the library", () => {
     const changedByHand = held(candidate({ spool_id: "3", vendor: "Yoopai", material: "PLA", subtype: "Matte", mapping: SAVED_SIG }), "Some other preset");
     const choices: Choices = { 0: held(own), 1: changedByHand, 2: { ...held(sig), preset: null } };
     expect(slotsCoveredBy(choices, sig)).toEqual([]);
+  });
+
+  it("matches a signature by the engine's own key, so a ligature the engine folds is still covered", () => {
+    const sig = (vendor: string) => ({ vendor, family: "pla", subtype: "matte" });
+    const forgotten = candidate({ spool_id: "1", vendor: "Acme", mapping: SAVED_SIG, signature: sig("acme") });
+    const other = candidate({ spool_id: "2", vendor: "Aﬀme", mapping: SAVED_SIG, signature: sig("acme") });   // the engine folds ﬀ to ff
+    const different = candidate({ spool_id: "3", vendor: "Acme", mapping: SAVED_SIG, signature: sig("zzz") });
+    const choices: Choices = { 0: held(other), 1: held(different) };
+    expect(slotsCoveredBy(choices, forgotten)).toEqual([0]);
   });
 
   it("refers the engine to the preset the person was shown, so a mapping replaced since is not removed", () => {

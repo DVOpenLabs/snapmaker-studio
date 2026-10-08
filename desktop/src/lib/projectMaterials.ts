@@ -23,6 +23,8 @@ export interface MaterialMapping {
   match_source: "saved_spool" | "saved_signature" | "exact_name" | "manual" | "none" | string;
   preset_name: string | null;
   base_name: string | null;
+  /** The saved row exactly as stored, when this preset came from a saved mapping. */
+  saved?: { preset_base: string; ref: string | null; fingerprint: string | null };
   reason: string;
   candidates: string[];
   stale: boolean;
@@ -48,6 +50,8 @@ export interface MaterialCandidate {
   vendor: string | null;
   material: string | null;
   subtype: string | null;
+  /** The engine's own key for this kind of spool; present on everything the engine returns. */
+  signature?: { vendor: string; family: string; subtype: string };
   colour: string | null;
   color_name: string | null;
   remaining_g: number | null;
@@ -185,7 +189,7 @@ export interface MappingRequest {
 // --- forgetting a saved mapping ------------------------------------------------------------------
 
 /** What identifies one saved mapping to the engine's remove route. */
-export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string };
+export type ForgetRequest = Pick<MappingRequest, "scope" | "provider" | "spool_id" | "vendor" | "material" | "subtype"> & { expect_preset_base?: string; expect_ref?: string; expect_fingerprint?: string };
 
 /** Which kind of saved mapping a candidate's preset came from, if it came from one. */
 export function savedScope(c: MaterialCandidate): "spool" | "signature" | null {
@@ -198,7 +202,10 @@ export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
   const scope = savedScope(c);
   if (!scope) return null;
   // The preset the person was shown: the engine forgets the mapping only if it still names it.
-  const expect = c.mapping.base_name ? { expect_preset_base: c.mapping.base_name } : {};
+  const saved = c.mapping.saved;
+  const expect = saved
+    ? { expect_preset_base: saved.preset_base, ...(saved.ref ? { expect_ref: saved.ref } : {}), ...(saved.fingerprint ? { expect_fingerprint: saved.fingerprint } : {}) }
+    : {};
   return scope === "spool"
     ? { scope, provider: c.provider, spool_id: c.spool_id, ...expect }
     : { scope, provider: c.provider, vendor: c.vendor, material: c.material, subtype: c.subtype, ...expect };
@@ -207,6 +214,11 @@ export function forgetRequest(c: MaterialCandidate): ForgetRequest | null {
 // The engine's own normalisation of a spool kind: whitespace collapsed, case folded.
 const fold = (v: string | null | undefined) => (v ?? "").split(/\s+/).filter(Boolean).join(" ").toLowerCase().replace(/ß/g, "ss");
 const same = (a: string | null | undefined, b: string | null | undefined) => fold(a) === fold(b);
+/** Whether two spools are the same kind. The engine's own key decides; the local fold is only for data without one. */
+const sameKind = (a: MaterialCandidate, b: MaterialCandidate) =>
+  a.signature && b.signature
+    ? a.signature.vendor === b.signature.vendor && a.signature.family === b.signature.family && a.signature.subtype === b.signature.subtype
+    : same(a.vendor, b.vendor) && same(a.material, b.material) && same(a.subtype, b.subtype);
 
 /**
  * The slots whose choice rests on the mapping a candidate came from, and so lose it when that mapping is forgotten: the
@@ -225,7 +237,7 @@ export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[]
       if (!choice.preset || choice.preset.name !== offered || (choice.preset.fingerprint ?? null) !== (s.mapping.fingerprint ?? null)) return false;
       return scope === "spool"
         ? String(s.spool_id) === String(c.spool_id)
-        : same(s.vendor, c.vendor) && same(s.material, c.material) && same(s.subtype, c.subtype);
+        : sameKind(s, c);
     })
     .map(([slot]) => Number(slot))
     .sort((a, b) => a - b);

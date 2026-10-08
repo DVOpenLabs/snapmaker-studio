@@ -336,6 +336,9 @@ def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalo
             spool.get("vendor"), spool.get("material"), spool.get("subtype"), spool.get("name"),
             spool.get("id")),
         "vendor": spool.get("vendor"), "material": family, "subtype": spool.get("subtype"),
+        # The engine's own key for this kind of spool (what a signature mapping is stored under), so the
+        # UI never has to guess how the engine folds case and spacing.
+        "signature": material_mapping.signature(spool.get("vendor"), spool.get("material"), spool.get("subtype")),
         "colour": hex6(spool.get("color")), "color_name": spool.get("color_name")
         or spool_choices.color_name(spool.get("color")),
         "remaining_g": spool.get("remaining_g"),
