@@ -152,6 +152,14 @@ def test_choosing_another_material_is_recorded_in_the_review(env, tmp_path):
     assert "spool_material_differs" in [d["code"] for d in rec["discrepancies"]]
 
 
+def test_a_spool_with_no_recorded_material_is_noted_when_the_model_names_one(env, tmp_path):
+    sel = {"slot": 0, "preset": None, "colour": "#00FF00",
+           "spool": {"provider": "spoolman", "id": 9, "vendor": "Yoopai", "material": None, "subtype": None,
+                     "colour": "#00FF00"}}
+    rec = _convert(tmp_path, [sel])["settings_summary"]["project_materials"]["fidelity"]["slots"][0]
+    assert "spool_material_differs" in [d["code"] for d in rec["discrepancies"]]
+
+
 def test_a_same_material_spool_of_another_colour_adds_no_material_note(env, tmp_path):
     sel = {"slot": 0, "preset": None, "colour": "#0000FF",
            "spool": {"provider": "spoolman", "id": 2, "vendor": "Yoopai", "material": "PLA", "subtype": "Basic",

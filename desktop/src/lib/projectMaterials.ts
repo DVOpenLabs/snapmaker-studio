@@ -291,8 +291,12 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       if ((m.choices?.length ?? 0) > 1) return put({ spool: action.spool, preset: null, keepOwn: false, remember: "off" });
       // A remembered mapping the person confirmed (even one they said was a U1 preset) stays confirmed; a
       // preset the engine could not prove, or the provider merely names, waits for them.
+      // A preset that came with a spool of ANOTHER material is not confirmed for the person: they confirm it, or pick another.
+      const sameMaterial = action.spool.family_match !== false;
       const preset: PresetChoice | null =
-        name && m.status === "proven" ? { name, confirmed: true, ...pin, needsSayso: m.proof === "user_confirmed" }
+        name && m.status === "proven"
+          ? { name, confirmed: sameMaterial, ...pin, needsSayso: m.proof === "user_confirmed",
+              note: sameMaterial ? undefined : "This preset came with a spool of a different material. Confirm it, or choose another preset." }
         : name && m.status === "needs_confirmation" ? { name, confirmed: false, ...pin, needsSayso: !!m.confirmable, note: m.reason }
         : null;
       return put({ spool: action.spool, preset, keepOwn: false, remember: "off" });

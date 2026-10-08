@@ -129,6 +129,32 @@ describe("Choose another spool", () => {
     expect(request()).toEqual([expect.objectContaining({ slot: 0, colour: "#00FF00" })]);
   });
 
+  it("puts focus on Cancel when a confirmation opens, and Escape cancels it", async () => {
+    await open();
+    fireEvent.click(within(screen.getByTestId("inventory-picker")).getByRole("button", { name: /Orange|Green/ }));
+    const confirm = screen.getByTestId("family-confirm");
+    expect(document.activeElement).toBe(within(confirm).getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(confirm, { key: "Escape" });
+    expect(screen.queryByTestId("family-confirm")).toBeNull();
+    expect(request()).toEqual([]);
+  });
+
+  it("returns focus to the button that opened the list once it closes", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Close the spool list" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Choose another spool" }));
+  });
+
+  it("does not confirm, for the person, the preset that came with a spool of another material", async () => {
+    const proven = { ...PETG, mapping: PROVEN };
+    const load = vi.fn().mockResolvedValue({ ...INVENTORY, entries: [RED, proven] });
+    await open(load);
+    fireEvent.click(within(screen.getByTestId("inventory-picker")).getByRole("button", { name: /Green/ }));
+    fireEvent.click(within(screen.getByTestId("family-confirm")).getByRole("button", { name: "Use this spool anyway" }));
+    expect(request()).toEqual([expect.objectContaining({ slot: 0, preset: null })]);       // waiting for the person's say-so
+    expect(screen.getByRole("button", { name: /Confirm this preset/ })).toBeTruthy();
+  });
+
   it("says why when the inventory could not be read, and chooses nothing", async () => {
     const load = vi.fn().mockRejectedValue(new Error("provider went away"));
     render(<Harness a={analysis()} load={load} />);

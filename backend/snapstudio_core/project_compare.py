@@ -21,12 +21,16 @@ What it reports, per filament slot (numbered from 1, as Orca shows them):
   places above names the slot, not that the slot is certainly unused - and it is withheld (`unknown`) whenever
   the painting or the object list could not be read in full.
 
+Not read, and said so in the output (`not_read`): per-layer-range modifiers. A slot named only there reads as
+`no_reference_found`.
+
 Compared across the two files: the slot count, each slot's identity fields, the declarations, and every top-level
 setting whose name starts with `filament_` or `default_filament`, so exactly what Project Materials changed is
 visible.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -91,6 +95,11 @@ def _extruder(node) -> int | None:
     return None
 
 
+def _override_slots(node) -> dict[str, int]:
+    return {m.get("key"): int(m.get("value")) for m in node.findall("metadata")
+            if m.get("key") in PROCESS_ROLES and str(m.get("value", "")).isdigit() and int(m.get("value")) > 0}
+
+
 def _objects(model_settings: str) -> list[dict]:
     """Each object's extruder and each part's extruder + subtype, by id. Names are deliberately not read.
 
@@ -104,7 +113,8 @@ def _objects(model_settings: str) -> list[dict]:
     out = []
     for obj in root.iter("object"):
         parts = [{"id": p.get("id"), "subtype": p.get("subtype"), "extruder": _extruder(p)} for p in obj.findall("part")]
-        out.append({"id": obj.get("id"), "extruder": _extruder(obj), "parts": parts})
+        out.append({"id": obj.get("id"), "extruder": _extruder(obj), "parts": parts,
+                    "overrides": _override_slots(obj)})
     return out
 
 
@@ -131,7 +141,10 @@ def slot_usage(tm: ThreeMF) -> dict:
         readable = True
     except Exception:
         objects, readable = [], False
-    without_extruder = [o["id"] for o in objects if o["extruder"] is None and not any(p["extruder"] for p in o["parts"])]
+    # An object prints with the first filament for whatever has no extruder of its own: the object itself, or
+    # any of its ordinary parts.
+    without_extruder = [o["id"] for o in objects if o["extruder"] is None and (
+        not o["parts"] or any(p["extruder"] is None and p["subtype"] in (None, "normal_part") for p in o["parts"]))]
     for o in objects:
         if o["extruder"] in slots:
             slots[o["extruder"]]["object_extruder"].append(o["id"])
@@ -142,13 +155,19 @@ def slot_usage(tm: ThreeMF) -> dict:
     if without_extruder and 1 in slots:
         slots[1]["default_extruder_for"] = without_extruder
 
+    for o in objects:
+        for key, value in o["overrides"].items():
+            if value in slots:
+                slots[value]["process_roles"].append(f"{key} (set on object {o['id']})")
+
     paint = painted_color.read_container(tm)
     painted_slots = set(paint.get("slots_referenced") or [])
     for i in painted_slots:
         if i in slots:
             slots[i]["painted"] = True
-    paint_complete = not paint.get("truncated") and bool(paint.get("default_slot_resolved", True)) \
-        if paint.get("available") else True          # no painting in the file: nothing was left unread
+    paint_complete = (not paint.get("truncated") and bool(paint.get("default_slot_resolved", True))
+                      and not paint.get("malformed_triangle_count") and not paint.get("facets_outside_mesh")
+                      ) if paint.get("available") else True      # no painting in the file: nothing was left unread
     complete = paint_complete and readable            # an unreadable object list is not evidence of absence
 
     for change in color_plan._layer_changes(_text(tm, CUSTOM_GCODE)):
@@ -180,7 +199,10 @@ def slot_usage(tm: ThreeMF) -> dict:
             "object_list_readable": readable}
 
 
-def snapshot(path: str | Path) -> dict:
+def snapshot(path: str | Path, label: str = "file") -> dict:
+    """`label` names the file in the output together with a short digest, never its real name: a 3MF's file name is
+    usually the model's name, and this output is meant to be pasted into a support thread."""
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
     tm = ThreeMF.open(path)
     cfg = _settings(tm)
     usage = slot_usage(tm)
@@ -194,7 +216,7 @@ def snapshot(path: str | Path) -> dict:
             "filament_id": _at(cfg, "filament_ids", index), "declared": _declared(cfg, index),
             "usage": usage["slots"].get(n),
         })
-    return {"file": Path(path).name, "filament_count": len(slots),
+    return {"file": f"{label} (sha256 {digest}…)", "filament_count": len(slots),
             "default_filament_profile": cfg.get("default_filament_profile"), "slots": slots,
             "painting": usage["painting"],
             "filament_settings": {k: v for k, v in sorted(cfg.items())
@@ -202,7 +224,7 @@ def snapshot(path: str | Path) -> dict:
 
 
 def compare(source: str | Path, prepared: str | Path) -> dict:
-    a, b = snapshot(source), snapshot(prepared)
+    a, b = snapshot(source, "source"), snapshot(prepared, "prepared")
     changes = []
     for n in range(1, max(a["filament_count"], b["filament_count"]) + 1):
         sa = next((s for s in a["slots"] if s["slot"] == n), None)
@@ -221,6 +243,7 @@ def compare(source: str | Path, prepared: str | Path) -> dict:
     return {"schema": SCHEMA, "source": a, "prepared": b,
             "slot_changes": changes, "differing_filament_settings": differing,
             "usage_changed": usage_moved,
+            "not_read": ["per-layer-range modifiers"],
             "note": "Read-only. 'no_reference_found' means no place Studio reads names the slot; it is not proof the "
                     "slot is unused."}
 
@@ -230,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) not in (1, 2):
         print("usage: python -m snapstudio_core.project_compare SOURCE.3mf [PREPARED.3mf]", file=sys.stderr)
         return 2
-    result = snapshot(args[0]) if len(args) == 1 else compare(args[0], args[1])
+    result = snapshot(args[0], "source") if len(args) == 1 else compare(args[0], args[1])
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

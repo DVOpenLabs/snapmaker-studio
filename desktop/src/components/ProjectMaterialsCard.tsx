@@ -163,6 +163,13 @@ export interface SlotRowProps {
 export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadInventory }: SlotRowProps) {
   const [picking, setPicking] = useState(false);
   const [browsing, setBrowsing] = useState(false);
+  const browseToggle = useRef<HTMLButtonElement>(null);
+  const wasBrowsing = useRef(false);
+  // The list unmounts when it closes; focus goes back to the control that opened it.
+  useEffect(() => {
+    if (wasBrowsing.current && !browsing) browseToggle.current?.focus();
+    wasBrowsing.current = browsing;
+  }, [browsing]);
   const n = slotNumber(slot.slot);
   const sourceColour = colorName(slot.colour);
   const status = presetStatusFor(choice, slot);
@@ -205,7 +212,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadIn
       {loadInventory && (
         <div className="space-y-1">
           {!browsing && (
-            <button type="button" className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
+            <button ref={browseToggle} type="button" aria-expanded={false} className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
               {INVENTORY_COPY.button}
             </button>
           )}
@@ -504,7 +511,7 @@ interface CardProps {
 export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
-  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base]);
+  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
   const [load, setLoad] = useState<ViewProps["load"]>({ status: "loading" });
   const [analysis, setAnalysis] = useState<ProjectMaterialsAnalysis | null>(null);
   const [presets, setPresets] = useState<MaterialPresetList | null>(null);

@@ -57,6 +57,28 @@ def test_a_slot_nothing_names_is_no_reference_found_not_unused(tmp_path):
     assert snap["painting"] == {"present": False, "complete": True, "truncated": False}
 
 
+def test_a_painting_with_unreadable_facets_is_not_complete(tmp_path, monkeypatch):
+    monkeypatch.setattr(pc.painted_color, "read_container", lambda tm: {
+        "available": True, "truncated": False, "slots_referenced": [], "malformed_triangle_count": 3})
+    snap = pc.snapshot(_five_colour_project(tmp_path))
+    assert snap["slots"][4]["usage"]["verdict"] == "unknown"
+
+
+def test_a_filament_an_object_sets_for_itself_counts_as_a_reference(tmp_path):
+    ms = ("<config><object id='1'><metadata key='extruder' value='1'/>"
+          "<metadata key='support_filament' value='5'/></object></config>")
+    slot5 = pc.snapshot(_five_colour_project(tmp_path, model_settings=ms))["slots"][4]["usage"]
+    assert slot5["verdict"] == "referenced" and "support_filament (set on object 1)" in slot5["process_roles"]
+
+
+def test_a_part_without_an_extruder_still_prints_with_the_first_filament(tmp_path):
+    ms = ("<config><object id='1'>"
+          "<part id='1' subtype='normal_part'><metadata key='extruder' value='2'/></part>"
+          "<part id='2' subtype='normal_part'/></object></config>")
+    usage = pc.snapshot(_five_colour_project(tmp_path, model_settings=ms))["slots"][0]["usage"]
+    assert "default_extruder" in usage["referenced_by"]
+
+
 def test_an_unreadable_painting_withholds_the_no_reference_answer(tmp_path, monkeypatch):
     monkeypatch.setattr(pc.painted_color, "read_container", lambda tm: {"available": True, "truncated": True, "slots_referenced": []})
     snap = pc.snapshot(_five_colour_project(tmp_path))
@@ -82,10 +104,11 @@ def test_an_unreadable_object_list_is_unknown_not_no_reference_found(tmp_path):
     assert [s["usage"]["verdict"] for s in snap["slots"]] == ["unknown", "unknown"]
 
 
-def test_object_and_part_names_are_never_printed(tmp_path, capsys):
-    pc.main([str(_five_colour_project(tmp_path))])
+def test_object_part_and_file_names_are_never_printed(tmp_path, capsys):
+    pc.main([str(_five_colour_project(tmp_path, name="Secret Client Bracket.3mf"))])
     out = capsys.readouterr().out
-    assert "Private" not in out and "Another" not in out
+    assert "Private" not in out and "Another" not in out and "Secret" not in out and "Bracket" not in out
+    assert "source (sha256 " in out
     assert json.loads(out)["filament_count"] == 5
 
 

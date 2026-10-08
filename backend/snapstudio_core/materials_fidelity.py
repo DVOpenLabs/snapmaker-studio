@@ -189,6 +189,11 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                     "text": (f"The project declares its own {_KEY_WORD[key]} ({kept_value}), so Snapmaker Orca keeps it "
                              f"instead of the preset's ({preset_value}). Studio does not remove a declaration the "
                              "project's author made.")})
+    if spool and not spool.get("material") and src_slot.get("family"):
+        discrepancies.append({
+            "code": "spool_material_differs",
+            "text": (f"The spool's material is not recorded; the model asks for {src_slot['material']}. "
+                     "You chose it deliberately.")})
     if spool and spool.get("material") and src_slot.get("family"):
         from .material_providers import _family_and_subtype
         spool_family, _ = _family_and_subtype(spool["material"])
