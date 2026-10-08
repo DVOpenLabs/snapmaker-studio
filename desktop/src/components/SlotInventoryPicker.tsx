@@ -43,6 +43,13 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
   const [pending, setPending] = useState<MaterialCandidate | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
+  // Dismissing a confirmation puts the person back on the spool they were deciding about.
+  function dismissConfirm() {
+    const id = pending ? String(pending.spool_id) : null;
+    setPending(null);
+    if (id) rowButtons.current.get(id)?.focus();
+  }
   // Cancel is the safe answer, so it is where focus goes when a confirmation opens.
   useEffect(() => { if (pending) cancelRef.current?.focus(); }, [pending]);
 
@@ -87,6 +94,7 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
     return (
       <li key={`${c.provider}:${c.spool_id}`} className="rounded-md border border-border">
         <button type="button" onClick={() => pick(c)} aria-expanded={confirming ? true : undefined}
+          ref={(el) => { if (el) rowButtons.current.set(String(c.spool_id), el); else rowButtons.current.delete(String(c.spool_id)); }}
           className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted/50">
           <Swatch colour={d.swatch} />
           <span className="min-w-0 flex-1 truncate">{d.text}</span>
@@ -101,11 +109,11 @@ export default function SlotInventoryPicker({ slot, load, onChoose, onClose }: I
         </button>
         {confirming && warning && (
           <div className="space-y-2 border-t border-border bg-repairable/10 p-2 text-xs" role="alertdialog" aria-label="Confirm a different material" data-testid="family-confirm"
-            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPending(null); } }}>
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); dismissConfirm(); } }}>
             <p className="flex items-start gap-1.5 text-repairable"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>
             <div className="flex gap-2">
               <button type="button" className="rounded-md bg-primary px-2 py-1 font-medium text-primary-foreground" onClick={() => { setPending(null); onChoose(c); }}>{INVENTORY_COPY.useAnyway}</button>
-              <button ref={cancelRef} type="button" className="rounded-md bg-secondary px-2 py-1" onClick={() => setPending(null)}>{INVENTORY_COPY.cancel}</button>
+              <button ref={cancelRef} type="button" className="rounded-md bg-secondary px-2 py-1" onClick={dismissConfirm}>{INVENTORY_COPY.cancel}</button>
             </div>
           </div>
         )}

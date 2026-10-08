@@ -202,6 +202,10 @@ export interface MappingRequest {
 export const SPOOL_WITHOUT_PRESET =
   "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.";
 
+/** The same, when the project names no filament preset for the slot: there is nothing that "will remain". */
+export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
+  "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you.";
+
 /** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */
 export function needsSpoolConfirmation(c: MaterialCandidate): string | null {
   const w = (c.warnings ?? []).find((x) => x.requires_confirmation);

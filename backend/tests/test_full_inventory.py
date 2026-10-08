@@ -202,6 +202,17 @@ def test_case_1_a_spool_without_a_preset_keeps_the_project_preset_and_says_so(en
     assert rec["output"]["preset_written"] is None and rec["output"]["vendor_type_origin"] == "project"
 
 
+def test_case_1_when_the_project_names_no_preset_nothing_is_said_to_remain(env, tmp_path):
+    from snapstudio_core.materials_fidelity import SPOOL_WITHOUT_PRESET_NONE_EXISTING as NONE_EXISTING
+    src = _project(tmp_path, _cfg(**{**BAMBU, "filament_settings_id": ["", "", ""]}))
+    result = _convert(tmp_path, [{"slot": 1, "preset": None, "colour": "#00AA11", "spool": SPOOL_SEL}], src, "nopreset")
+    out = _prepared(type("R", (), {"output_path": result["output_path"]}))
+    assert out["filament_settings_id"] == ["", "", ""] and out["filament_colour"][1] == "#00AA11"
+    line = result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
+    assert NONE_EXISTING in line and "no filament preset for this slot" in line
+    assert "will remain" not in line and "Customized Preset" not in line     # there is no preset to remain or to rename
+
+
 def test_case_1_wording_is_absent_when_no_spool_was_chosen(env, tmp_path):
     src = _bambu(tmp_path)
     result = _convert(tmp_path, [{"slot": 1, "preset": None, "colour": "#00AA11"}], src, "nospool")

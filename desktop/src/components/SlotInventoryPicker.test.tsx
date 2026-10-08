@@ -4,7 +4,7 @@ import { useReducer } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { candidate, mapping, slot } from "@/lib/projectMaterials.fixtures";
 import {
-  SPOOL_WITHOUT_PRESET, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
+  SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 import { useProvider } from "@/store/provider";
 
@@ -139,6 +139,17 @@ describe("Choose another spool", () => {
     expect(request()).toEqual([]);
   });
 
+  it("puts focus back on the spool row after Cancel or Escape", async () => {
+    await open();
+    const picker = () => screen.getByTestId("inventory-picker");
+    fireEvent.click(within(picker()).getByRole("button", { name: /Green/ }));
+    fireEvent.click(within(screen.getByTestId("family-confirm")).getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(within(picker()).getByRole("button", { name: /Green/ }));
+    fireEvent.click(within(picker()).getByRole("button", { name: /Green/ }));
+    fireEvent.keyDown(screen.getByTestId("family-confirm"), { key: "Escape" });
+    expect(document.activeElement).toBe(within(picker()).getByRole("button", { name: /Green/ }));
+  });
+
   it("returns focus to the button that opened the list once it closes", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Close the spool list" }));
@@ -205,6 +216,14 @@ describe("a spool with no Orca preset", () => {
     expect(screen.getByTestId("spool-without-preset")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Keep project's filament" }));
     expect(screen.queryByTestId("spool-without-preset")).toBeNull();
+  });
+
+  it("does not say a preset will remain when the project names none for the slot", () => {
+    render(<Harness a={analysis({ slots: [slot({ settings_id: null, candidates: [RED], candidate_count: 1 })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Yoopai PLA Matte/ }));
+    const text = screen.getByTestId("spool-without-preset").textContent ?? "";
+    expect(text).toBe(SPOOL_WITHOUT_PRESET_NONE_EXISTING);
+    expect(text).not.toContain("will remain");
   });
 
   it("says nothing will change when the spool has no colour either", () => {

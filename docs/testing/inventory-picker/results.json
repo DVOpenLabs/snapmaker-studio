@@ -1,0 +1,110 @@
+{
+  "browser": "Microsoft Edge (Chromium), headless",
+  "results": [
+    {
+      "name": "Enter on 'Choose another spool' opens the list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus moves to the search box",
+      "ok": true,
+      "detail": "Find a spool for slot 2"
+    },
+    {
+      "name": "the search box narrows the list from the keyboard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Tab reaches the PETG spool row",
+      "ok": true,
+      "detail": "Example Polymers PETG — Orange · #4 · 780 g estimatedOrca preset: No m"
+    },
+    {
+      "name": "Enter on a different-material spool asks for confirmation and selects nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the engine's warning is shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus moves to Cancel, the safe answer",
+      "ok": true,
+      "detail": "Cancel"
+    },
+    {
+      "name": "Escape cancels the confirmation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "nothing was selected by cancelling",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to the spool row after Escape",
+      "ok": true,
+      "detail": "Example Polymers PETG — Orange · #4 · 780 g estimatedOrca preset: No m"
+    },
+    {
+      "name": "Enter on Cancel closes the confirmation and keeps the list open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to the spool row after Cancel",
+      "ok": true,
+      "detail": "Example Polymers PETG — Orange · #4 · 780 g estimatedOrca preset: No m"
+    },
+    {
+      "name": "Shift+Tab reaches 'Use this spool anyway'",
+      "ok": true,
+      "detail": "Use this spool anyway"
+    },
+    {
+      "name": "only after confirming is the spool selected",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the list closes once a spool is chosen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to 'Choose another spool'",
+      "ok": true,
+      "detail": "Choose another spool"
+    },
+    {
+      "name": "the no-preset notice names the project's existing preset",
+      "ok": true,
+      "detail": "Spool selected, but no Orca preset selected. The project's existing filament preset will remain."
+    },
+    {
+      "name": "with no existing preset the notice does not claim one will remain",
+      "ok": true,
+      "detail": "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you."
+    },
+    {
+      "name": "no request named another provider, a printer, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the provider look-alike was read and never written",
+      "ok": true,
+      "detail": "GET /api/v1/spool?allow_archived=true"
+    },
+    {
+      "name": "no unexpected console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

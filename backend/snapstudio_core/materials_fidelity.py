@@ -261,6 +261,9 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
 #: Said wherever a spool is chosen for a slot and no installed Orca preset is: the spool decides the colour only.
 SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
                         "The project's existing filament preset will remain.")
+#: The same, for a slot whose project names no filament preset at all: there is nothing to "remain".
+SPOOL_WITHOUT_PRESET_NONE_EXISTING = ("Spool selected, but no Orca preset selected. "
+                                      "The project names no filament preset for this slot, and Studio does not choose one for you.")
 
 
 def _hex(value) -> str | None:
@@ -313,9 +316,11 @@ def _line(rec: dict, spool: dict | None) -> str:
         text = f"Slot {n}: Colour changed to {_colour_phrase(colour)}" + (f" (from {who})" if who else "") + "."
     else:
         text = f"Slot {n}:" + colour_text
+    identity = rec["source"]["settings_id"]
+    if who and not identity:
+        return text + " " + SPOOL_WITHOUT_PRESET_NONE_EXISTING
     if who:
         text += " " + SPOOL_WITHOUT_PRESET
-    identity = rec["source"]["settings_id"]
     text += f" Studio keeps the project's filament identity '{identity}'." if identity else \
         " Studio keeps the project's filament identity."
     if any(d["code"] == "customized_preset_possible" for d in rec["discrepancies"]):
