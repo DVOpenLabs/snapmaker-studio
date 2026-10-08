@@ -4,7 +4,7 @@
 //   node tools/acceptance/inventory-picker-keyboard.mjs --out <folder>
 //
 // Starts, all on this machine and all stopped again at the end: the real Studio engine (throwaway data folder), the real
-// Studio web UI (vite on :1420 unless one is already up; the script says which), and an anonymous Spoolman look-alike on
+// Studio web UI (a vite dev server started from this checkout on a free port; an already-running server is never reused), and an anonymous Spoolman look-alike on
 // 127.0.0.1:7912 that serves five made-up spools. Only the keyboard is used to operate the picker. Nothing here may reach a
 // real printer or provider: the run is fail-closed, so any engine request that names another provider address, a printer,
 // or network discovery is aborted and fails the run.
@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,17 +97,20 @@ const handshake = await new Promise((resolve, reject) => {
   backend.stdout.on("data", (d) => { buf += d; const m = buf.match(/\{[^{}]*\}/); if (m) { try { resolve(JSON.parse(m[0])); } catch { /* keep reading */ } } });
   setTimeout(() => reject(new Error("engine did not report its port")), 60000);
 });
-let uiUp = false;
-try { const r = await fetch("http://localhost:1420/"); uiUp = r.ok; } catch { /* start our own */ }
-if (uiUp && !process.argv.includes("--allow-existing-ui")) {
-  console.error("A server is already answering on :1420, and it may be a different checkout. Stop it, or pass --allow-existing-ui to accept that (the result then records it).");
-  process.exit(2);
-}
-console.log(uiUp ? "UI: using the dev server already running on :1420 (--allow-existing-ui)" : "UI: started a dev server from this checkout");
-if (!uiUp) {
-  children.push(spawn("npx.cmd", ["vite"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
-  for (let i = 0; i < 80; i++) { try { const r = await fetch("http://localhost:1420/"); if (r.ok) break; } catch { /* not yet */ } await sleep(500); }
-}
+// Always this checkout's own UI: a dev server started here, from desktop/, on a port nothing else holds. A server that
+// already answers on :1420 may belong to another checkout, so it is never reused.
+const uiPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once("error", reject);
+  probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
+const UI = `http://localhost:${uiPort}`;
+const ui = spawn("npx.cmd", ["vite", "--port", String(uiPort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true });
+children.push(ui);
+let uiReady = false;
+for (let i = 0; i < 80 && !uiReady; i++) { try { const r = await fetch(`${UI}/`); uiReady = r.ok; } catch { /* not yet */ } if (!uiReady) await sleep(500); }
+if (!uiReady) { console.error(`This checkout's UI did not come up on ${UI}.`); process.exit(2); }
+console.log(`UI: started a dev server from this checkout (${join(repo, "desktop")}) on ${UI}`);
 
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`); };
@@ -145,7 +149,7 @@ const slot2 = () => page.locator('[data-slot="2"]');
 const picker = () => page.getByTestId("inventory-picker");
 
 async function openProject(path) {
-  await page.goto(`http://localhost:1420/compatibility?api=${handshake.port}:${handshake.token}&file=${encodeURIComponent(path)}`);
+  await page.goto(`${UI}/compatibility?api=${handshake.port}:${handshake.token}&file=${encodeURIComponent(path)}`);
   await page.getByRole("button", { name: "Open a 3MF project" }).click();
   await page.getByText("Project materials").first().waitFor({ timeout: 30000 });
   await slot2().getByRole("button", { name: "Choose another spool" }).waitFor();
@@ -236,7 +240,7 @@ try {
   cleanup();
 }
 const failed = results.filter((r) => !r.ok).length;
-writeFileSync(join(out, "results.json"), JSON.stringify({ browser: "Microsoft Edge (Chromium), headless", uiStartedByThisRun: !uiUp,
+writeFileSync(join(out, "results.json"), JSON.stringify({ browser: "Microsoft Edge (Chromium), headless", uiStartedByThisRun: true, uiUrl: UI,
   commit: spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim(), results }, null, 2));
 console.log(`${results.length - failed}/${results.length} keyboard checks passed`);
 process.exit(failed ? 1 : 0);

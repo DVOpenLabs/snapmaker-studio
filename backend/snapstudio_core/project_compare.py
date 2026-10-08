@@ -100,22 +100,28 @@ def _declared(cfg: dict, index: int) -> list[str]:
     return sorted({p.strip() for p in str(entries[1 + index] or "").split(";") if p.strip()})
 
 
+def _ascii_digits(value) -> bool:
+    """Plain 0-9 only. str.isdigit() also accepts superscripts and other scripts' digits, some of which int() rejects."""
+    s = str(value if value is not None else "")
+    return s.isascii() and s.isdigit()
+
+
 def _extruder(node) -> int | None:
     """The slot an object or part names for itself. 0 means "inherit", the same as naming none."""
     for meta in node.findall("metadata"):
-        if meta.get("key") == "extruder" and str(meta.get("value", "")).isdigit():
+        if meta.get("key") == "extruder" and _ascii_digits(meta.get("value", "")):
             return int(meta.get("value")) or None
     return None
 
 
 def _id(value) -> str | None:
     """Object and part ids are printed, so only a plain number is: anything else could carry a name."""
-    return value if isinstance(value, str) and value.isdigit() and len(value) <= 9 else None
+    return value if isinstance(value, str) and _ascii_digits(value) and len(value) <= 9 else None
 
 
 def _override_slots(node) -> dict[str, int]:
     return {m.get("key"): int(m.get("value")) for m in node.findall("metadata")
-            if m.get("key") in PROCESS_ROLES and str(m.get("value", "")).isdigit() and int(m.get("value")) > 0}
+            if m.get("key") in PROCESS_ROLES and _ascii_digits(m.get("value", "")) and int(m.get("value")) > 0}
 
 
 def _objects(model_settings: str) -> list[dict]:
@@ -207,7 +213,7 @@ def slot_usage(tm: ThreeMF) -> dict:
     for key in PROCESS_ROLES:
         raw = cfg.get(key)
         for value in (raw if isinstance(raw, list) else [raw]):
-            if str(value or "").isdigit() and int(value) in slots:
+            if _ascii_digits(value or "") and int(value) in slots:
                 slots[int(value)]["process_roles"].append(key)
 
     for i, grams in _sliced_grams(tm).items():

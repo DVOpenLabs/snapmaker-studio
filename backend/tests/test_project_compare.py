@@ -189,3 +189,25 @@ def test_nothing_is_written(tmp_path):
     names = sorted(p.name for p in tmp_path.iterdir())
     pc.snapshot(src)
     assert sorted(p.name for p in tmp_path.iterdir()) == names
+
+
+def test_unicode_digits_are_not_numbers_here(tmp_path, capsys):
+    """str.isdigit() accepts superscripts (int() then raises) and other scripts' digits (int() accepts them): neither is a slot number or a printable id."""
+    # A superscript extruder must not make the whole object list unreadable.
+    ms = ("<config><object id='1'><metadata key='extruder' value='\u00b2'/>"
+          "<part id='\u0663' subtype='normal_part'><metadata key='extruder' value='3'/></part></object></config>")
+    snap = pc.snapshot(_five_colour_project(tmp_path, model_settings=ms))
+    by = {s["slot"]: s["usage"] for s in snap["slots"]}
+    assert by[3]["verdict"] == "referenced"
+    # Arabic-Indic digits in an override value name no slot; they are ignored, not read as 2.
+    ms2 = ("<config><object id='1'><metadata key='extruder' value='1'/>"
+           "<metadata key='support_filament' value='\u0662'/></object></config>")
+    by2 = {s["slot"]: s["usage"] for s in pc.snapshot(_five_colour_project(tmp_path, name="q.3mf", model_settings=ms2))["slots"]}
+    assert not any("support_filament (set on object 1)" in r for r in by2[2]["process_roles"])
+    # Neither is a printable id.
+    pc.main([str(_five_colour_project(tmp_path, name="r.3mf", model_settings=ms))])
+    assert "\u0663" not in capsys.readouterr().out
+    # A project-level value written in another script's digits names no slot either.
+    project = _five_colour_project(tmp_path, name="s.3mf", wall_filament="\u0662")
+    by3 = {s["slot"]: s["usage"] for s in pc.snapshot(project)["slots"]}
+    assert "wall_filament" not in by3[2]["process_roles"]
