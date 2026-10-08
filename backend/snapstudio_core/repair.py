@@ -2,7 +2,7 @@ from __future__ import annotations
 import copy
 from .container import ThreeMF
 from .config_io import load_project_settings, dump_project_settings
-from .rules import load_rules, apply_clamps
+from .rules import load_rules, apply_clamps, clamp_explanation
 from .profile import load_profile, apply_swap
 from .filaments import apply_remap, filament_count, conform_filament_arrays
 from .preserve import machine_compat_keys, prepare_preserved_values
@@ -38,6 +38,7 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
     for change in report["normalizations"]:
         change["reason"] = (
             f"U1 compatibility clamp: {change['old']} → {change['new']}")
+        change["explanation"] = clamp_explanation(change)
 
     # U1 supports >4 filament colours (verified: real U1 files carry 8 colours
     # with 4 toolheads). Never auto-cap; preserve all filament arrays in every

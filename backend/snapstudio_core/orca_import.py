@@ -189,6 +189,15 @@ def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
                     "invalid project configuration.")
 
 
+# The raft expansion has two owners: the U1 clamp table (data/u1_rules.json), which runs in every mode and fixes -1, and
+# the rule below, which runs in Preserve/U1/Optimize and fixes any negative value. They must agree on the value (the clamp's
+# "good" is the U1 template default, checked by a test) and say the same thing about why, so the reason shown to the person
+# does not depend on which of them acted.
+RAFT_EXPANSION_REASON = "restored to the U1 default (a negative value is out of range)"
+RAFT_EXPANSION_WHY = ("Snapmaker Orca and OrcaSlicer both reject a negative raft expansion "
+                      "and warn when the project is opened.")
+
+
 def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
     """A negative raft expansion is out of range for both Snapmaker Orca and
     OrcaSlicer and produces a compatibility warning on open. The replacement
@@ -203,9 +212,7 @@ def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
     old = cfg.get("raft_first_layer_expansion")
     cfg["raft_first_layer_expansion"] = default
     _change(changes, "raft_first_layer_expansion", old, default,
-            "restored to the U1 default (a negative value is out of range)",
-            "Snapmaker Orca and OrcaSlicer both reject a negative raft expansion "
-            "and warn when the project is opened.")
+            RAFT_EXPANSION_REASON, RAFT_EXPANSION_WHY)
 
 
 # --- entry points -----------------------------------------------------------

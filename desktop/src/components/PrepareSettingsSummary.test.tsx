@@ -105,3 +105,37 @@ describe("PrepareSettingsSummary", () => {
     expect(() => renderToStaticMarkup(<PrepareSettingsSummary summary={summary} mode="preserve" />)).not.toThrow();
   });
 });
+
+describe("PrepareSettingsSummary explanations", () => {
+  const withNotes = {
+    ...summary,
+    kept_count: 12,
+    mapped_to_u1: [{ key: "nozzle_temperature", old: "[200]", new: "[200,200,200,200]", reason: "carried over to U1 toolheads (values preserved)" }],
+    compat_changed: [
+      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 profile's value." },
+      { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses." },
+      { key: "some_setting", old: "1", new: "2", reason: "changed only for U1 compatibility" },
+    ],
+    recommended_changes: [{ key: "speed", old: 20, new: 40, reason: "available with the recommended U1 profile" }],
+  };
+
+  it("shows the engine's explanation under each compatibility change that has one", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
+    expect(html).toContain("which the Compatibility check flags as an invalid value");
+    expect(html).toContain("Automatic means the slicer chooses.");
+  });
+
+  it("does not repeat a reason that only restates the change", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
+    expect(html).not.toContain("changed only for U1 compatibility</p>");
+    expect(html).not.toContain("U1 compatibility clamp");
+  });
+
+  it("keeps kept settings and optional recommendations as their own sections, without compatibility explanations", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
+    expect(html).toContain("Kept from the original file");
+    expect(html).toContain("Optional recommendations (not applied)");
+    expect(html).not.toContain("carried over to U1 toolheads (values preserved)");
+    expect(html).not.toContain("available with the recommended U1 profile");
+  });
+});
