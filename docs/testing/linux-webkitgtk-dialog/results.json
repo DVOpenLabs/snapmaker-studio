@@ -1,0 +1,160 @@
+{
+  "app": "/usr/bin/snapmaker-studio-desktop",
+  "results": [
+    {
+      "name": "the page is a real WebKitGTK web view with native <dialog>.showModal()",
+      "ok": true,
+      "detail": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+    },
+    {
+      "name": "printer controls appear for the loopback printer while it is printing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opens as an alertdialog named by its title",
+      "ok": true,
+      "detail": "alertdialog / Cancel this print?"
+    },
+    {
+      "name": "the warning and the printer are in its description",
+      "ok": true,
+      "detail": "This stops the job on the printer. You can't resume a cancelled print.Printer: 127.0.0.1"
+    },
+    {
+      "name": "initial focus is on Cancel",
+      "ok": true,
+      "detail": "Cancel"
+    },
+    {
+      "name": "the prompt is centered in the window",
+      "ok": true,
+      "detail": "{\"x\":448,\"w\":384,\"y\":377,\"h\":170} in 1280x900"
+    },
+    {
+      "name": "six Tabs forward and six Shift+Tabs backward never focus a control on the page behind the prompt",
+      "ok": true,
+      "detail": "Yes, do it | DIALOG | Cancel | Yes, do it | DIALOG | Cancel | DIALOG | Yes, do it | Cancel | DIALOG | Yes, do it | Cancel"
+    },
+    {
+      "name": "the prompt's own buttons are the only controls focus visited",
+      "ok": true,
+      "detail": "Yes, do it, DIALOG, Cancel"
+    },
+    {
+      "name": "the connect field behind the prompt cannot be clicked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Escape closes the prompt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Escape sent nothing to the printer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus returns to the Cancel print button",
+      "ok": true,
+      "detail": "Cancel print"
+    },
+    {
+      "name": "Escape pressed twice while the request is running leaves the prompt on screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "three rapid confirms send exactly one cancel request",
+      "ok": true,
+      "detail": "[{\"host\":\"127.0.0.1\",\"method\":\"POST\",\"path\":\"/printer/print/cancel\"}]"
+    },
+    {
+      "name": "the prompt closes when the request finishes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the prompt is withdrawn when the printer stops answering",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "nothing was sent to the printer that went away",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the prompt is withdrawn when the print finishes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no cancel was sent for a print that had already ended",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus lands on the card heading after the Cancel button disappeared",
+      "ok": true,
+      "detail": "Printer controls"
+    },
+    {
+      "name": "the prompt is withdrawn when the printer address changes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "nothing was sent to either printer",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "emergency stop asks first and names the printer",
+      "ok": true,
+      "detail": "EMERGENCY STOP | Emergency stop halts motion/heaters and may require a firmware restart before printing again. | Printer"
+    },
+    {
+      "name": "dismissing emergency stop sends nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "confirming emergency stop sends exactly one M112, to the printer named in the prompt",
+      "ok": true,
+      "detail": "[{\"host\":\"127.0.0.1\",\"method\":\"POST\",\"path\":\"/printer/gcode/script?script=M112\"}]"
+    },
+    {
+      "name": "nothing was sent to the other printer",
+      "ok": true,
+      "detail": "[\"127.0.0.1\"]"
+    },
+    {
+      "name": "every connection the look-alike printers received arrived on a loopback address",
+      "ok": true,
+      "detail": "[\"127.0.0.1\",\"127.0.0.2\"]"
+    }
+  ],
+  "callsSinceLastReset": [
+    {
+      "host": "127.0.0.1",
+      "method": "POST",
+      "path": "/printer/gcode/script?script=M112"
+    }
+  ],
+  "allPosts": [
+    {
+      "host": "127.0.0.1",
+      "method": "POST",
+      "path": "/printer/print/cancel"
+    },
+    {
+      "host": "127.0.0.1",
+      "method": "POST",
+      "path": "/printer/gcode/script?script=M112"
+    }
+  ],
+  "driverLog": "libEGL warning: DRI3 error: Could not get DRI3 device\nlibEGL warning: Ensure your X server supports DRI3 to get accelerated rendering\n"
+}
