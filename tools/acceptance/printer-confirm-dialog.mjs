@@ -123,10 +123,26 @@ await ctx.addInitScript(() => { localStorage.setItem("theme", "dark"); localStor
 // Fail closed: nothing that names another printer address reaches the engine.
 const violations = [];
 await ctx.route(`http://127.0.0.1:${handshake.port}/**`, async (route) => {
-  let host = null;
-  try { host = JSON.parse(route.request().postData() || "{}").host ?? null; } catch { /* not JSON */ }
-  try { const q = new URL(route.request().url()).searchParams.get("host"); if (q) host = q; } catch { /* no query */ }
-  if (host !== null && !ALLOWED_PRINTER_HOSTS.has(String(host).trim())) { violations.push(`${route.request().method()} ${route.request().url()} -> host ${host}`); await route.abort(); return; }
+  const req = route.request();
+  const url = new URL(req.url());
+  let body = {};
+  try { body = JSON.parse(req.postData() || "{}") ?? {}; } catch { /* not JSON */ }
+  // Every address the request could make the engine contact: the body host, each of the body hosts, the query host.
+  // Each one is judged on its own, so a harmless one cannot hide a forbidden one.
+  const named = [];
+  if (body.host !== undefined) named.push(body.host);
+  if (Array.isArray(body.hosts)) named.push(...body.hosts);
+  if (url.searchParams.has("host")) named.push(url.searchParams.get("host"));
+  const bad = named.filter((h) => !ALLOWED_PRINTER_HOSTS.has(String(h ?? "").trim()));
+  // Discovery scans the network (and, with no hosts given, a default list), so it is never allowed here.
+  const scans = /discover/i.test(url.pathname);
+  // A printer request that names no address at all would fall back to the engine's default (U1.local).
+  const unnamed = url.pathname.startsWith("/printer/") && named.length === 0;
+  if (bad.length || scans || unnamed) {
+    violations.push(`${req.method()} ${url.pathname} -> ${scans ? "network discovery" : unnamed ? "no printer address" : "host " + bad.join(",")}`);
+    await route.abort();
+    return;
+  }
   await route.continue();
 });
 const page = await ctx.newPage();
