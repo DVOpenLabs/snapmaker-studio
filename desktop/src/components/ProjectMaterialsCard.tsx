@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Loader2, Layers, AlertTriangle, Info, Check } from "lucide-react";
 import {
-  confirmMaterialMapping, convert, materialPresets, projectMaterials,
+  confirmMaterialMapping, convert, materialPresets, projectMaterials, projectMaterialsInventory,
   type ConversionResult, type PrepareMode, type ProjectMaterialsSummary,
 } from "@/api";
+import SlotInventoryPicker, { INVENTORY_COPY } from "@/components/SlotInventoryPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText, presetSourceLabel,
-  presetStatusFor, samePreset, slotNumber, unconfirmedSlots,
-  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
+  KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, choiceReduce, colourWord, emptyChoice, filterPresets, holdsChoices, mappingRequests, materialText,
+  presetSourceLabel, presetStatusFor, samePreset, slotNumber, unconfirmedSlots,
+  type Choices, type ChoiceAction, type MaterialCandidate, type MaterialInventory, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
 } from "@/lib/projectMaterials";
 import { PROVIDERS, providerArgs, useProvider, type ProviderKind } from "@/store/provider";
@@ -155,10 +156,20 @@ export interface SlotRowProps {
   presets: MaterialPresetList | null;
   providerLabel: string | null;
   dispatch: (a: ChoiceAction) => void;
+  /** Reads the provider's whole inventory for a slot. Absent when there is no readable provider. */
+  loadInventory?: (slot: number) => Promise<MaterialInventory>;
 }
 
-export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: SlotRowProps) {
+export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadInventory }: SlotRowProps) {
   const [picking, setPicking] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const browseToggle = useRef<HTMLButtonElement>(null);
+  const wasBrowsing = useRef(false);
+  // The list unmounts when it closes; focus goes back to the control that opened it.
+  useEffect(() => {
+    if (wasBrowsing.current && !browsing) browseToggle.current?.focus();
+    wasBrowsing.current = browsing;
+  }, [browsing]);
   const n = slotNumber(slot.slot);
   const sourceColour = colorName(slot.colour);
   const status = presetStatusFor(choice, slot);
@@ -198,6 +209,20 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
         <p className="text-xs text-muted-foreground" data-testid="no-candidates">{COPY.noCandidates}</p>
       )}
 
+      {loadInventory && (
+        <div className="space-y-1">
+          {!browsing && (
+            <button ref={browseToggle} type="button" className="text-xs text-primary hover:underline" onClick={() => setBrowsing(true)}>
+              {INVENTORY_COPY.button}
+            </button>
+          )}
+          {browsing && (
+            <SlotInventoryPicker slot={slot.slot} load={loadInventory} onClose={() => setBrowsing(false)}
+              onChoose={(c) => { setBrowsing(false); dispatch({ type: "chooseSpool", slot: slot.slot, spool: c }); }} />
+          )}
+        </div>
+      )}
+
       {spool && (
         <div className="rounded-md bg-muted/40 p-2 text-xs" data-testid="selected-spool">
           <p className="font-medium">{COPY.selectedSpool}{providerLabel ? ` · from ${providerLabel} at selection time` : ""}</p>
@@ -232,7 +257,15 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch }: Slot
           )}
         </div>
 
-        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{KEEP_OWN_NOTICE}</p>}
+        {choice.keepOwn && <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{slot.settings_id ? KEEP_OWN_NOTICE : KEEP_OWN_NOTICE_NONE_EXISTING}</p>}
+
+        {/* A spool decides the colour. Without an Orca preset it does not change the filament preset, and the person is told so. */}
+        {spool && !choice.preset && !choice.keepOwn && (
+          <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{slot.settings_id ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}` : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
+          </p>
+        )}
 
         {choice.preset && !choice.preset.confirmed && !choice.keepOwn && (
           <div className="flex flex-wrap items-center gap-2">
@@ -401,6 +434,7 @@ export interface ViewProps {
   onPrepare: () => void;
   busy?: boolean;
   warning?: string | null;
+  loadInventory?: (slot: number) => Promise<MaterialInventory>;
 }
 
 export function ProjectMaterialsView(p: ViewProps) {
@@ -431,7 +465,8 @@ export function ProjectMaterialsView(p: ViewProps) {
         {!analysis.provider && <p className="text-xs text-muted-foreground" data-testid="no-provider">{COPY.noProvider}</p>}
         {(analysis.slots ?? []).map((slot) => (
           <SlotRow key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
-            providerLabel={p.providerLabel} dispatch={p.dispatch} />
+            providerLabel={p.providerLabel} dispatch={p.dispatch}
+            loadInventory={analysis.provider?.available ? p.loadInventory : undefined} />
         ))}
         {p.review.status === "idle" ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -476,7 +511,7 @@ interface CardProps {
 export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
-  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base]);
+  const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
   const [load, setLoad] = useState<ViewProps["load"]>({ status: "loading" });
   const [analysis, setAnalysis] = useState<ProjectMaterialsAnalysis | null>(null);
   const [presets, setPresets] = useState<MaterialPresetList | null>(null);
@@ -511,6 +546,10 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, argsKey]);
+
+  const loadInventory = useCallback((slot: number) => projectMaterialsInventory(path, slot, args),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [path, argsKey]);
 
   const selections = useMemo(() => buildSelections(choices), [choices]);
   const holding = holdsChoices(choices);
@@ -569,7 +608,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   return (
     <ProjectMaterialsView load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
-      onPrepare={doPrepare} busy={busy || preparing} warning={warning} />
+      onPrepare={doPrepare} busy={busy || preparing} warning={warning} loadInventory={loadInventory} />
   );
 }
 

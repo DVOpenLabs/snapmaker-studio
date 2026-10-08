@@ -43,7 +43,8 @@ export interface MaterialMapping {
 export interface MaterialCandidate {
   provider: string;
   spool_id: number | string;
-  rank: number;
+  /** Position in the engine's short list; the full inventory has none. */
+  rank?: number;
   label: string;
   vendor: string | null;
   material: string | null;
@@ -56,6 +57,21 @@ export interface MaterialCandidate {
   slicer_filament: string | null;
   mapping: MaterialMapping;
   reasons: MaterialReason[];
+  /** False for a spool of another material family (only the full inventory returns those). Absent means it matches. */
+  family_match?: boolean;
+  /** The engine's warnings. One with `requires_confirmation` must be accepted by the person before the spool is used. */
+  warnings?: { code: string; text: string; requires_confirmation?: boolean }[];
+}
+
+/** Every spool the provider lists, as options for one slot: the manual override beside the ranked suggestions. */
+export interface MaterialInventory {
+  supported: boolean;
+  reason?: string;
+  slot?: number;
+  provider?: { kind: string; available: boolean; error_code: string | null } | null;
+  entries: MaterialCandidate[];
+  count?: number;
+  same_family_count?: number;
 }
 
 export interface MaterialSuggestion {
@@ -182,6 +198,36 @@ export interface MappingRequest {
   fingerprint?: string;
 }
 
+/** Said beside a slot that has a spool and no Orca preset. The engine says the same in the review. */
+export const SPOOL_WITHOUT_PRESET =
+  "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.";
+
+/** Said with it: what Studio did and did not establish about the preset it leaves alone. */
+export const SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it.";
+
+/** The same, when the project names no filament preset for the slot: there is nothing that "will remain". */
+export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
+  "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you.";
+
+/** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */
+export function needsSpoolConfirmation(c: MaterialCandidate): string | null {
+  const w = (c.warnings ?? []).find((x) => x.requires_confirmation);
+  return w ? w.text : null;
+}
+
+/** A candidate in the shape the spool picker's own helpers describe, sort and search. */
+export function candidateAsSpool(c: MaterialCandidate): ProviderSpool {
+  return {
+    id: c.spool_id, label: c.label, vendor: c.vendor, material: c.material, subtype: c.subtype,
+    color: c.colour, color_name: c.color_name, remaining_g: c.remaining_g,
+    remaining_quality: c.remaining_quality, archived: false,
+  } as unknown as ProviderSpool;
+}
+
+/** The same, for a slot that keeps its own filament when the project names no preset for it. */
+export const KEEP_OWN_NOTICE_NONE_EXISTING =
+  "Studio keeps this slot as the project has it. The project names no filament preset for it, and Studio does not choose one for you.";
+
 /** The exact sentence for a slot that keeps its own filament. */
 export const KEEP_OWN_NOTICE =
   "Studio keeps the project's existing filament identity. If Snapmaker Orca does not recognize that preset, Orca may treat it as a Customized Preset and rename it.";
@@ -256,8 +302,12 @@ export function choiceReduce(state: Choices, action: ChoiceAction): Choices {
       if ((m.choices?.length ?? 0) > 1) return put({ spool: action.spool, preset: null, keepOwn: false, remember: "off" });
       // A remembered mapping the person confirmed (even one they said was a U1 preset) stays confirmed; a
       // preset the engine could not prove, or the provider merely names, waits for them.
+      // A preset that came with a spool of ANOTHER material is not confirmed for the person: they confirm it, or pick another.
+      const sameMaterial = action.spool.family_match !== false;
       const preset: PresetChoice | null =
-        name && m.status === "proven" ? { name, confirmed: true, ...pin, needsSayso: m.proof === "user_confirmed" }
+        name && m.status === "proven"
+          ? { name, confirmed: sameMaterial, ...pin, needsSayso: m.proof === "user_confirmed",
+              note: sameMaterial ? undefined : "This preset came with a spool of a different material. Confirm it, or choose another preset." }
         : name && m.status === "needs_confirmation" ? { name, confirmed: false, ...pin, needsSayso: !!m.confirmable, note: m.reason }
         : null;
       return put({ spool: action.spool, preset, keepOwn: false, remember: "off" });
