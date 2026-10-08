@@ -222,7 +222,15 @@ class Store:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump({"schema": SCHEMA, "mappings": rows}, fh, indent=2, sort_keys=True)
-            os.replace(tmp, self.path)
+            for attempt in range(20):
+                try:
+                    os.replace(tmp, self.path)
+                    break
+                except PermissionError:
+                    # Windows refuses to replace a file another thread has open for reading; wait it out.
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.025)
         except BaseException:
             try:
                 os.unlink(tmp)

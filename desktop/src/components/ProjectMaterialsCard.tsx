@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  choiceReduce, colourWord, emptyChoice, filterPresets, forgetRequest, forgetWording, holdsChoices, mappingRequests, materialText,
+  choiceReduce, colourWord, emptyChoice, filterPresets, forgetRequest, forgetWording, stillSaved, holdsChoices, mappingRequests, materialText,
   presetSourceLabel, presetStatusFor, samePreset, savedScope, slotNumber, slotsCoveredBy, unconfirmedSlots,
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
@@ -609,12 +609,22 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
       if (gen === generation.current) {
         // A lost or malformed reply does not prove the engine left the file alone, so read the project again and say so.
         let reread = true;
+        let fresh: ProjectMaterialsAnalysis | null = null;
         try {
-          const a = await projectMaterials(path, args, 3);
-          if (gen === generation.current) setAnalysis(a);
+          fresh = await projectMaterials(path, args, 3);
+          if (gen === generation.current) setAnalysis(fresh);
         } catch { reread = false; }
+        // The engine refusing (a mapping that changed since it was shown) is certain: it wrote nothing. A lost reply is not.
+        const refused = e?.code === "mapping_refused";
+        const reason = String(e?.message ?? e).replace(/[.\s]+$/, "");
+        // If the re-read shows the mapping did go (a reply lost after the delete), the choices that rested on it go too.
+        const gone = fresh ? affected.filter((slot) => !stillSaved(fresh!, forget.candidate, choices[slot]?.spool ?? null)) : [];
+        if (gen === generation.current && gone.length) dispatch({ type: "discardSlots", slots: gone });
+        const cleared = gone.length ? ` Your choice for slot${gone.length > 1 ? "s" : ""} ${gone.map((s) => s + 1).join(", ")} was cleared.` : "";
         if (gen === generation.current) {
-          setForgetNote({ kind: "error", text: `Couldn't confirm the saved mapping was forgotten: ${String(e?.message ?? e).replace(/[.\s]+$/, "")}. ${reread ? "The list shows what Studio read afterwards." : "Studio could not read the project again either, so the list may be out of date."}` });
+          setForgetNote({ kind: "error", text: refused
+            ? `${reason}.${reread ? " The list shows what is saved now." : ""}`
+            : `Couldn't confirm the saved mapping was forgotten: ${reason}. ${reread ? "The list shows what Studio read afterwards." : "Studio could not read the project again either, so the list may be out of date."}${cleared}` });
           setForget(null);
         }
       }

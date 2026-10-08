@@ -243,6 +243,14 @@ export function slotsCoveredBy(choices: Choices, c: MaterialCandidate): number[]
     .sort((a, b) => a - b);
 }
 
+/** Whether the spool a slot chose still has a saved mapping of the same kind after the project was read again. */
+export function stillSaved(a: ProjectMaterialsAnalysis, c: MaterialCandidate, chosen: MaterialCandidate | null): boolean {
+  if (!chosen) return true;
+  const scope = savedScope(c);
+  return (a.slots ?? []).some((sl) => sl.candidates.some((k) =>
+    k.provider === chosen.provider && String(k.spool_id) === String(chosen.spool_id) && savedScope(k) === scope));
+}
+
 /** The words of the confirmation. The engine decides nothing here; these describe only what the control does. */
 export function forgetWording(c: MaterialCandidate): { title: string; body: string; details: string[] } {
   const preset = c.mapping.base_name ?? c.mapping.preset_name ?? "the saved preset";

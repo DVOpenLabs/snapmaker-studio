@@ -218,6 +218,31 @@ describe("forgetting", () => {
     await waitFor(() => expect(forgetButtons()).toHaveLength(1));
   });
 
+  it("says plainly that nothing was forgotten when the engine refused because the mapping changed", async () => {
+    await mount();
+    const refusal = Object.assign(new Error("That saved mapping has changed since it was shown. Nothing was forgotten."), { code: "mapping_refused" });
+    api.removeMaterialMapping.mockRejectedValue(refusal);
+    api.projectMaterials.mockResolvedValueOnce(analysis());
+    openFor(0);
+    await act(async () => { fireEvent.click(confirm()); });
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(screen.getByTestId("forget-note").textContent).toBe(
+      "That saved mapping has changed since it was shown. Nothing was forgotten. The list shows what is saved now.");
+  });
+
+  it("clears the choice that rested on a mapping when a lost reply hid a removal that did happen", async () => {
+    await mount();
+    fireEvent.click(screen.getAllByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ })[0]);   // slot 1 chooses spool 124 via its saved mapping
+    expect(screen.getAllByTestId("selected-spool")).toHaveLength(1);
+    api.removeMaterialMapping.mockRejectedValue(new Error("connection reset"));
+    api.projectMaterials.mockResolvedValueOnce(analysis([candidate({ spool_id: "124", mapping: mapping() }), B]));   // 124 is no longer saved
+    openFor(0);
+    await act(async () => { fireEvent.click(confirm()); });
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(screen.queryAllByTestId("selected-spool")).toHaveLength(0);
+    expect(screen.getByTestId("forget-note").textContent).toContain("Your choice for slot 1 was cleared.");
+  });
+
   it("says so when the mapping was forgotten but the project could not be read again", async () => {
     await mount();
     api.removeMaterialMapping.mockResolvedValue({ ok: true, removed: true });
