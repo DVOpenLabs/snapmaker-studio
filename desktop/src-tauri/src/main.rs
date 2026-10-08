@@ -954,8 +954,20 @@ struct UpdateCheckPref {
 
 const AUTO_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
+/// Where `update_check.json` lives. A non-empty `SNAPSTUDIO_DATA_DIR` (the same override the
+/// engine and the Model Browser honour) wins, so an isolated harness run never touches the
+/// shared per-user config folder; otherwise the app's own config directory.
+fn update_pref_file(state_root: Option<&str>, config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    match state_root {
+        Some(root) if !root.is_empty() => Some(PathBuf::from(root)),
+        _ => config_dir,
+    }
+    .map(|d| d.join("update_check.json"))
+}
+
 fn update_pref_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("update_check.json"))
+    let root = std::env::var("SNAPSTUDIO_DATA_DIR").ok();
+    update_pref_file(root.as_deref(), app.path().app_config_dir().ok())
 }
 
 fn read_update_pref(app: &tauri::AppHandle) -> UpdateCheckPref {
@@ -1236,6 +1248,18 @@ mod tests {
         let parsed: Option<UpdateCheckPref> = serde_json::from_slice(corrupt).ok();
         assert!(parsed.is_none());
         assert_eq!(parsed.unwrap_or_default().auto_check, false);
+    }
+
+    #[test]
+    fn update_pref_file_honours_the_state_root_override() {
+        let cfg = Some(PathBuf::from("cfg"));
+        assert_eq!(
+            update_pref_file(Some("iso"), cfg.clone()),
+            Some(PathBuf::from("iso").join("update_check.json"))
+        );
+        assert_eq!(update_pref_file(Some(""), cfg.clone()), Some(PathBuf::from("cfg").join("update_check.json")));
+        assert_eq!(update_pref_file(None, cfg), Some(PathBuf::from("cfg").join("update_check.json")));
+        assert_eq!(update_pref_file(None, None), None);
     }
 
     #[cfg(unix)]
