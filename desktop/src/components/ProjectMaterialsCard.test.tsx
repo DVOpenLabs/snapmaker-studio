@@ -661,8 +661,12 @@ describe("a completed review cannot be used again", () => {
     await act(async () => { finish({ output_path: "C:/p/out.3mf" }); });
   });
 
-  it("when saving the mapping fails after the copy was made it warns, and does not reopen the old review", async () => {
-    api.confirmMaterialMapping.mockRejectedValue(new Error("disk full"));
+  it.each([
+    [new Error("disk full"), /Your copy was made, but a mapping could not be saved \(disk full\)/],
+    [Object.assign(new Error("Studio could not read its saved mappings just now. Nothing was changed."), { code: "mapping_file_unavailable" }),
+      /Your copy was made, but Studio could not read its saved mappings just now, so this choice was not remembered\. Prepare again to save it\./],
+  ])("when saving the mapping fails after the copy was made it warns, and does not reopen the old review (%#)", async (failure, warning) => {
+    api.confirmMaterialMapping.mockRejectedValue(failure);
     const onPrepare = vi.fn(async () => ({ output_path: "C:/p/out.3mf", blocked: false }) as any);
     api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate()] })] }));
     api.materialPresets.mockResolvedValue(PRESETS);
@@ -677,7 +681,7 @@ describe("a completed review cannot be used again", () => {
     await act(async () => { fireEvent.click(reviewButton()); });
     await screen.findByText("A line.");
     await act(async () => { fireEvent.click(prepareButton()!); });
-    await screen.findByText(/Your copy was made, but a mapping could not be saved \(disk full\)/);
+    await screen.findByText(warning);
     expect(screen.queryByTestId("review")).toBeNull();
     expect(prepareButton()).toBeNull();
     expect(onPrepare).toHaveBeenCalledTimes(1);

@@ -701,7 +701,11 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
       setReview({ status: "idle" });
       for (const request of mappingRequests(choices, analysis?.nozzle ?? "0.4")) {
         try { await confirmMaterialMapping(request); }
-        catch (e: any) { setWarning(`Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`); }
+        catch (e: any) {
+          setWarning(e?.code === "mapping_file_unavailable"
+            ? "Your copy was made, but Studio could not read its saved mappings just now, so this choice was not remembered. Prepare again to save it."
+            : `Your copy was made, but a mapping could not be saved (${String(e?.message ?? e)}).`);
+        }
       }
     } finally {
       submitting.current = false;

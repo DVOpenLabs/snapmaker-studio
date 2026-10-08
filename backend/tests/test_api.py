@@ -673,3 +673,22 @@ def test_server_reports_an_unreadable_mapping_file_as_503_and_changes_nothing(tm
         assert not (data / (mm.FILE_NAME + ".damaged")).exists()
     finally:
         httpd.shutdown()
+
+
+def test_server_confirm_route_also_reports_an_unreadable_mapping_file_as_503(tmp_path, monkeypatch):
+    from snapstudio_core import material_mapping as mm
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+
+    def unreadable(self, retry=True):
+        raise mm.MappingFileUnavailable("Studio could not read its saved mappings just now. Nothing was changed.")
+    monkeypatch.setattr(mm.Store, "_read_checked", unreadable)
+    monkeypatch.setattr(mm.Store, "put", lambda self, **k: self._read_checked())
+    httpd, token = build_server(port=0)
+    _run(httpd)
+    try:
+        port = httpd.server_address[1]
+        status, body = _request(port, "/material_mapping/remove",
+                                {"scope": "spool", "provider": "spoolman", "spool_id": "1"}, token)
+        assert status == 503 and body["error"] == "mapping_file_unavailable"
+    finally:
+        httpd.shutdown()
