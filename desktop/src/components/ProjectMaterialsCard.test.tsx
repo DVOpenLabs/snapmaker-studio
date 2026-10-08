@@ -11,6 +11,7 @@ import { useProvider } from "@/store/provider";
 
 const api = vi.hoisted(() => ({
   projectMaterials: vi.fn(), materialPresets: vi.fn(), convert: vi.fn(), confirmMaterialMapping: vi.fn(),
+  projectMaterialsInventory: vi.fn(),
 }));
 vi.mock("@/api", () => api);
 

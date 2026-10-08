@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type {
-  MappingRequest, MaterialGuard, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
+  MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 
 type ApiInfo = { port: number; token: string };
@@ -1772,6 +1772,11 @@ export function providerTest(url: string, provider: string, key?: string): Promi
  *  and the same-preset check. Read-only; nothing is selected. */
 export function projectMaterials(path: string, provider: ProviderArgs = {}, limit = 3): Promise<ProjectMaterialsAnalysis> {
   return post("/project_materials", { path, limit, ...provider }, "project materials");
+}
+
+/** Every spool the provider lists as an option for one slot, with the engine's warnings. Read-only. */
+export function projectMaterialsInventory(path: string, slot: number, provider: ProviderArgs = {}): Promise<MaterialInventory> {
+  return post("/project_materials/inventory", { path, slot, ...provider }, "spool inventory");
 }
 
 /** The installed Orca presets that fit the U1 and a nozzle, for the picker. */

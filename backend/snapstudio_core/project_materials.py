@@ -311,10 +311,18 @@ def _tie_key(spool: dict) -> tuple:
 
 
 def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalog, store,
-              nozzle: str) -> dict | None:
-    """One spool as a candidate for one slot, with the facts and the reasons. None if the family differs."""
+              nozzle: str, any_family: bool = False) -> dict | None:
+    """One spool as a candidate for one slot, with the facts and the reasons. None if the family differs.
+
+    `any_family` is the full-inventory view: a spool of another material family is returned too, marked
+    `family_match: false` with a warning the person has to confirm before choosing it. The recommendation
+    list never passes it, so what Studio suggests is unchanged."""
     family = (spool.get("material") or "").strip().upper()
-    if not family or family != (slot.get("family") or "").upper() or spool.get("archived"):
+    slot_family = (slot.get("family") or "").upper()
+    if spool.get("archived"):
+        return None
+    matches = bool(family) and family == slot_family
+    if not matches and not any_family:
         return None
     mapping = material_mapping.resolve(catalog, store, provider, spool, nozzle)
     sub_tier, sub_reason = _subtype_tier(slot.get("subtype"), spool.get("subtype"))
@@ -325,13 +333,28 @@ def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalo
     else:
         colour_reason = {"code": "colour_distance", "data": {"distance": round(distance)},
                          "text": f"Colour distance: {round(distance)}"}
-    reasons = [{"code": "material_exact", "text": f"Material matches: {family}"}, sub_reason,
+    warnings: list[dict] = []
+    if matches:
+        material_reason = {"code": "material_exact", "text": f"Material matches: {family}"}
+    elif not slot_family:
+        # Nothing stated by the model to contradict, so there is nothing to confirm either.
+        matches = True
+        material_reason = {"code": "material_unstated",
+                           "text": "Material not compared: the model does not name one"}
+    else:
+        wanted = slot.get("material") or slot_family
+        text = (f"This spool is {family or 'of an unstated material'}; the model asks for {wanted}. "
+                "Choosing it is allowed, but check that you really want a different material.")
+        material_reason = {"code": "material_differs", "text": text}
+        warnings.append({"code": "material_family_differs", "requires_confirmation": True, "text": text})
+    reasons = [material_reason, sub_reason,
                _preset_reason(mapping), weight_reason, colour_reason]
     if loaded is not None:
         reasons.append({"code": "loaded", "data": {"slot": loaded},
                         "text": f"Already loaded in {material_plan._slot_word(int(loaded))}"})
     return {
         "provider": provider, "spool_id": spool.get("id"),
+        "family_match": matches, "warnings": warnings,
         "label": spool.get("label") or spool_choices._label(
             spool.get("vendor"), spool.get("material"), spool.get("subtype"), spool.get("name"),
             spool.get("id")),
@@ -346,7 +369,7 @@ def candidate(provider: str, slot: dict, spool: dict, loaded: int | None, catalo
         "remaining_as_of": spool.get("remaining_as_of"),
         "loaded_slot": loaded, "slicer_filament": spool.get("slicer_filament") or None,
         "mapping": mapping, "reasons": reasons,
-        "_rank": (sub_tier, _PRESET_TIER[mapping["status"]], weight_tier,
+        "_rank": (1 if matches else 0, sub_tier, _PRESET_TIER[mapping["status"]], weight_tier,
                   -(distance if distance is not None else 1e9), 1 if loaded is not None else 0),
         "_distance": distance,
         "_tie": _tie_key(spool),
@@ -368,7 +391,7 @@ def recommend(slot: dict, provider: str, spools: list[dict], state: dict | None,
     close = False
     if len(found) >= 2:
         a, b = found[0], found[1]
-        same = a["_rank"][:3] == b["_rank"][:3]
+        same = a["_rank"][:4] == b["_rank"][:4]
         da, db = a["_distance"], b["_distance"]
         near = (da is None and db is None) or (da is not None and db is not None
                                                and abs(da - db) <= CLOSE_COLOUR)
@@ -381,6 +404,46 @@ def recommend(slot: dict, provider: str, spools: list[dict], state: dict | None,
             c.pop(k, None)
     return {"candidates": top, "candidate_count": len(found), "close_call": close,
             "selected": None}
+
+
+def inventory(slot: dict, provider: str, spools: list[dict], state: dict | None, catalog, store,
+              nozzle: str) -> dict:
+    """Every spool the provider listed (archived ones aside) as an option for one slot.
+
+    This is the deliberate manual override beside :func:`recommend`'s short list. Spools of the slot's
+    material family come first, in the same order as the recommendations; spools of another family follow,
+    each marked `family_match: false` with a warning that needs the person's confirmation. A different
+    colour is never a warning: it is shown as information (the colour distance in the reasons) and nothing
+    more. Nothing is selected, and the provider is not contacted again."""
+    loaded = loaded_slots(state)
+    found = []
+    for spool in spools or []:
+        c = candidate(provider, slot, spool, loaded.get(str(spool.get("id"))), catalog, store, nozzle,
+                      any_family=True)
+        if c:
+            found.append(c)
+    found.sort(key=lambda c: c["_tie"])
+    found.sort(key=lambda c: c["_rank"], reverse=True)
+    for c in found:
+        for k in ("_rank", "_distance", "_tie"):
+            c.pop(k, None)
+    return {"slot": slot["slot"], "entries": found, "count": len(found),
+            "same_family_count": sum(1 for c in found if c["family_match"])}
+
+
+def analyze_inventory(cfg: dict, plates: list[dict] | None, slot: int, *, provider: str | None,
+                      state: dict | None, catalog, store) -> dict:
+    """The full inventory for one slot of a project. Read-only, like :func:`analyze`."""
+    nozzle = project_nozzle(cfg)
+    slots = extract_slots(cfg, plates)
+    if not 0 <= slot < len(slots):
+        raise ValueError(f"slot {slot} is not one of this project's {len(slots)} filaments")
+    spools = (state or {}).get("spools") or [] if (state or {}).get("available") else []
+    out = {"schema": SCHEMA, "slot": slot, "nozzle": nozzle,
+           "provider": ({"kind": provider, "available": bool((state or {}).get("available")),
+                         "error_code": (state or {}).get("error_code")} if provider else None)}
+    out.update(inventory(slots[slot], provider or "", spools, state, catalog, store, nozzle))
+    return out
 
 
 def analyze(cfg: dict, plates: list[dict] | None, *, provider: str | None, state: dict | None,

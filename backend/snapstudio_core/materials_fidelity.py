@@ -177,6 +177,31 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                 "code": "vendor_mismatch",
                 "text": (f"The provider lists {spool_vendor}; the installed preset’s vendor is "
                          f"{preset_vendor}. Studio did not override it.")})
+    if found and found.get("preset_name"):
+        # A value the project DECLARES wins over the preset's, and Studio never strips a declaration the creator
+        # made. So a vendor or type the source declared (a Bambu vendor, say) can outlive the preset that was
+        # chosen; the person is told, in words, instead of being left to find it in Orca.
+        for key, preset_value in (("filament_vendor", found.get("vendor")), ("filament_type", found.get("filament_type"))):
+            kept_value = _at(prepared, key, s)
+            if key in declared_here and kept_value and preset_value and _norm(kept_value) != _norm(preset_value):
+                discrepancies.append({
+                    "code": "declared_identity_kept",
+                    "text": (f"The project declares its own {_KEY_WORD[key]} ({kept_value}), so Snapmaker Orca keeps it "
+                             f"instead of the preset's ({preset_value}). Studio does not remove a declaration the "
+                             "project's author made.")})
+    if spool and not spool.get("material") and src_slot.get("family"):
+        discrepancies.append({
+            "code": "spool_material_unknown",
+            "text": (f"The spool's material is not recorded; the model asks for {src_slot['material']}. "
+                     "You chose it deliberately.")})
+    if spool and spool.get("material") and src_slot.get("family"):
+        from .material_providers import _family_and_subtype
+        spool_family, _ = _family_and_subtype(spool["material"])
+        if spool_family and _norm(spool_family) != _norm(src_slot["family"]):
+            discrepancies.append({
+                "code": "spool_material_differs",
+                "text": (f"The spool is {spool['material']}; the model asks for {src_slot['material']}. "
+                         "You chose it deliberately.")})
     if preset and (ctx.get("preset") or {}).get("proof") == "user_confirmed":
         discrepancies.append({
             "code": "user_preset_unproven",
@@ -195,7 +220,8 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     if not preset:
         name = _at(prepared, "filament_settings_id", s)
         known = (catalog.evaluate(name, nozzle)["status"] != NO_MATCH) if (catalog and name) else False
-        if not known:
+        # With no preset named there is nothing Orca could fail to recognize, so the "Customized Preset" warning does not apply.
+        if name and not known:
             discrepancies.append({"code": "customized_preset_possible", "text": FILAMENT_IDENTITY_NOTICE})
 
     selection = None
@@ -231,6 +257,16 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     record["declarations"]["withdrawn_reason"] = (withdrawn_info.get(s) or {}).get("reason")
     record["line"] = _line(record, spool)
     return record
+
+
+#: Said wherever a spool is chosen for a slot and no installed Orca preset is: the spool decides the colour only.
+SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
+                        "The project's existing filament preset will remain.")
+#: Said with it: what Studio did and did not establish about the preset it leaves alone.
+SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it."
+#: The same, for a slot whose project names no filament preset at all: there is nothing to "remain".
+SPOOL_WITHOUT_PRESET_NONE_EXISTING = ("Spool selected, but no Orca preset selected. "
+                                      "The project names no filament preset for this slot, and Studio does not choose one for you.")
 
 
 def _hex(value) -> str | None:
@@ -284,6 +320,10 @@ def _line(rec: dict, spool: dict | None) -> str:
     else:
         text = f"Slot {n}:" + colour_text
     identity = rec["source"]["settings_id"]
+    if who and not identity:
+        return text + " " + SPOOL_WITHOUT_PRESET_NONE_EXISTING
+    if who:
+        text += " " + SPOOL_WITHOUT_PRESET + " " + SPOOL_PRESET_CAVEAT
     text += f" Studio keeps the project's filament identity '{identity}'." if identity else \
         " Studio keeps the project's filament identity."
     if any(d["code"] == "customized_preset_possible" for d in rec["discrepancies"]):
