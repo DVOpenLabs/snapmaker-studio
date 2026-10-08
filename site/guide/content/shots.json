@@ -334,7 +334,7 @@
       {
         "key": "watch-btn",
         "title": "Watch this folder",
-        "text": "Studio looks in that folder only while this page is open; it does not keep watching after you leave it."
+        "text": "Studio looks in that folder only while **After Slicing** or **This print** is open; it does not keep watching after you leave them."
       },
       {
         "key": "open-gcode",

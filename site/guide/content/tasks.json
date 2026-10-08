@@ -254,8 +254,8 @@
       "when": "You do not want to paste a path every time.",
       "prereq": [],
       "steps": ["Open **After Slicing**.", "Type the folder where Orca saves exports and press **Watch this folder**."],
-      "success": ["New sliced jobs in that folder appear while the page is open."],
-      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that the page is open. Studio looks only while **After Slicing** or **This print** is open; it does not keep watching after you leave them." }],
+      "success": ["New sliced jobs in that folder appear while **After Slicing** or **This print** is open."],
+      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that **After Slicing** or **This print** is open. Studio looks only while one of them is open; it does not keep watching after you leave them." }],
       "notes": [], "shot": "after-empty", "problems": [], "keywords": ["watch folder", "export folder", "automatic", "pick up", "gcode"]
     },
     {

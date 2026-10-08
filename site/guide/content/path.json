@@ -230,7 +230,7 @@
     "examples": ["unknown-vs-confirmed"],
     "steps": [
       "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This print**).",
-      "Optional: type the folder where Orca saves exports and press **Watch this folder**. Studio looks only while this page is open.",
+      "Optional: type the folder where Orca saves exports and press **Watch this folder**. Studio looks only while **After Slicing** or **This print** is open.",
       "Otherwise drag the `.gcode` onto the window or paste its full path under **Open the G-code your slicer produced**, then press **Check this job**.",
       "Read **Ready to send?** and then each finding. Sort them into confirmed, worth checking and unknown.",
       "Read **What the printer will actually do** and **What to load** (what each slot needs)."
@@ -240,7 +240,7 @@
       "You can say what you will do about each: re-slice, check yourself, or connect the printer."
     ],
     "differs": [
-      { "if": "Nothing appears in the watched folder.", "then": "Check that it is the folder Orca exports to, and that this page is open. You can always paste the file's path." },
+      { "if": "Nothing appears in the watched folder.", "then": "Check that it is the folder Orca exports to, and that **After Slicing** or **This print** is open. You can always paste the file's path." },
       { "if": "Studio says “that file does not exist”.", "then": "Studio could not find a file at that path. Copy the full path of the exported `.gcode` again." },
       { "if": "Many items say “Studio can’t check this”.", "then": "That is expected when no printer is connected. Connect the printer (see the task) or check those items yourself." }
     ],
