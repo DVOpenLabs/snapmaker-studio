@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 //    described by the body and the details);
 //  - initial focus on Cancel, the safe answer;
 //  - Escape and Cancel only ever dismiss; they never confirm. While a request is in flight Escape does
-//    nothing, because dismissing the prompt would not unsend it;
+//    nothing (the prompt is put back if the browser closes it), because dismissing it would not unsend the request;
 //  - focus returns to the control that opened it (or to a named fallback if that control is gone).
 //
 // It does not decide what confirming does. The caller owns that, and owns closing the prompt when the
@@ -57,10 +57,19 @@ export function ConfirmDialog({
       aria-describedby={descId}
       className="fixed left-1/2 top-1/2 m-0 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-5 text-foreground shadow-xl backdrop:bg-black/50"
       onCancel={(e) => {
-        // Escape. Never let the browser close it by itself: the caller decides, and a request in
-        // flight keeps the prompt on screen.
+        // Escape. Ask the browser not to close it: the caller decides, and a request in flight keeps the
+        // prompt on screen.
         e.preventDefault();
         if (!live.current.busy) live.current.onCancel();
+      }}
+      onClose={() => {
+        // Some engines (Chromium, which WebView2 uses) honour preventDefault on Escape only once per user
+        // activation, so a second Escape can still close the dialog natively. Keep React and the screen in
+        // step: while a request is in flight put the prompt back; otherwise treat it as a dismissal.
+        const dialog = dialogRef.current;
+        if (!dialog || dialog.hasAttribute("open")) return;
+        if (live.current.busy) dialog.showModal();
+        else live.current.onCancel();
       }}
     >
       <p id={titleId} className={`text-sm font-semibold ${danger ? "text-risk" : ""}`}>{title}</p>

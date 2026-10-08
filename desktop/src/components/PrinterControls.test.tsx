@@ -88,7 +88,9 @@ describe("PrinterControls confirmation", () => {
     const { onChanged } = setup();
     openCancelPrompt();
     const yes = confirmButton();
-    fireEvent.click(yes); fireEvent.click(yes); fireEvent.click(yes);
+    // Three clicks inside one render pass, before React can disable the button: only the in-flight
+    // guard (not the disabled button) can stop the second and third from sending.
+    act(() => { yes.click(); yes.click(); yes.click(); });
     expect(api.printerCancel).toHaveBeenCalledTimes(1);
     expect(api.printerCancel).toHaveBeenCalledWith("printer-a");
     await act(async () => { slow.resolve({ ok: true }); await slow.promise; });
@@ -141,7 +143,7 @@ describe("PrinterControls confirmation", () => {
     expect(api.printerCancel).not.toHaveBeenCalled();
   });
 
-  it("a request already sent is not retargeted when the printer changes, and finishing it does not close a newer prompt", async () => {
+  it("a request already sent is not retargeted when the printer changes; the person is told, and B's controls wait for it", async () => {
     const slow = deferred<unknown>();
     api.printerCancel.mockReturnValue(slow.promise);
     const { update } = setup();
@@ -150,10 +152,34 @@ describe("PrinterControls confirmation", () => {
     expect(api.printerCancel).toHaveBeenCalledWith("printer-a");
     update({ host: "printer-b" });
     expect(dialog()).toBeNull();
-    // the person opens a new prompt for printer B while A's request is still running
+    // the notice is about what they just did, so it is shown even though they are now looking at printer B
+    expect(screen.getByRole("status").textContent).toContain("Cancel was already sent to printer-a");
+    // printer B's controls stay disabled until A's request settles, so a second prompt cannot overlap it
+    expect((screen.getByRole("button", { name: /Cancel print/ }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { slow.resolve({ ok: true }); await slow.promise; });
     openCancelPrompt();
     expect(dialog()).not.toBeNull();
+    expect(api.printerCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("a prompt the browser closes by itself while a request is in flight is put back; otherwise it counts as dismissed", async () => {
+    const slow = deferred<unknown>();
+    api.printerCancel.mockReturnValue(slow.promise);
+    setup();
+    openCancelPrompt();
+    fireEvent.click(confirmButton());
+    const d = screen.getByRole("alertdialog");
+    d.removeAttribute("open"); // what a second Escape does in Chromium
+    fireEvent(d, new Event("close"));
+    expect(d.hasAttribute("open")).toBe(true);
+    await act(async () => { slow.resolve({ ok: true }); await slow.promise; });
+    await waitFor(() => expect(dialog()).toBeNull());
+    // not in flight: the same native close is a plain dismissal
+    openCancelPrompt();
+    const d2 = screen.getByRole("alertdialog");
+    d2.removeAttribute("open");
+    fireEvent(d2, new Event("close"));
+    expect(dialog()).toBeNull();
     expect(api.printerCancel).toHaveBeenCalledTimes(1);
   });
 

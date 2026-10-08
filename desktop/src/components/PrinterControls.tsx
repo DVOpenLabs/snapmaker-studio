@@ -31,7 +31,8 @@ export function PrinterControls({
   const [busy, setBusy] = useState<ControlAction | "upload" | null>(null);
   // Messages and the uploaded file are kept with the printer they belong to, and shown only for it.
   const [error, setError] = useState<{ host: string; message: string } | null>(null);
-  const [notice, setNotice] = useState<{ host: string; message: string } | null>(null);
+  // Not tied to one printer: it is about a request the person just sent, and they may already be looking at another.
+  const [notice, setNotice] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<{ host: string; filename: string } | null>(null);
   const nextId = useRef(0);
   // Set before the first await so a second click in the same instant cannot send a second request.
@@ -44,10 +45,7 @@ export function PrinterControls({
     if (!pending || confirmStillValid(pending, { host, online, printState })) return;
     setPending(null);
     if (inFlight.current) {
-      setNotice({
-        host: pending.host,
-        message: `${actionName(pending.action)} was already sent to ${pending.host} before this changed. Check that printer's status.`,
-      });
+      setNotice(`${actionName(pending.action)} was already sent to ${pending.host} before this changed. Check that printer's status.`);
     }
   }, [pending, host, online, printState]);
 
@@ -71,7 +69,9 @@ export function PrinterControls({
 
   function run(action: ControlAction, filename?: string) {
     if (needsConfirm(action)) {
-      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const here = document.activeElement;
+      // Clicking can leave focus on the page body; that is not a control to return to.
+      opener.current = here instanceof HTMLElement && here !== document.body && here !== document.documentElement ? here : null;
       setPending({ id: ++nextId.current, action, host: host!, filename });
       return;
     }
@@ -109,7 +109,7 @@ export function PrinterControls({
   const spin = (t: ControlAction | "upload") => busy === t ? <Loader2 className="h-4 w-4 animate-spin" /> : null;
   const uploadedHere = uploaded && uploaded.host === host ? uploaded.filename : null;
   const errorHere = error && error.host === host ? error.message : null;
-  const noticeHere = notice && notice.host === host ? notice.message : null;
+  const noticeHere = notice;
   // Where focus goes when the prompt closes: the control that opened it, or the card heading if that control is gone.
   const returnFocusTo = () => {
     const o = opener.current;
