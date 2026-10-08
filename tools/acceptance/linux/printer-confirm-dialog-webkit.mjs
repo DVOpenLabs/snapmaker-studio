@@ -39,7 +39,7 @@ for (const host of Object.keys(printers)) {
   const printer = printers[host];
   const server = http.createServer((req, res) => {
     const send = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-    seenHosts.add(host);
+    seenHosts.add(req.socket.localAddress || host);   // the address the connection really arrived on
     if (!printer.up) { res.destroy(); return; }
     const path = (req.url || "").split("?")[0];
     if (req.method === "POST") {
@@ -74,12 +74,30 @@ function cleanup() {
 process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { cleanup(); process.exit(130); });
 
+let driverLog = "";
+let driverExit = null;
 const driver = spawn(DRIVER, ["--native-driver", NATIVE, "--port", "4444"], { stdio: ["ignore", "pipe", "pipe"], detached: true });
 children.push(driver);
-let driverLog = "";
 driver.stdout.on("data", (d) => { driverLog += d; });
 driver.stderr.on("data", (d) => { driverLog += d; });
-for (let i = 0; i < 50; i++) { try { await fetch("http://127.0.0.1:4444/status"); break; } catch { await sleep(200); } }
+driver.on("error", (e) => { driverExit = `could not start ${DRIVER}: ${e.message}`; });
+driver.on("exit", (code, signal) => { driverExit = `exited early (code ${code}, signal ${signal})`; });
+
+/** Stops the run with the reason and the driver's own output, and records it where the evidence goes. */
+function failStartup(reason) {
+  const text = `${reason}${driverExit ? ` — tauri-driver ${driverExit}` : ""}\n--- tauri-driver output (last 1500 chars) ---\n${driverLog.slice(-1500) || "(none)"}`;
+  console.error("FAIL  startup: " + text);
+  try { writeFileSync(join(OUT, "results.json"), JSON.stringify({ app: APP, startupFailure: text, results: [], calls }, null, 2)); }
+  catch (e) { console.error("(could not write results.json: " + e.message + ")"); }
+  cleanup();
+  process.exit(2);
+}
+
+let driverReady = false;
+for (let i = 0; i < 50 && !driverReady && !driverExit; i++) {
+  try { const r = await fetch("http://127.0.0.1:4444/status"); driverReady = r.ok; } catch { await sleep(200); }
+}
+if (!driverReady) failStartup(`tauri-driver did not answer on 127.0.0.1:4444 within 10 s (driver ${DRIVER}, native driver ${NATIVE})`);
 
 /* ---------- a minimal W3C WebDriver client ---------- */
 const WD = "http://127.0.0.1:4444";
@@ -89,7 +107,9 @@ async function wd(method, path, body) {
   if (!r.ok) throw new Error(`${method} ${path}: ${JSON.stringify(j.value ?? j).slice(0, 300)}`);
   return j.value;
 }
-const created = await wd("POST", "/session", { capabilities: { alwaysMatch: { "tauri:options": { application: APP } } } });
+let created;
+try { created = await wd("POST", "/session", { capabilities: { alwaysMatch: { "tauri:options": { application: APP } } } }); }
+catch (e) { failStartup(`the WebDriver session for ${APP} could not be created: ${e.message}`); }
 const sid = created.sessionId;
 const S = `/session/${sid}`;
 const exec = (script, ...args) => wd("POST", `${S}/execute/sync`, { script, args });
@@ -227,7 +247,23 @@ try {
   check("dismissing emergency stop sends nothing", !(await dialogOpen()) && callsMatching("M112") === 0);
   await shot("dialog-closed");
 
-  check("the only machines that ever received a request were the loopback look-alikes", [...seenHosts].every((h) => ["127.0.0.1", "127.0.0.2"].includes(h)), JSON.stringify([...seenHosts]));
+  // Now actually confirm it. Three rapid presses of "Yes, do it" must still send exactly one M112, to the printer shown.
+  await exec(`[...document.querySelectorAll("button")].find((b)=>/^Emergency stop$/.test(b.textContent.trim())).focus()`);
+  await press("Enter");
+  await waitFor(`() => !!document.querySelector("dialog[open]")`, "the emergency stop prompt again", 5000);
+  const before = callsMatching("M112");
+  await clickYesThreeTimes();
+  await waitFor(`() => !document.querySelector("dialog[open]")`, "the emergency stop prompt to close after it was sent", 15000);
+  await sleep(500);
+  const stops = calls.filter((c) => /M112/.test(c.path));
+  check("confirming emergency stop sends exactly one M112, to the printer named in the prompt",
+    before === 0 && stops.length === 1 && stops[0].host === "127.0.0.1" && stops[0].method === "POST", JSON.stringify(stops));
+  check("nothing was sent to the other printer", calls.every((c) => c.host === "127.0.0.1"), JSON.stringify(calls.map((c) => c.host)));
+
+  // The network namespace is what keeps everything off a real printer; this records that the look-alikes only ever
+  // saw connections on their own loopback addresses, and that something did connect (an empty set would prove nothing).
+  check("every connection the look-alike printers received arrived on a loopback address",
+    seenHosts.size > 0 && [...seenHosts].every((h) => ["127.0.0.1", "127.0.0.2"].includes(h)), JSON.stringify([...seenHosts]));
 } catch (e) {
   fatal = e;
   check("the run completed without a harness error", false, String(e && e.message || e));

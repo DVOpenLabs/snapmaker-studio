@@ -3,7 +3,7 @@
 Integrated check of the confirmation prompt in the **real packaged Studio app** on Linux: the Tauri build's own
 WebKitGTK web view, driven over WebDriver by `tauri-driver`. Printer calls are mocked by a loopback Moonraker look-alike.
 
-- **Result:** 25/25 checks passed (two consecutive runs of the final script; an earlier run had 24/25 because of one over-strict assertion, see below).
+- **Result:** 27/27 checks passed, two consecutive runs of the final script (an earlier version of the script ran 25/25 twice; it did not yet confirm emergency stop, see the review notes).
 - **Artifact under test:** the `snapmaker-studio-linux-deb` artifact of the Linux CI run for `main` at `3ce3e263efea`
   (`snapmaker-studio_1.5.0_amd64_3ce3e263efea.deb`, sha256 `8aef32ba4b0848a0bf9f0d85e1cff7f7862923905bbc70184d69f8a20d3890fc`,
   verified against the artifact's `SHA256SUMS`). An unreleased engineering preview.
@@ -42,7 +42,9 @@ WebKitGTK web view, driven over WebDriver by `tauri-driver`. Printer calls are m
 | PASS | nothing was sent to either printer |
 | PASS | emergency stop asks first and names the printer |
 | PASS | dismissing emergency stop sends nothing |
-| PASS | the only machines that ever received a request were the loopback look-alikes |
+| PASS | confirming emergency stop sends exactly one M112, to the printer named in the prompt (three rapid presses of Yes) |
+| PASS | nothing was sent to the other printer |
+| PASS | every connection the look-alike printers received arrived on a loopback address (and at least one did) |
 
 Raw per-case record: [results.json](results.json). Screenshots taken from the web view itself:
 [dialog open](dialog-open.png), [dialog closed](dialog-closed.png).
@@ -56,3 +58,9 @@ Raw per-case record: [results.json](results.json). Screenshots taken from the we
   behind it. The check accepts that (the first run asserted buttons only and flagged it).
 - The address change is made programmatically, because the page behind a modal prompt is inert and cannot be typed into.
 - Not covered: a screen reader, Wayland, a physical display or GPU, a signed or released build, and real printers.
+
+## Review notes
+
+- Emergency stop is now activated against the loopback look-alike: the check asserts one `M112` POST to the printer shown in the prompt and none to the other.
+- If the driver cannot start or answer, or the WebDriver session cannot be created, the script stops with exit code 2 and prints why, with the driver's own output; `results.json` then carries a `startupFailure` field instead of check results.
+- The last check used to pass whatever happened. It now records the address each look-alike connection actually arrived on and requires that at least one arrived. It does not prove isolation by itself; the empty network namespace does that.

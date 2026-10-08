@@ -122,11 +122,27 @@
       "detail": ""
     },
     {
-      "name": "the only machines that ever received a request were the loopback look-alikes",
+      "name": "confirming emergency stop sends exactly one M112, to the printer named in the prompt",
+      "ok": true,
+      "detail": "[{\"host\":\"127.0.0.1\",\"method\":\"POST\",\"path\":\"/printer/gcode/script?script=M112\"}]"
+    },
+    {
+      "name": "nothing was sent to the other printer",
+      "ok": true,
+      "detail": "[\"127.0.0.1\"]"
+    },
+    {
+      "name": "every connection the look-alike printers received arrived on a loopback address",
       "ok": true,
       "detail": "[\"127.0.0.1\",\"127.0.0.2\"]"
     }
   ],
-  "calls": [],
-  "note": "driver stderr omitted (dconf warnings about a missing runtime directory; unrelated)"
+  "calls": [
+    {
+      "host": "127.0.0.1",
+      "method": "POST",
+      "path": "/printer/gcode/script?script=M112"
+    }
+  ],
+  "driverLog": "er/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57269): dconf-CRITICAL **: 11:24:04.306: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57269): dconf-CRITICAL **: 11:24:04.306: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57269): dconf-CRITICAL **: 11:24:04.306: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.508: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.508: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.508: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.508: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.508: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.510: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.510: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.510: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.510: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n\n(process:57258): dconf-CRITICAL **: 11:24:04.510: unable to create directory '/run/user/0/dconf': Permission denied.  dconf will not work properly.\n"
 }
