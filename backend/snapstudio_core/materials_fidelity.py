@@ -177,6 +177,26 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
                 "code": "vendor_mismatch",
                 "text": (f"The provider lists {spool_vendor}; the installed preset’s vendor is "
                          f"{preset_vendor}. Studio did not override it.")})
+    if found and found.get("preset_name"):
+        # A value the project DECLARES wins over the preset's, and Studio never strips a declaration the creator
+        # made. So a vendor or type the source declared (a Bambu vendor, say) can outlive the preset that was
+        # chosen; the person is told, in words, instead of being left to find it in Orca.
+        for key, preset_value in (("filament_vendor", found.get("vendor")), ("filament_type", found.get("filament_type"))):
+            kept_value = _at(prepared, key, s)
+            if key in declared_here and kept_value and preset_value and _norm(kept_value) != _norm(preset_value):
+                discrepancies.append({
+                    "code": "declared_identity_kept",
+                    "text": (f"The project declares its own {_KEY_WORD[key]} ({kept_value}), so Snapmaker Orca keeps it "
+                             f"instead of the preset's ({preset_value}). Studio does not remove a declaration the "
+                             "project's author made.")})
+    if spool and spool.get("material") and src_slot.get("family"):
+        from .material_providers import _family_and_subtype
+        spool_family, _ = _family_and_subtype(spool["material"])
+        if spool_family and _norm(spool_family) != _norm(src_slot["family"]):
+            discrepancies.append({
+                "code": "spool_material_differs",
+                "text": (f"The spool is {spool['material']}; the model asks for {src_slot['material']}. "
+                         "You chose it deliberately.")})
     if preset and (ctx.get("preset") or {}).get("proof") == "user_confirmed":
         discrepancies.append({
             "code": "user_preset_unproven",
@@ -233,6 +253,11 @@ def _slot_record(s: int, source: dict, prepared: dict, src_slot: dict, out_slot:
     return record
 
 
+#: Said wherever a spool is chosen for a slot and no installed Orca preset is: the spool decides the colour only.
+SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
+                        "The project's existing filament preset will remain.")
+
+
 def _hex(value) -> str | None:
     return pm.hex6(value)
 
@@ -283,6 +308,8 @@ def _line(rec: dict, spool: dict | None) -> str:
         text = f"Slot {n}: Colour changed to {_colour_phrase(colour)}" + (f" (from {who})" if who else "") + "."
     else:
         text = f"Slot {n}:" + colour_text
+    if who:
+        text += " " + SPOOL_WITHOUT_PRESET
     identity = rec["source"]["settings_id"]
     text += f" Studio keeps the project's filament identity '{identity}'." if identity else \
         " Studio keeps the project's filament identity."

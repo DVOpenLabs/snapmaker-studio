@@ -43,7 +43,8 @@ export interface MaterialMapping {
 export interface MaterialCandidate {
   provider: string;
   spool_id: number | string;
-  rank: number;
+  /** Position in the engine's short list; the full inventory has none. */
+  rank?: number;
   label: string;
   vendor: string | null;
   material: string | null;
@@ -56,6 +57,21 @@ export interface MaterialCandidate {
   slicer_filament: string | null;
   mapping: MaterialMapping;
   reasons: MaterialReason[];
+  /** False for a spool of another material family (only the full inventory returns those). Absent means it matches. */
+  family_match?: boolean;
+  /** The engine's warnings. One with `requires_confirmation` must be accepted by the person before the spool is used. */
+  warnings?: { code: string; text: string; requires_confirmation?: boolean }[];
+}
+
+/** Every spool the provider lists, as options for one slot: the manual override beside the ranked suggestions. */
+export interface MaterialInventory {
+  supported: boolean;
+  reason?: string;
+  slot?: number;
+  provider?: { kind: string; available: boolean; error_code: string | null } | null;
+  entries: MaterialCandidate[];
+  count?: number;
+  same_family_count?: number;
 }
 
 export interface MaterialSuggestion {
@@ -180,6 +196,25 @@ export interface MappingRequest {
   ref?: string;
   accept_unproven?: boolean;
   fingerprint?: string;
+}
+
+/** Said beside a slot that has a spool and no Orca preset. The engine says the same in the review. */
+export const SPOOL_WITHOUT_PRESET =
+  "Spool selected, but no Orca preset selected. The project's existing filament preset will remain.";
+
+/** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */
+export function needsSpoolConfirmation(c: MaterialCandidate): string | null {
+  const w = (c.warnings ?? []).find((x) => x.requires_confirmation);
+  return w ? w.text : null;
+}
+
+/** A candidate in the shape the spool picker's own helpers describe, sort and search. */
+export function candidateAsSpool(c: MaterialCandidate): ProviderSpool {
+  return {
+    id: c.spool_id, label: c.label, vendor: c.vendor, material: c.material, subtype: c.subtype,
+    color: c.colour, color_name: c.color_name, remaining_g: c.remaining_g,
+    remaining_quality: c.remaining_quality, archived: false,
+  } as unknown as ProviderSpool;
 }
 
 /** The exact sentence for a slot that keeps its own filament. */

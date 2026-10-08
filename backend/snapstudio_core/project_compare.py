@@ -1,0 +1,230 @@
+"""Read-only comparison of a source 3MF and the copy Studio prepared from it.
+
+Built for support: when someone reports "the prepared file still shows the wrong filament", attach both files and
+run ::
+
+    py -m snapstudio_core.project_compare source.3mf prepared.3mf        # compare
+    py -m snapstudio_core.project_compare source.3mf                     # one file's slots and where they are used
+
+It opens each file, reads it, prints JSON, and writes nothing: the files are never modified and nothing leaves the
+computer. Object and part NAMES are not printed (they can identify a private model); ids, counts and the project's
+filament settings are.
+
+What it reports, per filament slot (numbered from 1, as Orca shows them):
+
+* the project's identity for the slot: colour, type, vendor, preset name (`filament_settings_id`), `filament_ids`,
+  and the keys the project declares as different from the system preset;
+* where the project REFERENCES the slot, by kind, so "unused" is never guessed: an object's extruder, a part's
+  extruder (and the part's subtype), painted facets, a recorded colour change, a process role (wall, infill,
+  support, support interface, wipe tower), and the grams the project's own slice reports;
+* whether any reference was found. `no_reference_found` is the strongest thing this can say - it means none of the
+  places above names the slot, not that the slot is certainly unused - and it is withheld (`unknown`) whenever
+  the painting could not be read in full.
+
+Compared across the two files: the slot count, each slot's identity fields, the declarations, and every top-level
+setting whose name starts with `filament_` or `default_filament`, so exactly what Project Materials changed is
+visible.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+from . import color_plan, painted_color
+from .container import ThreeMF
+
+SCHEMA = "project-compare/1"
+
+PROJECT_SETTINGS = "Metadata/project_settings.config"
+MODEL_SETTINGS = "Metadata/model_settings.config"
+SLICE_INFO = "Metadata/slice_info.config"
+CUSTOM_GCODE = "Metadata/custom_gcode_per_layer.xml"
+
+#: Process settings that name a filament slot (1-based; 0 means "use the object's").
+PROCESS_ROLES = ("wall_filament", "sparse_infill_filament", "solid_infill_filament", "support_filament",
+                 "support_interface_filament", "wipe_tower_filament")
+
+_OBJECT = re.compile(r'<object\b[^>]*\bid="(\d+)"[^>]*>(.*?)</object>', re.S)
+_PART = re.compile(r'<part\b([^>]*)>(.*?)</part>', re.S)
+_METADATA = re.compile(r'<metadata\b[^>]*\bkey="([^"]+)"[^>]*\bvalue="([^"]*)"')
+_ATTR = re.compile(r'([A-Za-z_:][\w.:-]*)\s*=\s*"([^"]*)"')
+_FILAMENT = re.compile(r'<filament\b([^>]*)/?>')
+
+IDENTITY_FIELDS = ("settings_id", "colour", "type", "vendor", "filament_id")
+
+
+def _text(tm: ThreeMF, part: str) -> str:
+    if not tm.has_part(part):
+        return ""
+    try:
+        return tm.read_part(part).decode("utf-8", "ignore")
+    except Exception:
+        return ""
+
+
+def _settings(tm: ThreeMF) -> dict:
+    try:
+        out = json.loads(_text(tm, PROJECT_SETTINGS) or "{}")
+    except ValueError:
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
+def _at(cfg: dict, key: str, index: int):
+    values = cfg.get(key)
+    if isinstance(values, list) and index < len(values):
+        value = values[index]
+        return None if value in (None, "") else value
+    return None
+
+
+def _declared(cfg: dict, index: int) -> list[str]:
+    entries = cfg.get("different_settings_to_system")
+    if not isinstance(entries, list) or 1 + index >= len(entries) - 1:
+        return []
+    return sorted({p.strip() for p in str(entries[1 + index] or "").split(";") if p.strip()})
+
+
+def _objects(model_settings: str) -> list[dict]:
+    """Each object's extruder and each part's extruder + subtype, by id. Names are deliberately not read."""
+    out = []
+    for object_id, body in _OBJECT.findall(model_settings):
+        head = body.split("<part", 1)[0]
+        meta = dict(_METADATA.findall(head))
+        parts = []
+        for attrs, part_body in _PART.findall(body):
+            attributes = dict(_ATTR.findall(attrs))
+            pmeta = dict(_METADATA.findall(part_body))
+            parts.append({"id": attributes.get("id"), "subtype": attributes.get("subtype"),
+                          "extruder": int(pmeta["extruder"]) if str(pmeta.get("extruder", "")).isdigit() else None})
+        out.append({"id": object_id,
+                    "extruder": int(meta["extruder"]) if str(meta.get("extruder", "")).isdigit() else None,
+                    "parts": parts})
+    return out
+
+
+def _sliced_grams(tm: ThreeMF) -> dict[int, float]:
+    out: dict[int, float] = {}
+    for attrs in _FILAMENT.findall(_text(tm, SLICE_INFO)):
+        a = dict(_ATTR.findall(attrs))
+        try:
+            out[int(a["id"])] = out.get(int(a["id"]), 0.0) + float(a["used_g"])
+        except (KeyError, ValueError):
+            continue
+    return out
+
+
+def slot_usage(tm: ThreeMF) -> dict:
+    """Where each filament slot is referenced in a project. Read-only. Slots are numbered from 1."""
+    cfg = _settings(tm)
+    count = len(cfg.get("filament_colour") or []) if isinstance(cfg.get("filament_colour"), list) else 0
+    slots: dict[int, dict] = {i: {"object_extruder": [], "part_extruder": [], "painted": False, "colour_changes": [],
+                                  "process_roles": [], "sliced_g": None} for i in range(1, count + 1)}
+
+    objects = _objects(_text(tm, MODEL_SETTINGS))
+    without_extruder = [o["id"] for o in objects if o["extruder"] is None and not any(p["extruder"] for p in o["parts"])]
+    for o in objects:
+        if o["extruder"] in slots:
+            slots[o["extruder"]]["object_extruder"].append(o["id"])
+        for p in o["parts"]:
+            if p["extruder"] in slots:
+                slots[p["extruder"]]["part_extruder"].append({"object": o["id"], "part": p["id"], "subtype": p["subtype"]})
+    # An object with no extruder at all prints with the first filament; say so rather than leave slot 1 looking idle.
+    if without_extruder and 1 in slots:
+        slots[1]["default_extruder_for"] = without_extruder
+
+    paint = painted_color.read_container(tm)
+    painted_slots = set(paint.get("slots_referenced") or [])
+    for i in painted_slots:
+        if i in slots:
+            slots[i]["painted"] = True
+    paint_complete = not paint.get("truncated") and bool(paint.get("default_slot_resolved", True)) \
+        if paint.get("available") else True          # no painting in the file: nothing was left unread
+
+    for change in color_plan._layer_changes(_text(tm, CUSTOM_GCODE)):
+        if change.get("extruder") in slots:
+            slots[change["extruder"]]["colour_changes"].append(change.get("z_mm"))
+
+    for key in PROCESS_ROLES:
+        raw = cfg.get(key)
+        for value in (raw if isinstance(raw, list) else [raw]):
+            if str(value or "").isdigit() and int(value) in slots:
+                slots[int(value)]["process_roles"].append(key)
+
+    for i, grams in _sliced_grams(tm).items():
+        if i in slots:
+            slots[i]["sliced_g"] = round(grams, 2)
+
+    for i, s in slots.items():
+        kinds = [k for k in ("object_extruder", "part_extruder", "colour_changes", "process_roles") if s[k]]
+        if s["painted"]:
+            kinds.append("painted")
+        if s.get("default_extruder_for"):
+            kinds.append("default_extruder")
+        if s["sliced_g"]:
+            kinds.append("sliced_usage")
+        s["referenced_by"] = kinds
+        s["verdict"] = "referenced" if kinds else ("no_reference_found" if paint_complete else "unknown")
+    return {"slots": slots, "painting": {"present": bool(paint.get("painted_triangle_count")), "complete": paint_complete,
+                                         "truncated": bool(paint.get("truncated"))}}
+
+
+def snapshot(path: str | Path) -> dict:
+    tm = ThreeMF.open(path)
+    cfg = _settings(tm)
+    usage = slot_usage(tm)
+    slots = []
+    for index in range(len(cfg.get("filament_colour") or [])):
+        n = index + 1
+        slots.append({
+            "slot": n,
+            "settings_id": _at(cfg, "filament_settings_id", index), "colour": _at(cfg, "filament_colour", index),
+            "type": _at(cfg, "filament_type", index), "vendor": _at(cfg, "filament_vendor", index),
+            "filament_id": _at(cfg, "filament_ids", index), "declared": _declared(cfg, index),
+            "usage": usage["slots"].get(n),
+        })
+    return {"file": Path(path).name, "filament_count": len(slots),
+            "default_filament_profile": cfg.get("default_filament_profile"), "slots": slots,
+            "painting": usage["painting"],
+            "filament_settings": {k: v for k, v in sorted(cfg.items())
+                                  if k.startswith(("filament_", "default_filament")) and k != "filament_notes"}}
+
+
+def compare(source: str | Path, prepared: str | Path) -> dict:
+    a, b = snapshot(source), snapshot(prepared)
+    changes = []
+    for n in range(1, max(a["filament_count"], b["filament_count"]) + 1):
+        sa = next((s for s in a["slots"] if s["slot"] == n), None)
+        sb = next((s for s in b["slots"] if s["slot"] == n), None)
+        if sa is None or sb is None:
+            changes.append({"slot": n, "change": "added" if sa is None else "removed"})
+            continue
+        for field in (*IDENTITY_FIELDS, "declared"):
+            if sa[field] != sb[field]:
+                changes.append({"slot": n, "field": field, "source": sa[field], "prepared": sb[field]})
+    keys = sorted(set(a["filament_settings"]) | set(b["filament_settings"]))
+    differing = [k for k in keys if a["filament_settings"].get(k) != b["filament_settings"].get(k)]
+    usage_moved = [{"slot": sa["slot"], "source": sa["usage"]["referenced_by"], "prepared": sb["usage"]["referenced_by"]}
+                   for sa, sb in zip(a["slots"], b["slots"])
+                   if sa["usage"] and sb["usage"] and sa["usage"]["referenced_by"] != sb["usage"]["referenced_by"]]
+    return {"schema": SCHEMA, "source": a, "prepared": b,
+            "slot_changes": changes, "differing_filament_settings": differing,
+            "usage_changed": usage_moved,
+            "note": "Read-only. 'no_reference_found' means no place Studio reads names the slot; it is not proof the "
+                    "slot is unused."}
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) not in (1, 2):
+        print("usage: python -m snapstudio_core.project_compare SOURCE.3mf [PREPARED.3mf]", file=sys.stderr)
+        return 2
+    result = snapshot(args[0]) if len(args) == 1 else compare(args[0], args[1])
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

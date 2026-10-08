@@ -320,6 +320,38 @@ def project_materials(path: str, provider: str | None = None, provider_url: str 
 
     Read-only. Reads the provider once through the existing seam and never writes to it.
     Nothing is selected: every slot comes back with ranked candidates and the reasons."""
+    from snapstudio_core import project_materials as pm
+
+    opened = _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman)
+    if "supported" in opened:
+        return opened
+    cfg, plates, kind, url, state = (opened[k] for k in ("cfg", "plates", "kind", "url", "state"))
+    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
+                      catalog=catalog if catalog is not None else _orca_catalog(),
+                      store=store if store is not None else _material_store(),
+                      limit=max(1, min(int(limit), 20)))
+
+
+def project_materials_inventory(path: str, slot: int, provider: str | None = None,
+                                provider_url: str | None = None, provider_key: str | None = None,
+                                slot_map: dict | None = None, slot_base: int | None = None,
+                                spoolman: str | None = None, *, catalog=None, store=None) -> dict:
+    """Every spool the provider lists as an option for one filament slot: the manual override beside the
+    ranked suggestions. Read-only; the provider is read once and never written to."""
+    from snapstudio_core import project_materials as pm
+
+    opened = _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman)
+    if "supported" in opened:
+        return opened
+    cfg, plates, kind, url, state = (opened[k] for k in ("cfg", "plates", "kind", "url", "state"))
+    return {"supported": True, **pm.analyze_inventory(
+        cfg, plates, int(slot), provider=kind if url else None, state=state,
+        catalog=catalog if catalog is not None else _orca_catalog(),
+        store=store if store is not None else _material_store())}
+
+
+def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_base, spoolman) -> dict:
+    """The project's settings and one provider read, or an unsupported-project answer."""
     from snapstudio_core import material_providers as providers, project_materials as pm
 
     if str(path).lower().endswith(".stl"):
@@ -340,10 +372,7 @@ def project_materials(path: str, provider: str | None = None, provider_url: str 
             state = {"available": False, "error_code": "invalid_address", "spools": [], "slots": []}
         except Exception:
             state = {"available": False, "error_code": "unreachable", "spools": [], "slots": []}
-    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
-                      catalog=catalog if catalog is not None else _orca_catalog(),
-                      store=store if store is not None else _material_store(),
-                      limit=max(1, min(int(limit), 20)))
+    return {"cfg": cfg, "plates": plates, "kind": kind, "url": url, "state": state}
 
 
 def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
