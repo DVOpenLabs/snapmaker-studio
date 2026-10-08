@@ -2,7 +2,7 @@
   "groups": [
     { "id": "start", "label": "Get started", "blurb": "Install Studio and open your first file." },
     { "id": "check", "label": "Check a project", "blurb": "Understand what Studio found before you slice." },
-    { "id": "prepare", "label": "Fix and prepare", "blurb": "Write a safe copy for your U1." },
+    { "id": "prepare", "label": "Fix and prepare", "blurb": "Write a U1 copy; your original stays unchanged." },
     { "id": "review", "label": "Review and slice", "blurb": "See what changed, then slice in Snapmaker Orca." },
     { "id": "job", "label": "After slicing", "blurb": "Check the sliced job." },
     { "id": "printer", "label": "Your printer", "blurb": "Connect, confirm what the printer does not report, and use the controls." },
@@ -13,21 +13,21 @@
     {
       "id": "setup", "page": "setup", "group": "start", "title": "Install and open Studio",
       "when": "You have not installed Studio yet. If it is already installed, skip this: the example starts from opening a file.",
-      "prereq": ["**Windows 10 or 11 (64-bit)**, or **Linux x86_64** with a desktop. Ubuntu 22.04 and 24.04 are the systems the Linux package has been checked on. macOS is not supported.", "Nothing else to install: no Python, Node.js or Rust. There is no account."],
+      "prereq": ["*Windows 10 or 11 (64-bit)*, or *Linux x86_64* with a desktop. Ubuntu 22.04 and 24.04 are the systems the Linux package has been checked on. macOS is not supported.", "Nothing else to install: no Python, Node.js or Rust. There is no account."],
       "steps": [
-        "Open the official [Releases page](@releases) and download the Windows installer (`Snapmaker.Studio_<version>_x64-setup.exe`) or the Linux `.deb`. Download only from that page.",
-        { "text": "Check the download against the SHA256 in [RELEASE_METADATA.md](@metadata); that file is the one place current hashes are kept.", "sub": ["Windows (PowerShell): `Get-FileHash -Algorithm SHA256 .\\<installer>.exe`", "Linux: `sha256sum <file>.deb`", "If the values differ, delete the file and download it again."] },
+        "Open Studio's [Releases page](@releases) and download the Windows installer (`Snapmaker.Studio_<version>_x64-setup.exe`) or the Linux `.deb`. Download only from that page.",
+        { "text": "Check the download against the SHA256 hash (a fingerprint that shows the file is intact) in [RELEASE_METADATA.md](@metadata); that file is the one place current hashes are kept.", "sub": ["Windows (PowerShell): `Get-FileHash -Algorithm SHA256 .\\<installer>.exe`", "Linux: `sha256sum <file>.deb`", "If the values differ, delete the file and download it again."] },
         "**Windows:** run the installer. It is not code-signed yet, so SmartScreen may say **Unknown publisher**. Once the hash matches, choose **More info → Run anyway**, then start **Snapmaker Studio** from the Start menu. More: [Windows install guide](@windows_install).",
         "**Linux:** `sudo apt install ./<the .deb file name exactly as shown on the Releases page>`, then start **Snapmaker Studio** from your application menu or run `snapmaker-studio-desktop`. More: [Linux install guide](@linux_install)."
       ],
       "success": ["Studio opens on **Home**, with the version **v1.5.0** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
       "differs": [
-        { "if": "Windows says “Windows protected your PC”.", "then": "Expected for an installer that is not code-signed yet. Continue only after the SHA256 matches and you downloaded it from the official Releases page." },
-        { "if": "The hash does not match.", "then": "Do not run the installer. Delete it and download it again from the official Releases page." },
+        { "if": "Windows says “Windows protected your PC”.", "then": "This is expected for an installer that is not code-signed yet. Continue only if the SHA256 matches and you downloaded the file from Studio's Releases page." },
+        { "if": "The hash does not match.", "then": "Do not run the installer. Delete it and download it again from Studio's Releases page." },
         { "if": "Studio looks different from this guide.", "then": "This guide describes **v1.5.0**. Check the version at the bottom of the Studio window; the [release notes](@releases) say what changed." }
       ],
       "notes": [
-        { "kind": "limit", "text": "Linux support is verified by automated installs on clean Ubuntu 22.04 and 24.04 systems. Other distributions and real desktops have not been recorded yet; see the [Linux install guide](@linux_install)." },
+        { "kind": "limit", "text": "Linux support is verified by automated installs on clean Ubuntu 22.04 and 24.04 systems. Other distributions and installs on a physical desktop have not been verified yet; see the [Linux install guide](@linux_install)." },
         { "kind": "safe", "text": "Uninstalling does not delete your project data. On Windows it lives in `%LOCALAPPDATA%\\SnapmakerStudio`." }
       ],
       "shot": "home",
@@ -44,7 +44,7 @@
       ],
       "success": ["**What's in this design** says, for the cube, *a plain model (STL)*, **20 × 20 × 20 mm**, 0 colors, 0 parts and a rough filament cost from a default price per kilo (change it in **Settings → Filament price**)."],
       "differs": [{ "if": "My file shows different numbers.", "then": "They describe your file; only the example cube is exactly 20 mm." }],
-      "notes": [{ "kind": "tip", "text": "An **STL** is a shape only. A **3MF** can also hold colours, separate parts and often the creator's print settings, which is what lets Studio compare them with your U1." }],
+      "notes": [{ "kind": "tip", "text": "An **STL** is a shape only. A **3MF** can also hold colors, separate parts and often the creator's print settings, which lets Studio compare those settings with your U1." }],
       "shot": "workspace-stl",
       "problems": ["could-not-open-3mf"], "keywords": ["stl", "3mf", "open", "drag", "file", "difference", "workspace", "format"]
     },
@@ -64,40 +64,40 @@
     },
     {
       "id": "this-print", "page": "task-this-print", "group": "check", "title": "Use “This print” to follow one job",
-      "when": "You want one page that follows a job from file to sliced job.",
+      "when": "You want one page that follows a job from opening the file to checking the sliced job.",
       "prereq": ["A project open in Studio."],
       "steps": [
         "Open **This print** (**This Print** in Advanced view). The title names your open file.",
         "Stage **1. Before slicing**: **Object placement**, **Before you slice**, **Colours and toolheads**.",
-        "Stage **2. Prepared**: **Nothing prepared yet.** until you prepare a copy; then what changed.",
+        "Stage **2. Prepared** shows **Nothing prepared yet.** until you prepare a copy, then shows what changed.",
         "Stage **3. After slicing**: where the sliced job comes back for checking."
       ],
       "success": ["Three stages in the order a job happens. With no printer connected, checks that need one say **Studio can’t tell**."],
       "differs": [
         { "if": "The page says “Open a model to start”.", "then": "No project is open. Press **Open a model**, or open one from **My designs**." },
-        { "if": "Cards show “Checking…” for a while.", "then": "Studio is trying to reach a printer. It then switches to **Printer not found** and **Studio can’t tell**." }
+        { "if": "Cards show “Checking…” for a while.", "then": "Studio is trying to reach a printer. When none answers, the cards switch to **Printer not found** and **Studio can’t tell**." }
       ],
       "notes": [], "shot": "this-print-top",
       "problems": ["studio-cant-tell"], "keywords": ["this print", "stages", "overview", "job", "cockpit", "before slicing", "prepared"]
     },
     {
-      "id": "colours-toolheads", "page": "task-colours-toolheads", "group": "check", "title": "Check colours against the four toolheads",
-      "when": "Your project has several colours and you want to know whether the U1 can print them.",
-      "prereq": ["A multi-colour project open, such as `demo_u1_showcase.3mf` from the [examples](@examples)."],
+      "id": "colours-toolheads", "page": "task-colours-toolheads", "group": "check", "title": "Check colors against the four toolheads",
+      "when": "Your project has several colors and you want to know whether the U1 can print them.",
+      "prereq": ["A multicolor project open, such as `demo_u1_showcase.3mf` from the [examples](@examples)."],
       "steps": [
         "Open **Colors & Materials** (Advanced sidebar, or **More tools**).",
         "Read **Colours and toolheads**: the example says **6 colours, 4 toolheads — possible without repainting.**",
         "Read the groups: **Not proven separable — reserve a toolhead each**, **Appear only higher up — could be a planned swap**, **Studio can’t tell how these are used**.",
-        "For a painted project, a box says how many filament colours the painting uses; expand **What Studio read from the painting** for measurements."
+        "For a painted project, a box says how many filament colors the painting uses; expand **What Studio read from the painting** for measurements."
       ],
-      "success": ["A plain sentence comparing your colours with the four toolheads, and the line **Load the colours in the order the project lists them.**"],
-      "differs": [{ "if": "Colours are listed under “Studio can’t tell how these are used”.", "then": "The project does not say which object, painted region or colour change uses that slot. Load them in the order the project lists, and check in Orca." }],
+      "success": ["A plain sentence comparing your colors with the four toolheads, and the line **Load the colours in the order the project lists them.**"],
+      "differs": [{ "if": "Colors are listed under “Studio can’t tell how these are used”.", "then": "The project does not say which object, painted region or color change uses that slot. Load them in the order the project lists, and check in Orca." }],
       "notes": [
-        { "kind": "unknown", "text": "The four comes from the U1's published four toolheads. Studio says it did not read it from a printer." },
-        { "kind": "important", "text": "Assigning a colour in a file is not loading filament. Putting filament in a toolhead is a physical job only you do." }
+        { "kind": "unknown", "text": "The number four comes from the U1's published specification (four toolheads). Studio says it did not read this from your printer." },
+        { "kind": "important", "text": "Assigning a color in a file is not loading filament. Putting filament in a toolhead is a physical job only you do." }
       ],
       "shot": "colours-overview",
-      "problems": ["studio-cant-tell"], "keywords": ["colours", "colors", "toolheads", "four", "painted", "swap", "multi-colour", "filament", "reserve"]
+      "problems": ["studio-cant-tell"], "keywords": ["colours", "colors", "toolheads", "four", "painted", "swap", "multi-colour", "filament", "reserve", "color"]
     },
     {
       "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate",
@@ -110,8 +110,8 @@
         "Open that copy (**Open a model**) and prepare it (**Prepare U1 copy**)."
       ],
       "success": ["A new `…_placed_U1.3mf` beside your original, and the card says **The object sits inside the U1's printable area.**"],
-      "differs": [{ "if": "There is no Move button.", "then": "One move cannot fix the layout. Open the project in Orca and use **Arrange**; see the placement example." }],
-      "notes": [{ "kind": "safe", "text": "The moved copy changes only where objects sit; layout, rotation, scale and height stay as the creator set them." }],
+      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Open the project in Orca and use **Arrange**; see the placement example." }],
+      "notes": [{ "kind": "safe", "text": "The moved copy shifts the whole layout as one piece; the spacing between objects, their rotation, scale and height stay as the creator set them." }],
       "shot": "move-result",
       "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
     },
@@ -132,15 +132,15 @@
     },
     {
       "id": "project-materials", "page": "task-project-materials", "group": "prepare", "title": "Choose spools and Orca presets (Project Materials)",
-      "when": "You track spools and want each colour tied to a real spool and an installed Orca preset. New in v1.5.",
-      "prereq": ["Optional: a provider set in **Settings → Materials provider**. Without one you can still choose presets."],
+      "when": "You track spools and want each color tied to a real spool and an installed Orca preset. New in v1.5.0.",
+      "prereq": ["Optional: a spool provider (such as Spoolman) set up in **Settings → Materials provider**. Without one, you can still choose presets."],
       "steps": [
-        "On **Compatibility**, find **Project materials**. For each slot Studio lists up to three spools with reasons. **No spool is selected for you.**",
-        "Select the spool in your hand, then press **Use this preset** (the suggestion) or **Choose an installed preset**, or **Keep project's filament**.",
+        "On **Compatibility**, find **Project materials**. For each slot Studio lists up to three spools with reasons. *No spool is selected for you.*",
+        "Select the spool in your hand, then press **Use this preset** (the suggestion), **Choose an installed preset**, or **Keep project's filament**.",
         "Press **Review & prepare**, read the review, then **Prepare with these choices**.",
-        "Tick **Remember this mapping** to reuse it. It is saved only after the copy is written, and checked again every time."
+        "Select **Remember this mapping** to reuse it. Studio saves it after the copy is written and warns you if saving fails. A saved mapping is checked again each time it is used."
       ],
-      "success": ["The review lists, per slot, what will be written; the new copy has the spool's colour and the preset name."],
+      "success": ["The review lists, per slot, what will be written; the new copy has the spool's color and the preset name."],
       "differs": [
         { "if": "There are no spool suggestions.", "then": "No provider is set up, or none matches the material. You can still choose an installed preset or keep the project's filament." },
         { "if": "**Prepare stopped** appears.", "then": "Two slots share one preset but the project declares different vendors or types for them. Choose a different preset for one slot." }
@@ -150,20 +150,20 @@
         { "kind": "limit", "text": "Project Materials does not create custom Orca presets, choose a spool for you, or write to your spool provider." }
       ],
       "shot": "pm-recs",
-      "problems": ["no-spool-suggestions", "prepare-stopped", "manual-check-in-orca", "confirmed-by-you"], "keywords": ["spool", "preset", "materials", "project materials", "spoolman", "spoolease", "bambuddy", "mapping", "remember", "colour", "inventory"]
+      "problems": ["no-spool-suggestions", "prepare-stopped", "manual-check-in-orca", "confirmed-by-you"], "keywords": ["spool", "preset", "materials", "project materials", "spoolman", "spoolease", "bambuddy", "mapping", "remember", "colour", "inventory", "color"]
     },
     {
-      "id": "plate-colour-remap", "page": "task-plate-colour-remap", "group": "prepare", "title": "Change one plate's colour",
-      "when": "One plate of a project should print in a different colour.",
+      "id": "plate-colour-remap", "page": "task-plate-colour-remap", "group": "prepare", "title": "Change one plate's color",
+      "when": "One plate of a project should print in a different color.",
       "prereq": ["A 3MF project."],
       "steps": [
         "Open **Colors & Materials**; **Plate Color Remap** is at the top.",
-        "**Open a 3MF project**, choose the plate (**Plate 1**, **Plate 2** …), choose the colour to replace and the colour to use.",
+        "Press **Open a 3MF project**, choose the plate (**Plate 1**, **Plate 2** …), then choose the color to replace and the color to use.",
         "Press **Preview changes**, then **Create remapped copy — original stays unchanged**."
       ],
-      "success": ["A verified copy with only that plate's default colour assignment changed."],
+      "success": ["A new copy with only that plate's default color assignment changed; your original stays unchanged."],
       "differs": [],
-      "notes": [{ "kind": "safe", "text": "Meshes, painted facets, gold accents and other plates stay unchanged, and your original is never modified." }],
+      "notes": [{ "kind": "safe", "text": "Meshes, painted facets, filament assignments you did not select and other plates stay unchanged, and your original is never modified." }],
       "shot": "colours-overview",
       "problems": [], "keywords": ["remap", "plate", "colour", "color", "change colour", "recolour"]
     },
@@ -174,7 +174,7 @@
       "steps": ["Open **Scale Doctor**.", "Enter a **Scale %** and press **Preview**.", "For an STL, **Prepare scaled copy** writes a new file. For a 3MF, preview here and resize in Snapmaker Orca."],
       "success": ["A preview of the new size against the U1. Your original is never changed."],
       "differs": [],
-      "notes": [{ "kind": "limit", "text": "Studio writes a scaled copy only for an STL: it will not write a scaled 3MF it cannot stand behind." }],
+      "notes": [{ "kind": "limit", "text": "Studio writes a scaled copy only for an STL: it will not write a scaled 3MF it cannot verify." }],
       "shot": "scale", "problems": [], "keywords": ["scale", "resize", "size", "percent", "stl"]
     },
     {
@@ -192,9 +192,9 @@
       "prereq": ["A prepared copy."],
       "steps": [
         "Scroll to **What survived preparing this copy** and note the counts.",
-        "Expand **What Studio changed (n)** and **What stayed the same (n)**.",
-        "Open **Changes Studio made** and **Before and after** for exact values.",
-        "Use **Return to the original** if you want Studio pointed back at your untouched file."
+        "Expand **What Studio changed (n)** and **What stayed the same (n)**; if **What Studio could not carry over** or **What Studio could not check** appears, read it too.",
+        "Open **Changes Studio made** and **Before and after** for the old and new values; long values are shortened on screen.",
+        "Use **Return to the original** to switch Studio back to your untouched file."
       ],
       "success": ["You can name what changed and what Studio left to you."],
       "differs": [{ "if": "I want to undo a preparation.", "then": "Your original was never changed, so there is nothing to undo. Delete the copy if you do not want it." }],
@@ -219,10 +219,10 @@
       "when": "The copy is open in Orca and you are about to slice.",
       "prereq": ["The prepared copy open in Orca."],
       "steps": [
-        "The printer is **Snapmaker U1**.",
-        "The filaments and colours match what you will load, toolhead by toolhead.",
-        "Every object is on the plate. Use **Arrange** if unsure; Studio does not verify spacing between objects.",
-        "Supports are set the way you want. Studio's fix plan marks these as **Do this in Orca**.",
+        "Check that the printer is **Snapmaker U1**.",
+        "Check that the filaments and colors match what you will load, toolhead by toolhead.",
+        "Check that every object is on the plate. Use **Arrange** if unsure; Studio does not verify spacing between objects.",
+        "Check that supports are set the way you want. Studio's fix plan marks these as **Do this in Orca**.",
         "If a preset you made is named in the copy, check its values in Orca (**Manual check in Orca required**).",
         "Slice (**Slice plate**), then export the G-code with Orca's own export command."
       ],
@@ -241,9 +241,9 @@
         "Press **Check this job**.",
         "Read **Ready to send?**, then each finding, then **What the printer will actually do** and **What to load**."
       ],
-      "success": ["An answer such as *Nothing blocks this job, but 1 thing(s) are worth settling before you send it.*, with facts read from the file: slicer, printer, layers, time, filament."],
+      "success": ["An answer such as *Nothing blocks this job, but 1 thing(s) are worth settling before you send it.* It comes with facts read from the file: slicer, printer, layers, time, filament."],
       "differs": [
-        { "if": "Studio says “that file does not exist”.", "then": "The path is wrong. Copy the exported file's full path again." },
+        { "if": "Studio says “that file does not exist”.", "then": "Studio could not find a file at that path. Copy the exported file's full path again." },
         { "if": "Studio cannot tie the job to my project.", "then": "Nothing in either file identifies the model. Make sure you picked the right file." }
       ],
       "notes": [{ "kind": "safe", "text": "Studio reads and never changes your G-code, and never sends anything on its own." }],
@@ -254,28 +254,28 @@
       "when": "You do not want to paste a path every time.",
       "prereq": [],
       "steps": ["Open **After Slicing**.", "Type the folder where Orca saves exports and press **Watch this folder**."],
-      "success": ["New sliced jobs in that folder appear while the page is open."],
-      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that the page is open. Studio looks only while it is open and never in the background." }],
+      "success": ["New sliced jobs in that folder appear while **After Slicing** or **This print** is open."],
+      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that **After Slicing** or **This print** is open. Studio looks only while one of them is open; it does not keep watching after you leave them." }],
       "notes": [], "shot": "after-empty", "problems": [], "keywords": ["watch folder", "export folder", "automatic", "pick up", "gcode"]
     },
     {
       "id": "connect-printer", "page": "task-connect-printer", "group": "printer", "title": "Connect your printer",
       "when": "You want live status and comparisons against your actual U1.",
-      "prereq": ["Your U1 is on, and on the same network as this computer.", "On the U1's touchscreen, Advanced Mode is on under **Settings → Maintenance**; Studio's own message says the network interface only opens once it is."],
+      "prereq": ["Your U1 is on and connected to the same network as this computer.", "On the U1's touchscreen, Advanced Mode is on under **Settings → Maintenance**; Studio's own message says the printer's network interface opens only after you turn Advanced Mode on."],
       "steps": [
         "Open **Printer** (Simple) or **Printer Hub** (Advanced).",
-        "Under **Connect to your U1**, type the printer's network name (the field starts with `U1.local`) or IP address and press **Connect**, or press **Auto-detect my U1**.",
-        "To keep the address, set it under **Settings → Printer → Network name or IP**.",
-        "Read what Printer Hub reports. Anything the printer does not tell Studio says so, for example **Nozzle sizes: not reported**."
+        "Under **Connect to your U1**, type the printer's network name (the hint in the field is `U1.local`) or IP address and press **Connect**, or press **Auto-detect my U1**.",
+        "Connecting saves the address. You can also change it under **Settings → Printer**, in the field whose hint reads *Network name or IP*.",
+        "Read what Printer Hub reports. Anything the printer does not report is marked as such, for example **Nozzle sizes: not reported**."
       ],
       "success": ["When the printer answers, Printer Hub shows its live status and the controls become available. Otherwise: *Controls are off until the printer is connected and reachable.*"],
       "differs": [
-        { "if": "Printer Hub says “Printer not found”.", "then": "Nothing answered at that address. Check the printer is on and on this network, the address is right, and Advanced Mode is on under **Settings → Maintenance** on the touchscreen." },
+        { "if": "Printer Hub says “Printer not found”.", "then": "Studio could not get a usable answer at that address. Check that the printer is on and on this network, that the address is right, and that Advanced Mode is on under **Settings → Maintenance** on the touchscreen." },
         { "if": "Auto-detect finds nothing.", "then": "Type the name or IP address and press **Connect**." }
       ],
       "notes": [
         { "kind": "safe", "text": "Monitoring is read-only. Studio never starts a print by itself." },
-        { "kind": "limit", "text": "No screenshot of a connected printer is shown: no printer was contacted while this guide was written." }
+        { "kind": "limit", "text": "This guide shows Printer Hub before a printer is connected; it has no screenshot of a connected printer." }
       ],
       "shot": "printer-hub", "problems": ["printer-not-found", "controls-off", "nozzle-not-reported"], "keywords": ["printer", "connect", "printer hub", "ip", "u1.local", "auto-detect", "network", "moonraker", "advanced mode"]
     },
@@ -283,7 +283,7 @@
       "id": "confirm-nozzles", "page": "task-confirm-nozzles", "group": "printer", "title": "Tell Studio which nozzles are fitted",
       "when": "Studio says nozzle sizes are **not reported**.",
       "prereq": [],
-      "steps": ["Open **Settings → Nozzles**.", "Record the nozzle fitted to each toolhead. These entries are labelled **Confirmed by you**."],
+      "steps": ["Open **Settings → Nozzles**.", "Record the nozzle fitted to each toolhead, then press **Save**. Saved entries are labeled **Confirmed by you**."],
       "success": ["Checks that depend on nozzle size use what you confirmed, and say that you confirmed it."],
       "differs": [],
       "notes": [{ "kind": "unknown", "text": "Studio does not guess. Until the printer reports it or you confirm it, nozzle size stays unknown." }],
@@ -294,22 +294,22 @@
       "when": "You want to know which library projects match your printer's current state.",
       "prereq": [],
       "steps": ["Open **Ready now** and press **Check my library**.", "Read the groups: **Needs preparation**, **Needs attention**, **Can’t determine**, **One change away**, **Ready now**."],
-      "success": ["Your library sorted by what is possible with the printer as it is loaded now. Advisory only: Studio changes nothing on your printer."],
+      "success": ["Your library, grouped from project data, what the printer reports, your inventory and your own spool notes. Read each result's unknowns: this is advice, not proof that the printer is ready. Studio changes nothing on your printer."],
       "differs": [],
       "notes": [], "shot": "ready-now", "problems": [], "keywords": ["ready now", "library", "what can i print", "loaded", "filament"]
     },
     {
       "id": "printer-controls", "page": "task-printer-controls", "group": "printer", "title": "Use the printer controls safely",
       "when": "A job is checked and you are at the printer. Studio never starts a print by itself.",
-      "prereq": ["The printer connected in Printer Hub (see Connect your printer)."],
+      "prereq": ["The printer is connected in Printer Hub (see Connect your printer)."],
       "steps": [
-        "**Pause** and **Resume** run as soon as you press them; they are reversible.",
+        "**Pause** and **Resume** are sent to the printer as soon as you press them, with no second prompt; both are reversible. Watch the printer's status in Printer Hub: a request can fail.",
         "**Cancel print** asks first: *Cancel this print?* A cancelled print cannot be resumed.",
-        "**Upload sliced gcode**: you choose the file. **Start this print** then asks *Start printing this file?*; Studio does not check the bed for you.",
-        "**Emergency stop** asks first. It halts motion and heaters and may need a firmware restart before printing again."
+        "**Upload sliced gcode**: you choose the file. **Start this print** then asks you to confirm, naming the uploaded file; Studio does not check the bed for you.",
+        "**Emergency stop** asks first, then sends the printer an emergency-stop command. Studio does not confirm that motion and heaters have stopped; a firmware restart may be needed before printing again."
       ],
-      "success": ["Anything that moves the printer or sends a file happens only when you press the button and, where it asks, confirm."],
-      "differs": [{ "if": "The controls are greyed out.", "then": "They are off until the printer is connected and reachable. That is deliberate." }],
+      "success": ["Nothing is sent to the printer until you press the relevant button and, when Studio asks, confirm the action."],
+      "differs": [{ "if": "The controls are grayed out.", "then": "They are off until the printer is connected and reachable. That is deliberate." }],
       "notes": [{ "kind": "safe", "text": "Load the filament and check the bed yourself before starting. Studio does not inspect them." }],
       "shot": "printer-hub", "problems": ["controls-off"], "keywords": ["controls", "pause", "resume", "cancel", "start", "upload", "emergency stop", "confirm", "print"]
     },
@@ -319,15 +319,15 @@
       "prereq": [],
       "steps": ["Open **Settings → Materials provider**.", "Choose **Spoolman**, **Bambuddy** or **SpoolEase** and enter its address.", "Use **Your spool notes** for anything the printer and provider do not report."],
       "success": ["Project Materials can suggest your spools. Studio only reads from a provider; it never changes it."],
-      "differs": [], "notes": [{ "kind": "safe", "text": "The printer always wins about what is loaded." }],
+      "differs": [], "notes": [{ "kind": "safe", "text": "When the printer reports what is loaded, Studio trusts the printer over your notes and the provider." }],
       "shot": "settings-top", "problems": ["no-spool-suggestions"], "keywords": ["spoolman", "spoolease", "bambuddy", "provider", "spool", "inventory", "notes"]
     },
     {
       "id": "cost-pricing", "page": "task-cost-pricing", "group": "tools", "title": "Estimate cost and price (Cost & Pricing Doctor)", "optional": true,
-      "when": "You want a rough cost to make, a price and a margin.",
+      "when": "You want an estimated cost to make, a price and a margin.",
       "prereq": ["A model open."],
       "steps": ["Open **Cost & Pricing Doctor**.", "Read **Cost Doctor**, **Pricing Doctor** and **Profit Doctor**.", "Press **Show details & assumptions**; set your spool price under **Settings → Filament price**."],
-      "success": ["Three rough figures, all from your own assumptions. They are estimates, not financial advice."],
+      "success": ["Three rough figures based on file data and default or edited assumptions. Review the assumptions; they are estimates, not financial advice."],
       "differs": [], "notes": [], "shot": "cost", "problems": [], "keywords": ["cost", "price", "profit", "pricing", "filament price", "margin"]
     },
     {
@@ -335,7 +335,7 @@
       "when": "A print already looks wrong.",
       "prereq": [],
       "steps": ["Open **Print Quality** and use its **Print Quality** or **First Layer** tab.", "Pick the symptom that looks like your print.", "Read the likely causes and safe first checks."],
-      "success": ["Advice grounded in your open model when there is one. It never changes your settings or G-code."],
+      "success": ["Advice based on the open model, if there is one. It never changes your settings or G-code."],
       "differs": [], "notes": [], "shot": "print-quality", "problems": [], "keywords": ["print quality", "first layer", "stringing", "warping", "adhesion", "layer shift", "bad print"]
     },
     {
@@ -361,8 +361,8 @@
       "prereq": [],
       "steps": [
         "Your version is at the bottom of the window (**v1.5.0** for this guide).",
-        "Open **Help → Check for a newer version** and press **Check GitHub now**. Studio never updates itself or downloads anything; it only shows a version number and a link.",
-        "To update, download the new installer from the official Releases page, verify its hash, and run it over your install. Your data is kept."
+        "Open **Help → Check for a newer version** and press **Check GitHub now**. The update check does not download or install anything; it only shows a version number and a link.",
+        "To update, download the new installer from Studio's Releases page, verify its hash, and run it over your install. Your data is kept."
       ],
       "success": ["You know whether you are current."],
       "differs": [], "notes": [{ "kind": "safe", "text": "The check makes one request to GitHub asking which release is newest and sends nothing about you or your files. The automatic check is off until you turn it on, and runs at most once a day." }],
@@ -377,7 +377,7 @@
         "Press **Save it to a file**. Your username, home folder, file paths, machine name and printer address are replaced first.",
         "Open a report on the [Studio issues page](@issues), attach the file, and say what you did, saw and expected."
       ],
-      "success": ["A bundle you read before it was written. Studio never sends it anywhere."],
+      "success": ["A report bundle you reviewed before Studio saved it. Studio never sends it anywhere."],
       "differs": [{ "if": "The result differs from this guide.", "then": "Check the version, which file is open and whether a printer is connected first; many answers change with those." }],
       "notes": [], "shot": "help-updates", "problems": [], "keywords": ["support bundle", "report", "bug", "issue", "feedback", "problem", "redacted"]
     }

@@ -31,7 +31,7 @@ The table keeps the original lesson numbering because that is how the evidence w
 | 7 | Plan colours and materials | "6 colours, 4 toolheads — possible without repainting.", the three groups, "Load the colours in the order the project lists them.", painted-colour box; Project Materials candidates, **Use this preset**, **Choose an installed preset**, **Keep project's filament**, **Review & prepare**, **Prepare with these choices**, **Back to choices** | `desktop/src/routes/PlateRemap.tsx` and `lib/plateRemapWizard.ts` (**Plate N** buttons, **Preview changes**, "Create remapped copy — original stays unchanged"), `docs/RELEASE_NOTES.md` v1.5.0 (user-preset wording) | `colours-overview`, `colours-painted`, `pm-recs`, `pm-review` |
 | 8 | Open it in Snapmaker Orca | **Open in Snapmaker Orca** shown by the installed app; "What now?"; the "Next:" line | `desktop/src/components/OrcaHandoff.tsx`, `lib/orca.ts` (button states and the three error messages) | `handoff` |
 | 9 | Bring the sliced job back | After slicing page: "Pick up sliced jobs automatically", "Open the G-code your slicer produced", **Check this job**, "Ready to send?", the "Studio can't check this" findings, "What the printer will actually do" (sliced by / for / prints from / layers / time / filament / file) | `tools/fixtures.py` writes the example job (values mirror `tools/acceptance/run.ps1`) | `after-empty`, `after-result`, `after-facts` |
-| 10 | Connect your printer | Printer Hub: "Connect to your U1", **Connect**, **Auto-detect my U1**, "Controls are off until the printer is connected and reachable."; Settings → Printer; Ready now page text; "Printer not found" help text incl. Advanced Mode under Settings → Maintenance | `desktop/src/lib/printerControl.ts` and `components/PrinterControls.tsx` (Pause/Resume immediate; Cancel print, Emergency stop, Start this print confirm; **Upload sliced gcode**) | `printer-hub`, `settings-printer`, `ready-now` |
+| 10 | Connect your printer | Printer Hub: "Connect to your U1", **Connect**, **Auto-detect my U1**, "Controls are off until the printer is connected and reachable."; Settings → Printer; Ready now page text; "Printer not found" help text incl. Advanced Mode under Settings → Maintenance | `desktop/src/lib/printerControl.ts` and `components/PrinterControls.tsx` (Pause/Resume sent without a confirmation prompt; Cancel print, Emergency stop, Start this print confirm; **Upload sliced gcode**) | `printer-hub`, `settings-printer`, `ready-now` |
 | 11 | Additional tools | Cost & Pricing, Scale Doctor (STL export only), Print Quality symptoms, My designs, Batch prepare, Find Models (approved sites), Settings → Materials provider | `desktop/src/routes/*.tsx` | `cost`, `scale`, `print-quality`, `projects`, `batch`, `find-models`, `settings-top` |
 | 12 | When something goes wrong | Help page: update check wording, "Show me what it contains", "Save it to a file", redaction statement | `docs/windows-install.md` (updating, data kept), `.github/ISSUE_TEMPLATE/` | `help-updates` |
 
@@ -45,7 +45,7 @@ calls the engine, a printer or the network: they move between pictures and text.
 | Misplaced, or too big to fit? (stage 3) | An object hanging off the plate can be shifted back; one that is wider or longer than the plate cannot, and Studio refuses rather than guess | Three real captures (`compat-top`, `placement-oversized`, `placement-spread`) from example files built by `tools/fixtures.py`. The refusal text "Moving the objects as one piece would not bring them all on…" and the offered **Move onto the plate (saves a copy)** button were read from the running app; `backend/snapstudio_core/plate_placement.py` confirms Studio only moves placement and refuses when one move cannot fix it |
 | Assigning a material is not loading it (stage 3) | Project Materials records a choice for the copy; nothing is loaded, heated or sent | `pm-review` capture; `docs/RELEASE_NOTES.md` v1.5.0; Studio's "never takes control" rule |
 | Read the change (stage 4) | Kept / adjusted / not applied / yours to do in Orca | `fidelity` capture: "What survived preparing this copy", "Changes Studio made", "Optional recommendations (not applied)" |
-| Unknown is not incompatible (stage 6) | "Sliced for a different printer" is a confirmed fact from the G-code header; "Studio can't check this" is a gap | `job-other-printer` capture of `example_other_printer.gcode` (a synthetic job whose header names another printer), plus `after-result` for the unknowns |
+| Unknown is not incompatible (stage 6) | the printer name in the G-code header is a confirmed fact; the finding **Sliced for a different printer** built on an unrecognized name is rated likely, not confirmed (`backend/snapstudio_core/post_slice.py`); "Studio can't check this" is a gap | `job-other-printer` capture of `example_other_printer.gcode` (a synthetic job whose header names another printer), plus `after-result` for the unknowns |
 
 ## Where the earlier lesson evidence went
 
@@ -111,3 +111,36 @@ The lesson-based guide was published with GitHub Pages from `main` by `.github/w
 checks, including `guide-ci.yml` on Linux Chrome; its live run was 727/727. Pages cannot set response headers, so the strict
 Content-Security-Policy in `deploy/security-headers.txt` is not applied there; the guide makes no network requests of its own.
 The redesign replaces this version when its pull request merges: `main` publishes `site/guide/public` through `guide-pages.yml`.
+
+## Editorial review (2026-10-07)
+
+All English text was reviewed in two independent passes, then reread after the corrections: Claude Opus (`claude-opus-5-5`) and Codex Sol (`gpt-5.6-sol`), identities confirmed from the Opus transcript's `message.model` field and the Codex rollout. Corrections were limited to guide copy (American spelling, grammar, unclear or ambiguous wording, stale lesson references, a few sentences that contradicted documented behavior). Quoted product labels and messages were left as the app shows them.
+
+### Product copy issues found (not changed here; for the maintainer)
+
+1. Settings → Printer hint says send, pause, resume and cancel "run only when you confirm"; the code sends Pause and Resume without a confirmation prompt (`PrinterControls.tsx`). The guide follows the code.
+2. Mixed British and American spelling in the app: "Colours and toolheads", "6 colours, 4 toolheads", "Load the colours…", "Colour changed to Red" versus "Colors & Materials" and "Plate Color Remap".
+3. Unresolved plural placeholders: "1 object(s) moved…", "Found 5 invalid-value issue(s) and 2 warning(s).", "1 thing(s) are worth settling…".
+4. "Moving the objects as one piece would not bring them all on…" lacks a destination ("onto the plate").
+5. "Upload sliced gcode" should read "G-code" like the rest of the app.
+6. Cost Doctor says "true cost to make" for an estimate built on user assumptions.
+7. "Not proven separable — reserve a toolhead each" is jargon for beginners.
+8. Capitalization varies for one feature ("This print"/"This Print", "Batch prepare"/"Batch Prepare", "After slicing"/"After Slicing").
+9. The page text for a missing file starts in lowercase and has no final period ("that file does not exist").
+10. Existing observation 2 above (damaged 3MF still shows "Checked — here's what we found…").
+
+## Pre-publication factual review (2026-10-07)
+
+Before publishing the corrected copy, Astra (`gpt-6-astra`) checked the guide's behavioral claims against the engine and desktop code, independently of the editorial review by Fable (`claude-fable-5-1`). It first confirmed six overclaims (Pause/Resume wording, "carries over only what it can verify", "Unverified … not an error", "Nothing is wrong with the job", "confirmed only from the file", "Kept needs no action") and found one more: an unrecognized printer name is rated *likely*, not *confirmed*, by the engine. After those were corrected, it returned five residual blockers. Their resolution:
+
+| Blocker | Corrected wording (now in the guide) | Code and tests it rests on |
+|---|---|---|
+| R01 — "Not checked" does not always mean "copied unchecked" | *Anything it has no reader for … is listed here as well, because Studio cannot say what happened to it. Some of that data is copied as it was but never checked; some, such as PrusaSlicer settings Orca does not use, is left out.* | `backend/snapstudio_core/fidelity.py` (unsupported rows are grouped with removed rows), `backend/snapstudio_core/prusa.py`, `desktop/src/lib/fidelity.ts` (`statusLabel`); `guideClaims.test.ts` requires the guide to use the app's label |
+| R02 — "could not check" is not only an unexplained change | *Studio could not verify this item. It may be an unexplained change, or something Studio could not compare.* Compare with the original in Orca and report anything unexplained | `fidelity.py` (unverified rows), `desktop/src/lib/fidelity.ts` (`fidelityHeadline`); `guideClaims.test.ts` takes the advice from the app and requires the guide to repeat it |
+| R03 — "Kept" does not mean Orca uses it | *Kept means the value reached the copy, not that Orca uses it: read any note on the row.* | `backend/snapstudio_core/target_reachability.py`, `desktop/src/lib/fidelity.ts`, `fidelity.test.ts` |
+| R04 — confirmed evidence can come from you; offline unknowns can be filled by your own confirmation | *Studio has direct evidence: it read this in your file or from your printer, or you confirmed it yourself.* Offline unknowns stay unknown *unless you confirmed it yourself, such as a nozzle size* | `backend/snapstudio_core/post_slice.py`, `backend/snapstudio_api/service.py` (saved nozzle confirmations), `test_preflight.py` |
+| R05 — a missing Move button has several causes | *Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects).* | `backend/snapstudio_core/plate_placement.py` (assessment unavailable, multi-plate refusal); `backend/tests/test_guide_claims.py` runs the placement example through the engine |
+
+Two further notes from that review were also applied: the watch-folder wording now says it looks only while **After Slicing** or **This print** is open (the poll has no focus or visibility gate, `desktop/src/components/OrcaRoundTrip.tsx`), and the exercise record above now states that the printer name in the header is the confirmed fact while the mismatch finding is *likely*.
+
+New regression checks: `backend/tests/test_guide_claims.py` (engine-derived placement and printer-name facts), `desktop/src/lib/guideClaims.test.ts` (printer-action policy, prompt text and fidelity labels from app code), and a wording tripwire in `tools/build.mjs`. They establish that the guide agrees with current engine and app code on those points. They do not establish prose quality, physical printer behavior, Snapmaker Orca behavior, or that a paraphrase of a past overclaim cannot return. They were checked to fail against the earlier wording.

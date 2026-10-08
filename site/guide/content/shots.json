@@ -28,14 +28,14 @@
       {
         "key": "local-only",
         "title": "Local only",
-        "text": "Studio runs on your computer. There is no account and nothing is uploaded; this line is always visible."
+        "text": "Studio runs on your computer. There is no account, and your files are never uploaded to the internet; this line is always visible."
       }
     ]
   },
   "workspace-stl": {
     "file": "workspace-stl.png",
     "title": "The Workspace after opening an STL",
-    "alt": "Studio's Workspace page for sample_cube.stl. A banner says Can prepare a U1 copy with a blue Prepare U1 copy button. Below it are a Your fix plan list and a What's in this design card showing a plain STL model of 20 by 20 by 20 millimetres.",
+    "alt": "Studio's Workspace page for sample_cube.stl. A banner says Can prepare a U1 copy with a blue Prepare U1 copy button. Below it are the Your fix plan list and the What's in this design card showing a plain STL model of 20 by 20 by 20 millimeters.",
     "caption": "The Workspace for `sample_cube.stl`, a 20 mm cube from the repository's `examples` folder.",
     "hotspots": [
       {
@@ -51,7 +51,7 @@
       {
         "key": "prepare",
         "title": "Prepare U1 copy",
-        "text": "Writes a **new** file with U1 settings. Your original is never changed."
+        "text": "Writes a *new* file with U1 settings. Your original is never changed."
       },
       {
         "key": "fix-plan",
@@ -61,7 +61,7 @@
       {
         "key": "contents",
         "title": "What's in this design",
-        "text": "What Studio measured: kind of file, size, colours, parts and a rough filament cost."
+        "text": "What Studio measured: kind of file, size, colors, parts and a rough filament cost."
       }
     ]
   },
@@ -69,7 +69,7 @@
     "file": "workspace-3mf.png",
     "title": "The Workspace for a 3MF project",
     "alt": "Studio's Workspace for demo_offplate_foreign.3mf. A Preparation mode card offers Preserve creator settings (recommended), Use Studio's U1 starter settings instead, and Custom. Below are a Needs a fix first banner with a Prepare U1 copy button, a Your fix plan list, and an Object placement card reporting one object outside the printable area.",
-    "caption": "The Workspace for `demo_offplate_foreign.3mf`, a small project whose second object sits off the U1's plate.",
+    "caption": "The Workspace for `demo_offplate_foreign.3mf`, a small project whose object labeled Object 2 sits off the U1's plate.",
     "hotspots": [
       {
         "key": "mode",
@@ -117,12 +117,12 @@
       {
         "key": "printer-check",
         "title": "Before you slice",
-        "text": "Compares the project with your printer. With no printer connected, each answer is honestly marked **Studio can’t tell**."
+        "text": "Compares the project with what Studio knows about the printer. Checks that need a fact from the printer say **Studio can’t tell** when Studio does not have it; checks that use only the file still answer."
       },
       {
         "key": "colours",
         "title": "Colours and toolheads",
-        "text": "How many colours the project uses against the U1's four toolheads."
+        "text": "How many colors the project uses against the U1's four toolheads."
       }
     ]
   },
@@ -145,12 +145,12 @@
       {
         "key": "colors",
         "title": "Colors & Materials",
-        "text": "Colour and toolhead planning, Plate Color Remap and Project Materials (lesson 7)."
+        "text": "Color and toolhead planning and Plate Color Remap. Find Project Materials on Compatibility."
       },
       {
         "key": "printer-hub",
         "title": "Printer Hub",
-        "text": "Connect to your U1 and read its live state (lesson 10)."
+        "text": "Connect to your U1 and read its live state."
       }
     ]
   },
@@ -173,7 +173,7 @@
       {
         "key": "move",
         "title": "Move onto the plate",
-        "text": "Saves a **new** file with every object shifted onto the plate. Your original stays as it was."
+        "text": "Saves a *new* file with every object shifted onto the plate. Your original stays as it was."
       },
       {
         "key": "before-slice",
@@ -185,7 +185,7 @@
   "compat-findings": {
     "file": "compat-findings.png",
     "title": "Compatibility: the findings list",
-    "alt": "Studio's Compatibility findings for the example project. A summary line reads Found 5 invalid-value issues and 2 warnings. Findings are cards labelled NEEDS ATTENTION or HEADS UP, each with an explanation, a Do this line and a Technical detail disclosure.",
+    "alt": "Studio's Compatibility findings for the example project. A summary line reads Found 5 invalid-value issues and 2 warnings. Findings are cards labeled NEEDS ATTENTION or HEADS UP, each with an explanation, a Do this line and a Technical detail disclosure.",
     "caption": "The findings list for `demo_offplate_foreign.3mf`.",
     "hotspots": [
       {
@@ -237,7 +237,7 @@
       {
         "key": "changed",
         "title": "What Studio changed, and what stayed",
-        "text": "Expand **What Studio changed** to see each change; nothing is changed silently. **What stayed the same** lists what was carried over untouched."
+        "text": "Expand **What Studio changed** to see each change Studio identified. **What stayed the same** includes both identical data and data with the same meaning. Also read anything under **What Studio could not check**."
       },
       {
         "key": "ledger",
@@ -254,23 +254,23 @@
   "colours-overview": {
     "file": "colours-overview.png",
     "title": "Colours and toolheads",
-    "alt": "Studio's Colors page for demo_u1_showcase.3mf. A Colours and toolheads card says 6 colours, 4 toolheads, possible without repainting. It explains that a toolhead melts one filament and lists colours Not proven separable, which reserve a toolhead each, and colours that appear only higher up and could be a planned swap.",
-    "caption": "**Colors & Materials** for the six-colour example project on a four-toolhead U1.",
+    "alt": "Studio's Colors page for demo_u1_showcase.3mf. A Colours and toolheads card says 6 colours, 4 toolheads, possible without repainting. It explains that a toolhead melts one filament and lists colors Not proven separable, which reserve a toolhead each, and colors that appear only higher up and could be a planned swap.",
+    "caption": "**Colors & Materials** for the six-color example project on a four-toolhead U1.",
     "hotspots": [
       {
         "key": "remap",
         "title": "Plate Color Remap",
-        "text": "Changes one plate's colour in a verified **copy**. Your original is never changed."
+        "text": "Changes one plate's color in a new copy. Your original is never changed."
       },
       {
         "key": "verdict",
         "title": "The verdict",
-        "text": "The count of colours against toolheads, in one sentence."
+        "text": "The count of colors against toolheads, in one sentence."
       },
       {
         "key": "explain",
         "title": "What a toolhead is",
-        "text": "A toolhead melts one filament. The U1 has four, so it can print four colours at once without a spool swap. Studio counted against the U1's published four toolheads; it did not read this from a printer."
+        "text": "A toolhead melts one filament. The U1 has four, so it can print up to four colors in one print without swapping spools. Studio counted against the U1's published four toolheads; it did not read this from a printer."
       }
     ]
   },
@@ -278,7 +278,7 @@
     "file": "pm-recs.png",
     "title": "Project Materials: suggested spools",
     "alt": "Studio's Project materials card. For Slot 1, PLA, Red, it lists three suggested spools from a sample inventory with reasons such as Material matches PLA and Colour distance, then an Orca preset area reading Not chosen yet with the buttons Use this preset, Choose an installed preset and Keep project's filament.",
-    "caption": "**Project materials** with a made-up sample inventory. No spool and no preset is selected.",
+    "caption": "**Project materials** with a made-up sample inventory. No spool or preset is selected yet.",
     "hotspots": [
       {
         "key": "title",
@@ -288,25 +288,25 @@
       {
         "key": "candidate",
         "title": "A suggested spool",
-        "text": "Each slot shows what the project asks for (material, colour, and the grams when the file states it). Studio lists up to three spools from your inventory and says **why**. Pick the one that is physically in your hand."
+        "text": "Each slot shows what the project asks for (material, color and, when the file states it, the weight in grams). Studio lists up to three spools from your inventory and says *why*. Pick the one that is physically in your hand."
       },
       {
         "key": "preset",
         "title": "The Orca preset",
-        "text": "Choose an **installed** Snapmaker Orca preset yourself, or keep the project's own filament."
+        "text": "Choose an *installed* Snapmaker Orca preset yourself, or keep the project's own filament."
       }
     ]
   },
   "pm-review": {
     "file": "pm-review.png",
     "title": "Project Materials: review before preparing",
-    "alt": "Studio's Review before preparing panel. It lists, slot by slot, what will be written, for example Slot 1 mapped to Generic PLA with the colour changed to red, and notes that the other slots keep the project's filament identity. Buttons read Prepare with these choices and Back to choices.",
-    "caption": "The review panel, written by the same engine that prepares the copy.",
+    "alt": "Studio's Review before preparing panel. It lists, slot by slot, what will be written, for example Slot 1 mapped to Generic PLA with the color changed to red, and notes that the other slots keep the project's filament identity. Buttons read Prepare with these choices and Back to choices.",
+    "caption": "The review panel, produced by the same engine that prepares the copy.",
     "hotspots": [
       {
         "key": "review",
         "title": "Review before preparing",
-        "text": "A plain-language list of exactly what will change. Spool details are labelled as what **you** selected."
+        "text": "A plain-language list of exactly what will change. Spool details are labeled as what *you* selected."
       },
       {
         "key": "prepare",
@@ -329,12 +329,12 @@
       {
         "key": "watch",
         "title": "Pick up sliced jobs automatically",
-        "text": "Optional. Tell Studio the folder where Orca saves exports, once."
+        "text": "Optional. Tell Studio once which folder Orca saves exports to."
       },
       {
         "key": "watch-btn",
         "title": "Watch this folder",
-        "text": "While this page is open, Studio looks in that folder only. It never runs in the background."
+        "text": "Studio looks in that folder only while **After Slicing** or **This print** is open; it does not keep watching after you leave them."
       },
       {
         "key": "open-gcode",
@@ -351,7 +351,7 @@
   "after-result": {
     "file": "after-result.png",
     "title": "A checked job",
-    "alt": "Studio's After slicing page after checking an example G-code file against the open project. A Ready to send card says nothing blocks the job but one thing is worth settling first, followed by findings labelled Studio can't check this, such as tools the job needs, whether the slots are loaded, the bed, and nozzle size.",
+    "alt": "Studio's After slicing page after checking an example G-code file against the open project. A Ready to send card says nothing blocks the job but one thing is worth settling first, followed by findings labeled Studio can't check this, such as tools the job needs, whether the slots are loaded, the bed, and nozzle size.",
     "caption": "A checked example job with **no printer connected**: Studio says what it cannot confirm instead of guessing.",
     "hotspots": [
       {
@@ -362,7 +362,7 @@
       {
         "key": "cant-check",
         "title": "Studio can’t check this",
-        "text": "Unknown stays unknown. With no printer connected, anything that depends on the machine is listed here."
+        "text": "Unknown stays unknown. With no printer connected, anything that depends on the machine and that you have not confirmed yourself is listed here."
       },
       {
         "key": "facts",
@@ -379,7 +379,7 @@
   "after-facts": {
     "file": "after-facts.png",
     "title": "What the sliced file says",
-    "alt": "The What the printer will actually do card. It shows facts read from the sliced file: sliced by Snapmaker Orca 2.3.4, for Snapmaker U1, prints from slot 2, 12 layers at 0.2 millimetres, estimated time 4 minutes, filament 0.36 grams, file size 1 kilobyte.",
+    "alt": "The What the printer will actually do card. It shows facts read from the sliced file: sliced by Snapmaker Orca 2.3.4, for Snapmaker U1, prints from slot 2, 12 layers at 0.2 millimeters, estimated time 4 minutes, filament 0.36 grams, file size 1 kilobyte.",
     "caption": "Facts read from the example job's G-code.",
     "hotspots": [
       {
@@ -413,7 +413,7 @@
       {
         "key": "connect-title",
         "title": "Connect to your U1",
-        "text": "Type the printer's network name or IP address. Studio shows live status and acts only when you confirm."
+        "text": "Type the printer's network name or IP address. Studio shows live status and acts only on your request: you press a control, and for some actions you also confirm a prompt."
       },
       {
         "key": "connect",
@@ -446,12 +446,12 @@
       {
         "key": "confirmed",
         "title": "Printer access and confirmed control",
-        "text": "Monitoring is read-only. Send, pause, resume and cancel run only when you confirm them, and Studio never auto-starts a print."
+        "text": "Monitoring is read-only. Pause and resume are sent as soon as you press them, with no second prompt; cancel, emergency stop and starting a print ask you to confirm first. Studio never starts a print on its own."
       },
       {
         "key": "nozzles",
         "title": "Nozzles",
-        "text": "If the printer does not report its nozzle sizes, you can tell Studio what is fitted. Those entries are labelled **Confirmed by you**."
+        "text": "If the printer does not report its nozzle sizes, you can tell Studio what is fitted. Those entries are labeled **Confirmed by you**."
       }
     ]
   },
@@ -479,7 +479,7 @@
       {
         "key": "notes",
         "title": "Your spool notes",
-        "text": "What you know is loaded, slot by slot. The printer always wins about what is loaded."
+        "text": "What you know is loaded, slot by slot. When the printer reports what is loaded, Studio trusts the printer over your notes and the provider."
       }
     ]
   },
@@ -553,7 +553,7 @@
       {
         "key": "details",
         "title": "Details and assumptions",
-        "text": "Every number comes from your own assumptions. They are estimates, not financial advice."
+        "text": "The figures combine file data with default or edited assumptions. Review the assumptions; they are estimates, not financial advice."
       }
     ]
   },
@@ -605,8 +605,8 @@
   },
   "batch": {
     "file": "batch.png",
-    "title": "Batch prepare",
-    "alt": "Studio's Batch prepare page with an Add files button and a Prepare button, under the heading Prepare a whole batch at once.",
+    "title": "Batch Prepare",
+    "alt": "Studio's Batch Prepare page with an Add files button and a Prepare button, under the heading Prepare a whole batch at once.",
     "caption": "**Batch Prepare**.",
     "hotspots": [
       {
@@ -630,7 +630,7 @@
       {
         "key": "sites",
         "title": "Approved sites",
-        "text": "Pick a site to browse inside Studio's locked model browser."
+        "text": "Pick a site to browse inside Studio's built-in model browser, which opens only approved sites."
       },
       {
         "key": "steps",
@@ -678,7 +678,7 @@
       {
         "key": "show",
         "title": "Show me what it contains",
-        "text": "Read the whole bundle before it is written."
+        "text": "Read the whole bundle before it is saved."
       },
       {
         "key": "save",
@@ -690,13 +690,13 @@
   "handoff": {
     "file": "handoff.png",
     "title": "A prepared copy, ready for Snapmaker Orca",
-    "alt": "Studio's Workspace in the installed app after preparing. A heading says U1 copy created, review setup before slicing, and that the original file is not modified. The new file name is shown, then a What now section with two options and a blue Open in Snapmaker Orca button, followed by a Next line explaining to slice in Snapmaker Orca, export the G-code and return to Printer Hub.",
+    "alt": "Studio's Workspace in the installed app after preparing. A heading says U1 copy created, review setup before slicing, and that the original file is not modified. The new file name is shown, then a What now section with two options and a blue Open in Snapmaker Orca button, followed by a Next line telling you to slice in Snapmaker Orca, export the G-code and return to Printer Hub.",
     "caption": "The result of **Prepare U1 copy**, from the installed Studio. The **Open in Snapmaker Orca** button appears when Studio finds Orca on your computer.",
     "hotspots": [
       {
         "key": "created",
         "title": "U1 copy created",
-        "text": "The new file has been written and checked for structure. Studio never writes to your original; the copy is a separate file next to it."
+        "text": "The new file has been written. Studio never writes to your original; the copy is a separate file next to it."
       },
       {
         "key": "what-now",
@@ -718,13 +718,13 @@
   "placement-oversized": {
     "file": "placement-oversized.png",
     "title": "Placement: an object longer than the plate",
-    "alt": "Studio's Object placement card for a project with one long bar. It says one object is outside the U1's printable area: Object 1, 320 by 20 by 20 millimetres, hangs 1.0 millimetres past the left edge and 50.0 millimetres past the right edge. A note says moving the objects as one piece would not bring them all on, so Studio will not guess, and to use Arrange in Snapmaker Orca. There is no Move button.",
+    "alt": "Studio's Object placement card for a project with one long bar. It says one object is outside the U1's printable area: Object 1, 320 by 20 by 20 millimeters, hangs 1.0 millimeters past the left edge and 50.0 millimeters past the right edge. A note says moving the objects as one piece would not bring them all on, so Studio will not guess, and to use Arrange in Snapmaker Orca. There is no Move button.",
     "caption": "`example_oversized.3mf`: one 320 mm bar on a plate about 270 mm wide.",
     "hotspots": [
       {
         "key": "object",
         "title": "The object and its size",
-        "text": "Studio names the object, its size and how far it hangs over: here **320 mm long**, hanging over **both** the left and the right edge. That means the object is longer than the plate, so no position works."
+        "text": "Studio names the object, its size and how far it hangs over: here *320 mm long*, hanging over *both* the left and right edges. Shifting cannot fit it as it is oriented; rotate, resize or split it in Orca."
       },
       {
         "key": "refusal",
@@ -736,7 +736,7 @@
   "placement-spread": {
     "file": "placement-spread.png",
     "title": "Placement: a layout wider than the plate",
-    "alt": "Studio's Object placement card for a project with two small cubes far apart. It says one object is outside the U1's printable area: Object 2, 10 by 10 by 10 millimetres, hangs 35.0 millimetres past the right edge. The same note appears: moving the objects as one piece would not bring them all on, so Studio will not guess. There is no Move button.",
+    "alt": "Studio's Object placement card for a project with two small cubes far apart. It says one object is outside the U1's printable area: Object 2, 10 by 10 by 10 millimeters, hangs 35.0 millimeters past the right edge. The same note appears: moving the objects as one piece would not bring them all on, so Studio will not guess. There is no Move button.",
     "caption": "`example_spread.3mf`: two 10 mm cubes about 290 mm apart.",
     "hotspots": [
       {
@@ -753,7 +753,7 @@
   },
   "job-other-printer": {
     "file": "job-other-printer.png",
-    "title": "A job sliced for a different printer",
+    "title": "An example job whose header names a different printer",
     "alt": "Studio's After slicing page checking an example G-code file that names a different printer. A Ready to send card says nothing blocks the job but two things are worth settling. The first finding, Sliced for a different printer, is marked worth settling first and says to re-slice the model in Snapmaker Orca with a U1 profile. Below it, other findings are marked Studio can't check this.",
     "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected.",
     "hotspots": [
@@ -764,8 +764,8 @@
       },
       {
         "key": "different",
-        "title": "A confirmed finding",
-        "text": "Studio read the printer named in the job. This is a fact about the file, and it needs no printer to know."
+        "title": "A name read from the file",
+        "text": "Studio read the printer named in the job. That is a fact about the file, and Studio does not need a connected printer to read it. It does not recognize the name as the U1 (the card's Evidence line says so), so Studio rates the finding likely, not confirmed."
       },
       {
         "key": "do-this",
@@ -775,7 +775,7 @@
       {
         "key": "cant-check",
         "title": "Unknown, not wrong",
-        "text": "These need a reading from your printer. They are gaps, not problems found."
+        "text": "Studio needs information from your printer to check these. They are gaps, not problems found."
       }
     ]
   }

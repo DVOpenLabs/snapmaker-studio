@@ -117,6 +117,15 @@ if (/[A-Za-z]:\\\\Users\\\\(?!you\\\\)/i.test(allText) || /\/home\/[a-z]/i.test(
 if (/\b(octo|codex|sonnet|opus|fable|gemini|antigravity)\b/i.test(allText)) fail("content contains an internal tooling term");
 if (/\b100% (print )?success\b|guaranteed print/i.test(allText.replace(/not a guarantee|never claims|does not guarantee|never a guarantee|not a promise/gi, ""))) fail("content makes a guarantee claim");
 
+// overclaims that earlier versions made and review corrected; they must not come back
+const OVERCLAIMS = [
+  [/(pause|resume)[^.]{0,80}\b(take(s)? effect|immediately|instantly)/i, "says Pause or Resume take effect (a sent request is not an executed one)"],
+  [/carries over only what it can verify/i, "says Studio carries over only what it can verify (unsupported data is copied unchecked)"],
+  [/nothing is wrong with the job/i, "says nothing is wrong with a job Studio could not read"],
+  [/\bneed no action\b|nothing to review unless/i, "says kept settings need no action (preserved is not verified in Orca)"],
+];
+for (const [re, why] of OVERCLAIMS) if (re.test(allText)) fail("content " + why);
+
 if (bad.length) { console.error("Guide build failed:\n - " + bad.join("\n - ")); process.exit(1); }
 for (const w of warn) console.warn("warning:", w);
 
@@ -137,11 +146,11 @@ function stepsHtml(steps) {
     ? `<li>${md(s)}</li>`
     : `<li>${md(s.text)}${s.sub?.length ? `<ul>${s.sub.map((x) => `<li>${md(x)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ol>`;
 }
-const NOTE_TAG = { unknown: "Studio can’t tell", safe: "Your files are safe", limit: "Not covered here", tip: "Tip", important: "Important" };
+const NOTE_TAG = { unknown: "Studio can’t tell", safe: "Safety", limit: "Limit", tip: "Tip", important: "Important" };
 const notesHtml = (notes = []) => notes.map((n) => `<div class="note note-${n.kind}"><span class="tag">${NOTE_TAG[n.kind] || "Note"}</span><p>${md(n.text)}</p></div>`).join("");
 function differsHtml(items = []) {
   if (!items.length) return "";
-  return `<section class="block differs"><h3>If it looks different</h3>${items.map((h) => `<details><summary>${md(h.if)}</summary><div><p>${md(h.then)}</p></div></details>`).join("")}</section>`;
+  return `<section class="block differs"><h3>If something is different</h3>${items.map((h) => `<details><summary>${md(h.if)}</summary><div><p>${md(h.then)}</p></div></details>`).join("")}</section>`;
 }
 function figureHtml(shotId, label) {
   const s = shots[shotId];
@@ -150,7 +159,7 @@ function figureHtml(shotId, label) {
   const rows = items.map((h) => `<li><span class="num" aria-hidden="true">${h.n}</span><span><strong class="t">${esc(h.title)}</strong>${md(h.text)}</span></li>`).join("");
   return `<figure class="shot" data-shot="${esc(shotId)}">
   ${label ? `<p class="shot-label">${md(label)}</p>` : ""}
-  <p class="swipe-hint">Swipe sideways to see the whole screenshot, or tap it to enlarge.</p>
+  <p class="swipe-hint">Swipe sideways to see the whole screenshot. With JavaScript on, tap it to enlarge.</p>
   <div class="shot-scroll"><div class="shot-frame"><img src="assets/img/${esc(s.file)}" alt="${esc(s.alt)}" width="${g.width}" height="${g.height}" loading="lazy" decoding="async"></div></div>
   <figcaption>${md(s.caption)}</figcaption>
   ${items.length ? `<details class="controls-notes"><summary>Notes on the controls in this screenshot</summary><ol class="hs-text">${rows}</ol></details>` : ""}
@@ -203,7 +212,7 @@ function exampleHtml(id) {
   let body;
   if (ex.type === "choose") {
     body = ex.cases.map((c) => `<section class="ex-case-static"><h4>${esc(c.title)}</h4>${c.shot ? figureHtml(c.shot) : ""}<ul class="facts">${c.facts.map((f) => `<li>${md(f)}</li>`).join("")}</ul>
-      <p class="ex-q"><strong>${esc(c.question)}</strong></p><ul class="ex-opts">${c.options.map((o) => `<li class="verdict-${o.verdict}"><strong>${md(o.label)}</strong> <em>${o.verdict === "best" ? "Best answer." : o.verdict === "ok" ? "Reasonable, with a catch." : "Not this."}</em> ${md(o.feedback)}</li>`).join("")}</ul></section>`).join("");
+      <p class="ex-q"><strong>${esc(c.question)}</strong></p><ul class="ex-opts">${c.options.map((o) => `<li class="verdict-${o.verdict}"><strong>${md(o.label)}</strong> <em>${o.verdict === "best" ? "Best answer." : o.verdict === "ok" ? "Reasonable, with a catch." : "Not correct."}</em> ${md(o.feedback)}</li>`).join("")}</ul></section>`).join("");
   } else if (ex.type === "sort") {
     body = `${ex.shot ? figureHtml(ex.shot) : ""}<ul class="ex-opts">${ex.items.map((it) => { const cat = ex.categories.find((c) => c.id === it.answer); return `<li><strong>${md(it.text)}</strong> <em>→ ${esc(cat.label)}.</em> ${md(it.feedback)}</li>`; }).join("")}</ul>`;
   } else {
@@ -225,7 +234,7 @@ function asideStage(s) {
   const tk = (s.tasks || []).map((id) => `<li>${taskLink(id)}</li>`).join("");
   return `<aside class="stage-aside" aria-label="Related">
   <nav class="onpage" aria-label="On this page"><h4>On this page</h4><ul>
-    <li><a href="#${s.page}--evidence" data-jump="${s.page}--evidence">What Studio shows</a></li><li><a href="#${s.page}--means" data-jump="${s.page}--means">What it means</a></li>
+    <li><a href="#${s.page}--evidence" data-jump="${s.page}--evidence">What Studio shows</a></li><li><a href="#${s.page}--means" data-jump="${s.page}--means">What the result means</a></li>
     ${(s.examples || []).length ? `<li><a href="#${s.page}--decide" data-jump="${s.page}--decide">Try it</a></li>` : ""}<li><a href="#${s.page}--do" data-jump="${s.page}--do">What to do</a></li><li><a href="#${s.page}--done" data-jump="${s.page}--done">You are done when</a></li></ul></nav>
   ${rel ? `<div class="aside-block"><h4>Related warnings</h4><div class="chips">${rel}</div></div>` : ""}
   ${tk ? `<div class="aside-block"><h4>Related tasks</h4><ul>${tk}</ul></div>` : ""}
@@ -305,14 +314,14 @@ function problemHtml(p) {
   return `<article class="page problem" id="${id}" data-page="${id}" data-type="problem" aria-labelledby="${id}-h">
   <header class="problem-head">
     <p class="crumb"><a href="#home">Guide</a> <span aria-hidden="true">›</span> <a href="#problems">Warnings</a></p>
-    <p class="seen">Studio says</p>
+    <p class="seen">${esc(p.speaker || "Studio")} says</p>
     <h2 class="ptitle label-text" id="${id}-h" tabindex="-1">${esc(p.label)}</h2>
-    <div class="howsure"><p class="hs-q">How sure is Studio?</p><ul class="meter" aria-label="Certainty: ${esc(G.certainty[p.certainty].label)}">${meter}</ul><p class="hs-a">${badge(p.certainty)} ${esc(G.certainty[p.certainty].means)}</p></div>
+    <div class="howsure"><p class="hs-q">${p.speaker ? "What kind of message is this?" : "How sure is Studio?"}</p><ul class="meter" aria-label="Certainty: ${esc(G.certainty[p.certainty].label)}">${meter}</ul><p class="hs-a">${badge(p.certainty)} ${esc(G.certainty[p.certainty].means)}</p></div>
   </header>
   <div class="problem-grid">
     <div class="problem-main">
       <section class="block"><h3>What it means</h3><p>${md(p.means)}</p></section>
-      <section class="block"><h3>Why Studio says it</h3><p>${md(p.why)}</p></section>
+      <section class="block"><h3>Why you see this</h3><p>${md(p.why)}</p></section>
       <section class="block do"><h3>What to do</h3><ol class="steps">${p.do.map((x) => `<li>${md(x)}</li>`).join("")}</ol></section>
       <section class="block dont"><h3>What not to conclude</h3><p>${md(p.dont)}</p></section>
     </div>
@@ -336,7 +345,7 @@ function tasksIndexHtml() {
 function problemsIndexHtml() {
   return `<article class="page index" id="problems" data-page="problems" data-type="index" aria-labelledby="problems-h">
   <header class="index-head"><p class="crumb"><a href="#home">Guide</a> <span aria-hidden="true">›</span> Warnings</p><h2 class="ptitle" id="problems-h" tabindex="-1">Understand a warning or problem</h2>
-    <p class="lead">Studio is careful about what it knows. Every message below is marked by how sure Studio is, because the right response differs for a fact, a possibility and a gap.</p></header>
+    <p class="lead">Every message below is marked by how sure Studio is, because the right response differs for a fact, a possibility and a gap.</p></header>
   <dl class="legend-grid">${METER.map((c) => `<div class="cert-${c}"><dt>${badge(c)}</dt><dd>${esc(G.certainty[c].means)}</dd></div>`).join("")}</dl>
   <div class="filters js-only" role="group" aria-label="Filter warnings"><button type="button" class="chip is-on" data-filter="all" aria-pressed="true">All</button>${METER.map((c) => `<button type="button" class="chip" data-filter="${c}" aria-pressed="false">${esc(G.certainty[c].label)}</button>`).join("")}</div>
   ${METER.map((c) => { const list = problems.filter((p) => p.certainty === c); return list.length ? `<section class="pgroup" data-group="${c}" aria-labelledby="pg-${c}"><h3 id="pg-${c}">${badge(c)}</h3><ul class="plist">${list.map((p) => `<li>${link(pageId.problem(p), `<strong class="label-text">${esc(p.label)}</strong><span class="when-s">${md(p.means)}</span>`)}</li>`).join("")}</ul></section>` : ""; }).join("")}
@@ -354,18 +363,18 @@ function homeHtml() {
     ${H.doors.map((d, i) => `<div class="door door-${d.id}"><h3>${esc(d.title)}</h3><p>${md(d.text)}</p>${d.links.length ? `<ul>${d.links.map((l) => `<li>${link(l.page, md(l.label))}</li>`).join("")}</ul>` : ""}<a class="btn ${i === 0 ? "btn-primary" : ""} js-nav" href="${href(d.cta.page)}">${esc(d.cta.label)} →</a></div>`).join("")}
   </section>
   <section class="home-map" aria-label="The whole job"><details class="map-fold" open><summary>See the whole job<small>Studio, Snapmaker Orca and your printer, stage by stage</small></summary>${mapHtml()}</details>
-    <p class="map-key">Studio works on your computer. <strong>Snapmaker Orca slices.</strong> You start the print at the printer. Studio never slices and never starts a print on its own.</p></section>
+    <p class="map-key">Studio works on your computer. <strong>Snapmaker Orca slices</strong>: it turns the model into G-code, the instructions your printer runs. You decide when the print starts. Studio never slices and never starts a print on its own.</p></section>
   <section class="home-foot" aria-label="Before you start">
     <div><h3>Not installed yet?</h3><p>${link("setup", "Install and open Studio")} — about ten minutes. If Studio is already installed, skip it: the example starts from opening a file.</p></div>
     <div><h3>Optional tools</h3><p>Cost, scale, print quality, batch, model sites and spool providers are under ${link("tasks", "Tasks")}, marked optional, so they never interrupt the main path.</p></div>
-    <div id="not-shown"><h3>What this guide does not show</h3><p>No screenshot of a connected printer (no printer was contacted), none of Snapmaker Orca's own window, and none from Linux. Where that matters, the page says so. How each claim was verified: <a href="${G.links.repo}/blob/main/site/guide/EVIDENCE.md" rel="noopener noreferrer" target="_blank">evidence record<span class="vh"> (opens in a new tab)</span></a>.</p></div>
+    <div id="not-shown"><h3>What this guide does not show</h3><p>No screenshot of a connected printer, none of Snapmaker Orca's own window, and none from Linux. Where that matters, the page says so. How each claim was verified: <a href="${G.links.repo}/blob/main/site/guide/EVIDENCE.md" rel="noopener noreferrer" target="_blank">evidence record<span class="vh"> (opens in a new tab)</span></a>.</p></div>
   </section>
 </article>`;
 }
 function searchHtml() {
   return `<article class="page search" id="search" data-page="search" data-type="search" aria-labelledby="search-h">
   <header class="index-head"><p class="crumb"><a href="#home">Guide</a> <span aria-hidden="true">›</span> Search</p><h2 class="ptitle" id="search-h" tabindex="-1">Search the guide</h2></header>
-  <div id="search-out" class="search-out" aria-live="polite"><p class="nojs-note">Search needs JavaScript. Without it, use the <a href="#tasks">task list</a> and the <a href="#problems">list of warnings</a>, which contain everything searchable.</p></div>
+  <div id="search-out" class="search-out" aria-live="polite"><p class="nojs-note">Search needs JavaScript. Without it, use the <a href="#tasks">task list</a> and the <a href="#problems">list of warnings</a>, plus the example stages; search covers nothing else.</p></div>
 </article>`;
 }
 
@@ -387,7 +396,7 @@ for (const t of tasks) index.push(indexDoc(pageId.task(t), "task", `Task · ${ta
   ...(t.differs || []).map((d) => ({ h: plain(d.if), t: d.then })), ...(t.notes || []).map((n) => ({ h: "Note", t: n.text })),
 ]));
 for (const p of problems) index.push(indexDoc(pageId.problem(p), "problem", `Warning · ${G.certainty[p.certainty].label}`, p.label, p.keywords, [
-  { h: "What it means", t: p.means }, { h: "Why Studio says it", t: p.why }, ...p.do.map((x) => ({ h: "What to do", t: x })), { h: "What not to conclude", t: p.dont },
+  { h: "What it means", t: p.means }, { h: "Why you see this", t: p.why }, ...p.do.map((x) => ({ h: "What to do", t: x })), { h: "What not to conclude", t: p.dont },
 ]));
 
 /* ---------- client data ---------- */

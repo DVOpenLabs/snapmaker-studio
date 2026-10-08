@@ -3,7 +3,7 @@
 import { DATA, $, el, escapeHtml } from "./common.js";
 import { openViewer } from "./figures.js";
 
-const VERDICT_LABEL = { best: "Best answer", ok: "Reasonable, with a catch", wrong: "Not quite" };
+const VERDICT_LABEL = { best: "Best answer", ok: "Reasonable, with a catch", wrong: "Not correct" };
 
 function shotButton(shotId) {
   const meta = DATA.shots[shotId];
@@ -107,7 +107,7 @@ function buildSort(id, ex, live) {
     live.append(actions, out);
     check.addEventListener("click", () => {
       const missing = rows.filter((r) => !r.row.querySelector("input:checked"));
-      if (missing.length) { out.innerHTML = `<div class="fb fb-ok"><span class="fb-h">Not finished</span><p>Choose a bucket for every line first (${missing.length} left).</p></div>`; return; }
+      if (missing.length) { out.innerHTML = `<div class="fb fb-ok"><span class="fb-h">Not finished</span><p>Choose an answer for every line first (${missing.length} left).</p></div>`; return; }
       let score = 0;
       rows.forEach(({ row, it }) => {
         const chosen = row.querySelector("input:checked").value;
@@ -135,7 +135,7 @@ function buildMulti(id, ex, live) {
     live.textContent = "";
     if (ex.shot) live.appendChild(shotButton(ex.shot));
     const fs = el("fieldset", { class: "ex-q" });
-    fs.appendChild(el("legend", {}, "Tick everything Studio did."));
+    fs.appendChild(el("legend", {}, "Select everything Studio did."));
     ex.items.forEach((it, n) => fs.appendChild(el("label", { class: "opt" }, `<input type="checkbox" name="ex-${id}" value="${n}"><span>${it.text}</span>`)));
     const out = el("div", { class: "ex-feedback", "aria-live": "polite" });
     const actions = el("div", { class: "ex-actions" });
@@ -153,7 +153,7 @@ function buildMulti(id, ex, live) {
         if (ok) score += 1;
         b.disabled = true;
         labels[n].classList.add(ok ? "is-correct" : "is-wrong");
-        html += `<div class="fb fb-${it.answer ? "yes" : "no"}"><span class="fb-h">${it.answer ? "Studio does this" : "Studio does not do this"}${ok ? "" : b.checked ? " — you ticked it" : " — you missed it"}</span><p>${it.feedback}</p></div>`;
+        html += `<div class="fb fb-${it.answer ? "yes" : "no"}"><span class="fb-h">${it.answer ? "Studio does this" : "Studio does not do this"}${ok ? "" : b.checked ? " — you selected it" : " — you missed it"}</span><p>${it.feedback}</p></div>`;
       });
       out.innerHTML = `<p class="score">${score} of ${boxes.length} right.</p>${html}`;
       check.remove();
