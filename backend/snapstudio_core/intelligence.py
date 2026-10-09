@@ -10,6 +10,7 @@ from pathlib import Path
 from .doctor import diagnose_path, READY
 from .container import ThreeMF
 from .config_io import load_project_settings
+from . import units as _units
 
 SCHEMA_VERSION = "insights/1"
 SETTINGS = "Metadata/project_settings.config"
@@ -36,10 +37,14 @@ def _bbox_and_triangles(tm: ThreeMF):
     hi = [float("-inf")] * 3
     seen = False
     for p in model_parts:
-        for m in _VERT_RE.finditer(tm.read_part(p)):
+        raw = tm.read_part(p)
+        # Each part's coordinates are in the unit its own header declares; the result is
+        # millimetres. Millimetre parts (the default) are multiplied by exactly 1.0.
+        scale = _units.mm_per_unit(raw)
+        for m in _VERT_RE.finditer(raw):
             seen = True
             for i in range(3):
-                v = float(m.group(i + 1))
+                v = float(m.group(i + 1)) * scale
                 if v < lo[i]: lo[i] = v
                 if v > hi[i]: hi[i] = v
     if not seen:

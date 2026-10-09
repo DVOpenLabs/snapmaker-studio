@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snapmaker-studio.invalid/schema/scene-1.schema.json",
+  "title": "Snapmaker Studio scene/1",
+  "description": "Read-only description of a project's geometry, placement and engine findings. FROZEN: every scene object is closed (additionalProperties false), every field is required, and unknown is null. Millimetres, right-handed, Z up. A scene is a consistent snapshot of the file as it was copied for the job. Matrices (local_to_parent_mm, world_mm) are 16 numbers in COLUMN-MAJOR order acting on COLUMN vectors (x' = M * x; the translation is elements 12..14). Mesh coordinates are LOCAL to the mesh resource (before any node matrix), in millimetres. A node's bounds_mm and printable concern its role=part volumes only. An instance's effective volume role is node.role_context when that is not null (Bambu/Orca part records are per use), otherwise the roles of the mesh volumes. PLACEMENT_OUTSIDE_BED.overhang_mm measures how far the printable bounds intrude past the bed polygon shrunk inward by edge_margin_mm, in X and Y only (never height).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "revision", "status", "units", "axes", "sources", "bed", "meshes", "nodes", "plates", "findings", "limitations", "counts", "limits"],
+  "properties": {
+    "schema": {"const": "scene/1"},
+    "revision": {"$ref": "#/$defs/sha256"},
+    "status": {"enum": ["complete", "partial"]},
+    "units": {"const": "mm"},
+    "axes": {"const": "right-handed-z-up"},
+    "sources": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/source"}},
+    "bed": {"$ref": "#/$defs/bed"},
+    "meshes": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/mesh"}},
+    "nodes": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/node"}},
+    "plates": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/plate"}},
+    "findings": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/finding"}},
+    "limitations": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/limitation"}},
+    "counts": {"$ref": "#/$defs/counts"},
+    "limits": {"$ref": "#/$defs/limits"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "uint": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+    "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "matrix16": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}},
+    "resource_key": {
+      "type": "object", "additionalProperties": false, "required": ["part", "object_id"],
+      "properties": {"part": {"type": "string", "minLength": 1, "maxLength": 256}, "object_id": {"$ref": "#/$defs/id"}}
+    },
+    "unit_name": {"enum": ["micron", "millimeter", "centimeter", "inch", "foot", "meter"]},
+    "source": {
+      "description": "One model part that was read. When the part declares a unit outside the six defined ones, unit and mm_per_unit are the FALLBACK millimetre values, and the UNSUPPORTED_UNIT limitation (whose target_ids are the nodes living in that part) says so; no fit statement is made for such a scene.",
+      "type": "object", "additionalProperties": false, "required": ["part", "unit", "mm_per_unit"],
+      "properties": {
+        "part": {"type": "string", "minLength": 1, "maxLength": 256},
+        "unit": {"$ref": "#/$defs/unit_name"},
+        "mm_per_unit": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "bed": {
+      "type": "object", "additionalProperties": false, "required": ["polygon_mm", "height_mm", "edge_margin_mm", "policy"],
+      "properties": {
+        "polygon_mm": {"type": "array", "minItems": 3, "maxItems": 16,
+          "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}},
+        "height_mm": {"type": ["number", "null"]},
+        "edge_margin_mm": {"type": "number", "minimum": 0},
+        "policy": {"enum": ["u1_template", "fallback"]}
+      }
+    },
+    "volume_role": {"enum": ["part", "modifier", "negative", "support_enforcer", "support_blocker", "unknown"]},
+    "volume": {
+      "type": "object", "additionalProperties": false, "required": ["id", "triangle_start", "triangle_count", "role", "source"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "triangle_start": {"$ref": "#/$defs/uint"},
+        "triangle_count": {"$ref": "#/$defs/uint"},
+        "role": {"$ref": "#/$defs/volume_role"},
+        "source": {"enum": ["prusa_range", "bambu_part", "object", null]}
+      }
+    },
+    "mesh": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key", "vertex_count", "triangle_count", "positions_f32le_base64", "indices_u32le_base64", "volumes"],
+      "properties": {
+        "key": {"$ref": "#/$defs/resource_key"},
+        "vertex_count": {"$ref": "#/$defs/uint"},
+        "triangle_count": {"$ref": "#/$defs/uint"},
+        "positions_f32le_base64": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$"},
+        "indices_u32le_base64": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$"},
+        "volumes": {"type": "array", "minItems": 1, "maxItems": 4096, "items": {"$ref": "#/$defs/volume"}}
+      }
+    },
+    "plate_ref": {
+      "type": "object", "additionalProperties": false, "required": ["state", "plate_id", "source"],
+      "properties": {
+        "state": {"enum": ["known", "ambiguous", "unknown"]},
+        "plate_id": {"type": ["string", "null"], "maxLength": 128},
+        "source": {"enum": ["plate_config", null]}
+      },
+      "if": {"properties": {"state": {"const": "known"}}},
+      "then": {"properties": {"plate_id": {"type": "string"}, "source": {"const": "plate_config"}}}
+    },
+    "instance_ref": {
+      "type": "object", "additionalProperties": false, "required": ["build_index", "component_path"],
+      "properties": {
+        "build_index": {"type": ["integer", "null"], "minimum": 0},
+        "component_path": {"type": "array", "maxItems": 64, "items": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "bounds": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["min", "max"],
+      "properties": {"min": {"$ref": "#/$defs/vec3"}, "max": {"$ref": "#/$defs/vec3"}}
+    },
+    "node": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "parent_id", "resource", "mesh_key", "local_to_parent_mm", "world_mm", "mirrored", "role_context", "build_index", "instance_ref",
+                   "plate", "placement_state", "printable", "has_non_part_volumes", "bounds_mm", "finding_ids"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "parent_id": {"type": ["string", "null"], "maxLength": 128},
+        "resource": {"$ref": "#/$defs/resource_key"},
+        "mesh_key": {"oneOf": [{"$ref": "#/$defs/resource_key"}, {"type": "null"}]},
+        "local_to_parent_mm": {"$ref": "#/$defs/matrix16"},
+        "world_mm": {"$ref": "#/$defs/matrix16"},
+        "mirrored": {"type": "boolean"},
+        "role_context": {"enum": ["part", "modifier", "negative", "support_enforcer", "support_blocker", "unknown", null]},
+        "build_index": {"type": ["integer", "null"], "minimum": 0},
+        "instance_ref": {"$ref": "#/$defs/instance_ref"},
+        "plate": {"$ref": "#/$defs/plate_ref"},
+        "placement_state": {"enum": ["known", "unknown"]},
+        "printable": {"type": ["boolean", "null"]},
+        "has_non_part_volumes": {"type": "boolean"},
+        "bounds_mm": {"$ref": "#/$defs/bounds"},
+        "finding_ids": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "plate": {
+      "type": "object", "additionalProperties": false, "required": ["id", "ui_number", "origin_mm"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "ui_number": {"type": ["integer", "null"], "minimum": 0},
+        "origin_mm": {"oneOf": [{"$ref": "#/$defs/vec3"}, {"type": "null"}]}
+      }
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false, "required": ["id", "engine", "schema", "pointer", "scope", "kind", "target_ids", "value"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "engine": {"type": "string", "minLength": 1, "maxLength": 64},
+        "schema": {"type": "string", "minLength": 1, "maxLength": 64},
+        "pointer": {"type": "string", "maxLength": 128},
+        "scope": {"enum": ["project", "plate", "instance"]},
+        "kind": {"enum": ["placement", "size", "note"]},
+        "target_ids": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/id"}},
+        "value": {
+          "type": "object", "additionalProperties": false, "required": ["code", "overhang_mm"],
+          "properties": {
+            "code": {"enum": ["PLACEMENT_OUTSIDE_BED", "SIZE_EXCEEDS_BED"]},
+            "overhang_mm": {
+              "type": ["object", "null"], "additionalProperties": false, "required": ["left", "right", "front", "back"],
+              "properties": {"left": {"type": "number"}, "right": {"type": "number"}, "front": {"type": "number"}, "back": {"type": "number"}}
+            }
+          }
+        }
+      }
+    },
+    "limitation_code": {"enum": [
+      "UNKNOWN_VOLUME_ROLE", "UNKNOWN_PLACEMENT", "PLATE_MEMBERSHIP_AMBIGUOUS", "PLATE_MEMBERSHIP_UNKNOWN",
+      "PLATES_UNAVAILABLE", "BED_TEMPLATE_UNAVAILABLE", "REPEATED_INSTANCE_PLACEMENT_UNVERIFIED",
+      "NON_MM_SOURCE_UNIT", "UNSUPPORTED_UNIT", "MULTI_PLATE_PLACEMENT_UNCHECKED", "NO_BUILD_ITEMS"]},
+    "limitation": {
+      "type": "object", "additionalProperties": false, "required": ["code", "target_ids"],
+      "properties": {
+        "code": {"$ref": "#/$defs/limitation_code"},
+        "target_ids": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nodes", "meshes", "vertices", "triangles", "rendered_triangles", "plates", "findings", "limitations"],
+      "properties": {
+        "nodes": {"$ref": "#/$defs/uint"}, "meshes": {"$ref": "#/$defs/uint"}, "vertices": {"$ref": "#/$defs/uint"},
+        "triangles": {"$ref": "#/$defs/uint"}, "rendered_triangles": {"$ref": "#/$defs/uint"},
+        "plates": {"$ref": "#/$defs/uint"}, "findings": {"$ref": "#/$defs/uint"}, "limitations": {"$ref": "#/$defs/uint"}
+      }
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_archive_bytes", "max_model_xml_bytes", "max_rendered_triangles", "max_vertices", "max_nodes", "max_depth",
+                   "max_response_bytes", "max_findings", "max_limitations", "max_id_length"],
+      "properties": {
+        "max_archive_bytes": {"$ref": "#/$defs/uint"}, "max_model_xml_bytes": {"$ref": "#/$defs/uint"},
+        "max_rendered_triangles": {"$ref": "#/$defs/uint"}, "max_vertices": {"$ref": "#/$defs/uint"},
+        "max_nodes": {"$ref": "#/$defs/uint"}, "max_depth": {"$ref": "#/$defs/uint"},
+        "max_response_bytes": {"$ref": "#/$defs/uint"}, "max_findings": {"$ref": "#/$defs/uint"},
+        "max_limitations": {"$ref": "#/$defs/uint"}, "max_id_length": {"$ref": "#/$defs/uint"}
+      }
+    },
+    "error_code": {"enum": [
+      "INVALID_REQUEST", "UNSUPPORTED_FORMAT", "INVALID_ARCHIVE", "INVALID_GEOMETRY", "UNRESOLVED_REFERENCE",
+      "LIMIT_EXCEEDED", "SOURCE_CHANGED", "CANCELLED", "TIMEOUT", "EXPIRED", "NOT_READY", "WORKER_WEDGED", "INTERNAL",
+      "STALE_START", "CANCELLED_BEFORE_START", "SESSION_EXPIRED", "SESSION_LIMIT"]},
+    "job_state": {"enum": ["queued", "running", "succeeded", "failed", "cancelled"]},
+    "error_response": {
+      "type": "object", "additionalProperties": false, "required": ["error"],
+      "properties": {
+        "error": {"$ref": "#/$defs/error_code"},
+        "message": {"type": "string", "maxLength": 512},
+        "state": {"$ref": "#/$defs/job_state"},
+        "reason": {"type": "string", "maxLength": 256}
+      }
+    },
+    "job_status": {
+      "type": "object", "additionalProperties": false,
+      "required": ["job_id", "request_id", "state", "stage", "completed", "total", "error", "revision"],
+      "properties": {
+        "job_id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "request_id": {"$ref": "#/$defs/id"},
+        "state": {"$ref": "#/$defs/job_state"},
+        "stage": {"enum": ["reading", "parsing", "encoding", null]},
+        "completed": {"type": ["integer", "null"], "minimum": 0},
+        "total": {"type": ["integer", "null"], "minimum": 0},
+        "error": {"type": ["object", "null"], "additionalProperties": false, "required": ["code", "message"],
+          "properties": {"code": {"$ref": "#/$defs/error_code"}, "message": {"type": "string", "maxLength": 512}}},
+        "revision": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+      }
+    },
+    "session": {
+      "type": "object", "additionalProperties": false, "required": ["client_id", "ttl_s"],
+      "properties": {
+        "client_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{24}$"},
+        "ttl_s": {"type": "integer", "minimum": 1}
+      }
+    },
+    "job_start": {
+      "type": "object", "additionalProperties": false,
+      "required": ["job_id", "request_id", "state", "revision", "replaced_job_id"],
+      "properties": {
+        "job_id": {"$ref": "#/$defs/id"},
+        "request_id": {"$ref": "#/$defs/id"},
+        "state": {"$ref": "#/$defs/job_state"},
+        "revision": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "replaced_job_id": {"type": ["string", "null"], "maxLength": 128}
+      }
+    }
+  }
+}

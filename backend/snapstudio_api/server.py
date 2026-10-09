@@ -20,6 +20,7 @@ from snapstudio_core.errors import SnapStudioError
 from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
 from . import service
+from . import scene_jobs
 from . import request_validation as rv
 from .request_validation import ValidationError
 
@@ -185,7 +186,11 @@ def _make_handler(token: str):
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token")
 
         def _send(self, code: int, obj: dict):
-            body = json.dumps(obj).encode("utf-8")
+            self._send_bytes(code, json.dumps(obj).encode("utf-8"))
+
+        def _send_bytes(self, code: int, body: bytes):
+            """Send an already-serialized JSON body. The scene routes use this so a body that was
+            size-checked once (<= 8 MiB) is not serialized a second time."""
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -1320,6 +1325,17 @@ def _make_handler(token: str):
                     self._send(404, {"error": "unknown job"})
                 else:
                     self._send(200, status)
+            elif self.path in scene_jobs.ROUTES:
+                # scene/1: bounded, cancellable, authenticated (the token was checked above).
+                try:
+                    status, body = scene_jobs.handle(self.path, data)
+                    if isinstance(body, bytes):
+                        self._send_bytes(status, body)
+                    else:
+                        self._send(status, body)
+                except Exception as exc:
+                    _log_unexpected(exc)
+                    self._send(500, {"error": "INTERNAL", "message": "The scene could not be built."})
             elif self.path == "/shutdown":
                 # Graceful half of the L4 zero-orphan sequence (see
                 # sidecar::shutdown_sidecar): reply first, THEN stop the
@@ -1384,6 +1400,10 @@ def serve(host: str = "127.0.0.1", port: int = 0) -> None:
     _watch_parent_then_exit()
     _lifeline.start_parent_lifeline()
     httpd, token = build_server(host, port)
+    try:
+        scene_jobs.sweep_stale()   # leftovers of engines that are gone; never a live engine's folder
+    except Exception:  # noqa: BLE001 - housekeeping must not stop the engine starting
+        pass
     actual_port = httpd.server_address[1]
     print(json.dumps({"port": actual_port, "token": token}), flush=True)  # handshake line
     try:
