@@ -201,3 +201,33 @@ def test_action_reasons_keep_prior_record_when_later_item_has_no_reason():
         {"key": "raft"},
     ]})
     assert records["raft"] == {"reason": "first", "explanation": "old", "source": "old source", "kind": "engine"}
+
+
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("value,expected,reason", [
+    (["1", "2", "3", "4", " 5 "], "Studio resized this list to cover every filament slot.", "resized the list"),
+    (["1", "2", "3", "4", ""], "Studio resized this list to cover every filament slot.", "resized the list"),
+    (["1", "2", "3", "4", 5], "Studio resized this list to cover every filament slot.", "resized the list"),
+])
+def test_entries_dropped_by_truncation_are_reported_only_as_a_resize(key, value, expected, reason):
+    """An entry beyond the slot count is dropped, so no trim, fill or text conversion may be claimed for it."""
+    from snapstudio_core.orca_import import _fix_filament_array_validity
+    changes = []
+    cfg = {key: list(value)}
+    _fix_filament_array_validity(cfg, changes, 4)
+    assert cfg[key] == ["1", "2", "3", "4"]
+    assert changes[0]["explanation"] == expected
+    assert changes[0]["reason"] == reason
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("dropped", [" 5 ", "", 5])
+def test_truncation_through_the_real_convert_path_reports_only_a_resize(tmp_path, mode, key, dropped):
+    """Same rule end to end: the dropped entry never leaks a trim, fill or conversion claim into the summary."""
+    four = ["#FF0000"] * 4
+    summary, after = _prepare(tmp_path, {key: ["1", "2", "3", "4", dropped], "filament_colour": four, "filament_type": ["PLA"] * 4}, mode=mode)
+    change = next(c for c in summary["compat_changed"] if c["key"] == key)
+    assert after[key] == ["1", "2", "3", "4"]
+    assert change["explanation"] == "Studio resized this list to cover every filament slot."
+    assert change["reason"] == "resized the list"

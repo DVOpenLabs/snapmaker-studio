@@ -118,6 +118,10 @@ if (answers.schema !== "answers/1" || !Array.isArray(answers.answers) || answers
 const answerKeys = new Set();
 const factKeys = new Set();
 const keysExactly = (obj, keys) => Object.keys(obj).length === keys.length && keys.every((key) => Object.hasOwn(obj, key));
+// Shape only: valid prefix, target file exists inside the repo, symbol is an identifier. This build does NOT look
+// inside source files; the real symbol resolution happens in backend/tests/test_guide_claims.py and
+// desktop/src/lib/guideClaims.test.ts.
+const isIdentifier = (value) => /^[A-Za-z_]\w*$/.test(value);
 const resolveDerive = (derive) => {
   const match = /^(backend|app|test):(.+)$/.exec(derive);
   if (!match) return false;
@@ -127,13 +131,13 @@ const resolveDerive = (derive) => {
     const path = value.slice(0, dot).replaceAll(".", "/");
     const symbol = value.slice(dot + 1);
     const file = join(repoRoot, "backend", "snapstudio_core", `${path}.py`);
-    return existsSync(file) && readFileSync(file, "utf8").includes(symbol);
+    return isIdentifier(symbol) && existsSync(file);
   }
   const [testPath, testName] = value.split("::");
   const [filePath, fragment] = kind === "test" ? [testPath, testName] : value.split("#");
   if (!repoPathExists(filePath)) return false;
-  if (kind === "test") return Boolean(testName) && readFileSync(join(repoRoot, filePath), "utf8").includes(testName);
-  return Boolean(fragment) && readFileSync(join(repoRoot, filePath), "utf8").includes(fragment);
+  if (kind === "test") return isIdentifier(testName || "");
+  return isIdentifier(fragment || "");
 };
 for (const a of answers.answers || []) {
   const w = `answer ${a.id}`;

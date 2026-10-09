@@ -1,7 +1,6 @@
 # Evidence record — what each page rests on
 
-Evidence kinds use `file` for values read from a file, `engine` for a Studio check, `estimate` for a derived estimate, and
-`orca` only for advice to verify; it makes no claim about Snapmaker Orca behavior.
+The `orca` evidence kind is advice to verify; it makes no claim about Snapmaker Orca behavior.
 
 The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
 same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
@@ -152,6 +151,7 @@ New regression checks: `backend/tests/test_guide_claims.py` (engine-derived plac
 
 The guidance manifest records seven questions, the code-derived facts behind each answer, and forbidden overclaims.
 Page sources are checked offline against repository paths or the guide's allowlisted links.
+The build checks only the shape and file existence of each fact's `derive` reference; the real symbol resolution happens in the tests.
 The reviewed field is metadata for maintainers; the build and renderer do not treat it as proof of current behavior.
 Automated checks cannot judge prose clarity or whether a cited source is the right one. They cannot verify review dates, physical printer behavior, Snapmaker Orca behavior, paraphrased overclaims, or screen-reader experience.
 

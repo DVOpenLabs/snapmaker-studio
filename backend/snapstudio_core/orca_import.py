@@ -150,8 +150,11 @@ def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
         filled = [v for v in value if str(v).strip() != ""]
         if not filled:
             return
-        had_empty = any(str(v).strip() == "" for v in value)
-        trimmed = any(isinstance(v, str) and v.strip() != v for v in value)
+        # Only entries that survive truncation can have been filled, trimmed or converted;
+        # dropped entries are reported once, as a resize.
+        retained = value[:count]
+        had_empty = any(str(v).strip() == "" for v in retained)
+        trimmed = any(isinstance(v, str) and v.strip() != v for v in retained)
         new = [(str(v).strip() or str(filled[-1])) for v in value]
         if len(new) < count:
             new = new + [new[-1]] * (count - len(new))
@@ -159,7 +162,7 @@ def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
             new = new[:count]
         if new != value:
             resized = len(new) != len(value)
-            converted = any(not isinstance(v, str) for v in value)
+            converted = any(not isinstance(v, str) for v in retained)
             parts = []
             if had_empty:
                 parts.append("Studio filled an empty entry with the last non-empty value in this list.")

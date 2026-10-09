@@ -57,7 +57,8 @@ land on the right page). With JavaScript the guide shows one page at a time and 
 Requires Node 18 or newer. No packages are needed to build or preview.
 
 Stages, tasks and warnings may include a checked version and repository-backed sources. The build validates source paths,
-link keys and the seven golden answers. Each source appears in a collapsed **Where this comes from** block. The offline
+link keys and the shape of the seven golden answers; it checks only the shape and file existence of each `derive`
+reference, and the real symbol resolution happens in the tests. Each source appears in a collapsed **Where this comes from** block. The offline
 check compares the guide version with the desktop configuration and warns on drift without failing.
 
 ```bash

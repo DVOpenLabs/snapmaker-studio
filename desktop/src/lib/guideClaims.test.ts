@@ -61,7 +61,14 @@ type GuideFact = { id: string; derive: string; tokens: string[] };
 const APP_FACTS: Record<string, GuideFact> = {
   "kept-orca": { id: "kept-reachability", derive: "app:desktop/src/lib/fidelity.ts#FIDELITY_HEADINGS", tokens: ["reached the copy", "read any note on the row"] },
 };
-export function checkAppAnswerFacts(answers: Array<{ id: string; requiredFacts: GuideFact[] }>, sourceRoot: string, pageText: string): void {
+// Real resolution: load the module under vitest and check it exports the name. Comments, strings and near-miss names do not count.
+const appModules = import.meta.glob(["/src/**/*.{ts,tsx}", "!/src/**/*.test.*"]) as Record<string, () => Promise<Record<string, unknown>>>;
+export async function appExports(file: string, symbol: string): Promise<boolean> {
+  const load = appModules["/" + file.replace(/^desktop\//, "")];
+  if (!load) return false;
+  return Object.prototype.hasOwnProperty.call(await load(), symbol);
+}
+export async function checkAppAnswerFacts(answers: Array<{ id: string; requiredFacts: GuideFact[] }>, sourceRoot: string, pageText: string): Promise<void> {
   const appAnswers = answers.filter((a) => a.requiredFacts.some((f) => f.derive.startsWith("app:")));
   expect(new Set(Object.keys(APP_FACTS))).toEqual(new Set(appAnswers.map((a) => a.id)));
   for (const answer of appAnswers) {
@@ -70,7 +77,8 @@ export function checkAppAnswerFacts(answers: Array<{ id: string; requiredFacts: 
     expect(fact).toEqual(APP_FACTS[answer.id]);
     const [, value] = fact.derive.split(":");
     const [file, fragment] = value.split("#");
-    expect(readFileSync(join(sourceRoot, file), "utf8")).toContain(fragment);
+    expect(readFileSync(join(sourceRoot, file), "utf8").length).toBeGreaterThan(0);
+    expect(await appExports(file, fragment)).toBe(true);
     for (const token of fact.tokens) expect(pageText).toContain(token);
   }
 }
@@ -162,11 +170,11 @@ describe("guide: golden answers have app-code assertions", () => {
     expect(designInsightsRaw).toContain("Print readiness");
   });
 
-  it("resolves every app derive and checks the app-owned assertion table", () => {
+  it("resolves every app derive and checks the app-owned assertion table", async () => {
     /** Resolution and table coverage cannot establish prose clarity, source fitness, honest dates, physical behavior, paraphrased overclaims, or screen-reader behavior. */
     const answers = JSON.parse(answersRaw).answers as Array<{ id: string; requiredFacts: GuideFact[] }>;
     const appAnswers = answers.filter((a) => a.requiredFacts.some((f) => f.derive.startsWith("app:")));
-    checkAppAnswerFacts(answers, join(dirname(fileURLToPath(import.meta.url)), "../../.."), text(guide("path")));
+    await checkAppAnswerFacts(answers, join(dirname(fileURLToPath(import.meta.url)), "../../.."), text(guide("path")));
     const appFacts = new Set<string>();
     for (const answer of appAnswers) {
       const fact = answer.requiredFacts[0];
@@ -175,8 +183,7 @@ describe("guide: golden answers have app-code assertions", () => {
       const [, value] = fact.derive.split(":");
       const [file, fragment] = value.split("#");
       expect(fragment).toBeTruthy();
-      const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../..", file), "utf8");
-      expect(source).toContain(fragment);
+      expect(await appExports(file, fragment)).toBe(true);
       expect(FIDELITY_HEADINGS.kept).toBe("What stayed the same");
       expect(text(guide("path"))).toEqual(expect.stringContaining(fact.tokens[0]));
       expect(text(guide("path"))).toEqual(expect.stringContaining(fact.tokens[1]));
@@ -186,12 +193,22 @@ describe("guide: golden answers have app-code assertions", () => {
     expect(new Set(answers.map((a) => a.id))).toEqual(new Set(["setting-why", "size-or-placement", "kept-orca", "unknown-compatible", "sliced-for-u1", "original-unchanged", "print-success"]));
   });
 
-  it("rejects a fresh manifest whose app derive was changed", () => {
+  it("rejects a fresh manifest whose app derive was changed", async () => {
     /** This mutation checks binding only; it cannot establish prose clarity, source fitness, dates, physical behavior, paraphrased overclaims, or screen-reader behavior. */
     const answers = JSON.parse(answersRaw).answers as Array<{ id: string; requiredFacts: GuideFact[] }>;
     const mutated = JSON.parse(JSON.stringify(answers)) as Array<{ id: string; requiredFacts: GuideFact[] }>;
     mutated.find((a) => a.id === "kept-orca")!.requiredFacts[0].derive = "app:desktop/src/lib/fidelity.ts#status";
-    expect(() => checkAppAnswerFacts(mutated, join(dirname(fileURLToPath(import.meta.url)), "../../.."), text(guide("path")))).toThrow();
+    await expect(checkAppAnswerFacts(mutated, join(dirname(fileURLToPath(import.meta.url)), "../../.."), text(guide("path")))).rejects.toThrow();
+    mutated.find((a) => a.id === "kept-orca")!.requiredFacts[0].derive = "app:desktop/src/lib/fidelity.ts#FIDELITY_HEADING";
+    await expect(checkAppAnswerFacts(mutated, join(dirname(fileURLToPath(import.meta.url)), "../../.."), text(guide("path")))).rejects.toThrow();
+  });
+
+  it("resolves app symbols by really importing the module", async () => {
+    /** Resolution checks that a name is exported; it cannot establish that the export is the right evidence for a guide claim. */
+    expect(await appExports("desktop/src/lib/fidelity.ts", "FIDELITY_HEADINGS")).toBe(true);
+    expect(await appExports("desktop/src/lib/fidelity.ts", "FIDELITY_HEADING")).toBe(false);
+    expect(await appExports("desktop/src/lib/fidelity.ts", "toString")).toBe(false);
+    expect(await appExports("desktop/src/lib/no_such_file.ts", "FIDELITY_HEADINGS")).toBe(false);
   });
 
   it("checks exact next-action labels and built anchors", () => {

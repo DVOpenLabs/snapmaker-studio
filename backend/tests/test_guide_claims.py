@@ -14,11 +14,13 @@ screen-reader behavior, or anything about a physical printer or Snapmaker Orca.
 """
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -170,25 +172,86 @@ def test_original_unchanged_answer_uses_real_convert_path(tmp_path):
     assert _sha(src) == before
 
 
-def _resolve_engine_derive(derive):
+def _resolve_engine_derive(derive, package="snapstudio_core"):
+    """Resolve a backend: or test: derive for real. Raises AttributeError or returns None when it does not resolve."""
     if derive.startswith("backend:"):
         module_name, symbol = derive[8:].rsplit(".", 1)
-        return getattr(importlib.import_module(f"snapstudio_core.{module_name}"), symbol)
+        return getattr(importlib.import_module(f"{package}.{module_name}"), symbol)
     if derive.startswith("test:"):
         file_name, test_name = derive[5:].split("::", 1)
-        return test_name if (ROOT / file_name).is_file() and test_name in (ROOT / file_name).read_text(encoding="utf-8") else None
-    return None
+        path = (ROOT / file_name) if not Path(file_name).is_absolute() else Path(file_name)
+        if not path.is_file():
+            return None
+        if path.resolve() == Path(__file__).resolve():
+            module = sys.modules[__name__]  # this module is already loaded; never execute it twice
+        else:
+            module_name = "_derive_" + hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:12]
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        member = getattr(module, test_name, None)
+        return member if callable(member) else None
 
 
 def test_every_manifest_derive_resolves_to_code():
-    """Resolution is mechanical; it cannot establish prose clarity, source fitness, honest dates, physical printer or Snapmaker Orca behavior, paraphrased overclaims, or screen-reader behavior."""
+    """Resolution is mechanical; it cannot establish prose clarity, source fitness, honest dates, physical printer or Snapmaker Orca behavior, paraphrased overclaims, or screen-reader behavior. App derives are resolved in guideClaims.test.ts."""
+    seen = 0
     for answer in _guide("answers")["answers"]:
         for fact in answer["requiredFacts"]:
             if fact["derive"].startswith(("backend:", "test:")):
-                assert _resolve_engine_derive(fact["derive"]), fact["derive"]
+                assert _resolve_engine_derive(fact["derive"]) is not None, fact["derive"]
+                seen += 1
             else:
-                file_name, fragment = fact["derive"][4:].split("#", 1)
-                assert (ROOT / file_name).is_file() and fragment in (ROOT / file_name).read_text(encoding="utf-8"), fact["derive"]
+                assert fact["derive"].startswith("app:"), fact["derive"]
+    assert seen >= 5
+
+
+def test_engine_derive_resolution_rejects_near_misses(tmp_path, monkeypatch):
+    """Real getattr resolution: a name that only appears in a comment, a comparison or a docstring is not a symbol."""
+    package = tmp_path / "fixturepkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "mod.py").write_text(
+        '"""Module docstring mentions docstring_only."""\n'
+        "# comment_only is described here\n"
+        "REAL = 1\n"
+        "def real_fn():\n"
+        '    """real_fn mentions inner_docstring."""\n'
+        "    return REAL == 1\n"
+        "async def real_async():\n"
+        "    return 1\n"
+        "value = REAL\n"
+        "check = (missing_eq == 1) if False else None\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    assert _resolve_engine_derive("backend:mod.REAL", package="fixturepkg") == 1
+    assert _resolve_engine_derive("backend:mod.real_async", package="fixturepkg")
+    for name in ["REA", "real_f", "comment_only", "docstring_only", "inner_docstring", "missing_eq", "real_fn_"]:
+        with pytest.raises(AttributeError):
+            _resolve_engine_derive(f"backend:mod.{name}", package="fixturepkg")
+
+
+def test_test_derive_resolution_imports_the_real_function(tmp_path):
+    """A test: derive resolves by importing the file and calling getattr, so text that only looks like a definition fails."""
+    ref = "test:backend/tests/test_guide_claims.py::"
+    assert callable(_resolve_engine_derive(ref + "test_original_unchanged_answer_uses_real_convert_path"))
+    assert _resolve_engine_derive(ref + "test_original_unchanged_answer_uses_real_convert_pat") is None
+    assert _resolve_engine_derive("test:backend/tests/no_such_file.py::test_x") is None
+    fixture = tmp_path / "fixture_tests.py"
+    fixture.write_text(
+        '"""def spoofed_in_docstring(): pass"""\n'
+        "TEXT = \"\"\"\ndef spoofed_test():\n    pass\n\"\"\"\n"
+        "ESCAPED = \"\\\"\\\"\\\" def spoofed_escaped(): pass\"\n"
+        "# def spoofed_comment(): pass\n"
+        "NOT_CALLABLE = 5\n"
+        "def test_real():\n    return 1\n",
+        encoding="utf-8",
+    )
+    ref = f"test:{fixture}::"
+    assert _resolve_engine_derive(ref + "test_real")() == 1
+    for name in ["spoofed_test", "spoofed_in_docstring", "spoofed_escaped", "spoofed_comment", "test_rea", "NOT_CALLABLE", "TEXT"]:
+        assert _resolve_engine_derive(ref + name) is None, name
 
 
 def test_golden_answer_engine_assertion_table_has_exact_manifest_coverage(tmp_path):
@@ -233,7 +296,8 @@ def test_build_rejects_invalid_answers_and_source_refs():
         for bad in cases:
             answers_path.write_text(json.dumps(bad), encoding="utf-8")
             assert _run_guide_build(content, output).returncode != 0
-        for derive in ["backend:post_slice.printer_name", "backend:plate_placement.assess_placement", "app:desktop/src/lib/fidelity.ts#NoSuchSymbol"]:
+        # the build checks shape and file existence only; symbol resolution is tested separately above
+        for derive in ["bogus:thing", "backend:no_such_module.symbol", "backend:rules.not-an-identifier", "backend:rules", "app:desktop/src/lib/no_such_file.ts#X", "app:desktop/src/lib/fidelity.ts", "app:desktop/src/lib/fidelity.ts#not-an-id", "test:backend/tests/no_such_file.py::test_x", "test:backend/tests/test_guide_claims.py::"]:
             bad = json.loads(json.dumps(original)); bad["answers"][0]["requiredFacts"][0]["derive"] = derive
             answers_path.write_text(json.dumps(bad), encoding="utf-8")
             assert _run_guide_build(content, output).returncode != 0
