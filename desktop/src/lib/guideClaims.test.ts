@@ -20,6 +20,7 @@ import pathRaw from "../../../site/guide/content/path.json?raw";
 import answersRaw from "../../../site/guide/content/answers.json?raw";
 import guideRaw from "../../../site/guide/content/guide.json?raw";
 import designInsightsRaw from "../routes/DesignInsights.tsx?raw";
+import riskSignalsRaw from "../components/PrintRiskSignals.tsx?raw";
 import placementCardRaw from "../components/PlacementCard.tsx?raw";
 import orcaHandoffRaw from "../components/OrcaHandoff.tsx?raw";
 import afterSlicingRaw from "../routes/AfterSlicing.tsx?raw";
@@ -51,7 +52,6 @@ export function checkNextActionLabels(answers: Array<{ nextAction: { label: stri
   const labels = new Set<string>();
   for (const match of appSource.matchAll(/"([^"\n]+)"/g)) labels.add(match[1]);
   for (const match of appSource.matchAll(/>\s*([^<>{}\n]+?)\s*</g)) labels.add(match[1].trim());
-  if (appSource.includes("Print readiness") && appSource.includes("(estimate)")) labels.add("Print readiness (estimate)");
   for (const answer of answers) expect(labels.has(answer.nextAction.label), answer.nextAction.label).toBe(true);
 }
 const task = (id: string) => guide("tasks").tasks.find((t: any) => t.id === id);
@@ -158,16 +158,17 @@ describe("guide: golden answers have app-code assertions", () => {
     const facts = new Set(answers.flatMap((a) => a.requiredFacts.map((f) => `${a.id}:${f.derive}`)));
     expect(facts.size).toBe(7);
     expect(facts.has("kept-orca:app:desktop/src/lib/fidelity.ts#FIDELITY_HEADINGS")).toBe(true);
-    expect(facts.has("print-success:backend:success_predict.predict")).toBe(true);
-    const app = [designInsightsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n");
-    for (const label of ["Print readiness", "Move onto the plate", "Open in Snapmaker Orca", "Check this job", "Printer Hub"]) expect(app).toContain(label);
+    expect(facts.has("print-success:backend:success_predict.findings")).toBe(true);
+    const app = [designInsightsRaw, riskSignalsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n");
+    for (const label of ["Print risk signals", "Move onto the plate", "Open in Snapmaker Orca", "Check this job", "Printer Hub"]) expect(app).toContain(label);
     expect(fidelityRaw).toContain("FIDELITY_HEADINGS");
     expect(postSliceRaw).toContain("export function unknownCount");
     expect(preflightRaw).toContain("resultLabel");
-    expect(text(problem("looks-right"))).not.toContain("Print readiness");
-    expect(text(guide("path"))).toContain("a signal may still have cost points");
-    expect(designInsightsRaw).toMatch(/predict\.band !== "likely"[\s\S]*predict\.factors/);
-    expect(designInsightsRaw).toContain("Print readiness");
+    expect(text(problem("looks-right"))).not.toContain("Print risk signals");
+    expect(text(guide("path"))).toContain("gives no percentage");
+    expect(riskSignalsRaw).toMatch(/findings\.signals[\s\S]*What to do:[\s\S]*Studio did not check:/);
+    expect(riskSignalsRaw).toContain("Print risk signals");
+    expect([designInsightsRaw, riskSignalsRaw].join(" ")).not.toMatch(/Print readiness|likelihood|\.band\b|Likely to print/);
   });
 
   it("resolves every app derive and checks the app-owned assertion table", async () => {
@@ -214,9 +215,9 @@ describe("guide: golden answers have app-code assertions", () => {
   it("checks exact next-action labels and built anchors", () => {
     /** Literal-label and anchor checks cannot establish prose clarity, source fitness, honest dates, physical behavior, paraphrased overclaims, or screen-reader behavior. */
     const answers = JSON.parse(answersRaw).answers as Array<{ id: string; nextAction: { label: string; ref: string } }>;
-    const app = [designInsightsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n");
+    const app = [designInsightsRaw, riskSignalsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n");
     checkNextActionLabels(answers, app);
-    expect(answers.find((a) => a.id === "print-success")!.nextAction.label).toBe("Print readiness (estimate)");
+    expect(answers.find((a) => a.id === "print-success")!.nextAction.label).toBe("Print risk signals");
     const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../..", "site/guide/public/index.html"), "utf8");
     for (const answer of answers) if (answer.nextAction.ref.startsWith("#")) expect(html).toContain(`id="${answer.nextAction.ref.slice(1)}"`);
   });
@@ -226,7 +227,7 @@ describe("guide: golden answers have app-code assertions", () => {
     const answers = JSON.parse(answersRaw).answers as Array<{ nextAction: { label: string } }>;
     const mutated = answers.map((answer) => ({ ...answer, nextAction: { ...answer.nextAction } }));
     mutated.find((answer) => answer.nextAction.label === "Check this job")!.nextAction.label = "Check";
-    expect(() => checkNextActionLabels(mutated, [designInsightsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n"))).toThrow();
+    expect(() => checkNextActionLabels(mutated, [designInsightsRaw, riskSignalsRaw, placementCardRaw, orcaHandoffRaw, afterSlicingRaw, printersRaw, liveWorkspaceRaw].join("\n"))).toThrow();
   });
 
   it("checks both guide and desktop version branches without changing the built guide", () => {

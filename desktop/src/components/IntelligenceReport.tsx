@@ -14,14 +14,6 @@ function scoreColor(s?: number | null): string {
   return "--risk";                            // red/magenta
 }
 
-// Advisory readiness shown as a word, never a bare "100%" that reads as a guarantee.
-function readinessLabel(s?: number | null): string {
-  if (s == null) return "—";
-  if (s >= 75) return "Few risks";
-  if (s >= 50) return "Some risks";
-  return "Several risks";
-}
-
 export function IntelligenceReport({ filePath, host, data }: { filePath?: string; host?: string | null; data?: Report }) {
   const [open, setOpen] = useState(false);
   const { data: fetched, isLoading } = useQuery({
@@ -63,12 +55,12 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {metric("Readiness (est.)", readinessLabel(r.print_success_score), scoreColor(r.print_success_score))}
+          {metric("Risks found", String(r.risks?.length ?? 0), (r.risks?.length ?? 0) > 0 ? "--doctor-cost" : undefined)}
           {metric("Material cost", r.cost != null ? `${cur}${r.cost}` : "—", "--doctor-cost")}
           {metric("Printer", r.printer_compatibility ?? "Unknown")}
         </div>
         <p className="text-[11px] text-muted-foreground opacity-70">
-          Advisory readiness estimate — not a guarantee of print success. Review settings before printing.
+          Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing.
         </p>
 
         {/* Pricing is a secondary, opt-in estimate — not the headline on a readiness screen. */}
@@ -81,18 +73,6 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
               <a href="/doctor/pricing" className="text-primary hover:underline">View pricing estimate</a>
             </p>
           </details>
-        )}
-
-        {/* Expected Improvement — clearly an estimate */}
-        {r.expected_improvement && r.expected_improvement.after_fixes > r.expected_improvement.current && (
-          <div className="flex items-center gap-3 rounded-md border border-border p-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-bold tabular-nums text-muted-foreground">{r.expected_improvement.current}%</span>
-              <ArrowRight className="h-4 w-4 text-primary" />
-              <span className="font-bold tabular-nums" style={{ color: "hsl(var(--stage-validate))" }}>{r.expected_improvement.after_fixes}%</span>
-            </div>
-            <span className="text-xs text-muted-foreground">expected print success after the recommended fixes <span className="opacity-70">(estimate)</span></span>
-          </div>
         )}
 
         {/* biggest risk + the one next action */}

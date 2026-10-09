@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
-import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, predictSuccess as apiPredictSuccess, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
+import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, printFindings as apiPrintFindings, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
 import { useFilament } from "@/store/filament";
 import { useOpenFile } from "@/hooks/useOpenFile";
@@ -27,6 +27,7 @@ import { PreflightCard } from "@/components/PreflightCard";
 import { ColorPlanCard } from "@/components/ColorPlanCard";
 import { DesignHealth } from "@/components/DesignHealth";
 import { HeartPulse } from "lucide-react";
+import { PrintRiskSignals } from "@/components/PrintRiskSignals";
 import {
   readinessStars, familyLabel, verdictStatus, colorsLabel, partsLabel,
 } from "@/lib/simple";
@@ -34,7 +35,7 @@ import {
 function Stars({ score }: { score: number | null | undefined }) {
   const { full, half, empty } = readinessStars(score);
   return (
-    <span className="inline-flex items-center gap-0.5 text-repairable" aria-label={`Print readiness ${Math.round((score ?? 0) / 20 * 10) / 10} of 5`}>
+    <span className="inline-flex items-center gap-0.5 text-repairable" aria-label={`Design health rating ${Math.round((score ?? 0) / 20 * 10) / 10} of 5`}>
       {Array.from({ length: full }).map((_, i) => <Star key={`f${i}`} className="h-5 w-5 fill-current" />)}
       {half && <StarHalf className="h-5 w-5 fill-current" />}
       {Array.from({ length: empty }).map((_, i) => <Star key={`e${i}`} className="h-5 w-5 opacity-30" />)}
@@ -131,10 +132,10 @@ export default function DesignInsights() {
     queryFn: () => apiBedFit(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
-  // Print Success Prediction: pre-print odds from design + printer + history.
-  const { data: predict } = useQuery({
-    queryKey: ["predict", file.path, u1Host],
-    queryFn: () => apiPredictSuccess(file.path, u1Host),
+  // Print risk signals from design + printer + history (no percentage; see #92).
+  const { data: findings } = useQuery({
+    queryKey: ["print-findings", file.path, u1Host],
+    queryFn: () => apiPrintFindings(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
   const issues = [...(d?.validation_issues ?? []), ...(d?.compatibility_issues ?? [])];
@@ -283,30 +284,8 @@ export default function DesignInsights() {
           {/* Studio Intelligence Report — the one-screen synthesis (the product) */}
           <IntelligenceReport filePath={file.path} host={u1Host} />
 
-          {/* will it print? — pre-print success prediction */}
-          {predict?.available && predict.likelihood != null && (
-            <Card>
-              <CardContent className="space-y-2 p-5">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-sm font-semibold"><Gauge className="h-4 w-4 text-primary" /> Print readiness <span className="text-[11px] font-normal text-muted-foreground">(estimate)</span></span>
-                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold ${
-                    predict.band === "likely" ? "bg-ready/10 text-ready"
-                      : predict.band === "uncertain" ? "bg-repairable/10 text-repairable" : "bg-risk/10 text-risk"}`}>
-                    {predict.band !== "likely" && <span className="tabular-nums">{predict.likelihood}%</span>}
-                    <span className="capitalize">{predict.band === "likely" ? "Few risks" : predict.band}</span>
-                  </span>
-                </div>
-                {predict.verdict && <p className="text-sm text-muted-foreground">{predict.verdict}</p>}
-                {predict.band !== "likely" && predict.factors && predict.factors.length > 0 && (
-                  <ul className="space-y-1 text-xs text-muted-foreground">
-                    {predict.factors.map((f, i) => (
-                      <li key={i} className="flex items-start gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-current opacity-60" /> {f}</li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          {/* risk signals Studio found: specific findings and limits, no percentage (#92) */}
+          {findings && <PrintRiskSignals findings={findings} />}
 
           {/* out-of-bounds doctor — only when there's something to warn about */}
           {bed?.available && bed.overall_level && bed.overall_level !== "ok" && (
