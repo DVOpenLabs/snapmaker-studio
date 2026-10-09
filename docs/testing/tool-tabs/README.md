@@ -9,6 +9,14 @@ Real-browser check of the two tab rows, **Compatibility / Source Check** and **P
 The run used the uncommitted change on top of the base commit. `results.json` records `baseCommit`, `worktreeDirty`, and a
 `diffHash` (SHA-256 of `git diff HEAD` plus the untracked files, excluding this folder).
 
+## Engine start
+
+The harness starts the engine through `tools/acceptance/engine-startup.mjs`, which never waits unbounded. A missing Python
+(`PYTHON`, default `py`) fails immediately with a clear message; an engine that exits early is reported with its exit code
+and a bounded, path-redacted tail of its stderr; if no port is reported within 60 s (override with
+`SNAPSTUDIO_ENGINE_TIMEOUT_MS`) the process this run started is stopped by its PID. All three exit nonzero (2) and clean up.
+`node --test tools/acceptance/engine-startup.test.mjs` covers these with fake executables.
+
 ## What is real and what is not
 
 - **Real:** the Studio engine and the web UI from this branch (served by the Vite dev server, not a production build),
