@@ -183,7 +183,8 @@
     },
     "error_code": {"enum": [
       "INVALID_REQUEST", "UNSUPPORTED_FORMAT", "INVALID_ARCHIVE", "INVALID_GEOMETRY", "UNRESOLVED_REFERENCE",
-      "LIMIT_EXCEEDED", "SOURCE_CHANGED", "CANCELLED", "TIMEOUT", "EXPIRED", "NOT_READY", "WORKER_WEDGED", "INTERNAL"]},
+      "LIMIT_EXCEEDED", "SOURCE_CHANGED", "CANCELLED", "TIMEOUT", "EXPIRED", "NOT_READY", "WORKER_WEDGED", "INTERNAL",
+      "STALE_START", "CANCELLED_BEFORE_START"]},
     "job_state": {"enum": ["queued", "running", "succeeded", "failed", "cancelled"]},
     "error_response": {
       "type": "object", "additionalProperties": false, "required": ["error"],
@@ -198,7 +199,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["job_id", "request_id", "state", "stage", "completed", "total", "error", "revision"],
       "properties": {
-        "job_id": {"$ref": "#/$defs/id"},
+        "job_id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
         "request_id": {"$ref": "#/$defs/id"},
         "state": {"$ref": "#/$defs/job_state"},
         "stage": {"enum": ["reading", "parsing", "encoding", null]},

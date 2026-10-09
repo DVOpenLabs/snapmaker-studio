@@ -34,6 +34,7 @@ Model (frozen by plan v3/v4/v5/v6):
 """
 from __future__ import annotations
 
+import collections
 import errno
 import hashlib
 import os
@@ -54,6 +55,10 @@ ROUTES = ("/scene/start", "/scene/status", "/scene/result", "/scene/cancel")
 TERMINAL = ("succeeded", "failed", "cancelled")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{8,%d}$" % L.MAX_REQUEST_ID_LENGTH)
 _REVISION = re.compile(r"^[0-9a-f]{64}$")
+_CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+MAX_SEQ = 2 ** 53 - 1
+MAX_CLIENTS = 16          # client_id -> highest accepted seq (LRU)
+MAX_TOMBSTONES = 64       # cancelled (client_id, request_id) pairs (FIFO)
 
 
 class JobError(Exception):
@@ -71,6 +76,7 @@ class Job:
     def __init__(self, job_id: str, request_id: str, path: str, now: float) -> None:
         self.job_id, self.request_id, self.path = job_id, request_id, path
         self.source = path                       # the path as the client gave it (for reading)
+        self.client_id: str | None = None        # set when the start carried client_id/seq
         self.state = "queued"
         self.stage: str | None = None
         self.completed: int | None = None
@@ -191,21 +197,58 @@ class SceneJobs:
         self._worker: threading.Thread | None = None
         self._dir: str | None = None
         self._pending: list[list] = []        # [path, attempts, next_try] snapshot files that resisted deletion
+        # Ordering at the engine boundary (all guarded by self._lock, the same lock that registers jobs):
+        # an abandoned start must never replace or cancel a newer one, however late it arrives.
+        self._clients: "collections.OrderedDict[str, tuple[int, str]]" = collections.OrderedDict()   # client_id -> (highest seq, its request_id)
+        self._tombstones: "collections.OrderedDict[tuple[str, str], None]" = collections.OrderedDict()
 
     # ------------------------------------------------------------------ public API
-    def start(self, path: str, request_id: str) -> dict:
+    def _check_source(self, path: str) -> None:
+        """The pre-registration file check (a seam: it runs BEFORE the registry lock is taken)."""
+        if not os.path.isfile(path):
+            raise JobError(400, "INVALID_REQUEST", "That file could not be found.")
+
+    def _admit_locked(self, client_id: str | None, seq: int | None, request_id: str) -> None:
+        """Ordering rules, evaluated under the registry lock, atomically with registration.
+
+        (a) seq below the client's highest accepted seq: STALE_START, nothing changes.
+        (c) this (client_id, request_id) was cancelled before it arrived: CANCELLED_BEFORE_START.
+        (b) seq equal to the highest with a DIFFERENT request_id: INVALID_REQUEST (equal + same request_id is
+            the idempotent repeat and passes). Legacy starts (no client_id/seq) pass untouched.
+        """
+        if client_id is None:
+            return
+        known = self._clients.get(client_id)
+        if known is not None:
+            if seq < known[0]:
+                raise JobError(409, "STALE_START", "A newer scene start from this client has already been accepted.")
+        if (client_id, request_id) in self._tombstones:
+            raise JobError(409, "CANCELLED_BEFORE_START", "That scene start was cancelled before it arrived.")
+        if known is not None and seq == known[0] and request_id != known[1]:
+            raise JobError(400, "INVALID_REQUEST", "That seq was already used for another request.",
+                           reason="seq reused for another request_id")
+
+    def _record_locked(self, client_id: str | None, seq: int | None, request_id: str) -> None:
+        if client_id is None:
+            return
+        self._clients[client_id] = (seq, request_id)
+        self._clients.move_to_end(client_id)
+        while len(self._clients) > MAX_CLIENTS:
+            self._clients.popitem(last=False)
+
+    def start(self, path: str, request_id: str, client_id: str | None = None, seq: int | None = None) -> dict:
         key = os.path.normcase(os.path.abspath(path))
         ext = os.path.splitext(key)[1].lower()
         if ext not in (".3mf", ".stl"):
             raise JobError(422, "UNSUPPORTED_FORMAT", "Only .3mf and .stl files can be shown.")
-        if not os.path.isfile(path):
-            raise JobError(400, "INVALID_REQUEST", "That file could not be found.")
+        self._check_source(path)
         for _attempt in range(2):
             with self._lock:
                 self._housekeeping()
+                self._admit_locked(client_id, seq, request_id)
                 existing = self._by_request.get(request_id)
                 if existing is None:
-                    return self._create_locked(path, key, request_id)
+                    return self._create_locked(path, key, request_id, client_id, seq)
                 self._same_path_or_raise(existing, key)
                 revision = existing.revision
             # Hash OUTSIDE the lock (it can be slow), then re-check under it: the retained job may have
@@ -214,18 +257,21 @@ class SceneJobs:
                 raise JobError(409, "SOURCE_CHANGED", "The file changed since that scene was built. Start a new one.")
             with self._lock:
                 self._housekeeping()
+                self._admit_locked(client_id, seq, request_id)      # a newer start may have arrived meanwhile
                 if self._jobs.get(existing.job_id) is existing and self._by_request.get(request_id) is existing:
                     return self._start_body(existing, None)
             # evicted while hashing: go round once more and start a fresh job for the same request
         with self._lock:
             self._housekeeping()
+            self._admit_locked(client_id, seq, request_id)
             existing = self._by_request.get(request_id)
             if existing is not None:
                 self._same_path_or_raise(existing, key)
                 return self._start_body(existing, None)
-            return self._create_locked(path, key, request_id)
+            return self._create_locked(path, key, request_id, client_id, seq)
 
-    def _create_locked(self, path: str, key: str, request_id: str) -> dict:
+    def _create_locked(self, path: str, key: str, request_id: str, client_id: str | None = None,
+                       seq: int | None = None) -> dict:
         if self._wedged():
             raise JobError(503, "WORKER_WEDGED", "The scene worker is stuck. Try again after it recovers.")
         replaced = None
@@ -238,6 +284,8 @@ class SceneJobs:
             self._cancel_locked(self._running)
         job = Job(uuid.uuid4().hex, request_id, key, self._clock())
         job.source = path
+        job.client_id = client_id
+        self._record_locked(client_id, seq, request_id)
         self._jobs[job.job_id] = job
         self._by_request[request_id] = job
         self._queued = job
@@ -264,6 +312,28 @@ class SceneJobs:
             if job.state == "cancelled":
                 return 409, {"error": "CANCELLED", "message": "That scene was cancelled."}
             return 409, {"error": "NOT_READY", "message": "That scene is not ready yet.", "state": job.state}
+
+    def cancel_request(self, client_id: str, request_id: str) -> dict:
+        """Cancel by (client_id, request_id) and remember it, even when no job is registered yet, so a start
+        that was abandoned and arrives LATE is refused (CANCELLED_BEFORE_START). Matches exactly: another
+        client's, or another request's, job is never touched."""
+        with self._lock:
+            self._housekeeping()
+            self._tombstones[(client_id, request_id)] = None
+            while len(self._tombstones) > MAX_TOMBSTONES:
+                self._tombstones.popitem(last=False)
+            job = self._by_request.get(request_id)
+            if job is not None and job.client_id == client_id:
+                if job.state in ("queued", "running"):
+                    if job is self._queued:
+                        self._queued = None
+                    self._cancel_locked(job)
+                body = self._status_body(job)
+                self._housekeeping()
+                return body
+            return {"job_id": None, "request_id": request_id, "state": "cancelled", "stage": None,
+                    "completed": None, "total": None, "revision": None,
+                    "error": {"code": "CANCELLED", "message": "That scene was cancelled."}}
 
     def cancel(self, job_id: str) -> dict:
         with self._lock:
@@ -602,6 +672,26 @@ def _request_id(data: dict) -> str:
     return value
 
 
+def _client_id(data: dict) -> str:
+    value = rv.require_str(data, "client_id")
+    if not _CLIENT_ID.match(value):
+        raise rv.ValidationError("Invalid 'client_id'")
+    return value
+
+
+def _ordering(data: dict) -> tuple[str | None, int | None]:
+    """client_id and seq travel together or not at all (an absent pair is the legacy, unordered start)."""
+    has_client, has_seq = data.get("client_id") is not None, data.get("seq") is not None
+    if not has_client and not has_seq:
+        return None, None
+    if has_client != has_seq:
+        raise rv.ValidationError("'client_id' and 'seq' must be given together")
+    seq = data["seq"]
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 1 or seq > MAX_SEQ:
+        raise rv.ValidationError("Invalid 'seq'")
+    return _client_id(data), seq
+
+
 def _job_id(data: dict) -> str:
     value = rv.require_str(data, "job_id")
     if len(value) > 128:
@@ -617,7 +707,8 @@ def handle(route: str, data: dict, jobs: SceneJobs | None = None) -> tuple[int, 
     try:
         if route == "/scene/start":
             path = rv.require_bounded_str(data, "path", 4096)
-            return 200, jobs.start(path, _request_id(data))
+            client_id, seq = _ordering(data)
+            return 200, jobs.start(path, _request_id(data), client_id, seq)
         if route == "/scene/status":
             return 200, jobs.status(_job_id(data))
         if route == "/scene/result":
@@ -626,6 +717,11 @@ def handle(route: str, data: dict, jobs: SceneJobs | None = None) -> tuple[int, 
                 raise rv.ValidationError("Invalid 'expected_revision'")
             return jobs.result(_job_id(data), expected)
         if route == "/scene/cancel":
+            if "job_id" in data and ("client_id" in data or "request_id" in data):
+                raise rv.ValidationError("Give either 'job_id' or 'client_id' and 'request_id', not both")
+            if "job_id" not in data and "client_id" in data:
+                client_id = _client_id(data)
+                return 200, jobs.cancel_request(client_id, _request_id(data))
             return 200, jobs.cancel(_job_id(data))
     except rv.ValidationError as exc:
         return 400, {"error": "INVALID_REQUEST", "message": str(exc)}
