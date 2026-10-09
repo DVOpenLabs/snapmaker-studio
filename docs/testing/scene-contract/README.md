@@ -132,14 +132,34 @@ running. A terminal job is kept 120 s or until more than 8 terminal jobs exist. 
 
 | Route | Answers |
 |---|---|
-| `/scene/start {path, request_id}` | 200 job; 400 `INVALID_REQUEST`; 422 `UNSUPPORTED_FORMAT`; 409 `INVALID_REQUEST` (request_id reused for another path) or `SOURCE_CHANGED`; 503 `WORKER_WEDGED` |
+| `/scene/start {path, request_id, client_id?, seq?}` | 200 job; 400 `INVALID_REQUEST` (also: only one of `client_id`/`seq`, a bad `seq`/`client_id`, or the same `seq` reused for another request_id); 422 `UNSUPPORTED_FORMAT`; 409 `INVALID_REQUEST` (request_id reused for another path), `SOURCE_CHANGED`, `STALE_START` or `CANCELLED_BEFORE_START`; 503 `WORKER_WEDGED` |
 | `/scene/status {job_id}` | 200 `{state, stage, completed, total, error, revision}`; 404 `EXPIRED` |
 | `/scene/result {job_id, expected_revision?}` | 200 scene; 422 `{error: <code>}` for a failed job; 409 `CANCELLED` / `NOT_READY` / `SOURCE_CHANGED`; 404 `EXPIRED` |
-| `/scene/cancel {job_id}` | 200 status (idempotent; a late cancel on a terminal job is a no-op) |
+| `/scene/cancel {job_id}` or `{client_id, request_id}` | 200 status (idempotent; a late cancel on a terminal job is a no-op). By request: cancels the job registered for exactly that client_id + request_id (if any) and ALWAYS records a tombstone; with no such job the body is a `job_status` with `job_id: null`, `state: "cancelled"` |
 
 Error codes: `INVALID_REQUEST UNSUPPORTED_FORMAT INVALID_ARCHIVE INVALID_GEOMETRY UNRESOLVED_REFERENCE
-LIMIT_EXCEEDED SOURCE_CHANGED CANCELLED TIMEOUT EXPIRED NOT_READY WORKER_WEDGED INTERNAL` (`BUSY` is not an
-error code: a new start replaces the client's own earlier work).
+LIMIT_EXCEEDED SOURCE_CHANGED CANCELLED TIMEOUT EXPIRED NOT_READY WORKER_WEDGED INTERNAL STALE_START
+CANCELLED_BEFORE_START` (`BUSY` is not an error code: a new start replaces the client's own earlier work).
+
+### Start ordering (an abandoned start can never replace a newer one)
+
+A client that aborts or times out a start cannot stop that request from still reaching the engine, possibly AFTER
+the start it actually wants. The engine therefore orders starts itself, under the same lock that registers and
+replaces jobs, so the decision is atomic with registration (nothing here uses timing):
+
+* `client_id` is 8-64 characters of `[A-Za-z0-9_-]`, random per app process; `seq` is an integer >= 1 that the
+  client increases for every start attempt. Both or neither; with neither the start behaves exactly as before.
+* The engine remembers the highest accepted `seq` per `client_id` (LRU, 16 clients) and the cancelled
+  `(client_id, request_id)` pairs (FIFO, 64 tombstones).
+* In order: `seq` below that client's highest -> 409 `STALE_START`, nothing changes (no replace, no cancel);
+  the pair is tombstoned -> 409 `CANCELLED_BEFORE_START`, nothing is registered; `seq` equal to the highest with
+  the same `request_id` -> the existing job (idempotent, as before); equal with a different `request_id` -> 400
+  `INVALID_REQUEST`; otherwise the job is registered (replacing the older one as before) and `seq` is recorded.
+  An idempotent repeat that was still hashing the file is re-checked under the lock, so a newer start that arrived
+  meanwhile makes it `STALE_START` too.
+* After `STALE_START` / `CANCELLED_BEFORE_START` the client retries with a FRESH `request_id` and a HIGHER `seq`.
+  A restarted app uses a new random `client_id` (seq starts again at 1); a remount in the same process just keeps
+  counting. If more than 16 clients are seen the least recently used one forgets its ordering (documented).
 
 Interruptibility: archive reads are at most 1 MiB, lxml `iterparse` checks the cancel/deadline hook every 1,000
 events and on every read, geometry transform/encode runs in batches of at most 5,000 triangles. Backstop: if the
