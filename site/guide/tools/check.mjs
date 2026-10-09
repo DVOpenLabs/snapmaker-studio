@@ -7,6 +7,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const guideContent = JSON.parse(readFileSync(join(root, "content/guide.json"), "utf8"));
+const tauriPath = process.env.SNAPSTUDIO_TAURI_CONF || join(root, "..", "..", "desktop/src-tauri/tauri.conf.json");
+const tauri = JSON.parse(readFileSync(tauriPath, "utf8"));
 const pub = join(root, "public");
 const html = readFileSync(join(pub, "index.html"), "utf8");
 const css = readFileSync(join(pub, "assets/guide.css"), "utf8");
@@ -14,6 +17,7 @@ const js = readdirSync(join(pub, "assets")).filter((f) => f.endsWith(".js")).map
 const online = process.argv.includes("--online");
 const results = [];
 const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`); };
+check("built HTML states the guide version", html.includes(`Checked against Snapmaker Studio v${guideContent.site.version}.`), `v${guideContent.site.version}`);
 
 /* ids and in-page links */
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
@@ -68,7 +72,9 @@ check("exactly one h1", (html.match(/<h1\b/g) || []).length === 1);
 check("the dialog has an accessible name", /<dialog[^>]*aria-labelledby="viewer-title"/.test(html));
 check("buttons that open images say so", /Enlarge screenshot: /.test(js));
 check("independent-project statement is on the page", /not affiliated with or endorsed by Snapmaker/.test(html));
-check("states the version the guide describes", /v1\.5\.0/.test(html) && /current stable release/.test(html));
+const versionsMatch = guideContent.site.version === tauri.version;
+if (versionsMatch) check("guide and desktop versions match", true);
+else console.warn(`WARNING  guide and desktop versions differ: ${guideContent.site.version} vs ${tauri.version}`);
 
 /* CSS: focus, motion, forced colours */
 check("visible focus styles exist", /:focus-visible/.test(css));

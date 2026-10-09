@@ -200,6 +200,11 @@ a.chip:hover, button.chip:hover { border-color: var(--accent); color: var(--text
 .differs summary { cursor: pointer; padding: 11px 16px; font-weight: 700; }
 .differs details > div { padding: 0 16px 12px; color: var(--muted); }
 .differs details > div p { margin: 0; }
+.sources { margin-top: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.sources summary { cursor: pointer; padding: 11px 16px; font-weight: 700; }
+.sources > div { padding: 0 16px 12px; color: var(--muted); }
+.sources ul { margin: 8px 0 0; padding-left: 22px; }
+.sources li { margin: 6px 0; }
 .stage-nav { display: flex; justify-content: space-between; gap: 12px; margin: 38px 0 0; padding-top: 22px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 
 /* interactive examples */

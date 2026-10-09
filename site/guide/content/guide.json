@@ -3,6 +3,7 @@
     "title": "Snapmaker Studio guide — decide what to do with your project",
     "description": "A task-first guide to Snapmaker Studio v1.5.0: follow one example from opening a project to checking a sliced job, find help for what you are doing now, or look up a warning.",
     "version": "1.5.0",
+    "reviewed": "2026-10-08",
     "disclaimer": "Snapmaker Studio is an **independent open-source project — not affiliated with or endorsed by Snapmaker**. “Snapmaker” is a trademark of its owner.",
     "footer": "This guide describes **Snapmaker Studio v1.5.0**, the current stable release. Studio is advisory: it checks and prepares files, Snapmaker Orca slices, and nothing here promises that a print will succeed. Source, release notes and verification: [github.com/DVOpenLabs/snapmaker-studio](@repo)."
   },

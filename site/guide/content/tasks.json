@@ -100,7 +100,7 @@
       "problems": ["studio-cant-tell"], "keywords": ["colours", "colors", "toolheads", "four", "painted", "swap", "multi-colour", "filament", "reserve", "color"]
     },
     {
-      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate",
+      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate", "checked": "1.5.0", "sources": [{"label":"Placement check","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/snapstudio_core/plate_placement.py","kind":"engine"}],
       "when": "**Object placement** says an object is outside the U1's printable area.",
       "prereq": ["The project open in Studio."],
       "steps": [
@@ -116,7 +116,7 @@
       "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
     },
     {
-      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode",
+      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode", "checked": "1.5.0", "sources": [{"label":"Copy writer","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/snapstudio_core/convert.py","kind":"engine"}],
       "when": "You want a copy Orca can open with U1-compatible settings.",
       "prereq": ["The project open in Studio."],
       "steps": [
