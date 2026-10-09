@@ -2,8 +2,8 @@
 
 The `orca` evidence kind is advice to verify; it makes no claim about Snapmaker Orca behavior.
 
-The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
-same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
+The guide describes **Snapmaker Studio v1.5.1** (tag `v1.5.1`). Its screenshots were captured from the installed v1.5.0
+release and have not been recaptured; the interface changed in v1.5.1 where the release notes say so. Every button label in the lessons was read from the
 running interface or from the source that renders it. "UI" below means the label or behaviour was observed in the running
 app during capture (`tools/capture.mjs`, a real Studio engine with disposable data and example files); "Source" means it
 was read from the named file because it cannot be reached without a printer or the installed shell.

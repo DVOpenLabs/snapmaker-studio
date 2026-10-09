@@ -16,7 +16,7 @@
     "shot": "compat-findings", "tasks": ["review-in-orca"], "keywords": ["spacing", "collision", "profile", "not a u1 profile", "warning"]
   },
   {
-    "id": "studio-cant-tell", "label": "STUDIO CAN’T TELL", "certainty": "unknown", "seen": ["check", "job"], "checked": "1.5.0", "sources": [{"label":"Unknown result","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/snapstudio_core/post_slice.py","kind":"engine"}],
+    "id": "studio-cant-tell", "label": "STUDIO CAN’T TELL", "certainty": "unknown", "seen": ["check", "job"], "checked": "1.5.1", "sources": [{"label":"Unknown result","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/post_slice.py","kind":"engine"}],
     "means": "Studio lacks information it needs for this check, often because no printer is connected, so it does not guess.",
     "why": "Most often no printer is connected. The app's own line says: *“Studio can’t tell” means Studio has no way to read that from your printer — not that your printer can’t do it.* Studio can also say it when the file itself leaves a fact out.",
     "do": ["Connect your printer in Printer Hub so Studio can compare it with the project.", "Or check the item yourself at the printer; the card says what to check."],
@@ -32,7 +32,7 @@
     "shot": "after-result", "tasks": ["connect-printer", "confirm-nozzles"], "keywords": ["after slicing", "toolheads", "slots loaded", "bed", "nozzle", "unknown"]
   },
   {
-    "id": "looks-right", "label": "LOOKS RIGHT", "certainty": "ok", "seen": ["check", "job"], "checked": "1.5.0", "sources": [{"label":"Check results (sliced job)","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/desktop/src/lib/postSlice.ts","kind":"engine"},{"label":"Check results (before slicing)","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/desktop/src/lib/preflight.ts","kind":"engine"}],
+    "id": "looks-right", "label": "LOOKS RIGHT", "certainty": "ok", "seen": ["check", "job"], "checked": "1.5.1", "sources": [{"label":"Check results (sliced job)","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/desktop/src/lib/postSlice.ts","kind":"engine"},{"label":"Check results (before slicing)","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/desktop/src/lib/preflight.ts","kind":"engine"}],
     "means": "Studio checked this and found nothing wrong.",
     "why": "For example, when a sliced job names a U1, Studio shows **Sliced for the machine Studio prepares for**.",
     "do": ["Read any action listed on the card; a result that looks right can still have a next step."],

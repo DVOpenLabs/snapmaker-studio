@@ -1,6 +1,6 @@
 # Snapmaker Studio — user guide
 
-A static, task-oriented guide for **Snapmaker Studio v1.5.0**. It is organized around the decisions a person makes before a
+A static, task-oriented guide for **Snapmaker Studio v1.5.1**. It is organized around the decisions a person makes before a
 print, not around the order of the app's menus:
 
 1. **Learn with an example project** — six stages (Open → Check → Prepare → Review → Slice in Orca → Check the sliced job),

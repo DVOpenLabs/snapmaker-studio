@@ -20,11 +20,11 @@
         "**Windows:** run the installer. It is not code-signed yet, so SmartScreen may say **Unknown publisher**. Once the hash matches, choose **More info → Run anyway**, then start **Snapmaker Studio** from the Start menu. More: [Windows install guide](@windows_install).",
         "**Linux:** `sudo apt install ./<the .deb file name exactly as shown on the Releases page>`, then start **Snapmaker Studio** from your application menu or run `snapmaker-studio-desktop`. More: [Linux install guide](@linux_install)."
       ],
-      "success": ["Studio opens on **Home**, with the version **v1.5.0** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
+      "success": ["Studio opens on **Home**, with the version **v1.5.1** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
       "differs": [
         { "if": "Windows says “Windows protected your PC”.", "then": "This is expected for an installer that is not code-signed yet. Continue only if the SHA256 matches and you downloaded the file from Studio's Releases page." },
         { "if": "The hash does not match.", "then": "Do not run the installer. Delete it and download it again from Studio's Releases page." },
-        { "if": "Studio looks different from this guide.", "then": "This guide describes **v1.5.0**. Check the version at the bottom of the Studio window; the [release notes](@releases) say what changed." }
+        { "if": "Studio looks different from this guide.", "then": "This guide describes **v1.5.1**. Check the version at the bottom of the Studio window; the [release notes](@releases) say what changed." }
       ],
       "notes": [
         { "kind": "limit", "text": "Linux support is verified by automated installs on clean Ubuntu 22.04 and 24.04 systems. Other distributions and installs on a physical desktop have not been verified yet; see the [Linux install guide](@linux_install)." },
@@ -100,7 +100,7 @@
       "problems": ["studio-cant-tell"], "keywords": ["colours", "colors", "toolheads", "four", "painted", "swap", "multi-colour", "filament", "reserve", "color"]
     },
     {
-      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate", "checked": "1.5.0", "sources": [{"label":"Placement check","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/snapstudio_core/plate_placement.py","kind":"engine"}],
+      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate", "checked": "1.5.1", "sources": [{"label":"Placement check","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/plate_placement.py","kind":"engine"}],
       "when": "**Object placement** says an object is outside the U1's printable area.",
       "prereq": ["The project open in Studio."],
       "steps": [
@@ -116,7 +116,7 @@
       "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
     },
     {
-      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode", "checked": "1.5.0", "sources": [{"label":"Copy writer","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/snapstudio_core/convert.py","kind":"engine"}],
+      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode", "checked": "1.5.1", "sources": [{"label":"Copy writer","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/convert.py","kind":"engine"}],
       "when": "You want a copy Orca can open with U1-compatible settings.",
       "prereq": ["The project open in Studio."],
       "steps": [
@@ -360,7 +360,7 @@
       "when": "You want to know whether a newer Studio exists.",
       "prereq": [],
       "steps": [
-        "Your version is at the bottom of the window (**v1.5.0** for this guide).",
+        "Your version is at the bottom of the window (**v1.5.1** for this guide).",
         "Open **Help → Check for a newer version** and press **Check GitHub now**. The update check does not download or install anything; it only shows a version number and a link.",
         "To update, download the new installer from Studio's Releases page, verify its hash, and run it over your install. Your data is kept."
       ],
