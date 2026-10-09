@@ -136,7 +136,7 @@ running. A terminal job is kept 120 s or until more than 8 terminal jobs exist. 
 | `/scene/start {path, request_id, client_id?, seq?}` | 200 job; 400 `INVALID_REQUEST` (also: only one of `client_id`/`seq`, null or malformed values, `seq` reused for another request, `request_id` reused at a higher `seq`); 422 `UNSUPPORTED_FORMAT`; 409 `INVALID_REQUEST` (request_id reused for another path), `SOURCE_CHANGED`, `STALE_START`, `CANCELLED_BEFORE_START` or `SESSION_EXPIRED`; 503 `WORKER_WEDGED` |
 | `/scene/status {job_id, client_id?}` | 200 `{state, stage, completed, total, error, revision}`; 404 `EXPIRED`. A job started in a session needs that session's `client_id`; a missing or different one answers exactly like an unknown id (404 `EXPIRED`), so existence is never confirmed |
 | `/scene/result {job_id, client_id?, expected_revision?}` | 200 scene; 422 `{error: <code>}` for a failed job; 409 `CANCELLED` / `NOT_READY` / `SOURCE_CHANGED`; 404 `EXPIRED` |
-| `/scene/cancel {job_id, client_id?}` or `{client_id, request_id, seq}` | 200 status (idempotent; a late cancel on a terminal job is a no-op; for a session job `client_id` is required, as for status and result). By request: 409 `SESSION_EXPIRED` for an unknown session; otherwise `dead_through` rises to `seq` and the job registered for exactly that client_id + request_id (if any) is cancelled, but only if it was started at or before that `seq` (a delayed cancel for an old attempt cannot cancel a newer job that reused the request id); with no such job the body is a `job_status` with `job_id: null`, `state: "cancelled"` |
+| `/scene/cancel {job_id, client_id?}` or `{client_id, request_id, seq}` | 200 status (idempotent; a late cancel on a terminal job is a no-op; for a session job `client_id` is required, as for status and result). By request: 409 `SESSION_EXPIRED` for an unknown session; otherwise `dead_through` rises to `seq` and the job of that EXACT attempt (client_id, request_id and `seq` all equal) is cancelled, if any, so a delayed cancel for an old attempt cannot cancel a newer job that reused the request id, and a cancel for a higher `seq` does not cancel an older job; that `seq` and every lower one stay refused for the life of the session; with no such job the body is a `job_status` with `job_id: null`, `state: "cancelled"` |
 
 Error codes: `INVALID_REQUEST UNSUPPORTED_FORMAT INVALID_ARCHIVE INVALID_GEOMETRY UNRESOLVED_REFERENCE
 LIMIT_EXCEEDED SOURCE_CHANGED CANCELLED TIMEOUT EXPIRED NOT_READY WORKER_WEDGED INTERNAL STALE_START
@@ -185,6 +185,10 @@ HIGHER `seq`.
 job need that session's `client_id` (404 `EXPIRED`, identical to an unknown id, otherwise), and `replaced_job_id`
 in a start response names a replaced job only when it belonged to the same session (or both are legacy); in every
 other case it is `null`. Legacy jobs keep today's behaviour.
+
+**An exact retry never loses its job.** A retry of the entry at the watermark (same `seq`, request_id and path) that is
+rejected before registration (for example the file has since vanished) leaves the session's reference to that
+entry's job untouched, so later and concurrent exact retries still get the job for as long as it is registered.
 
 **After an admitted start that is then rejected** (`WORKER_WEDGED`, an unsupported format, a missing file) the
 session's watermark has already advanced to that `seq`, so a delayed older attempt cannot be accepted behind it.

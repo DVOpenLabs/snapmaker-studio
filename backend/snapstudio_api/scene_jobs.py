@@ -291,7 +291,9 @@ class SceneJobs:
         if client_id is None:
             return
         session = self._sessions.get(client_id)
-        if session is not None and seq > session.dead_through and seq >= session.watermark:
+        # STRICTLY greater: only a NEW attempt sets `current`. An exact retry (seq == watermark) never replaces the
+        # job reference of the entry it repeats, whatever else happens to that retry.
+        if session is not None and seq > session.dead_through and seq > session.watermark:
             session.watermark, session.current = seq, (seq, request_id, path_key, job_id)
 
     def _precheck(self, path: str, key: str, request_id: str, client_id: str | None, seq: int | None) -> None:
@@ -305,8 +307,9 @@ class SceneJobs:
             if client_id is not None:
                 with self._lock:
                     self._housekeeping()
-                    self._admit_locked(client_id, seq, request_id, key)      # stale / cancelled / expired are reported first
-                    self._advance_locked(client_id, seq, request_id, key)
+                    existing = self._admit_locked(client_id, seq, request_id, key)   # stale / cancelled / expired first
+                    if existing is None:                                              # a NEW attempt: record it as processed
+                        self._advance_locked(client_id, seq, request_id, key)
             raise
 
     def start(self, path: str, request_id: str, client_id: str | None = None, seq: int | None = None) -> dict:
@@ -357,7 +360,8 @@ class SceneJobs:
         job.client_id, job.seq = client_id, seq
         self._jobs[job.job_id] = job
         self._by_request[(client_id, request_id)] = job
-        self._advance_locked(client_id, seq, request_id, key, job.job_id)   # every registration records session state atomically
+        if client_id is not None:                            # every registration records the job reference atomically
+            self._sessions[client_id].current = (seq, request_id, key, job.job_id)
         self._queued = job
         if self._worker is None:
             self._worker = threading.Thread(target=self._worker_main, name="scene-worker", daemon=True)
@@ -403,14 +407,15 @@ class SceneJobs:
         """Cancel the start (client_id, request_id, seq). The session must exist (SESSION_EXPIRED otherwise).
         ``dead_through`` rises to ``seq`` so that start, and every lower seq, stays refused for as long as the
         session lives (O(1) memory: no per-request set), even when no job is registered yet. The registered job
-        is cancelled only if its client_id AND request_id match exactly AND it was started at or before ``seq``
-        (a delayed cancel for an OLD attempt can never cancel a newer job that reused the request id)."""
+        is cancelled only if it is the job of that EXACT attempt: client_id, request_id AND seq all equal (a delayed
+        cancel for an old attempt can never cancel a newer job that reused the request id, and a cancel for a
+        higher seq does not cancel an older job; the start of that seq and every lower one stays refused)."""
         with self._lock:
             self._housekeeping()
             session = self._session_locked(client_id)
             session.dead_through = max(session.dead_through, seq)
             job = self._by_request.get((client_id, request_id))
-            if job is not None and job.client_id == client_id and job.request_id == request_id and job.seq <= seq:
+            if job is not None and job.client_id == client_id and job.request_id == request_id and job.seq == seq:
                 if job.state in ("queued", "running"):
                     if job is self._queued:
                         self._queued = None

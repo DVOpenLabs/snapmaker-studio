@@ -9,6 +9,7 @@ Invariants (each test name carries its tag):
 No sleep decides any outcome: the abandoned start A is held at the pre-registration seam
 (`SceneJobs._check_source`, which runs before the registry lock) with a threading.Event, and time is a fake clock.
 """
+import os
 import threading
 
 import pytest
@@ -792,3 +793,84 @@ def test_an_expired_session_whose_last_job_was_just_evicted_does_not_cause_sessi
     now[0] += 500.0                                                     # the job AND the session expire together
     fresh = jobs.open_session()                                         # one call: evict the job, then prune the session
     assert fresh["client_id"] != s and s not in jobs._sessions
+
+
+# ================================================================== round: exact retries and exact-attempt cancels
+
+def test_b1_a_failed_precheck_on_an_exact_retry_keeps_the_original_job_reference(make, cube, tmp_path):
+    jobs = make()
+    s = sess(jobs)
+    b = jobs.start(cube, "req-B-000002", s, 2)
+    wait_state(jobs, b["job_id"], "succeeded")
+    wait_for(lambda: not jobs.worker_alive())
+    hidden = cube + ".away"
+    os.replace(cube, hidden)                                          # the file vanishes: the retry's precheck fails
+    refused(jobs, "INVALID_REQUEST", cube, "req-B-000002", s, 2, http=400)
+    assert jobs._sessions[s].current[3] == b["job_id"]                # the retained job's reference was NOT cleared
+    os.replace(hidden, cube)
+    again = jobs.start(cube, "req-B-000002", s, 2)                    # a later exact retry still gets the job
+    assert again["job_id"] == b["job_id"]
+
+
+def test_b1_concurrent_exact_retries_one_hashing_one_failing_its_precheck(make, cube):
+    jobs = make()
+    s = sess(jobs)
+    b = jobs.start(cube, "req-B-000002", s, 2)
+    status = wait_state(jobs, b["job_id"], "succeeded")
+    wait_for(lambda: not jobs.worker_alive())
+    inside, release = threading.Event(), threading.Event()
+    real_hash = jobs._current_hash
+
+    def slow(path):                                                    # retry R1 is mid-hash, outside the lock
+        inside.set()
+        assert release.wait(10)
+        return status["revision"]
+    jobs._current_hash = slow
+    out = {}
+
+    def retry():
+        try:
+            out["r"] = jobs.start(cube, "req-B-000002", s, 2)
+        except sj.JobError as exc:
+            out["e"] = exc
+    t = threading.Thread(target=retry, daemon=True)
+    t.start()
+    assert inside.wait(10)
+    hidden = cube + ".away"
+    os.replace(cube, hidden)
+    refused(jobs, "INVALID_REQUEST", cube, "req-B-000002", s, 2, http=400)    # R2 fails its precheck meanwhile
+    os.replace(hidden, cube)
+    release.set()
+    t.join(10)
+    jobs._current_hash = real_hash
+    assert "e" not in out, out.get("e") and out["e"].code
+    assert out["r"]["job_id"] == b["job_id"]                          # R1 still gets the job that still exists
+
+
+def test_b2_a_cancel_at_a_higher_seq_does_not_cancel_the_older_job_of_the_same_request(make, cube):
+    gate, started = threading.Event(), threading.Event()
+    jobs = make(builder=fake_builder(gate, started=started))
+    s = sess(jobs)
+    five = jobs.start(cube, "req-R-000001", s, 5)
+    started.wait(10)
+    out = jobs.cancel_request(s, "req-R-000001", 6)                   # a cancel for seq 6, not for this attempt
+    assert out["job_id"] is None
+    assert st(jobs, five["job_id"])["state"] == "running"             # the seq-5 job is untouched
+    assert jobs._sessions[s].dead_through == 6                        # but seq 6 and everything below stays refused
+    refused(jobs, "CANCELLED_BEFORE_START", cube, "req-R-000002", s, 6)
+    gate.set()
+
+
+def test_b2_only_the_exact_attempt_is_cancelled(make, cube):
+    gate, started = threading.Event(), threading.Event()
+    jobs = make(builder=fake_builder(gate, started=started))
+    s = sess(jobs)
+    five = jobs.start(cube, "req-R-000001", s, 5)
+    started.wait(10)
+    assert jobs.cancel_request(s, "req-R-000001", 4)["job_id"] is None      # an older attempt's cancel: no match
+    assert st(jobs, five["job_id"])["state"] == "running"
+    assert jobs._sessions[s].dead_through == 4
+    out = jobs.cancel_request(s, "req-R-000001", 5)                         # the exact attempt
+    assert out["job_id"] == five["job_id"] and out["state"] == "cancelled"
+    assert jobs._sessions[s].dead_through == 5
+    gate.set()
