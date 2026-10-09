@@ -155,6 +155,6 @@ The build checks only the shape and file existence of each fact's `derive` refer
 The reviewed field is metadata for maintainers; the build and renderer do not treat it as proof of current behavior.
 Automated checks cannot judge prose clarity or whether a cited source is the right one. They cannot verify review dates, physical printer behavior, Snapmaker Orca behavior, paraphrased overclaims, or screen-reader experience.
 
-The **Print readiness (estimate)** percentage is treated as risk-signal output, not a probability of print success.
-The percentage's mathematical validity remains unproven and needs a maintainer decision.
-The app's verdict line "Likely to print (N%)" (`success_predict.py`) is an open maintainer decision: issue #92.
+The **Print risk signals** card replaced the old "Print readiness (estimate)" percentage and its "Likely to print (N%)" verdict (issue #92), because nothing calibrated that number against print outcomes.
+The card now lists each signal Studio found, what it means and what to do, plus what was and was not checked (`success_predict.findings`). It shows no percentage, band or verdict.
+The "Studio score" on the Intelligence Report is a separate number and is not covered by this change.
