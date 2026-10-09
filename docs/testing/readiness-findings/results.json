@@ -1,0 +1,87 @@
+{
+  "browser": "Microsoft Edge (Chromium, headless)",
+  "passed": 16,
+  "total": 16,
+  "results": [
+    {
+      "name": "light: card lists signals with what to do",
+      "ok": true,
+      "detail": "Print risk signals Studio found 1 thing worth settling before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found s"
+    },
+    {
+      "name": "light: card names its evidence kind",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: card says what was checked and not checked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: card says what Studio cannot know and to verify in Snapmaker Orca",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: no percentage, band or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: with no signals it says what was covered and not that the print will succeed",
+      "ok": true,
+      "detail": "Print risk signals Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed. Studio checked:"
+    },
+    {
+      "name": "light: the nothing-flagged result also has no percentage or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card lists signals with what to do",
+      "ok": true,
+      "detail": "Print risk signals Studio found 1 thing worth settling before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found s"
+    },
+    {
+      "name": "dark: card names its evidence kind",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card says what was checked and not checked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card says what Studio cannot know and to verify in Snapmaker Orca",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: no percentage, band or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: with no signals it says what was covered and not that the print will succeed",
+      "ok": true,
+      "detail": "Print risk signals Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed. Studio checked:"
+    },
+    {
+      "name": "dark: the nothing-flagged result also has no percentage or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no engine request named a host other than this machine, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

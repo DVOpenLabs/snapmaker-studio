@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **The "Print readiness (estimate)" percentage is gone (#92).** Nothing calibrated it against real
+  print outcomes, so a percentage and a "Likely to print" verdict could read as a chance of
+  success. Design Health now shows **Print risk signals**: each signal Studio found, what it means,
+  what to do and what kind of evidence it rests on, then what Studio checked and did not check.
+  It never shows a percentage or a verdict. The Intelligence Report no longer shows a readiness
+  rating or an "expected success after fixes" figure; it shows how many risks were found.
+
 ## [1.5.0] - 2026-10-06
 
 **Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**
