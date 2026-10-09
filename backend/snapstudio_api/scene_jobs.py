@@ -89,7 +89,8 @@ class Job:
     def __init__(self, job_id: str, request_id: str, path: str, now: float) -> None:
         self.job_id, self.request_id, self.path = job_id, request_id, path
         self.source = path                       # the path as the client gave it (for reading)
-        self.client_id: str | None = None        # set when the start carried client_id/seq
+        self.client_id: str | None = None        # the OWNING session (None for a legacy job)
+        self.seq: int | None = None              # the start's seq inside that session
         self.state = "queued"
         self.stage: str | None = None
         self.completed: int | None = None
@@ -282,12 +283,35 @@ class SceneJobs:
                            reason="request id reused")
         return None
 
+    def _advance_locked(self, client_id: str | None, seq: int | None, request_id: str, path_key: str,
+                        job_id: str | None = None) -> None:
+        """Record an attempt that has been (or is being) processed, so no delayed OLDER attempt can overtake it.
+        Called for every admitted start BEFORE anything that can still reject it (WORKER_WEDGED, an unsupported
+        format, a missing file), and again with the job id once it is registered."""
+        if client_id is None:
+            return
+        session = self._sessions.get(client_id)
+        if session is not None and seq > session.dead_through and seq >= session.watermark:
+            session.watermark, session.current = seq, (seq, request_id, path_key, job_id)
+
+    def _precheck(self, path: str, key: str, request_id: str, client_id: str | None, seq: int | None) -> None:
+        """The checks that run before registration. A rejection here still counts as a processed attempt for its
+        session (its seq is recorded), so a delayed older start cannot be accepted behind it."""
+        try:
+            if os.path.splitext(key)[1].lower() not in (".3mf", ".stl"):
+                raise JobError(422, "UNSUPPORTED_FORMAT", "Only .3mf and .stl files can be shown.")
+            self._check_source(path)
+        except JobError:
+            if client_id is not None:
+                with self._lock:
+                    self._housekeeping()
+                    self._admit_locked(client_id, seq, request_id, key)      # stale / cancelled / expired are reported first
+                    self._advance_locked(client_id, seq, request_id, key)
+            raise
+
     def start(self, path: str, request_id: str, client_id: str | None = None, seq: int | None = None) -> dict:
         key = os.path.normcase(os.path.abspath(path))
-        ext = os.path.splitext(key)[1].lower()
-        if ext not in (".3mf", ".stl"):
-            raise JobError(422, "UNSUPPORTED_FORMAT", "Only .3mf and .stl files can be shown.")
-        self._check_source(path)
+        self._precheck(path, key, request_id, client_id, seq)
         for _attempt in range(2):
             with self._lock:
                 self._housekeeping()
@@ -318,24 +342,22 @@ class SceneJobs:
 
     def _create_locked(self, path: str, key: str, request_id: str, client_id: str | None = None,
                        seq: int | None = None) -> dict:
+        self._advance_locked(client_id, seq, request_id, key)       # H2: BEFORE anything below can reject
         if self._wedged():
             raise JobError(503, "WORKER_WEDGED", "The scene worker is stuck. Try again after it recovers.")
         replaced = None
-        if self._queued is not None:
-            replaced = self._queued.job_id
-            self._cancel_locked(self._queued)
-            self._queued = None
-        if self._running is not None and self._running.state == "running":
-            replaced = self._running.job_id
-            self._cancel_locked(self._running)
+        for old in (self._queued, self._running if self._running is not None and self._running.state == "running" else None):
+            if old is not None:
+                if old.client_id == client_id:               # H1: another session's job id is never revealed
+                    replaced = old.job_id
+                self._cancel_locked(old)
+        self._queued = None
         job = Job(uuid.uuid4().hex, request_id, key, self._clock())
         job.source = path
-        job.client_id = client_id
+        job.client_id, job.seq = client_id, seq
         self._jobs[job.job_id] = job
         self._by_request[(client_id, request_id)] = job
-        if client_id is not None:                            # every registration records the session state atomically
-            session = self._sessions[client_id]
-            session.watermark, session.current = seq, (seq, request_id, key, job.job_id)
+        self._advance_locked(client_id, seq, request_id, key, job.job_id)   # every registration records session state atomically
         self._queued = job
         if self._worker is None:
             self._worker = threading.Thread(target=self._worker_main, name="scene-worker", daemon=True)
@@ -347,17 +369,26 @@ class SceneJobs:
         if session is not None:
             session.last_touch = self._clock()
 
-    def status(self, job_id: str) -> dict:
-        with self._lock:
-            self._housekeeping()
-            job = self._get(job_id)
-            self._touch_owner_locked(job)
-            return self._status_body(job)
+    def _get_owned(self, job_id: str, client_id: str | None) -> Job:
+        """Resolve a job id for a caller. A job owned by a session needs that session's client_id; a missing or
+        different one answers EXACTLY like an unknown id (404 EXPIRED), so existence is never confirmed. A legacy
+        job (no owner) keeps today's behaviour."""
+        job = self._jobs.get(job_id)
+        if job is None or (job.client_id is not None and job.client_id != client_id):
+            raise JobError(404, "EXPIRED", "That scene is no longer available.")
+        self._touch_owner_locked(job)
+        return job
 
-    def result(self, job_id: str, expected_revision: str | None = None) -> tuple[int, bytes | dict]:
+    def status(self, job_id: str, client_id: str | None = None) -> dict:
         with self._lock:
             self._housekeeping()
-            job = self._get(job_id)
+            return self._status_body(self._get_owned(job_id, client_id))
+
+    def result(self, job_id: str, expected_revision: str | None = None,
+               client_id: str | None = None) -> tuple[int, bytes | dict]:
+        with self._lock:
+            self._housekeeping()
+            job = self._get_owned(job_id, client_id)
             if expected_revision is not None and job.revision is not None and job.revision != expected_revision:
                 raise JobError(409, "SOURCE_CHANGED", "That scene was built from a different version of the file.")
             if job.state == "succeeded":
@@ -372,13 +403,14 @@ class SceneJobs:
         """Cancel the start (client_id, request_id, seq). The session must exist (SESSION_EXPIRED otherwise).
         ``dead_through`` rises to ``seq`` so that start, and every lower seq, stays refused for as long as the
         session lives (O(1) memory: no per-request set), even when no job is registered yet. The registered job
-        is cancelled only if its client_id AND request_id both match exactly."""
+        is cancelled only if its client_id AND request_id match exactly AND it was started at or before ``seq``
+        (a delayed cancel for an OLD attempt can never cancel a newer job that reused the request id)."""
         with self._lock:
             self._housekeeping()
             session = self._session_locked(client_id)
             session.dead_through = max(session.dead_through, seq)
             job = self._by_request.get((client_id, request_id))
-            if job is not None and job.client_id == client_id and job.request_id == request_id:
+            if job is not None and job.client_id == client_id and job.request_id == request_id and job.seq <= seq:
                 if job.state in ("queued", "running"):
                     if job is self._queued:
                         self._queued = None
@@ -390,10 +422,10 @@ class SceneJobs:
                     "completed": None, "total": None, "revision": None,
                     "error": {"code": "CANCELLED", "message": "That scene was cancelled."}}
 
-    def cancel(self, job_id: str) -> dict:
+    def cancel(self, job_id: str, client_id: str | None = None) -> dict:
         with self._lock:
             self._housekeeping()
-            job = self._get(job_id)
+            job = self._get_owned(job_id, client_id)           # touches the owner session too
             if job.state in ("queued", "running"):
                 if job is self._queued:
                     self._queued = None
@@ -472,7 +504,6 @@ class SceneJobs:
 
     def _housekeeping(self) -> None:
         now = self._clock()
-        self._prune_sessions_locked()
         for entry in list(self._pending):
             if now >= entry[2]:
                 self._try_unlink(entry)
@@ -489,6 +520,7 @@ class SceneJobs:
         if excess > 0:
             for j in sorted((j for j in terminal if j.worker_done.is_set()), key=lambda j: j.terminal_at)[:excess]:
                 self._drop(j)
+        self._prune_sessions_locked()          # AFTER the evictions: a session whose last job was just evicted can go now
 
     def _drop(self, job: Job) -> None:
         if job.snapshot:
@@ -749,6 +781,12 @@ def _ordering(data: dict) -> tuple[str | None, int | None]:
     return _client_id(data), seq
 
 
+def _credential(data: dict) -> str | None:
+    """The optional session credential for job-id routes: a job owned by a session needs it. Presence is tested
+    by key, so a null or malformed client_id is a 400, never silently 'no credential'."""
+    return _client_id(data) if "client_id" in data else None
+
+
 def _job_id(data: dict) -> str:
     value = rv.require_str(data, "job_id")
     if len(value) > 128:
@@ -769,21 +807,21 @@ def handle(route: str, data: dict, jobs: SceneJobs | None = None) -> tuple[int, 
             client_id, seq = _ordering(data)
             return 200, jobs.start(path, _request_id(data), client_id, seq)
         if route == "/scene/status":
-            return 200, jobs.status(_job_id(data))
+            return 200, jobs.status(_job_id(data), _credential(data))
         if route == "/scene/result":
             expected = data.get("expected_revision")
             if expected is not None and (not isinstance(expected, str) or not _REVISION.fullmatch(expected)):
                 raise rv.ValidationError("Invalid 'expected_revision'")
-            return jobs.result(_job_id(data), expected)
+            return jobs.result(_job_id(data), expected, _credential(data))
         if route == "/scene/cancel":
-            if "job_id" in data and ("client_id" in data or "request_id" in data or "seq" in data):
-                raise rv.ValidationError("Give either 'job_id' or 'client_id', 'request_id' and 'seq', not both")
-            if "job_id" not in data and ("client_id" in data or "seq" in data):
+            if "job_id" in data and ("request_id" in data or "seq" in data):
+                raise rv.ValidationError("Give either 'job_id' (with 'client_id' for a session job) or 'client_id', 'request_id' and 'seq'")
+            if "job_id" not in data and ("client_id" in data or "seq" in data or "request_id" in data):
                 if not ("client_id" in data and "seq" in data and "request_id" in data):
                     raise rv.ValidationError("'client_id', 'request_id' and 'seq' must be given together")
                 client_id, seq = _ordering(data)
                 return 200, jobs.cancel_request(client_id, _request_id(data), seq)
-            return 200, jobs.cancel(_job_id(data))
+            return 200, jobs.cancel(_job_id(data), _credential(data))
     except rv.ValidationError as exc:
         return 400, {"error": "INVALID_REQUEST", "message": str(exc)}
     except JobError as exc:

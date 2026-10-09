@@ -18,7 +18,25 @@ from snapstudio_core import scene_limits as L
 from tests import scene_fixtures as fx
 from tests.test_scene_api import call, server  # noqa: F401  (the loopback server fixture)
 from tests.test_scene_contract import sub_validator
-from tests.test_scene_jobs import fake_builder, wait_for, wait_state
+from tests.test_scene_jobs import fake_builder, wait_for
+
+
+def _owner(jobs, job_id):
+    job = jobs._jobs.get(job_id)
+    return job.client_id if job is not None else None
+
+
+def st(jobs, job_id):
+    """status() presenting the job's own session credential (looked up here, in the TEST, not by the engine)."""
+    return jobs.status(job_id, _owner(jobs, job_id))
+
+
+def cn(jobs, job_id):
+    return jobs.cancel(job_id, _owner(jobs, job_id))
+
+
+def wait_state(jobs, job_id, *states, timeout=10.0):
+    return wait_for(lambda: (lambda r: r if r["state"] in states else None)(st(jobs, job_id)), timeout)
 
 
 @pytest.fixture
@@ -116,7 +134,7 @@ def test_i1_a_delayed_abandoned_start_is_refused_whatever_became_of_the_wanted_o
     a = HeldStart(jobs, cube, "req-A-000001", s, 1)                 # abandoned, delayed in flight
     b = jobs.start(cube, "req-B-000002", s, 2)                      # the wanted start gets in first
     if wanted == "running":
-        assert started.wait(10) and jobs.status(b["job_id"])["state"] == "running"
+        assert started.wait(10) and st(jobs, b["job_id"])["state"] == "running"
     else:
         wait_state(jobs, b["job_id"], "succeeded")
         wait_for(lambda: not jobs.worker_alive())
@@ -125,7 +143,7 @@ def test_i1_a_delayed_abandoned_start_is_refused_whatever_became_of_the_wanted_o
     if wanted == "evicted":
         now[0] += 60.0
         with pytest.raises(sj.JobError):
-            jobs.status(b["job_id"])                                 # B's job is gone from the registry
+            st(jobs, b["job_id"])                                 # B's job is gone from the registry
     a.finish()
     assert a.error is not None and a.error.code in ("STALE_START", "CANCELLED_BEFORE_START")
     if wanted == "cancelled":
@@ -133,11 +151,11 @@ def test_i1_a_delayed_abandoned_start_is_refused_whatever_became_of_the_wanted_o
     elif wanted == "evicted":
         assert a.error.code == "STALE_START"                         # eviction did not make the late start valid
     if wanted == "running":
-        assert jobs.status(b["job_id"])["state"] == "running"        # B was neither cancelled nor replaced
+        assert st(jobs, b["job_id"])["state"] == "running"        # B was neither cancelled nor replaced
         gate.set()
         wait_state(jobs, b["job_id"], "succeeded")
     elif wanted == "completed":
-        assert jobs.status(b["job_id"])["state"] == "succeeded"
+        assert st(jobs, b["job_id"])["state"] == "succeeded"
 
 
 def test_i1_astra_repro_a_repeat_of_b_at_a_higher_seq_then_the_delayed_a(make, cube):
@@ -150,7 +168,7 @@ def test_i1_astra_repro_a_repeat_of_b_at_a_higher_seq_then_the_delayed_a(make, c
     assert err.extra["reason"] == "request id reused"
     a.finish()
     assert a.error.code == "STALE_START"                             # the watermark had already moved to 3
-    assert jobs.status(b["job_id"])["state"] == "succeeded"
+    assert st(jobs, b["job_id"])["state"] == "succeeded"
     refused(jobs, "STALE_START", cube, "req-B-000001", s, 3)         # the refused attempt is not an idempotent repeat
     ok = jobs.start(cube, "req-B-000004", s, 4)                      # recovery: fresh request_id, higher seq
     assert wait_state(jobs, ok["job_id"], "succeeded")["state"] == "succeeded"
@@ -164,7 +182,7 @@ def test_i1_a_stale_start_cannot_replace_a_running_wanted_start(make, cube):
     b = jobs.start(cube, "req-B-000002", s, 2)
     started.wait(10)
     a.finish()
-    assert a.error.code == "STALE_START" and jobs.status(b["job_id"])["state"] == "running"
+    assert a.error.code == "STALE_START" and st(jobs, b["job_id"])["state"] == "running"
     gate.set()
 
 
@@ -190,9 +208,9 @@ def test_i1_an_exact_retry_of_an_evicted_start_is_stale_and_replaces_nothing(mak
     assert started.wait(10)
     now[0] += 60.0
     with pytest.raises(sj.JobError):
-        jobs.status(first["job_id"])
+        st(jobs, first["job_id"])
     err = refused(jobs, "STALE_START", cube, "req-E-000001", s, 1, http=409)
-    assert jobs.status(other["job_id"])["state"] == "running"        # and it did not replace the running job
+    assert st(jobs, other["job_id"])["state"] == "running"        # and it did not replace the running job
     gate.set()
     wait_state(jobs, other["job_id"], "succeeded")
     assert err
@@ -220,7 +238,7 @@ def test_i1_a_higher_seq_never_silently_returns_an_old_job(make, cube):
     s = sess(jobs)
     j = jobs.start(cube, "req-R-000001", s, 1)
     refused(jobs, "INVALID_REQUEST", cube, "req-R-000001", s, 2, http=400)
-    assert jobs.status(j["job_id"])["request_id"] == "req-R-000001"
+    assert st(jobs, j["job_id"])["request_id"] == "req-R-000001"
 
 
 def test_i1_stale_and_cancel_are_decided_before_source_changed(make, cube, monkeypatch):
@@ -254,7 +272,6 @@ def test_i1_stale_and_cancel_are_decided_before_source_changed(make, cube, monke
             jobs.cancel_request(s, "req-A-000001", 1)
         else:
             now[0] += 500.0
-            jobs.cancel(a["job_id"])                                   # (the job is terminal; it still owns the session)
             jobs._jobs.pop(a["job_id"])
             jobs._by_request.pop((s, "req-A-000001"))                  # nothing registered: the session may now expire
             jobs._housekeeping()
@@ -297,7 +314,7 @@ def test_i2_a_cancelled_start_stays_refused_after_its_job_is_evicted_and_after_u
     wait_for(lambda: not jobs.worker_alive())
     now[0] += 100.0
     with pytest.raises(sj.JobError):
-        jobs.status(a["job_id"])                                       # the cancelled job is long gone
+        st(jobs, a["job_id"])                                       # the cancelled job is long gone
     for i in range(200):                                               # a great deal of unrelated cancel traffic
         jobs.cancel_request(s, f"req-noise-{i:05d}", 1)
     refused(jobs, "CANCELLED_BEFORE_START", cube, "req-A-000001", s, 1)
@@ -311,11 +328,11 @@ def test_i2_cancelling_a_never_touches_b(make, cube):
     a = jobs.start(cube, "req-A-000001", s, 1)
     started.wait(10)
     b = jobs.start(cube, "req-B-000002", s, 2)                         # replaces A as today
-    assert jobs.status(a["job_id"])["state"] == "cancelled"
+    assert st(jobs, a["job_id"])["state"] == "cancelled"
     jobs.cancel_request(s, "req-A-000001", 1)                           # cancelling A...
-    assert jobs.status(b["job_id"])["state"] in ("queued", "running")  # ...never touches B (exact request match)
+    assert st(jobs, b["job_id"])["state"] in ("queued", "running")  # ...never touches B (exact request match)
     jobs.cancel_request(s, "req-C-nonexistent", 1)
-    assert jobs.status(b["job_id"])["state"] in ("queued", "running")
+    assert st(jobs, b["job_id"])["state"] in ("queued", "running")
     out = jobs.cancel_request(s, "req-B-000002", 2)
     assert out["job_id"] == b["job_id"] and out["state"] == "cancelled"
     gate.set()
@@ -326,9 +343,9 @@ def test_i2_cancel_by_job_id_is_unchanged(make, cube):
     s = sess(jobs)
     j = jobs.start(cube, "req-J-000001", s, 1)
     wait_state(jobs, j["job_id"], "succeeded")
-    assert jobs.cancel(j["job_id"])["state"] == "succeeded"
+    assert cn(jobs, j["job_id"])["state"] == "succeeded"
     with pytest.raises(sj.JobError) as e:
-        jobs.cancel("0" * 32)
+        cn(jobs, "0" * 32)
     assert e.value.code == "EXPIRED"
 
 
@@ -341,11 +358,12 @@ def test_i3_the_same_request_id_in_two_sessions_gives_each_its_own_job_and_cance
     a = jobs.start(cube, "req-same-0001", s, 1)
     started.wait(10)
     b = jobs.start(cube, "req-same-0001", t, 1)                        # same request_id and path, another session
-    assert a["job_id"] != b["job_id"] and b["replaced_job_id"] == a["job_id"]
+    assert a["job_id"] != b["job_id"] and b["replaced_job_id"] is None      # H1: s's job id is not revealed to t
+    assert st(jobs, a["job_id"])["state"] == "cancelled"                     # (the newest start still replaces it, as before)
     assert jobs.start(cube, "req-same-0001", t, 1)["job_id"] == b["job_id"]      # idempotent inside its own scope
     out = jobs.cancel_request(s, "req-same-0001", 1)
     assert out["job_id"] == a["job_id"]
-    assert jobs.status(b["job_id"])["state"] in ("queued", "running")  # t's job untouched: no leak across sessions
+    assert st(jobs, b["job_id"])["state"] in ("queued", "running")  # t's job untouched: no leak across sessions
     assert jobs.cancel_request(t, "req-same-0001", 1)["job_id"] == b["job_id"]
     gate.set()
 
@@ -357,7 +375,7 @@ def test_i3_a_session_cannot_cancel_or_see_another_sessions_job_by_request(make,
     wait_state(jobs, j["job_id"], "succeeded")
     out = jobs.cancel_request(t, "req-own-00001", 1)
     assert out["job_id"] is None
-    assert jobs.status(j["job_id"])["state"] == "succeeded"
+    assert st(jobs, j["job_id"])["state"] == "succeeded"
     assert jobs.start(cube, "req-own-00001", s, 1)["job_id"] == j["job_id"]
 
 
@@ -422,7 +440,7 @@ def test_i4_every_start_cancel_and_status_touches_the_session(make, cube, how):
     wait_for(lambda: not jobs.worker_alive())
     now[0] += 90.0
     if how == "status":
-        jobs.status(j["job_id"])
+        st(jobs, j["job_id"])
     elif how == "cancel":
         jobs.cancel_request(s, "req-zzz-000001", 1)
     else:
@@ -556,7 +574,7 @@ def test_http_session_start_stale_cancel_and_expiry_shapes(server, tmp_path):  #
     assert code == 200 and not list(sub_validator("job_start").iter_errors(b))
     code, body = call(port, "/scene/start", {"path": path, "request_id": "req-A-http0001", "client_id": cid, "seq": 1}, token)
     assert (code, body["error"]) == (409, "STALE_START") and not list(sub_validator("error_response").iter_errors(body))
-    code, status = call(port, "/scene/status", {"job_id": b["job_id"]}, token)
+    code, status = call(port, "/scene/status", {"job_id": b["job_id"], "client_id": cid}, token)
     assert code == 200 and status["state"] != "cancelled"
     code, c = call(port, "/scene/cancel", {"client_id": cid, "request_id": "req-C-http0003", "seq": 3}, token)
     assert code == 200 and c["job_id"] is None and c["state"] == "cancelled" and not list(sub_validator("job_status").iter_errors(c))
@@ -583,3 +601,194 @@ def test_http_routes_reject_non_object_bodies_and_need_the_token(server):  # noq
     for route in sj.ROUTES:
         assert call(port, route, None, token)[0] == 400
         assert call(port, route, {}, None)[0] == 401
+
+
+# ================================================================== round: job-id ownership, post-admission failures
+
+def _unknown_body(jobs, call):
+    with pytest.raises(sj.JobError) as e:
+        call()
+    return (e.value.http, e.value.body())
+
+
+def test_h1_job_id_operations_are_session_owned_and_refused_exactly_like_unknown_ids(make, cube):
+    jobs = make()
+    a, b = sess(jobs), sess(jobs)
+    j = jobs.start(cube, "req-own-00001", a, 1)
+    wait_state(jobs, j["job_id"], "succeeded")
+    unknown = "0" * 32
+    for call_for in (lambda jid, cid: jobs.status(jid, cid), lambda jid, cid: jobs.result(jid, None, cid),
+                     lambda jid, cid: jobs.cancel(jid, cid)):
+        baseline = _unknown_body(jobs, lambda: call_for(unknown, b))
+        assert baseline[0] == 404 and baseline[1]["error"] == "EXPIRED"
+        assert _unknown_body(jobs, lambda: call_for(j["job_id"], b)) == baseline          # another session
+        assert _unknown_body(jobs, lambda: call_for(j["job_id"], None)) == baseline       # no credential at all
+        assert _unknown_body(jobs, lambda: call_for(j["job_id"], "x" * 24)) == baseline   # a never-issued id
+    assert jobs.status(j["job_id"], a)["state"] == "succeeded"                            # the owner still can
+    assert jobs.result(j["job_id"], None, a)[0] == 200 and jobs.cancel(j["job_id"], a)["state"] == "succeeded"
+
+
+def test_h1_a_foreign_cancel_by_job_id_does_not_cancel_anything(make, cube):
+    gate, started = threading.Event(), threading.Event()
+    jobs = make(builder=fake_builder(gate, started=started))
+    a, b = sess(jobs), sess(jobs)
+    j = jobs.start(cube, "req-own-00001", a, 1)
+    started.wait(10)
+    with pytest.raises(sj.JobError):
+        jobs.cancel(j["job_id"], b)
+    assert jobs.status(j["job_id"], a)["state"] == "running"
+    gate.set()
+
+
+def test_h1_replaced_job_id_never_leaks_across_sessions(make, cube):
+    gate, started = threading.Event(), threading.Event()
+    jobs = make(builder=fake_builder(gate, honor_cancel=True, started=started))
+    a, b = sess(jobs), sess(jobs)
+    ja = jobs.start(cube, "req-a-000001", a, 1)
+    started.wait(10)
+    jb = jobs.start(cube, "req-b-000001", b, 1)                       # another session replaces A's running job
+    assert jb["replaced_job_id"] is None                              # ...and learns nothing about it
+    assert jobs.status(ja["job_id"], a)["state"] == "cancelled"
+    jb2 = jobs.start(cube, "req-b-000002", b, 2)                      # the same session replacing its own job
+    assert jb2["replaced_job_id"] == jb["job_id"]
+    legacy = jobs.start(cube, "req-l-000001")                         # a legacy caller replacing a session job
+    assert legacy["replaced_job_id"] is None
+    legacy2 = jobs.start(cube, "req-l-000002")                        # legacy replacing legacy: as before
+    assert legacy2["replaced_job_id"] == legacy["job_id"]
+    sj_after_legacy = jobs.start(cube, "req-b-000003", b, 3)          # a session replacing a legacy job
+    assert sj_after_legacy["replaced_job_id"] is None
+    gate.set()
+
+
+def test_h1_legacy_jobs_keep_todays_behaviour_for_job_id_operations(make, cube):
+    jobs = make()
+    j = jobs.start(cube, "req-l-000001")
+    wait_state(jobs, j["job_id"], "succeeded")
+    assert jobs.status(j["job_id"])["state"] == "succeeded"
+    assert jobs.status(j["job_id"], sess(jobs))["state"] == "succeeded"       # no owner: any caller, as today
+    assert jobs.result(j["job_id"])[0] == 200 and jobs.cancel(j["job_id"])["state"] == "succeeded"
+
+
+def test_h1_http_routes_carry_the_credential(server, tmp_path):  # noqa: F811
+    port, token = server
+    path = str(fx.plain_cube_3mf(tmp_path / "h1.3mf"))
+    _, a = call(port, "/scene/session", {}, token)
+    _, b = call(port, "/scene/session", {}, token)
+    _, job = call(port, "/scene/start", {"path": path, "request_id": "req-h1-000001", "client_id": a["client_id"], "seq": 1}, token)
+    for route in ("/scene/status", "/scene/result", "/scene/cancel"):
+        missing = call(port, route, {"job_id": job["job_id"]}, token)
+        foreign = call(port, route, {"job_id": job["job_id"], "client_id": b["client_id"]}, token)
+        unknown = call(port, route, {"job_id": "0" * 32, "client_id": b["client_id"]}, token)
+        assert missing == foreign == unknown and missing[0] == 404 and missing[1]["error"] == "EXPIRED"
+        bad = call(port, route, {"job_id": job["job_id"], "client_id": None}, token)
+        assert bad[0] == 400
+    code, ok = call(port, "/scene/status", {"job_id": job["job_id"], "client_id": a["client_id"]}, token)
+    assert code == 200 and ok["job_id"] == job["job_id"]
+    code, both = call(port, "/scene/cancel", {"job_id": job["job_id"], "client_id": a["client_id"], "request_id": "req-h1-000001"}, token)
+    assert code == 400
+
+
+def test_h1_job_id_cancel_and_result_touch_the_owner_session(make, cube):
+    for how in ("cancel_job", "result"):
+        now = [0.0]
+        jobs = make(clock=lambda: now[0], session_ttl=100.0, ttl=100.0)
+        s = sess(jobs)
+        j = jobs.start(cube, "req-A-000002", s, 2)
+        wait_state(jobs, j["job_id"], "succeeded")
+        wait_for(lambda: not jobs.worker_alive())
+        now[0] += 90.0
+        (jobs.cancel(j["job_id"], s) if how == "cancel_job" else jobs.result(j["job_id"], None, s))
+        now[0] += 90.0
+        jobs.open_session()
+        jobs.open_session()
+        assert s in jobs._sessions, how
+
+
+def _wedge_then_recover(make, cube):
+    """A cancelled running job whose worker ignores the cancel, past the grace period: the engine is wedged."""
+    now = [0.0]
+    gate, started = threading.Event(), threading.Event()
+    jobs = make(clock=lambda: now[0], wedge_grace=10.0, builder=fake_builder(gate, honor_cancel=False, started=started))
+    s = sess(jobs)
+    late = HeldStart(jobs, cube, "req-late-0002", s, 2)               # attempt 2 is delayed in flight
+    first = jobs.start(cube, "req-one-00001", s, 1)
+    assert started.wait(10)
+    jobs.cancel_request(s, "req-one-00001", 1)                         # seq 1 running AND cancelled...
+    now[0] += 100.0
+    assert jobs.wedged()                                               # ...and the worker is stuck past the grace
+    return jobs, s, gate, late, first
+
+
+def test_h2_a_wedged_rejection_still_advances_the_watermark(make, cube):
+    jobs, s, gate, late, _ = _wedge_then_recover(make, cube)
+    refused(jobs, "WORKER_WEDGED", cube, "req-three-0003", s, 3, http=503)
+    gate.set()                                                         # the stuck call returns: the worker recovers
+    wait_for(lambda: not jobs.worker_alive())
+    late.finish()                                                      # the delayed seq 2 finally arrives
+    assert late.error is not None and late.error.code == "STALE_START"
+    assert jobs.retained() == 1                                        # only the seq-1 job: seq 2 registered nothing
+    refused(jobs, "STALE_START", cube, "req-three-0003", s, 3)         # an exact retry of the refused attempt is stale
+    ok = jobs.start(cube, "req-four-0004", s, 4)                       # the documented recovery: fresh request_id, higher seq
+    assert ok["state"] in ("queued", "running")
+
+
+def test_h2_unsupported_format_and_missing_file_also_advance_the_watermark(make, cube, tmp_path):
+    jobs = make()
+    s = sess(jobs)
+    late = HeldStart(jobs, cube, "req-late-0002", s, 2)
+    text = tmp_path / "notes.txt"
+    text.write_text("x")
+    refused(jobs, "UNSUPPORTED_FORMAT", str(text), "req-three-0003", s, 3, http=422)
+    late.finish()
+    assert late.error.code == "STALE_START"
+    late2 = HeldStart(jobs, cube, "req-late-0004", s, 4)
+    refused(jobs, "INVALID_REQUEST", str(tmp_path / "missing.3mf"), "req-five-0005", s, 5, http=400)
+    late2.finish()
+    assert late2.error.code == "STALE_START"
+    refused(jobs, "STALE_START", str(text), "req-old-00001", s, 1)                 # staleness is reported first and moves nothing
+    assert jobs._sessions[s].watermark == 5
+    assert jobs.retained() == 0
+
+
+# ------------------------------------------------------------------ Astra optionals
+
+def test_a_delayed_cancel_for_an_old_attempt_cannot_cancel_a_newer_job_that_reused_the_request_id(make, cube):
+    now = [0.0]
+    gate, started = threading.Event(), threading.Event()
+    calls = []
+
+    def builder(path, revision, ctl):
+        calls.append(1)
+        if len(calls) == 1:
+            return b"{}"
+        started.set()
+        while not gate.wait(0.005):
+            ctl.check()
+        return b"{}"
+    jobs = make(clock=lambda: now[0], ttl=10.0, builder=builder)
+    s = sess(jobs)
+    old = jobs.start(cube, "req-R-000001", s, 1)
+    wait_state(jobs, old["job_id"], "succeeded")
+    wait_for(lambda: not jobs.worker_alive())
+    now[0] += 60.0
+    with pytest.raises(sj.JobError):
+        st(jobs, old["job_id"])                                         # the old job was evicted
+    new = jobs.start(cube, "req-R-000001", s, 5)                        # the request id is reused at a higher seq
+    assert started.wait(10) and st(jobs, new["job_id"])["state"] == "running"
+    out = jobs.cancel_request(s, "req-R-000001", 1)                     # the delayed cancel for the OLD attempt
+    assert out["job_id"] is None
+    assert st(jobs, new["job_id"])["state"] == "running"                # the newer job is untouched
+    assert jobs.cancel_request(s, "req-R-000001", 5)["job_id"] == new["job_id"]
+    gate.set()
+
+
+def test_an_expired_session_whose_last_job_was_just_evicted_does_not_cause_session_limit(make, cube):
+    now = [0.0]
+    jobs = make(clock=lambda: now[0], max_sessions=1, session_ttl=50.0, ttl=50.0)
+    s = sess(jobs)
+    j = jobs.start(cube, "req-A-000001", s, 1)
+    wait_state(jobs, j["job_id"], "succeeded")
+    wait_for(lambda: not jobs.worker_alive())
+    now[0] += 500.0                                                     # the job AND the session expire together
+    fresh = jobs.open_session()                                         # one call: evict the job, then prune the session
+    assert fresh["client_id"] != s and s not in jobs._sessions
