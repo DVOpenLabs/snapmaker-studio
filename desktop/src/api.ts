@@ -22,6 +22,11 @@ async function apiInfo(): Promise<ApiInfo> {
   cached = await invoke<ApiInfo>("get_api_info");
   return cached;
 }
+// The engine's address and token for lib/scene.ts, whose calls need an AbortSignal the fixed-shape wrappers here do not take.
+export async function engineConnection(): Promise<{ base: string; token: string }> {
+  const { port, token } = await apiInfo();
+  return { base: `http://127.0.0.1:${port}`, token };
+}
 // Dev/screenshot-harness only: a sample file path from ?file= instead of the native picker.
 function devFilePath(): string | null {
   if ((import.meta as any).env?.DEV) return new URLSearchParams(location.search).get("file");

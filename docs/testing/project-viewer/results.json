@@ -1,0 +1,285 @@
+{
+  "schema": "project-viewer-results/1",
+  "base": "58d193a (PR 3a scene contract), branch feat/project-viewer, uncommitted",
+  "machine": {
+    "os": "Windows 11",
+    "browser": "Microsoft Edge 154.0.4258.62 (headless, playwright-core)",
+    "webgl": "ANGLE Direct3D 11 on a discrete NVIDIA GPU (hardware, not software rendering)"
+  },
+  "unit": {
+    "vitestFiles": 76,
+    "vitestTests": 879,
+    "failed": 0,
+    "tscErrors": 0,
+    "build": "npm run build OK"
+  },
+  "bundle": {
+    "baselineMainChunkBytes": 710447,
+    "baselineMainChunkGzip9": 189443,
+    "mainChunkBytes": 711409,
+    "mainChunkGzip9": 189839,
+    "mainChunkDeltaBytes": 962,
+    "mainChunkDeltaGzip": 396,
+    "lazyViewerChunkBytes": 888689,
+    "lazyViewerChunkGzip9": 243274,
+    "spikeReference": {
+      "bytes": 887866,
+      "gzip": 245773
+    },
+    "note": "Baseline built from git archive of 58d193a with the same Vite. gzip -9 by the gzip tool; Vite's own gzip column reads 245.44 kB for the lazy chunk."
+  },
+  "interaction": {
+    "facade": {
+      "eventsSeen": {
+        "camera": 185,
+        "pick": 4
+      },
+      "objectCentersBefore": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectCentersAfter": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectsDidNotMove": true,
+      "screenshotsByteIdentical": false
+    },
+    "controlWithUpstreamDefaultTool": {
+      "eventsSeen": {
+        "camera": 187,
+        "pick": 2,
+        "select": 2,
+        "transform": 11
+      },
+      "objectCentersBefore": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectCentersAfter": {
+        "b1": [
+          149.5,
+          109,
+          10
+        ],
+        "b0": [
+          194.189,
+          87.52,
+          10
+        ]
+      },
+      "objectsDidNotMove": false
+    }
+  },
+  "cyclesFacade50": {
+    "cycles": 50,
+    "contextsCreated": 100,
+    "contextsStillLive": 0,
+    "canvasesConnectedAfter": 0,
+    "canvasesCreatedByViewer": 150,
+    "detachedCanvasesWithLiveContext": 0,
+    "listenersLeftAfter": 0,
+    "listenersLeftByKind": {},
+    "liveObservers": 0,
+    "peakConnectedCanvases": 1,
+    "errors": []
+  },
+  "cyclesApp75": {
+    "listenersOnDetachedCanvases": 0,
+    "mountsAndUnmounts": 75,
+    "ofWhichShownBeforeUnmount": 50,
+    "contextsCreatedDuring": 102,
+    "contextsLiveAtEnd": 1,
+    "liveContextsAttachedToDetachedCanvas": 0,
+    "connectedCanvasesAtEnd": 1,
+    "connectedCanvasesBefore": 1,
+    "listenersOnConnectedTargets": 21,
+    "listenersByKind": {
+      "HTMLInputElement:invalid": 2,
+      "canvas:webglcontextlost": 2,
+      "canvas:webglcontextrestored": 1,
+      "canvas:webglcontextcreationerror": 1,
+      "canvas:pointerdown": 2,
+      "canvas:pointercancel": 2,
+      "canvas:contextmenu": 1,
+      "canvas:wheel": 2,
+      "document:keydown": 1,
+      "document:visibilitychange": 1,
+      "canvas:pointermove": 1,
+      "canvas:pointerup": 1,
+      "canvas:keydown": 1,
+      "canvas:keyup": 1,
+      "canvas:blur": 1,
+      "canvas:dblclick": 1
+    },
+    "liveObservers": 2,
+    "secondsForAllCycles": 25.452,
+    "panelStillWorks": true,
+    "clickOnModelSelectsRow": {
+      "x": 502,
+      "y": 228
+    },
+    "spaceTogglesRow": true,
+    "errors": []
+  },
+  "memory": {
+    "panelShownJsHeapBytes": 17485320,
+    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 38872844,
+    "note": "JS heap after forced GC. See README for the per-viewer growth measurement."
+  },
+  "perViewerJsHeapGrowthBytesPerCreateDispose": {
+    "emptyUpstreamViewport": 108185,
+    "upstreamViewportWithPlate": 115845,
+    "studioFacadeWithScene": 120590,
+    "appMountWithWebGl40Cycles": 263957,
+    "appMountWithoutWebGl40Cycles": 11135
+  },
+  "largeScene100kTriangles": {
+    "secondsUntilViewerWorking": 5.681,
+    "jsHeapBeforeBytes": 10418484,
+    "jsHeapAfterBytes": 17594252,
+    "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
+    "errors": []
+  },
+  "csp": {
+    "violations": [
+      "style-src-elem https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    ],
+    "consoleErrors": [
+      "Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' violates the following Content Security Policy directive: \"style-src 'self' 'unsafe-inline'\". Note "
+    ],
+    "offMachine": [],
+    "canvasCount": 1,
+    "viewerWorking": true,
+    "isProductionBuild": true,
+    "originalUnchanged": true,
+    "policy": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+  },
+  "originalFilesUnchanged": {
+    "offbed": true,
+    "grid": true,
+    "normal": true,
+    "stl": true,
+    "showcase": true,
+    "roles": true,
+    "plates": true,
+    "inch": true
+  },
+  "screenshots": {
+    "wide-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-light-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-normal": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-selected": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-slope": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-roles": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-stl": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-two-plates": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-inch": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "narrow-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "narrow-light-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "xnarrow-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-no-webgl": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": [
+        "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context."
+      ]
+    },
+    "narrow-light-no-webgl": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": [
+        "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context."
+      ]
+    },
+    "wide-dark-context-lost": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": []
+    }
+  },
+  "blockedRequestsInHarness": [
+    "POST /printer/status",
+    "POST /printer/capabilities"
+  ],
+  "notRun": [
+    "Packaged Windows Tauri via tools/acceptance/run.ps1",
+    "Linux WebKitGTK graphics-enabled lane",
+    "macOS WKWebView",
+    "screen reader",
+    "weak or software-rendered GPU",
+    "real printer (never used)"
+  ]
+}

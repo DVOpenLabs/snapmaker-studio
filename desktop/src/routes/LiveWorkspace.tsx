@@ -14,6 +14,7 @@ import { usePrinter } from "@/store/printer";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { StrategyPicker } from "@/components/StrategyPicker";
 import { DesignHealth } from "@/components/DesignHealth";
+import { ProjectSceneSection } from "@/components/project-scene/ProjectSceneSection";
 import { mesh as apiMesh, insights as apiInsights, toolheadFit as apiToolheadFit, report as apiReport } from "@/api";
 import { readinessView } from "@/lib/readiness";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
@@ -120,6 +121,8 @@ export default function LiveWorkspace() {
           </CardContent>
         </Card>
       )}
+
+      {doctor.status === "done" && <ProjectSceneSection path={file.path} wide />}
 
       {doctor.status === "done" && meshQ.data?.available && (
         <Card>

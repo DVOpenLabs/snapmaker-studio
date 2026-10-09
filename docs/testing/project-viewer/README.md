@@ -1,0 +1,140 @@
+# Read-only project view (PR 3b)
+
+Studio now shows a 3D, read-only view of the project the user opened, drawn from the engine's `scene/1`
+contract (`docs/testing/scene-contract/README.md`). It appears on the project page in Simple mode
+(`DesignInsights`) and in Advanced mode (`LiveWorkspace`), after the Doctor has finished, and loads its code only
+when first shown.
+
+It shows the objects, the bed, the engine's placement and size notes, a list of what the view cannot tell you,
+camera buttons, and a slope view. It never edits, moves, cuts, paints or saves anything.
+
+Everything below was measured on one machine (Windows 11, Microsoft Edge 154 headless through playwright-core, WebGL on
+a discrete NVIDIA GPU through ANGLE/Direct3D 11). Raw numbers are in `results.json`; images are in `screenshots/`
+(anonymous repository examples and synthetic fixtures only; each image is the panel, so no file path appears).
+
+## What was and was not run
+
+| Check | Status |
+|---|---|
+| `npx tsc --noEmit` | 0 errors |
+| `npm run test` (vitest) | 76 files, 879 tests, 0 failed (includes the existing prepare-copy guard) |
+| `npm run build` | passes |
+| Real-browser run, dev server, real engine, real WebGL, light and dark, wide and narrow | run (this folder) |
+| Production build served with the app's real Tauri CSP | run: viewer works, no violation from the viewer |
+| **Packaged Windows Tauri via `tools/acceptance/run.ps1`** | **NOT RUN.** The lane installs a rewrapped release installer with an attestation; this branch has no released installer, and building one (frozen sidecar, Tauri bundle, rewrap) was not attempted here. Edge is the same engine family as WebView2, but WebView2 inside the Tauri window was not exercised. |
+| **Linux WebKitGTK graphics-enabled lane** | **NOT RUN.** No Linux desktop with a graphics session was available. The existing lane disables compositing, so it would need a graphics-enabled variant. |
+| macOS, screen reader, software-rendered or weak GPU, a real printer | not run (a printer is never used) |
+
+Do not read the browser results as proof for the packaged apps. They show the code works in a Chromium browser with
+hardware WebGL.
+
+## How read-only is enforced
+
+The vendored SlicerX viewport (`desktop/src/vendor/slicerx/UPDATING.md`) still contains its editing code (move, rotate,
+scale, paint, cut, sketch), because its entry class imports and constructs it. That code is **in the bundle**; it was
+not removed. Studio cannot reach it:
+
+* One facade, `components/project-scene/readOnlyViewport.ts`, is the only door. It never returns the viewport
+  handle, sets the tool to `probe` once (a click only reports what is under the cursor), and offers only: show,
+  select, camera preset, slope view, theme, pick and trouble callbacks, dispose.
+* Type-level test: editing calls (`setTool`, `setPlate`, `setPaintSettings`, `setCutPlane`, `setTransforms`, `arrange`,
+  raw handle, unknown camera preset) do not type-check on the facade (`@ts-expect-error` lines in
+  `readOnlyViewport.test.ts`, enforced by `tsc`).
+* Source scan (`readOnly.guard.test.ts`): only `defaultViewport.ts` imports the viewport factory; only the vendor
+  `entry.ts` is imported; `setTool("probe")` is the only tool call; no edit event is subscribed; the facade's
+  allowed-member list is pinned; no file-writing API, Tauri call or `fetch` is used in the view's code.
+* UI test: no button in the panel is named move, rotate, scale, paint, cut and so on, and the panel has no input.
+* Real input: with the facade on the real viewport, a script sends left, right and middle drags with no modifier and
+  with Shift, Control, Alt, Shift+Control and Shift+Alt, Space+drag, double click, wheel (also with each modifier) and 21
+  key presses (Delete, Backspace, R, S, M, P, C, X, B, F, Enter, arrows, Control+Z/Y/C/V/A, Escape). The viewport
+  emitted only `camera` (185) and `pick` (4) events. The center of each object, read through the viewport's own hit test
+  before and after, was identical (`b0` 109.5, 109, 10 and `b1` 149.5, 109, 10).
+  **Control run:** the same input on the same viewport with its upstream default tool did move an object (center
+  109.5, 109, 10 became 193.279, 87.669, 10; 11 `transform` events), so the check can fail.
+  Screenshots before and after were not byte identical in either run (adaptive quality and effects settle over time), so
+  pixel equality is not claimed; the geometry check above is the evidence.
+* Original files: every fixture was hashed before and after all runs (including a 100,000-triangle project): unchanged.
+  The engine only reads the file (backend tests in the PR 3a folder compare bytes and modification time as well).
+
+## What the view claims, and does not
+
+* Highlighting comes only from engine findings keyed to node ids. A finding naming an unknown node, or any finding when
+  the scene cannot prove placement, stays a project-level note and highlights nothing.
+* Highlighting is off, with the reason in words, when a source unit is not millimeters, the project has more than one
+  plate, any object's placement is unknown (STL files, models with no build item), or the bed outline fell back.
+  Screenshots: `wide-dark-inch`, `wide-dark-two-plates`, `wide-dark-stl`.
+* Position claims say "Placement". The word "fits" is never produced (a test scans every finding and limitation string,
+  and also for "ready", "guarantee", "100%", "safe", "best", "clean"). The slope label is exactly
+  "Geometric slope visualization - review supports in Orca."
+* The physical bed edge and the 0.5 mm policy margin are told apart: the engine measures past the margin line, so the
+  note says how far past the bed edge, or that the object is inside the bed but within the margin. The margin is also
+  drawn as a faint inner outline, and the bed outline turns orange only for a placement note.
+* The view is advisory. It does not say anything prints, and its footer points to Snapmaker Orca for placement and
+  supports.
+
+## Lifecycle evidence (real WebGL)
+
+* **Facade, 50 create/dispose cycles** (each with a fresh canvas): 0 connected canvases left, 0 viewer-created canvases
+  with a live context, 0 listeners left (all `addEventListener` calls counted, including `once`), 0 live observers,
+  never more than one canvas in the page. Contexts created: 100 (two per viewer, one is transient); still live at the end: 0.
+* **App, the real panel mounted and unmounted 75 times under React StrictMode** (50 waited until the 3D view was
+  working, 25 unmounted while still loading): 1 connected canvas at the end (the live one), 0 listeners on detached
+  canvases, 1 live context, 2 live observers (the one live viewer's), 21 listeners on connected targets (19 are the one
+  live viewer's; 2 are `invalid` listeners of unrelated input elements; counts by type in `results.json`); the panel still
+  worked afterwards. 51 viewers were actually created over the 75 mounts (the rest unmounted before the scene arrived).
+* A first version of this check found two real defects, both fixed and now tested: (1) when React unmounts a route it
+  removes the DOM before passive cleanup runs, and three.js then fails to remove a document-level keydown listener
+  (18 leaked in 75 cycles); the controller now disposes the viewer with its canvas attached. (2) Two scene starts sent
+  back to back (StrictMode) could be handled by the engine in the opposite order, so the newer view's job came back
+  "cancelled" after about 23 cycles; starts now leave one at a time, in order, and a start whose caller gave up is never sent.
+  After the fixes three full runs showed no stuck view.
+* Closing a view aborts the browser requests and sends an authenticated `/scene/cancel`. The start/start/cancel/status/
+  result sequence under StrictMode was observed on the wire, with no `BUSY`.
+* Stale answers are dropped by generation and path (`sceneController.test.ts`, including A, then B, then A).
+* No WebGL: the context-creation failure is caught; the object list and notes stay, the camera buttons are disabled, and
+  **Retry 3D view** builds a new canvas. A lost context (forced with `WEBGL_lose_context`) shows the same panel with a
+  different message and Retry builds a different canvas. Screenshots: `wide-dark-no-webgl`, `narrow-light-no-webgl`,
+  `wide-dark-context-lost`.
+* Keyboard: every control is a real `<button>`; the object rows toggle with Space (asserted); Enter was pressed on a camera button in the run
+  (no failure, not asserted); focus rings come from the shared button style. A click on the model in the 3D view selects its
+  row in the list (`wide-dark-picked-by-click`).
+
+## Memory and size
+
+* Bundle: the main chunk grew by 962 bytes (396 gzipped) for the mount code; the lazy viewer chunk is 888,689 bytes,
+  243,274 gzipped (`gzip -9`); the spike measured 887,866 and 245,773. Baseline built from `58d193a` with the same Vite.
+* Large scene: a 99,458-triangle project took 5.7 s from pressing Open to a working view (including the Doctor run and the
+  engine job) and the page's JS heap grew from 10.4 MB to 17.6 MB (`large-100k`).
+* **Finding, not fixed:** creating and disposing the vendored viewport retains about 108 KB of JS heap each time, even
+  with an empty plate (empty viewport 108 KB, with plate 116 KB, through Studio's facade 121 KB; forced GC each time,
+  linear over 150 cycles). GPU contexts are released. In the app, 75 mounts (51 viewers created) grew the heap from 17.5 MB to 38.9 MB. Mounting the panel 40 more times
+  with WebGL turned off (so everything of Studio's except the viewer runs) grew it by 11 KB per mount; with the
+  viewer it was 264 KB per mount. So the growth is almost all inside the vendored viewport and three.js; the cause
+  was not isolated. A
+  user opening many projects in one session would see slow growth. Not addressed here to avoid patching the pinned source.
+
+## CSP and licensing
+
+* `src-tauri/tauri.conf.json` is unchanged. The vendored source has no network, worker, `eval`, `new Function` or blob use
+  (source search). The production build was served with the real CSP header (`script-src 'self'`, no inline script): the
+  viewer ran and the only violation was the existing Google Fonts `@import` in `index.css`, which the CSP already blocked
+  before this change.
+* three 0.186.1 (MIT) and the SlicerX viewport (Apache-2.0, "Made possible by SlicerX") are in `THIRD_PARTY_NOTICES.md`;
+  provenance and every local patch are in `desktop/src/vendor/slicerx/UPDATING.md`.
+
+## Known limits
+
+* Object names are "Object 1, 2, ..." in file order; the scene contract carries no display names.
+* The extreme-narrow screenshot (390 px window) is cramped because the app shell's sidebar leaves about 100 px; the
+  app's own default window (820 px) is the realistic minimum and renders cleanly (`narrow-*`).
+* The harness blocked the app's own `/printer/status` and `/printer/capabilities` polling so no printer was contacted;
+  those calls are not from the 3D view.
+* Not covered by the scene or this view: material colors, painted regions, multi-plate geometry checks, orientation advice.
+
+## Reproduce
+
+Scripts used for this run are scratch files, not part of the repository. Outline: start the engine (`python -m
+snapstudio_api` with its own data directory), start `npm run dev`, open Edge through playwright-core at
+`/?api=<port>:<token>&file=<example>`, press Open, wait for the panel. The fixtures were the repository examples
+(`demo_offplate_foreign.3mf`, `sample_cube_U1.3mf`, `sample_cube.stl`) and four synthetic projects made with
+`backend/tests/scene_fixtures.py` (three roles, two plates, inches, 100,000 triangles).

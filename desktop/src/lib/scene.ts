@@ -1,0 +1,285 @@
+// Client for the engine's scene/1 contract (backend/snapstudio_core/data/scene-1.schema.json). Read-only: it asks the
+// engine to describe a project, follows the job, and hands back the finished scene. Nothing here edits a file.
+import { engineConnection } from "@/api";
+
+export type UnitName = "micron" | "millimeter" | "centimeter" | "inch" | "foot" | "meter";
+export type VolumeRole = "part" | "modifier" | "negative" | "support_enforcer" | "support_blocker" | "unknown";
+export type ResourceKey = { part: string; object_id: string };
+export type Bounds = { min: number[]; max: number[] } | null;
+
+export type SceneVolume = {
+  id: string; triangle_start: number; triangle_count: number; role: VolumeRole;
+  source: "prusa_range" | "bambu_part" | "object" | null;
+};
+export type SceneMesh = {
+  key: ResourceKey; vertex_count: number; triangle_count: number;
+  positions_f32le_base64: string; indices_u32le_base64: string; volumes: SceneVolume[];
+};
+export type ScenePlateRef = { state: "known" | "ambiguous" | "unknown"; plate_id: string | null; source: "plate_config" | null };
+export type SceneNode = {
+  id: string; parent_id: string | null; resource: ResourceKey; mesh_key: ResourceKey | null;
+  local_to_parent_mm: number[]; world_mm: number[]; mirrored: boolean; role_context: VolumeRole | null;
+  build_index: number | null; instance_ref: { build_index: number | null; component_path: number[] };
+  plate: ScenePlateRef; placement_state: "known" | "unknown"; printable: boolean | null;
+  has_non_part_volumes: boolean; bounds_mm: Bounds; finding_ids: string[];
+};
+export type SceneFinding = {
+  id: string; engine: string; schema: string; pointer: string; scope: "project" | "plate" | "instance";
+  kind: "placement" | "size" | "note"; target_ids: string[];
+  value: {
+    code: "PLACEMENT_OUTSIDE_BED" | "SIZE_EXCEEDS_BED";
+    overhang_mm: { left: number; right: number; front: number; back: number } | null;
+  };
+};
+export type LimitationCode =
+  | "UNKNOWN_VOLUME_ROLE" | "UNKNOWN_PLACEMENT" | "PLATE_MEMBERSHIP_AMBIGUOUS" | "PLATE_MEMBERSHIP_UNKNOWN"
+  | "PLATES_UNAVAILABLE" | "BED_TEMPLATE_UNAVAILABLE" | "REPEATED_INSTANCE_PLACEMENT_UNVERIFIED"
+  | "NON_MM_SOURCE_UNIT" | "UNSUPPORTED_UNIT" | "MULTI_PLATE_PLACEMENT_UNCHECKED" | "NO_BUILD_ITEMS";
+export type SceneLimitation = { code: LimitationCode; target_ids: string[] };
+export type SceneBed = {
+  polygon_mm: number[][]; height_mm: number | null; edge_margin_mm: number; policy: "u1_template" | "fallback";
+};
+export type SceneV1 = {
+  schema: "scene/1"; revision: string; status: "complete" | "partial"; units: "mm"; axes: "right-handed-z-up";
+  sources: { part: string; unit: UnitName; mm_per_unit: number }[];
+  bed: SceneBed; meshes: SceneMesh[]; nodes: SceneNode[];
+  plates: { id: string; ui_number: number | null; origin_mm: number[] | null }[];
+  findings: SceneFinding[]; limitations: SceneLimitation[];
+  counts: Record<"nodes" | "meshes" | "vertices" | "triangles" | "rendered_triangles" | "plates" | "findings" | "limitations", number>;
+  limits: Record<string, number>;
+};
+
+export type JobState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type JobStage = "reading" | "parsing" | "encoding" | null;
+export type SceneErrorCode =
+  | "INVALID_REQUEST" | "UNSUPPORTED_FORMAT" | "INVALID_ARCHIVE" | "INVALID_GEOMETRY" | "UNRESOLVED_REFERENCE"
+  | "LIMIT_EXCEEDED" | "SOURCE_CHANGED" | "CANCELLED" | "TIMEOUT" | "EXPIRED" | "NOT_READY" | "WORKER_WEDGED" | "INTERNAL"
+  // Client-side only: the engine could not be reached, or sent something that is not a scene/1 document.
+  | "UNREACHABLE" | "BAD_RESPONSE";
+export type JobStatus = {
+  job_id: string; request_id: string; state: JobState; stage: JobStage; completed: number | null; total: number | null;
+  error: { code: SceneErrorCode; message: string } | null; revision: string | null;
+};
+export type SceneProgress = { state: JobState; stage: JobStage; completed: number | null; total: number | null };
+
+export class SceneError extends Error {
+  readonly code: SceneErrorCode;
+  constructor(code: SceneErrorCode) {
+    super(code);
+    this.name = "SceneError";
+    this.code = code;
+  }
+}
+
+// Plain-language text for each failure. The engine's own message is never shown: it can carry file names.
+const ERROR_TEXT: Record<SceneErrorCode, string> = {
+  INVALID_REQUEST: "The engine could not understand the request for the 3D view.",
+  UNSUPPORTED_FORMAT: "The 3D view supports 3MF and STL files only.",
+  INVALID_ARCHIVE: "This file could not be read as a 3MF project, so there is no 3D view.",
+  INVALID_GEOMETRY: "This file has geometry the 3D view cannot read, so there is no 3D view.",
+  UNRESOLVED_REFERENCE: "This project points at a part that is not in the file, so the 3D view cannot show it.",
+  LIMIT_EXCEEDED: "This project is larger than the 3D view can show. The rest of Studio still works on it.",
+  SOURCE_CHANGED: "The file changed while it was being read. Try again once it has finished saving.",
+  CANCELLED: "The 3D view was cancelled.",
+  TIMEOUT: "Reading the project took too long, so the 3D view was stopped.",
+  EXPIRED: "The 3D view result was discarded by the engine. Try again.",
+  NOT_READY: "The 3D view is still being prepared. Try again in a moment.",
+  WORKER_WEDGED: "The engine is still busy with an earlier 3D view. Wait a few seconds and try again.",
+  INTERNAL: "The engine hit an unexpected problem while building the 3D view.",
+  UNREACHABLE: "Studio could not reach the local engine, so there is no 3D view.",
+  BAD_RESPONSE: "The engine sent a 3D view Studio does not understand.",
+};
+export function sceneErrorText(code: SceneErrorCode): string {
+  return ERROR_TEXT[code] ?? ERROR_TEXT.INTERNAL;
+}
+
+const KNOWN_CODES = new Set<string>(Object.keys(ERROR_TEXT));
+function asCode(value: unknown): SceneErrorCode {
+  return typeof value === "string" && KNOWN_CODES.has(value) ? (value as SceneErrorCode) : "INTERNAL";
+}
+
+/** One engine call: POST a JSON body to a scene route and return the parsed body with its HTTP status. */
+export type SceneTransport = (
+  route: "start" | "status" | "result" | "cancel", body: unknown, signal?: AbortSignal,
+) => Promise<{ status: number; body: unknown }>;
+
+export const defaultTransport: SceneTransport = async (route, body, signal) => {
+  let connection: { base: string; token: string };
+  try {
+    connection = await engineConnection();
+  } catch {
+    throw new SceneError("UNREACHABLE");
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${connection.base}/scene/${route}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Auth-Token": connection.token },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new SceneError("UNREACHABLE");
+  }
+  let parsed: unknown = null;
+  try { parsed = await response.json(); } catch { /* an empty or non-JSON body is handled by the caller */ }
+  return { status: response.status, body: parsed };
+};
+
+export function newRequestId(): string {
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (c?.getRandomValues) c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const STATES = new Set(["queued", "running", "succeeded", "failed", "cancelled"]);
+
+function readStatus(body: unknown): JobStatus {
+  if (!isObject(body) || typeof body.job_id !== "string" || typeof body.state !== "string" || !STATES.has(body.state)) {
+    throw new SceneError("BAD_RESPONSE");
+  }
+  return body as unknown as JobStatus;
+}
+
+function errorFromResponse(status: number, body: unknown): SceneError {
+  if (isObject(body) && "error" in body) return new SceneError(asCode(body.error));
+  return new SceneError(status >= 500 ? "INTERNAL" : "BAD_RESPONSE");
+}
+
+/** Asks the engine to stop a job. Best effort and silent: it runs from cleanup paths that must never throw. */
+export function cancelSceneJob(jobId: string, transport: SceneTransport = defaultTransport): void {
+  void transport("cancel", { job_id: jobId }).catch(() => undefined);
+}
+
+export type LoadSceneOptions = {
+  signal: AbortSignal;
+  /** A fresh id per scene generation, so a cancelled earlier job is never handed back. */
+  requestId?: string;
+  onProgress?: (p: SceneProgress) => void;
+  pollMs?: number;
+  transport?: SceneTransport;
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+};
+
+function abortError(): Error {
+  const e = new Error("aborted");
+  e.name = "AbortError";
+  return e;
+}
+export const isAbort = (e: unknown): boolean => isObject(e) && (e as { name?: unknown }).name === "AbortError";
+
+function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(abortError());
+    const t = setTimeout(() => { signal.removeEventListener("abort", onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(t); reject(abortError()); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// Scene starts leave one at a time, in the order they were requested. The engine handles requests on separate threads, so
+// two starts sent back to back (React StrictMode's start, cancel, start) could be handled in the opposite order, and the
+// newer view's job would then be replaced by the older one's and come back cancelled.
+let startTurn: Promise<unknown> = Promise.resolve();
+function inTurn<T>(task: () => Promise<T>): Promise<T> {
+  const run = startTurn.then(task, task);
+  startTurn = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Starts a scene job for `path`, follows it, and resolves with the scene. If `signal` aborts, the browser requests are
+ * aborted AND the engine is told to cancel the job (aborting a request alone does not stop work in the engine); the
+ * promise then rejects with an AbortError. Every other failure rejects with a SceneError.
+ */
+export async function loadScene(path: string, opts: LoadSceneOptions): Promise<SceneV1> {
+  const { signal } = opts;
+  const transport = opts.transport ?? defaultTransport;
+  const sleep = opts.sleep ?? defaultSleep;
+  const pollMs = opts.pollMs ?? 250;
+  if (signal.aborted) throw abortError();
+
+  // The start call is not tied to the signal: if it were aborted mid-flight the job id would be lost and the job
+  // could not be cancelled. It is a short call; the signal is checked as soon as it returns.
+  const started = await inTurn(async () => {
+    // A caller that gave up while waiting its turn never starts a job at all.
+    if (signal.aborted) return null;
+    return transport("start", { path, request_id: opts.requestId ?? newRequestId() });
+  });
+  if (started === null) throw abortError();
+  if (started.status !== 200) throw errorFromResponse(started.status, started.body);
+  const job = readStatus(started.body);
+  const jobId = job.job_id;
+  const onAbort = () => cancelSceneJob(jobId, transport);
+  if (signal.aborted) { onAbort(); throw abortError(); }
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    let status = job;
+    for (;;) {
+      if (signal.aborted) throw abortError();
+      opts.onProgress?.({ state: status.state, stage: status.stage, completed: status.completed, total: status.total });
+      if (status.state === "succeeded") break;
+      if (status.state === "failed") throw new SceneError(asCode(status.error?.code));
+      if (status.state === "cancelled") throw new SceneError("CANCELLED");
+      await sleep(pollMs, signal);
+      const polled = await transport("status", { job_id: jobId }, signal);
+      if (polled.status !== 200) throw errorFromResponse(polled.status, polled.body);
+      status = readStatus(polled.body);
+    }
+    const result = await transport(
+      "result", { job_id: jobId, ...(status.revision ? { expected_revision: status.revision } : {}) }, signal,
+    );
+    if (signal.aborted) throw abortError();
+    if (result.status !== 200) throw errorFromResponse(result.status, result.body);
+    if (!isObject(result.body) || result.body.schema !== "scene/1" || !Array.isArray(result.body.nodes)) {
+      throw new SceneError("BAD_RESPONSE");
+    }
+    return result.body as unknown as SceneV1;
+  } catch (error) {
+    if (signal.aborted && !isAbort(error)) throw abortError();
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+// ---- Geometry helpers -------------------------------------------------------------------------------------------
+
+function base64Bytes(text: string): Uint8Array {
+  const binary = atob(text);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/** Decodes one mesh's little-endian float32 positions and uint32 indices. Throws BAD_RESPONSE when sizes disagree. */
+export function decodeMesh(mesh: SceneMesh): { positions: Float32Array; indices: Uint32Array } {
+  let positionBytes: Uint8Array;
+  let indexBytes: Uint8Array;
+  try {
+    positionBytes = base64Bytes(mesh.positions_f32le_base64);
+    indexBytes = base64Bytes(mesh.indices_u32le_base64);
+  } catch {
+    throw new SceneError("BAD_RESPONSE");
+  }
+  if (positionBytes.length !== mesh.vertex_count * 12 || indexBytes.length !== mesh.triangle_count * 12) {
+    throw new SceneError("BAD_RESPONSE");
+  }
+  // Copy into aligned buffers: a Uint8Array view from atob has no alignment promise, and the data is little endian.
+  const positions = new Float32Array(mesh.vertex_count * 3);
+  const indices = new Uint32Array(mesh.triangle_count * 3);
+  const pv = new DataView(positionBytes.buffer, positionBytes.byteOffset, positionBytes.byteLength);
+  const iv = new DataView(indexBytes.buffer, indexBytes.byteOffset, indexBytes.byteLength);
+  for (let i = 0; i < positions.length; i++) positions[i] = pv.getFloat32(i * 4, true);
+  for (let i = 0; i < indices.length; i++) {
+    const v = iv.getUint32(i * 4, true);
+    if (v >= mesh.vertex_count) throw new SceneError("BAD_RESPONSE");
+    indices[i] = v;
+  }
+  return { positions, indices };
+}

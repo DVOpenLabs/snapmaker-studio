@@ -1,12 +1,63 @@
 # Third-party notices
 
 Snapmaker Studio is MIT licensed and contains no third-party source code beyond
-its declared package dependencies. This file records the other things a project
+its declared package dependencies and the vendored 3D viewport recorded under
+"Code included in the app" below. This file records the other things a project
 can owe: **facts learned from other people's documentation**, and the boundary
 Studio keeps around licences it cannot mix with.
 
 `docs/innovation-fund/COMPETITOR_MATRIX.md` states the rule Studio operates
 under. This file is Studio holding itself to it.
+
+---
+
+## Code included in the app
+
+### three.js · MIT
+
+`three` 0.186.1, pinned exactly, is a declared dependency of the desktop app and is
+bundled into the lazily loaded 3D project view (`desktop/package.json`). Its types come
+from `@types/three` 0.186.0 (MIT, development only, not shipped).
+
+> The MIT License
+>
+> Copyright © 2010-2026 three.js authors
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this
+> software and associated documentation files (the "Software"), to deal in the Software
+> without restriction, including without limitation the rights to use, copy, modify, merge,
+> publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+> to whom the Software is furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or
+> substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+> INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+> PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+> FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+> OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+> DEALINGS IN THE SOFTWARE.
+
+### SlicerX viewport · Apache-2.0
+
+**Made possible by SlicerX** — <https://slicerx.app/support>
+
+The read-only 3D project view draws with the framework-free viewport from
+<https://github.com/slicerx-oss/slicerx> (`packages/ui/viewport`, Copyright (C) 2026 The
+SlicerX contributors), vendored at commit `edb521fe41306dd60d01bda8a0f6bf8aa54fcb29` under
+`desktop/src/vendor/slicerx/`, together with the SXPV and plate type definitions it imports
+from `packages/contracts`. Both are Apache-2.0; the licence text and SlicerX's own NOTICE are
+kept beside the source (`LICENSE-APACHE`, `NOTICE`). Studio's local changes are listed in
+`desktop/src/vendor/slicerx/UPDATING.md`.
+
+What this does and does not include: only the viewport and the contract types are vendored.
+SlicerX's slicing engine, profiles, printer pictures and other AGPL-licensed data are **not**
+part of Studio. The vendored viewport still contains SlicerX's editing code (move, rotate,
+scale, paint, cut, sketch) because its entry class imports it; Studio never calls it. The 3D
+view is read-only and reaches the viewport only through
+`desktop/src/components/project-scene/readOnlyViewport.ts`. "SlicerX" and its logo are
+trademarks of the SlicerX project; Studio is not affiliated with or endorsed by SlicerX.
 
 ---
 
