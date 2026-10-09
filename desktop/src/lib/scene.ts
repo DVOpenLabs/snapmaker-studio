@@ -146,6 +146,15 @@ function readStatus(body: unknown): JobStatus {
   return body as unknown as JobStatus;
 }
 
+/** What /scene/start answers: a job's identity and state only. It carries no stage, progress or error. */
+export type JobStart = {
+  job_id: string; request_id: string; state: JobState; revision: string | null; replaced_job_id: string | null;
+};
+
+function readStart(body: unknown): JobStart {
+  return readStatus(body) as unknown as JobStart;
+}
+
 function errorFromResponse(status: number, body: unknown): SceneError {
   if (isObject(body) && "error" in body) return new SceneError(asCode(body.error));
   return new SceneError(status >= 500 ? "INTERNAL" : "BAD_RESPONSE");
@@ -265,23 +274,37 @@ export async function loadScene(path: string, opts: LoadSceneOptions): Promise<S
   });
   if (started === null) throw abortError();
   if (started.status !== 200) throw errorFromResponse(started.status, started.body);
-  const job = readStatus(started.body);
+  const job = readStart(started.body);
   const jobId = job.job_id;
   const onAbort = () => cancelSceneJob(jobId, transport);
   if (signal.aborted) { onAbort(); throw abortError(); }
   signal.addEventListener("abort", onAbort, { once: true });
   try {
-    let status = job;
+    // The start answer has no progress or error fields, so it becomes a status with those unknown (null).
+    let status: JobStatus = {
+      job_id: job.job_id, request_id: job.request_id, state: job.state, stage: null, completed: null, total: null, error: null, revision: job.revision,
+    };
+    let fromStart = true;
     for (;;) {
       if (signal.aborted) throw abortError();
       opts.onProgress?.({ state: status.state, stage: status.stage, completed: status.completed, total: status.total });
       if (status.state === "succeeded") break;
-      if (status.state === "failed") throw new SceneError(asCode(status.error?.code));
+      if (status.state === "failed") {
+        // Asking again with a request id the engine still holds returns a failed job without its reason; fetch it.
+        if (fromStart) {
+          const why = await limited((s) => transport("status", { job_id: jobId }, s), signal, requestMs);
+          if (why.status !== 200) throw errorFromResponse(why.status, why.body);
+          status = readStatus(why.body);
+          fromStart = false;
+        }
+        throw new SceneError(asCode(status.error?.code));
+      }
       if (status.state === "cancelled") throw new SceneError("CANCELLED");
       await sleep(pollMs, signal);
       const polled = await limited((s) => transport("status", { job_id: jobId }, s), signal, requestMs);
       if (polled.status !== 200) throw errorFromResponse(polled.status, polled.body);
       status = readStatus(polled.body);
+      fromStart = false;
     }
     const result = await limited(
       (s) => transport("result", { job_id: jobId, ...(status.revision ? { expected_revision: status.revision } : {}) }, s),

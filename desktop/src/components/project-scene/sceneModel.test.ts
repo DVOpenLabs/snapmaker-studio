@@ -1,3 +1,4 @@
+import { BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { buildModel, buildViewScene, findingText, highlightGate, limitationText, COLORS } from "./sceneModel";
 import { node, offBedScene, scene, cubeMesh } from "./sceneFixtures";
@@ -165,11 +166,38 @@ describe("geometry for the viewer", () => {
     expect(v.objects[1].parts.map((p) => p.color)).toEqual([COLORS.other]);
   });
 
-  it("flips triangle winding for a mirrored instance only", () => {
-    const s = scene({ nodes: [node("b0", "1", 0, 0), node("b1", "1", 50, 0, { mirrored: true })] });
+  it("keeps the triangle order of a mirrored instance, and a real reflection still picks the top face", () => {
+    // A true reflection across X: negative determinant, world matrix column-major, translation (60, 40, 0).
+    const reflect = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 60, 40, 0, 1];
+    const mirroredNode = node("b1", "1", 60, 40, { mirrored: true, world_mm: reflect, local_to_parent_mm: reflect });
+    const s = scene({ nodes: [node("b0", "1", 0, 0), mirroredNode] });
     const v = buildViewScene(s, buildModel(s));
-    const a = v.objects[0].parts[0].indices, b = v.objects[1].parts[0].indices;
-    expect([a[1], a[2]]).toEqual([b[2], b[1]]);
-    expect(a[0]).toBe(b[0]);
+    const plain = v.objects[0].parts[0].indices, mirrored = v.objects[1].parts[0].indices;
+    expect(Array.from(mirrored)).toEqual(Array.from(plain)); // not reversed a second time
+
+    const pick = (o: (typeof v.objects)[number], x: number, y: number) => {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute("position", new BufferAttribute(o.parts[0].positions, 3));
+      geometry.setIndex(new BufferAttribute(o.parts[0].indices, 1));
+      const mesh = new Mesh(geometry, new MeshBasicMaterial()); // default side: front faces only
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.fromArray(o.transform);
+      mesh.updateMatrixWorld(true);
+      const hits = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1)).intersectObject(mesh);
+      return { det: mesh.matrixWorld.determinant(), hits };
+    };
+    // The view moves the bed corner (0.5, 1) to the origin, so the mirrored cube spans x 59.5-39.5.. in view space.
+    const view = v.objects[1].transform;
+    const { det, hits } = pick(v.objects[1], view[12] - 10, view[13] + 10);
+    expect(det).toBeLessThan(0);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0].point.z).toBeCloseTo(20, 5); // the top face, not the bottom at 0
+    expect(hits[0].face!.normal.z).toBeGreaterThan(0);
+    // Control: with the triangles reversed as well (the old behavior) the same ray lands on the bottom face, so this test can fail.
+    const reversed = { ...v.objects[1], parts: [{ ...v.objects[1].parts[0], indices: Uint32Array.from(mirrored, (_, i) => mirrored[i - (i % 3) + [0, 2, 1][i % 3]]) }] };
+    expect(pick(reversed, view[12] - 10, view[13] + 10).hits[0].point.z).toBeCloseTo(0, 5);
+    // The unmirrored instance behaves the same way.
+    const plainHit = pick(v.objects[0], v.objects[0].transform[12] + 10, v.objects[0].transform[13] + 10);
+    expect(plainHit.hits[0].point.z).toBeCloseTo(20, 5);
   });
 });

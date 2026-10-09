@@ -14,10 +14,14 @@ a discrete NVIDIA GPU through ANGLE/Direct3D 11). Raw numbers are in `results.js
 
 ## What was and was not run
 
+Every number below was measured on the working tree of branch `feat/project-viewer` (base `d0b2257` plus the repair changes, not
+yet committed when measured), by running the scripts in `harness/` from this folder. They have to be re-run against the final
+commit to make the claim about that commit; `harness/README.md` says how.
+
 | Check | Status |
 |---|---|
 | `npx tsc --noEmit` | 0 errors |
-| `npm run test` (vitest) | 77 files, 912 tests, 0 failed (includes the existing prepare-copy guard) |
+| `npm run test` (vitest) | 77 files, 913 tests, 0 failed (includes the existing prepare-copy guard) |
 | `npm run build` | passes |
 | Real-browser run, dev server, real engine, real WebGL, light and dark, wide and narrow | run (this folder) |
 | Production build served with the app's real Tauri CSP | run: viewer works, no violation from the viewer |
@@ -68,7 +72,7 @@ The boundary is structural, in three places, and a test pins each:
   emitted only `camera` (185) and `pick` (4) events. The center of each object, read through the viewport's own hit test
   before and after, was identical (`b0` 109.5, 109, 10 and `b1` 149.5, 109, 10).
   **Control run:** the same input on the same viewport with its upstream default tool did move an object (center
-  109.5, 109, 10 became 193.279, 87.669, 10; 11 `transform` events), so the check is able to detect movement and is not vacuous.
+  109.5, 109, 10 moved to about 193-194, 87.5-87.7, 10 in each of the runs I made, a little different every time because the drag is timed by real input: 193.279, 87.669 in one run, 194.189, 87.52 in another, 193.588, 87.618 in the last, which is the one in `results.json`; 11 `transform` events each time), so the check is able to detect movement and is not vacuous.
   Screenshots before and after were not byte identical in either run (adaptive quality and effects settle over time), so
   pixel equality is not claimed; the geometry check above is the evidence.
 * Original files: every fixture was hashed before and after all runs (including a 100,000-triangle project): unchanged.
@@ -126,10 +130,24 @@ The boundary is structural, in three places, and a test pins each:
   (no failure, not asserted); focus rings come from the shared button style. A click on the model in the 3D view selects its
   row in the list (`wide-dark-picked-by-click`).
 
+## Mirrored objects
+
+A mirrored instance (negative-determinant world matrix) keeps its triangle order. An earlier version also reversed the
+triangles, which turned the faces inward a second time: a downward ray through a mirrored cube hit the bottom face (Z 0)
+instead of the top (Z 20). `sceneModel.test.ts` now builds a real reflection matrix, puts it on a three.js mesh and
+raycasts it: the top face is hit, and a control with the triangles reversed hits the bottom, so the test can fail.
+
+## The start answer
+
+`/scene/start` answers only job id, request id, state, revision and the id of a job it replaced (`scene_jobs.py`); it carries
+no stage, progress or error. `scene.ts` models that as `JobStart`, and the tests use that body shape. A request id the engine
+still holds can come back already failed; the reason is then fetched from `/scene/status`, so the user sees the real
+message (for example "larger than the 3D view can show") and not a generic one.
+
 ## Memory and size
 
-* Bundle: the main chunk grew by 962 bytes (396 gzipped) for the mount code; the lazy viewer chunk is 906,753 bytes,
-  249,905 gzipped (`gzip -9`); the earlier prototype measured 887,866 and 245,773. The growth since the first version is the license texts and the structural facade. Baseline built from `58d193a` with the same Vite.
+* Bundle: the main chunk grew by 962 bytes (396 gzipped) for the mount code; the lazy viewer chunk is 906,904 bytes,
+  249,939 gzipped (`gzip -9`); the earlier prototype measured 887,866 and 245,773. The growth since the first version is the license texts and the structural facade. Baseline built from `58d193a` with the same Vite.
 * Large scene: a 99,458-triangle project took 5.1 s from pressing Open to a working view (including the Doctor run and the
   engine job) and the page's JS heap grew from 10.4 MB to 20.1 MB (`large-100k`).
 * **Finding, not fixed:** creating and disposing the vendored viewport retains about 108 KB of JS heap each time, even
@@ -173,8 +191,6 @@ The boundary is structural, in three places, and a test pins each:
 
 ## Reproduce
 
-Scripts used for this run are scratch files, not part of the repository. Outline: start the engine (`python -m
-snapstudio_api` with its own data directory), start `npm run dev`, open Edge through playwright-core at
-`/?api=<port>:<token>&file=<example>`, press Open, wait for the panel. The fixtures were the repository examples
-(`demo_offplate_foreign.3mf`, `sample_cube_U1.3mf`, `sample_cube.stl`) and four synthetic projects made with
-`backend/tests/scene_fixtures.py` (three roles, two plates, inches, 100,000 triangles).
+The scripts are in `harness/` (see `harness/README.md`): engine and dev server on free ports, Edge through playwright-core,
+the repository examples (`demo_offplate_foreign.3mf`, `sample_cube_U1.3mf`, `sample_cube.stl`) and four synthetic projects made with
+`backend/tests/scene_fixtures.py` (three roles, two plates, inches, 100,000 triangles) by `harness/mkfx.py`.

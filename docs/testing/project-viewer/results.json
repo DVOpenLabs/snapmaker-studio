@@ -1,6 +1,6 @@
 {
   "schema": "project-viewer-results/1",
-  "base": "d0b2257 (repair round on feat/project-viewer), uncommitted",
+  "base": "working tree: feat/project-viewer d0b2257 plus repair changes (uncommitted when measured); harness in harness/",
   "machine": {
     "os": "Windows 11",
     "browser": "Microsoft Edge 154.0.4258.62 (headless, playwright-core)",
@@ -8,7 +8,7 @@
   },
   "unit": {
     "vitestFiles": 77,
-    "vitestTests": 912,
+    "vitestTests": 913,
     "failed": 0,
     "tscErrors": 0,
     "build": "npm run build OK"
@@ -20,8 +20,8 @@
     "mainChunkGzip9": 189839,
     "mainChunkDeltaBytes": 962,
     "mainChunkDeltaGzip": 396,
-    "lazyViewerChunkBytes": 906753,
-    "lazyViewerChunkGzip9": 249905,
+    "lazyViewerChunkBytes": 906904,
+    "lazyViewerChunkGzip9": 249939,
     "note": "Baseline built from git archive of 58d193a with the same Vite; gzip -9 by the gzip tool. The lazy chunk grew from 888,689 after the first version by the license texts and the structural facade.",
     "earlierPrototype": {
       "bytes": 887866,
@@ -31,7 +31,7 @@
   "interaction": {
     "facade": {
       "eventsSeen": {
-        "camera": 185,
+        "camera": 186,
         "pick": 4
       },
       "objectsDidNotMove": true,
@@ -89,11 +89,12 @@
           10
         ],
         "b0": [
-          193.3,
-          87.666,
+          193.588,
+          87.618,
           10
         ]
-      }
+      },
+      "note": "the moved object's center differs a little in every run (193.279/87.669, 194.189/87.52, 193.588/87.618 in three runs)"
     }
   },
   "cyclesFacade50": {
@@ -139,7 +140,7 @@
       "canvas:dblclick": 1
     },
     "liveObservers": 2,
-    "secondsForAllCycles": 25.005,
+    "secondsForAllCycles": 25.639,
     "panelStillWorks": true,
     "clickOnModelSelectsRow": {
       "x": 502,
@@ -149,8 +150,8 @@
     "errors": []
   },
   "memory": {
-    "panelShownJsHeapBytes": 17624444,
-    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39246012
+    "panelShownJsHeapBytes": 17623576,
+    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39316312
   },
   "perViewerJsHeapGrowthBytesPerCreateDispose": {
     "emptyUpstreamViewport": 108185,
@@ -160,9 +161,9 @@
     "appMountWithoutWebGl40Cycles": 11135
   },
   "largeScene100kTriangles": {
-    "secondsUntilViewerWorking": 5.138,
-    "jsHeapBeforeBytes": 10418060,
-    "jsHeapAfterBytes": 20121224,
+    "secondsUntilViewerWorking": 6.108,
+    "jsHeapBeforeBytes": 10417472,
+    "jsHeapAfterBytes": 20120732,
     "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
     "errors": []
   },

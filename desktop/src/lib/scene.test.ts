@@ -10,6 +10,10 @@ const REVISION = "a".repeat(64);
 const status = (state: string, extra: Record<string, unknown> = {}) => ({
   job_id: "job-1", request_id: "req", state, stage: null, completed: null, total: null, error: null, revision: null, ...extra,
 });
+// What /scene/start really answers (backend scene_jobs.py): identity and state only, no stage, progress or error.
+const started = (state: string, extra: Record<string, unknown> = {}) => ({
+  job_id: "job-1", request_id: "req", state, revision: null, replaced_job_id: null, ...extra,
+});
 const scene = { schema: "scene/1", revision: REVISION, nodes: [], findings: [], limitations: [] };
 const noSleep = () => Promise.resolve();
 
@@ -32,7 +36,7 @@ function transportFor(
 describe("loadScene", () => {
   it("follows a job from queued to the finished scene and asks for the revision it saw", async () => {
     const { transport, calls } = transportFor({
-      start: [{ status: 200, body: status("queued") }],
+      start: [{ status: 200, body: started("queued") }],
       status: [{ status: 200, body: status("running", { stage: "parsing", completed: 1, total: 4 }) },
         { status: 200, body: status("succeeded", { revision: REVISION }) }],
       result: [{ status: 200, body: scene }],
@@ -51,7 +55,7 @@ describe("loadScene", () => {
     const ids = new Set<string>();
     for (let i = 0; i < 20; i++) {
       const { transport, calls } = transportFor({
-        start: [{ status: 200, body: status("succeeded", { revision: REVISION }) }],
+        start: [{ status: 200, body: started("succeeded", { revision: REVISION }) }],
         result: [{ status: 200, body: scene }],
       });
       await loadScene("p.3mf", { signal: new AbortController().signal, transport, sleep: noSleep });
@@ -64,7 +68,7 @@ describe("loadScene", () => {
   it("tells the engine to cancel when the caller aborts, and stops with an AbortError", async () => {
     const controller = new AbortController();
     const { transport, calls } = transportFor({
-      start: [{ status: 200, body: status("running") }],
+      start: [{ status: 200, body: started("running") }],
       status: [{ status: 200, body: status("running") }],
     });
     const sleep = vi.fn(async () => { controller.abort(); });
@@ -75,7 +79,7 @@ describe("loadScene", () => {
 
   it("cancels a job that was started just before the caller aborted", async () => {
     const controller = new AbortController();
-    const { transport, calls } = transportFor({ start: [{ status: 200, body: status("queued") }] });
+    const { transport, calls } = transportFor({ start: [{ status: 200, body: started("queued") }] });
     const wrapped: SceneTransport = async (route, body, signal) => {
       const r = await transport(route, body, signal);
       if (route === "start") controller.abort();
@@ -104,7 +108,9 @@ describe("loadScene", () => {
     ["TIMEOUT", "took too long"],
   ])("reports a failed job as %s in plain words", async (code, words) => {
     const { transport } = transportFor({
-      start: [{ status: 200, body: status("failed", { error: { code, message: "C:\\private\\path.3mf" } }) }],
+      // A request id the engine still holds comes back already failed, with no reason in the start answer; the reason is in the status.
+      start: [{ status: 200, body: started("failed") }],
+      status: [{ status: 200, body: status("failed", { error: { code, message: "C:\\private\\path.3mf" } }) }],
     });
     const failure = (await loadScene("p.3mf", { signal: new AbortController().signal, transport, sleep: noSleep }).catch((e) => e)) as SceneError;
     expect(failure).toBeInstanceOf(SceneError);
@@ -124,7 +130,7 @@ describe("loadScene", () => {
 
   it("rejects a result that is not scene/1", async () => {
     const { transport } = transportFor({
-      start: [{ status: 200, body: status("succeeded", { revision: REVISION }) }],
+      start: [{ status: 200, body: started("succeeded", { revision: REVISION }) }],
       result: [{ status: 200, body: { schema: "scene/2", nodes: [] } }],
     });
     const failure = (await loadScene("p.3mf", { signal: new AbortController().signal, transport, sleep: noSleep }).catch((e) => e)) as SceneError;
@@ -132,13 +138,36 @@ describe("loadScene", () => {
   });
 
   it("reports a cancelled job as CANCELLED", async () => {
-    const { transport } = transportFor({ start: [{ status: 200, body: status("cancelled") }] });
+    const { transport } = transportFor({ start: [{ status: 200, body: started("cancelled") }] });
     const failure = (await loadScene("p.3mf", { signal: new AbortController().signal, transport }).catch((e) => e)) as SceneError;
     expect(failure.code).toBe("CANCELLED");
   });
 });
 
 describe("a start that never answers", () => {
+  it("lets the next load send its start after the first was aborted while pending", async () => {
+    const sent: string[] = [];
+    let first = true;
+    const transport: SceneTransport = (route, body) => {
+      if (route === "start") {
+        sent.push((body as { path: string }).path);
+        if (first) { first = false; return new Promise(() => undefined); } // A: pending, ignores its signal
+        return Promise.resolve({ status: 200, body: started("succeeded", { revision: REVISION }) });
+      }
+      if (route === "result") return Promise.resolve({ status: 200, body: scene });
+      return Promise.resolve({ status: 200, body: status("cancelled") });
+    };
+    const a = new AbortController();
+    const pendingA = loadScene("a.3mf", { signal: a.signal, transport, sleep: noSleep }).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 10));
+    a.abort();
+    expect(isAbort(await pendingA)).toBe(true);
+    const b = await loadScene("b.3mf", { signal: new AbortController().signal, transport, sleep: noSleep });
+    expect(b.schema).toBe("scene/1");
+    expect(sent).toContain("b.3mf");
+    expect(sent[0]).toBe("a.3mf");
+  }, 10000);
+
   it("times out with TIMEOUT, asks for and cancels any job it may have made, and does not block later starts", async () => {
     const calls: string[] = [];
     let starts = 0;
@@ -146,7 +175,7 @@ describe("a start that never answers", () => {
     const transport: SceneTransport = (route, body) => {
       calls.push(route);
       if (route === "start" && ++starts === 1) return new Promise(() => undefined);
-      if (route === "start") return Promise.resolve({ status: 200, body: status("succeeded", { job_id: "j2", revision: REVISION }) });
+      if (route === "start") return Promise.resolve({ status: 200, body: started("succeeded", { job_id: "j2", revision: REVISION }) });
       if (route === "result") return Promise.resolve({ status: 200, body: scene });
       return Promise.resolve({ status: 200, body: status("cancelled", { body }) });
     };
@@ -173,7 +202,7 @@ describe("a start that never answers", () => {
     const calls: string[] = [];
     const transport: SceneTransport = (route) => {
       calls.push(route);
-      if (route === "start") return Promise.resolve({ status: 200, body: status("running") });
+      if (route === "start") return Promise.resolve({ status: 200, body: started("running") });
       if (route === "status") return new Promise(() => undefined);
       return Promise.resolve({ status: 200, body: status("cancelled") });
     };
@@ -193,7 +222,7 @@ describe("start ordering", () => {
         const tag = (body as { path: string }).path;
         order.push(`start:${tag}`);
         if (tag === "a.3mf") await first;
-        return { status: 200, body: status("succeeded", { job_id: `job-${tag}`, revision: REVISION }) };
+        return { status: 200, body: started("succeeded", { job_id: `job-${tag}`, revision: REVISION }) };
       }
       if (route === "result") return { status: 200, body: scene };
       return { status: 200, body: status("cancelled") };
