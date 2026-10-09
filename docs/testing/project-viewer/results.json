@@ -1,40 +1,55 @@
 {
-  "schema": "project-viewer-results/1",
-  "base": "working tree: feat/project-viewer d0b2257 plus repair changes (uncommitted when measured); harness in harness/",
+  "schema": "project-viewer-results/2",
+  "commit": "a5ec37f9f7e8f3281d3cd08a32e4b7017d904559",
+  "dirtyOutsideEvidenceFolder": true,
+  "collectedAt": "2026-10-09T16:00:45.464Z",
   "machine": {
-    "os": "Windows 11",
-    "browser": "Microsoft Edge 154.0.4258.62 (headless, playwright-core)",
-    "webgl": "ANGLE Direct3D 11 on a discrete NVIDIA GPU (hardware, not software rendering)"
+    "os": "win32",
+    "browser": "154.0.4258.62",
+    "webglHardware": true
   },
-  "unit": {
-    "vitestFiles": 77,
-    "vitestTests": 913,
-    "failed": 0,
-    "tscErrors": 0,
-    "build": "npm run build OK"
+  "checks": {
+    "tsc": {
+      "exitCode": 0
+    },
+    "vitest": {
+      "files": 78,
+      "tests": 928,
+      "passed": 928,
+      "failed": 0
+    },
+    "build": {
+      "exitCode": 0
+    }
   },
   "bundle": {
-    "baselineMainChunkBytes": 710447,
-    "baselineMainChunkGzip9": 189443,
-    "mainChunkBytes": 711409,
-    "mainChunkGzip9": 189839,
-    "mainChunkDeltaBytes": 962,
-    "mainChunkDeltaGzip": 396,
-    "lazyViewerChunkBytes": 906904,
-    "lazyViewerChunkGzip9": 249939,
-    "note": "Baseline built from git archive of 58d193a with the same Vite; gzip -9 by the gzip tool. The lazy chunk grew from 888,689 after the first version by the license texts and the structural facade.",
-    "earlierPrototype": {
-      "bytes": 887866,
-      "gzip": 245773
+    "mainChunk": {
+      "bytes": 711409,
+      "gzip9": 190529
+    },
+    "lazyViewerChunk": {
+      "bytes": 907261,
+      "gzip9": 251511
+    },
+    "baseline": {
+      "ref": "58d193a",
+      "commit": "58d193a93c5bd6832bf2b3101e0641b00d6a96ba",
+      "mainChunk": {
+        "bytes": 710447,
+        "gzip9": 190139
+      }
     }
   },
   "interaction": {
     "facade": {
-      "eventsSeen": {
+      "hit": {
+        "x": 266,
+        "y": 248
+      },
+      "events": {
         "camera": 186,
         "pick": 4
       },
-      "objectsDidNotMove": true,
       "objectCentersBefore": {
         "b0": [
           109.5,
@@ -59,17 +74,22 @@
           10
         ]
       },
-      "screenshotsByteIdentical": false,
-      "setup": "real viewport set up as the adapter sets it (create, setTool probe)"
+      "objectsDidNotMove": true,
+      "imagesIdentical": false,
+      "bytesA": 169471,
+      "bytesB": 169172
     },
-    "controlWithUpstreamDefaultTool": {
-      "eventsSeen": {
+    "control": {
+      "hit": {
+        "x": 266,
+        "y": 248
+      },
+      "events": {
         "camera": 186,
         "pick": 2,
         "select": 2,
         "transform": 11
       },
-      "objectsDidNotMove": false,
       "objectCentersBefore": {
         "b0": [
           109.5,
@@ -89,15 +109,20 @@
           10
         ],
         "b0": [
-          193.588,
-          87.618,
+          193.425,
+          87.645,
           10
         ]
       },
-      "note": "the moved object's center differs a little in every run (193.279/87.669, 194.189/87.52, 193.588/87.618 in three runs)"
-    }
+      "objectsDidNotMove": false,
+      "imagesIdentical": false,
+      "bytesA": 169471,
+      "bytesB": 169211
+    },
+    "errors": []
   },
-  "cyclesFacade50": {
+  "cyclesFacade": {
+    "plannedCycles": 50,
     "cycles": 50,
     "contextsCreated": 100,
     "contextsStillLive": 0,
@@ -110,10 +135,8 @@
     "peakConnectedCanvases": 1,
     "errors": []
   },
-  "cyclesApp75": {
+  "cyclesApp": {
     "listenersOnDetachedCanvases": 0,
-    "mountsAndUnmounts": 75,
-    "ofWhichShownBeforeUnmount": 50,
     "contextsCreatedDuring": 102,
     "contextsLiveAtEnd": 1,
     "liveContextsAttachedToDetachedCanvas": 0,
@@ -140,7 +163,16 @@
       "canvas:dblclick": 1
     },
     "liveObservers": 2,
-    "secondsForAllCycles": 25.639,
+    "plannedWaitedMounts": 50,
+    "plannedQuickMounts": 25,
+    "completedWaitedMounts": 50,
+    "completedQuickMounts": 25,
+    "stuckAtCycle": null,
+    "stuckPanelText": null,
+    "stuckPageErrors": null,
+    "mountsAndUnmounts": 75,
+    "ofWhichShownBeforeUnmount": 50,
+    "secondsForAllCycles": 25.487,
     "panelStillWorks": true,
     "clickOnModelSelectsRow": {
       "x": 502,
@@ -150,36 +182,55 @@
     "errors": []
   },
   "memory": {
-    "panelShownJsHeapBytes": 17623576,
-    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39316312
+    "app": {
+      "panelShownJsHeapBytes": 17620412,
+      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39176612
+    },
+    "perViewerCreateDispose": [
+      {
+        "mode": "raw-empty",
+        "cycles": 40,
+        "bytesPerCycle": 108207
+      },
+      {
+        "mode": "raw-plate",
+        "cycles": 40,
+        "bytesPerCycle": 115988
+      },
+      {
+        "mode": "facade",
+        "cycles": 40,
+        "bytesPerCycle": 120808
+      }
+    ],
+    "perAppMount": [
+      {
+        "noWebgl": false,
+        "cycles": 40,
+        "bytesPerCycle": 263336
+      },
+      {
+        "noWebgl": true,
+        "cycles": 40,
+        "bytesPerCycle": 11116
+      }
+    ]
   },
-  "perViewerJsHeapGrowthBytesPerCreateDispose": {
-    "emptyUpstreamViewport": 108185,
-    "upstreamViewportWithPlate": 115845,
-    "studioFacadeWithScene": 120590,
-    "appMountWithWebGl40Cycles": 263957,
-    "appMountWithoutWebGl40Cycles": 11135
-  },
-  "largeScene100kTriangles": {
-    "secondsUntilViewerWorking": 6.108,
-    "jsHeapBeforeBytes": 10417472,
-    "jsHeapAfterBytes": 20120732,
+  "largeScene": {
+    "secondsUntilViewerWorking": 6.106,
+    "jsHeapBeforeBytes": 10413052,
+    "jsHeapAfterBytes": 20136012,
     "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
     "errors": []
   },
   "csp": {
+    "policy": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'",
     "violations": [
       "style-src-elem https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     ],
-    "consoleErrors": [
-      "Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' violates the following Content Security Policy directive: \"style-src 'self' 'unsafe-inline'\". Note "
-    ],
-    "offMachine": [],
     "canvasCount": 1,
-    "viewerWorking": true,
     "isProductionBuild": true,
-    "originalUnchanged": true,
-    "policy": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    "harnessError": null
   },
   "originalFilesUnchanged": {
     "offbed": true,
@@ -189,7 +240,8 @@
     "showcase": true,
     "roles": true,
     "plates": true,
-    "inch": true
+    "inch": true,
+    "csp": true
   },
   "screenshots": {
     "wide-dark-offbed": {
@@ -272,10 +324,7 @@
       "consoleErrors": []
     }
   },
-  "blockedRequestsInHarness": [
-    "POST /printer/status",
-    "POST /printer/capabilities"
-  ],
+  "harnessErrors": [],
   "notRun": [
     "Packaged Windows Tauri via tools/acceptance/run.ps1",
     "Linux WebKitGTK graphics-enabled lane",
@@ -283,14 +332,5 @@
     "screen reader",
     "weak or software-rendered GPU",
     "real printer (never used)"
-  ],
-  "repairRound": {
-    "startTimeouts": {
-      "startMs": 15000,
-      "requestMs": 30000,
-      "recoveryMs": 3000
-    },
-    "guard": "scans all of src/, mutation tests included",
-    "credits": "in-app, credits.ts"
-  }
+  ]
 }

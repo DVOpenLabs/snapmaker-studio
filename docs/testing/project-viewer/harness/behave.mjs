@@ -12,7 +12,7 @@ const grid = join(FX, "grid-100k.3mf");
 const before = { offbed: sha(offbed), grid: sha(grid) };
 const browser = await launch();
 const violations = [];
-const results = { interaction: {}, cycles: {}, uiCycles: {}, memory: {}, large: {} };
+const results = { browser: browser.version(), interaction: {}, cycles: {}, uiCycles: {}, memory: {}, large: {} };
 
 const INSTRUMENT = () => {
   const w = (window.__inst = { ctxs: [], listeners: [], canvases: [], liveObs: 0, on: false });
@@ -73,6 +73,7 @@ try {
   // ---- (b)+(d): interactions through the facade on the real viewport ----------------------------------------------
   {
     const { ctx, page } = await newPage("/help");
+    results.webglHardware = await page.evaluate(() => { const gl = document.createElement("canvas").getContext("webgl2"); const e = gl && gl.getExtension("WEBGL_debug_renderer_info"); const r = e ? String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL)) : ""; return !!gl && !/swiftshader|software|llvmpipe/i.test(r); });
     await page.evaluate(async () => {
       const [entry, facadeMod, modelMod, fx] = await Promise.all([
         import("/src/vendor/slicerx/entry.ts"), import("/src/components/project-scene/defaultViewport.ts"),
@@ -155,7 +156,9 @@ try {
       w.on = true;
       let peakConnected = 0;
       const ra = () => new Promise((r) => requestAnimationFrame(() => r()));
-      for (let i = 0; i < 50; i++) {
+      const planned = 50;
+      let completed = 0;
+      for (let i = 0; i < planned; i++) {
         const host = document.createElement("div");
         host.style.cssText = "position:fixed;left:0;top:0;width:300px;height:200px";
         const canvas = document.createElement("canvas");
@@ -165,13 +168,14 @@ try {
         await ra(); await ra();
         peakConnected = Math.max(peakConnected, document.querySelectorAll("canvas").length);
         f.dispose(); host.remove();
+        completed++;
       }
       await new Promise((r) => setTimeout(r, 1500));
       const created = w.ctxs.length, liveCtx = w.ctxs.filter((c) => !c.isContextLost()).length;
       const kind = (t) => (t instanceof HTMLCanvasElement ? "canvas" : t === document ? "document" : t === window ? "window" : t.constructor.name);
       const left = w.listeners.reduce((m, l) => { const k = `${kind(l.t)}:${l.type}`; m[k] = (m[k] || 0) + 1; return m; }, {});
       return {
-        cycles: 50, contextsCreated: created, contextsStillLive: liveCtx,
+        plannedCycles: planned, cycles: completed, contextsCreated: created, contextsStillLive: liveCtx,
         canvasesConnectedAfter: document.querySelectorAll("canvas").length - baseCanvases,
         canvasesCreatedByViewer: w.canvases.length, detachedCanvasesWithLiveContext: w.canvases.filter((c) => !c.isConnected).length > 0 ? w.ctxs.filter((c) => !c.isContextLost() && !c.canvas.isConnected).length : 0,
         listenersLeftAfter: w.listeners.length - baseListeners, listenersLeftByKind: left, liveObservers: w.liveObs, peakConnectedCanvases: peakConnected,
@@ -196,17 +200,26 @@ try {
     const nav = (p) => page.evaluate((to) => { history.pushState({}, "", to); window.dispatchEvent(new PopStateEvent("popstate")); }, p);
     const t0 = Date.now();
     const topReady = (to) => page.waitForFunction(() => ([...document.querySelectorAll('[data-testid="project-scene"] button')].find((b) => b.textContent === "Top") || {}).disabled === false, null, { timeout: to });
-    for (let i = 0; i < 50; i++) {
+    // Diagnostics live in their own object so the metrics collected below can never overwrite them.
+    const diag = { plannedWaitedMounts: 50, plannedQuickMounts: 25, completedWaitedMounts: 0, completedQuickMounts: 0, stuckAtCycle: null, stuckPanelText: null, stuckPageErrors: null };
+    for (let i = 0; i < diag.plannedWaitedMounts; i++) {
       await nav("/help"); await sleep(30); await nav("/workspace");
-      try { await topReady(15000); } catch (e) {
-        results.uiCycles.stuckAtCycle = i;
-        results.uiCycles.stuckPanelText = (await page.getByTestId("project-scene").innerText().catch(() => "no panel")).replace(/s+/g, " ").slice(0, 300);
-        results.uiCycles.stuckPageErrors = page.errors.slice(-5);
+      try { await topReady(15000); diag.completedWaitedMounts++; } catch {
+        diag.stuckAtCycle = i;
+        diag.stuckPanelText = (await page.getByTestId("project-scene").innerText().catch(() => "no panel")).replace(/\s+/g, " ").slice(0, 300);
+        diag.stuckPageErrors = page.errors.slice(-5);
         break;
       }
     }
-    for (let i = 0; i < 25; i++) { await nav("/help"); await sleep(20); await nav("/workspace"); await sleep(90); } // quick: unmount while still loading
-    await page.waitForFunction(() => ([...document.querySelectorAll('[data-testid="project-scene"] button')].find((b) => b.textContent === "Top") || {}).disabled === false, null, { timeout: 90000 });
+    if (diag.stuckAtCycle === null) {
+      for (let i = 0; i < diag.plannedQuickMounts; i++) { await nav("/help"); await sleep(20); await nav("/workspace"); await sleep(90); diag.completedQuickMounts++; } // quick: unmount while still loading
+    }
+    try {
+      await topReady(diag.stuckAtCycle === null ? 90000 : 5000);
+    } catch {
+      diag.stuckAtCycle ??= diag.completedWaitedMounts + diag.completedQuickMounts;
+      diag.stuckPanelText ??= (await page.getByTestId("project-scene").innerText().catch(() => "no panel")).replace(/\s+/g, " ").slice(0, 300);
+    }
     await sleep(1500);
     results.uiCycles = await page.evaluate(() => {
       const w = window.__inst;
@@ -219,13 +232,15 @@ try {
       return {
         documentKeydownStacks: docStacks,
         listenersOnDetachedCanvases: onDetachedCanvas.length,
-        mountsAndUnmounts: 75, ofWhichShownBeforeUnmount: 50, contextsCreatedDuring: w.ctxs.length - w.base.ctxs, contextsLiveAtEnd: live.length,
+        contextsCreatedDuring: w.ctxs.length - w.base.ctxs, contextsLiveAtEnd: live.length,
         liveContextsAttachedToDetachedCanvas: live.filter((c) => !c.canvas.isConnected).length,
         connectedCanvasesAtEnd: document.querySelectorAll("canvas").length, connectedCanvasesBefore: w.base.canvases,
         listenersOnConnectedTargets: Object.values(left).reduce((a, b) => a + b, 0), listenersByKind: left, liveObservers: w.liveObs,
       };
     });
+    Object.assign(results.uiCycles, diag, { mountsAndUnmounts: diag.completedWaitedMounts + diag.completedQuickMounts, ofWhichShownBeforeUnmount: diag.completedWaitedMounts });
     results.uiCycles.secondsForAllCycles = (Date.now() - t0) / 1000;
+    if (diag.stuckAtCycle !== null) results.harnessError = `a mount was stuck at cycle ${diag.stuckAtCycle}: ${diag.stuckPanelText}`; // fails the run
     results.uiCycles.panelStillWorks = await page.evaluate(() => ([...document.querySelectorAll('[data-testid="project-scene"] button')].find((b) => b.textContent === "Top") || {}).disabled === false);
     {
       // A real click on the model in the 3D view selects its row in the list (no editing happens).
@@ -279,4 +294,5 @@ results.violations = [...new Set(violations)];
 writeFileSync(join(OUT, "behave-results.json"), JSON.stringify(results, null, 2));
 console.log(JSON.stringify(results, null, 1));
 cleanup();
-process.exit(0);
+if (results.harnessError) console.error(results.harnessError);
+process.exit(results.harnessError || Object.values(results.originalsUnchanged).includes(false) ? 1 : 0); // a caught failure must fail the run

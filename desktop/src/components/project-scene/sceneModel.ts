@@ -166,12 +166,10 @@ export function buildModel(scene: SceneV1): SceneModel {
     if (f.kind !== "placement" && f.kind !== "size") continue;
     const tone: Tone = f.kind === "placement" ? "placement" : "size";
     const targets = f.target_ids.map((id) => byId.get(id));
-    // Object-level only when the finding names known nodes that are one object: a single target, or several that all sit
-    // under the same top-level object. Unknown ids, or targets in different objects, stay project-level: picking "the
-    // first" would select and highlight the wrong thing.
-    const resolved = f.scope === "instance" && targets.length > 0 && targets.every((t): t is SceneNode => t !== undefined);
-    const topIds = resolved ? new Set((targets as SceneNode[]).map((t) => topOf(t).id)) : new Set<string>();
-    const exact = resolved && topIds.size === 1;
+    // Object-level only when the finding names exactly ONE target and it is a known node. A finding with several targets
+    // stays project-level even if they share a top-level object: the engine did not single one out, so nothing is
+    // highlighted or selected on its behalf. Unknown ids stay project-level too.
+    const exact = f.scope === "instance" && targets.length === 1 && targets[0] !== undefined;
     const known = exact ? (targets as SceneNode[]) : [];
     const label = exact ? nameOf(known[0]) : "An object";
     const projectLevel = !exact || !gate.enabled;

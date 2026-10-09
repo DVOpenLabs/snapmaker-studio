@@ -48,15 +48,22 @@ Do not describe this code as removed.
 1. **Import path, 7 files.** `from '@slicerx/contracts'` becomes `from '../contracts/index'` in `viewport/palette.ts`,
    `stage.ts`, `summary.ts`, `toolchanger.ts`, `toolpaths.ts`, `types.ts` and `viewport.ts` (one line each).
    Reason: the contracts package is not published and Studio's TypeScript and Vite configuration are not changed to alias it.
+   **Modification notice (second documented patch).** In each of the same seven files a clearly marked comment block
+   ("MODIFIED BY SNAPMAKER STUDIO ...") sits directly after the upstream header, naming the single change, the upstream
+   repository and commit, and this file. The upstream copyright and SPDX lines and license references are untouched. The
+   notice is added so a reader of any one file can see it is not byte-for-byte upstream (Apache License 2.0, section 4(b)).
+   Nothing else in these files differs from upstream.
 2. **`contracts/index.ts`** (new, Studio-authored): `export * from './preview'; export type { Bed } from './slice'`.
 3. **`entry.ts`** (new, Studio-authored): re-exports `createViewport` and a handful of types. Replaces upstream `index.ts`,
    which re-exports the editing helpers.
 4. **`error-cause.d.ts`** (new, Studio-authored): upstream calls `new Error(message, { cause })`, which the ES2022 lib
-   types but this project's ES2020 lib does not (TS2554 at `viewport.ts:292`). The file declares only that constructor
+   types but this project's ES2020 lib does not (TS2554, at line 292 of the upstream `viewport.ts`). The file declares only that constructor
    form. No React, Vite or TypeScript upgrade, no lib or target change.
 5. **Line endings:** files are stored with LF, as in the upstream tree and as `.gitattributes` requires.
 
-Nothing else differs; the table below is generated from `git hash-object` of the upstream commit against the vendored files.
+Nothing else differs. `project-scene/vendor.integrity.test.ts` checks this table: for every verbatim file the git blob id of its
+content equals the upstream blob id here; for the seven patched files the notice block is present, the import path is the
+only other difference, and no other vendored file carries a notice; every sha256 below equals the file as stored.
 
 ## File table
 
@@ -86,20 +93,20 @@ Nothing else differs; the table below is generated from `git hash-object` of the
 | `viewport/model.ts` | `packages/ui/viewport/src/model.ts` | 6b1ee5cbf4d8 | 40b55e95eb7d | verbatim |
 | `viewport/paint.ts` | `packages/ui/viewport/src/paint.ts` | ecfa8be661a9 | 168d45c0d93e | verbatim |
 | `viewport/painter.ts` | `packages/ui/viewport/src/painter.ts` | 00cbde84fbc8 | b6df28902cac | verbatim |
-| `viewport/palette.ts` | `packages/ui/viewport/src/palette.ts` | 1c03b359dc03 | c490a29b8afe | **patched** (import path) |
+| `viewport/palette.ts` | `packages/ui/viewport/src/palette.ts` | 1c03b359dc03 | 7318d56bd3fe | **patched** (import path, plus a modification notice) |
 | `viewport/post.ts` | `packages/ui/viewport/src/post.ts` | 4f4b5388e138 | 7273ee20d53d | verbatim |
 | `viewport/probe.ts` | `packages/ui/viewport/src/probe.ts` | 956d63efa13e | d912fca27139 | verbatim |
 | `viewport/purge.ts` | `packages/ui/viewport/src/purge.ts` | 4903d225bf78 | 1745134b0962 | verbatim |
 | `viewport/rings.ts` | `packages/ui/viewport/src/rings.ts` | 54a1ceb1f77f | 61f07293728d | verbatim |
 | `viewport/scaling.ts` | `packages/ui/viewport/src/scaling.ts` | 4981c9aa9603 | 4c5853161dcd | verbatim |
-| `viewport/stage.ts` | `packages/ui/viewport/src/stage.ts` | 4f2c7df9d316 | 372f0ad9a17c | **patched** (import path) |
+| `viewport/stage.ts` | `packages/ui/viewport/src/stage.ts` | 4f2c7df9d316 | 9f08d80b4a2e | **patched** (import path, plus a modification notice) |
 | `viewport/strikes.ts` | `packages/ui/viewport/src/strikes.ts` | 2437eb5d8802 | 15cd9cbb2807 | verbatim |
-| `viewport/summary.ts` | `packages/ui/viewport/src/summary.ts` | c00093cf95f0 | 1d5c85536c8a | **patched** (import path) |
-| `viewport/toolchanger.ts` | `packages/ui/viewport/src/toolchanger.ts` | c77bde8a45f6 | be49903b63ad | **patched** (import path) |
+| `viewport/summary.ts` | `packages/ui/viewport/src/summary.ts` | c00093cf95f0 | b930a8431c33 | **patched** (import path, plus a modification notice) |
+| `viewport/toolchanger.ts` | `packages/ui/viewport/src/toolchanger.ts` | c77bde8a45f6 | bf66f54c2280 | **patched** (import path, plus a modification notice) |
 | `viewport/toolhead.ts` | `packages/ui/viewport/src/toolhead.ts` | 3c4f42934cc7 | 74b6e31d0859 | verbatim |
-| `viewport/toolpaths.ts` | `packages/ui/viewport/src/toolpaths.ts` | 168619855730 | f11427862bf6 | **patched** (import path) |
-| `viewport/types.ts` | `packages/ui/viewport/src/types.ts` | 3e41e01471f1 | 59bd8def8c22 | **patched** (import path) |
-| `viewport/viewport.ts` | `packages/ui/viewport/src/viewport.ts` | 192b487a6879 | b791a0e21e55 | **patched** (import path) |
+| `viewport/toolpaths.ts` | `packages/ui/viewport/src/toolpaths.ts` | 168619855730 | fa547bb5ddf9 | **patched** (import path, plus a modification notice) |
+| `viewport/types.ts` | `packages/ui/viewport/src/types.ts` | 3e41e01471f1 | 16ae58080b68 | **patched** (import path, plus a modification notice) |
+| `viewport/viewport.ts` | `packages/ui/viewport/src/viewport.ts` | 192b487a6879 | 59d4f25cd48f | **patched** (import path, plus a modification notice) |
 | `contracts/preview.ts` | `packages/contracts/src/preview.ts` | 9a5ee2453416 | 8a8713b8e330 | verbatim |
 | `contracts/slice.ts` | `packages/contracts/src/slice.ts` | 84d8f8a5aecd | d396019b7dbd | verbatim |
 | `contracts/settings.ts` | `packages/contracts/src/settings.ts` | 6660497098be | 20c6047ea2d1 | verbatim |

@@ -6,6 +6,11 @@
 // cross-section (8 vertices, 8 triangles). The CPU never
 // builds triangles. Layer and move scrubbing only rebind the instance range,
 // and color modes only change a uniform.
+// ---------------------------------------------------------------------------------------------------------------
+// MODIFIED BY SNAPMAKER STUDIO (DVOpenLabs/snapmaker-studio): the only change in this file is the import path of the
+// contracts module ('@slicerx/contracts' -> '../contracts/index'). Upstream: slicerx-oss/slicerx @
+// edb521fe41306dd60d01bda8a0f6bf8aa54fcb29 (Apache-2.0). See ../UPDATING.md.
+// ---------------------------------------------------------------------------------------------------------------
 import {
   BufferAttribute,
   BufferGeometry,

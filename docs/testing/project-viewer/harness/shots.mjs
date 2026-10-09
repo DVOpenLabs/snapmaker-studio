@@ -80,4 +80,5 @@ results.originalsUnchanged = Object.fromEntries(Object.entries(files).map(([k, p
 writeFileSync(join(OUT, "shots-results.json"), JSON.stringify(results, null, 2));
 console.log(JSON.stringify(results, null, 1).slice(0, 6000));
 cleanup();
-process.exit(0);
+if (results.harnessError) console.error(results.harnessError);
+process.exit(results.harnessError || Object.values(results.originalsUnchanged).includes(false) ? 1 : 0); // a caught failure must fail the run

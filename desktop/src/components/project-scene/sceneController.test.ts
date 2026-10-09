@@ -234,7 +234,7 @@ describe("SceneController", () => {
     expect(c.getState()).toMatchObject({ phase: "failed", error: "TIMEOUT" });
     answer = true;
     c.retryLoad();
-    await new Promise((r) => setTimeout(r, 3400)); // the abandoned start's clean-up holds the next start for at most 3 s
+    await new Promise((r) => setTimeout(r, 60));
     expect(c.getState().phase).toBe("shown");
     c.dispose();
   }, 10000);

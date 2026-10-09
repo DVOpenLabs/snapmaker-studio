@@ -3,6 +3,11 @@
 // The studio set: generated room environment (PMREM, no HDR files), key light
 // with soft PCF shadows, cool rim light, the textured build plate, the floor
 // grid and the baked contact shadow under objects.
+// ---------------------------------------------------------------------------------------------------------------
+// MODIFIED BY SNAPMAKER STUDIO (DVOpenLabs/snapmaker-studio): the only change in this file is the import path of the
+// contracts module ('@slicerx/contracts' -> '../contracts/index'). Upstream: slicerx-oss/slicerx @
+// edb521fe41306dd60d01bda8a0f6bf8aa54fcb29 (Apache-2.0). See ../UPDATING.md.
+// ---------------------------------------------------------------------------------------------------------------
 import {
   BufferGeometry,
   DoubleSide,

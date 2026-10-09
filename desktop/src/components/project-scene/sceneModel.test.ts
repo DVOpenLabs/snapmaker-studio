@@ -74,15 +74,21 @@ describe("findings and highlighting", () => {
     expect(model.findings[0].selectId).toBe("p0");
   });
 
-  it("treats several targets as object-level only when they are one object", () => {
+  it("treats a finding as object-level only when it has exactly one known target", () => {
     const parent = node("p0", "9", 100, 100, { mesh_key: null });
     const a = node("p0.0", "1", 100, 100, { parent_id: "p0" });
     const b = node("p0.1", "2", 110, 100, { parent_id: "p0" });
     const other = node("o1", "3", 200, 100);
+    // One target: object-level.
+    const one = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0"] })] }));
+    expect(one.findings[0].projectLevel).toBe(false);
+    expect(one.findings[0].selectId).toBe("p0");
+    expect([...one.highlighted.keys()]).toEqual(["p0.0"]);
+    // Several targets under the SAME top-level object: still project-level, nothing highlighted or selected.
     const same = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0", "p0.1"] })] }));
-    expect(same.findings[0].projectLevel).toBe(false);
-    expect(same.findings[0].selectId).toBe("p0");
-    expect([...same.highlighted.keys()].sort()).toEqual(["p0.0", "p0.1"]);
+    expect(same.findings[0].projectLevel).toBe(true);
+    expect(same.findings[0].selectId).toBeNull();
+    expect(same.highlighted.size).toBe(0);
     // Two different objects: no first-target guess, nothing highlighted, nothing selected.
     const mixed = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0", "o1"] })] }));
     expect(mixed.findings[0].projectLevel).toBe(true);

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { start, stage, launch, loopbackOnly, cleanup, sleep, OUT_DIR, FIXTURES, REPO } from "./harness.mjs";
 const { handshake, UI } = await start();
 const offbed = stage("demo_offplate_foreign.3mf", FIXTURES);
@@ -27,4 +28,5 @@ try {
     await ctx.close();
   }
 } finally { await browser.close(); cleanup(); }
+writeFileSync(join(OUT_DIR, "heap2-results.json"), JSON.stringify(out, null, 2));
 console.log(JSON.stringify(out));

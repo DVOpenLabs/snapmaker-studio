@@ -1,7 +1,6 @@
 // Shared harness for PR 3b browser checks: starts the local engine (own data dir) and Vite dev server on free ports,
 // launches Edge headless through playwright-core, and cleans up only the PIDs it started.
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, copyFileSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -9,11 +8,8 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// The repository root, found from this file (docs/testing/project-viewer/harness/).
-export const REPO = fileURLToPath(new URL("../../../../", import.meta.url)).replace(/[\/]$/, "");
-export const OUT_DIR = process.env.P3B_OUT ?? join(tmpdir(), "p3b-out");
-export const FIXTURES = process.env.P3B_FIXTURES ?? join(tmpdir(), "p3b-fixtures");
-mkdirSync(OUT_DIR, { recursive: true });
+import { FIXTURES, OUT_DIR, REPO } from "./paths.mjs";
+export { FIXTURES, OUT_DIR, REPO };
 // playwright-core comes from tools/acceptance (run `npm ci` there), or from PLAYWRIGHT_FROM: a folder that has node_modules/playwright-core.
 const require = createRequire(join(process.env.PLAYWRIGHT_FROM ?? join(REPO, "tools", "acceptance"), "x.js"));
 export const { chromium } = require("playwright-core");

@@ -63,4 +63,5 @@ finally { await browser.close(); srv.close(); cleanup(); }
 out.originalUnchanged = sha(file) === before;
 writeFileSync(pj(OUT_DIR, "csp-results.json"), JSON.stringify(out, null, 2));
 console.log(JSON.stringify(out, null, 1));
-process.exit(0);
+if (out.harnessError) console.error(out.harnessError);
+process.exit(out.harnessError || !out.originalUnchanged ? 1 : 0); // a caught failure must fail the run

@@ -3,6 +3,11 @@
 // Public types of @slicerx/viewport. Coordinates in every public call are the
 // slicer frame used by the Plate contract: millimeters, Z up, origin at the
 // bed's front left corner. The renderer converts to three.js Y-up internally.
+// ---------------------------------------------------------------------------------------------------------------
+// MODIFIED BY SNAPMAKER STUDIO (DVOpenLabs/snapmaker-studio): the only change in this file is the import path of the
+// contracts module ('@slicerx/contracts' -> '../contracts/index'). Upstream: slicerx-oss/slicerx @
+// edb521fe41306dd60d01bda8a0f6bf8aa54fcb29 (Apache-2.0). See ../UPDATING.md.
+// ---------------------------------------------------------------------------------------------------------------
 import type { ToolChangerSpec } from './toolchanger'
 import type { PurgePlan } from './purge'
 import type { HeadModel } from './heads'

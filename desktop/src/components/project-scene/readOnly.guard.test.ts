@@ -66,6 +66,11 @@ function scan(set: Record<string, string>): string[] {
   }
   const adapter = set[ADAPTER];
   if (adapter !== undefined) {
+    // In the adapter createViewport may appear exactly twice: in its import, and as ONE call expression. Re-exports, aliases,
+    // a second call or passing it on as a value all add an occurrence and fail.
+    const words = [...code(adapter).matchAll(/\bcreateViewport\b/g)].length;
+    const calls = [...code(adapter).matchAll(/\bcreateViewport\s*\(/g)].length;
+    if (words !== 2 || calls !== 1) out.push(`${ADAPTER}: createViewport must appear only in its import and in one call`);
     const tools = [...code(adapter).matchAll(/setTool[^\n]*/g)].map((m) => m[0]);
     if (tools.length !== 1 || !/^setTool\("probe"\);?$/.test(tools[0].trim())) out.push(`${ADAPTER}: setTool must appear once, as setTool("probe")`);
   }
@@ -145,6 +150,26 @@ describe("the guard fails when a bypass is added (mutation tests)", () => {
     expect(scan({ ...base, [ADAPTER]: other }).join("\n")).toContain("setTool must appear once");
     const twice = real[ADAPTER].replace('raw.setTool("probe");', 'raw.setTool("probe");\n    raw.setTool("probe");');
     expect(scan({ ...base, [ADAPTER]: twice }).join("\n")).toContain("setTool must appear once");
+  });
+
+  it("fails when the adapter re-exports, aliases or calls createViewport again", () => {
+    const base = real[ADAPTER];
+    const variants = [
+      `${base}
+export { createViewport };
+`,
+      `${base}
+export const make = createViewport;
+`,
+      `${base}
+const alias = createViewport;
+export const other = alias;
+`,
+      `${base}
+export const second = (c: HTMLCanvasElement) => createViewport(c);
+`,
+    ];
+    for (const mutated of variants) expect(scan({ ...real, [ADAPTER]: mutated }).join(" ; ")).toContain("createViewport must appear only");
   });
 
   it("fails when the adapter mentions an editing member other than the probe tool", () => {

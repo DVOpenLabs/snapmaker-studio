@@ -55,7 +55,9 @@ export type SceneErrorCode =
   | "INVALID_REQUEST" | "UNSUPPORTED_FORMAT" | "INVALID_ARCHIVE" | "INVALID_GEOMETRY" | "UNRESOLVED_REFERENCE"
   | "LIMIT_EXCEEDED" | "SOURCE_CHANGED" | "CANCELLED" | "TIMEOUT" | "EXPIRED" | "NOT_READY" | "WORKER_WEDGED" | "INTERNAL"
   // Client-side only: the engine could not be reached, or sent something that is not a scene/1 document.
-  | "UNREACHABLE" | "BAD_RESPONSE";
+  | "UNREACHABLE" | "BAD_RESPONSE"
+  // The engine refused a start as out of order (a newer one was seen from this client) or as already cancelled.
+  | "STALE_START" | "CANCELLED_BEFORE_START";
 export type JobStatus = {
   job_id: string; request_id: string; state: JobState; stage: JobStage; completed: number | null; total: number | null;
   error: { code: SceneErrorCode; message: string } | null; revision: string | null;
@@ -88,6 +90,8 @@ const ERROR_TEXT: Record<SceneErrorCode, string> = {
   INTERNAL: "The engine hit an unexpected problem while building the 3D view.",
   UNREACHABLE: "Studio could not reach the local engine, so there is no 3D view.",
   BAD_RESPONSE: "The engine sent a 3D view Studio does not understand.",
+  STALE_START: "A newer request for the 3D view replaced this one.",
+  CANCELLED_BEFORE_START: "This 3D view request was cancelled before it started.",
 };
 export function sceneErrorText(code: SceneErrorCode): string {
   return ERROR_TEXT[code] ?? ERROR_TEXT.INTERNAL;
@@ -160,9 +164,38 @@ function errorFromResponse(status: number, body: unknown): SceneError {
   return new SceneError(status >= 500 ? "INTERNAL" : "BAD_RESPONSE");
 }
 
-/** Asks the engine to stop a job. Best effort and silent: it runs from cleanup paths that must never throw. */
-export function cancelSceneJob(jobId: string, transport: SceneTransport = defaultTransport): void {
-  void transport("cancel", { job_id: jobId }).catch(() => undefined);
+// An id for this run of the app (8-64 characters of A-Z a-z 0-9 _ -). The engine uses it to order start calls from one
+// client (a start with a lower `seq` than one it has already seen is refused as STALE_START) and to cancel a request by
+// its id even before the engine has seen its start (the late start is then refused as CANCELLED_BEFORE_START).
+function newClientId(): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  const bytes = new Uint8Array(24);
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  if (c?.getRandomValues) c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => alphabet[b & 63]).join("");
+}
+export const clientId: string = newClientId();
+let startSeq = 0;
+
+const CANCEL_MS = 3000;
+
+/**
+ * Tells the engine a request is no longer wanted: by client id and request id, so it works whether or not the start has
+ * been answered. Best effort and silent: it runs from cleanup paths that must never throw or wait. It is bounded and never
+ * awaited, so it cannot hold up the next start.
+ */
+export function cancelSceneRequest(requestId: string, transport: SceneTransport = defaultTransport): void {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), CANCEL_MS);
+  let sent: Promise<unknown>;
+  try {
+    sent = transport("cancel", { client_id: clientId, request_id: requestId }, ctl.signal);
+  } catch {
+    clearTimeout(timer);
+    return;
+  }
+  void sent.catch(() => undefined).finally(() => clearTimeout(timer));
 }
 
 export type LoadSceneOptions = {
@@ -195,19 +228,6 @@ function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-// Scene starts leave one at a time, in the order they were requested. The engine handles requests on separate threads, so
-// two starts sent back to back (React StrictMode's start, cancel, start) could be handled in the opposite order, and the
-// newer view's job would then be replaced by the older one's and come back cancelled. Every turn is bounded (see
-// `limited`), so one start that never answers cannot hold up the ones behind it.
-let startTurn: Promise<unknown> = Promise.resolve();
-// The clean-up of an abandoned start. The caller is released at once; the next turn waits for this (it is bounded).
-let recovering: Promise<void> = Promise.resolve();
-function inTurn<T>(task: () => Promise<T>): Promise<T> {
-  const run = startTurn.then(task, task);
-  startTurn = run.catch(() => undefined).then(() => recovering);
-  return run;
-}
-
 /**
  * Runs one engine call that gives up when the caller aborts or after `ms`. The result is a race, so a transport that
  * ignores its signal still cannot hold the caller: the answer is dropped. Rejects with an AbortError or a TIMEOUT SceneError.
@@ -231,55 +251,50 @@ function limited<T>(run: (signal: AbortSignal) => Promise<T>, caller: AbortSigna
   });
 }
 
-const RECOVERY_MS = 3000;
-
-/**
- * A start that was abandoned (the caller left, or the engine did not answer in time) may still have made a job.
- * Asking again with the same request id returns that job without making another one; it is then cancelled. This runs
- * before the next start is sent, so that start cannot be replaced by it, and it is bounded, so it cannot hold the turn for long.
- */
-async function cancelAbandonedStart(transport: SceneTransport, body: { path: string; request_id: string }): Promise<void> {
-  try {
-    const again = await limited((s) => transport("start", body, s), new AbortController().signal, RECOVERY_MS);
-    if (again.status === 200 && isObject(again.body) && typeof again.body.job_id === "string") {
-      cancelSceneJob(again.body.job_id, transport);
-    }
-  } catch { /* best effort */ }
-}
+// Outcomes that mean "this request was replaced or cancelled by something other than the user leaving": the engine
+// replaced it with a newer start, or refused a start as out of order or already cancelled.
+const SUPERSEDED = new Set<SceneErrorCode>(["CANCELLED", "STALE_START", "CANCELLED_BEFORE_START"]);
 
 /**
  * Starts a scene job for `path`, follows it, and resolves with the scene. If `signal` aborts, the browser requests are
- * aborted AND the engine is told to cancel the job (aborting a request alone does not stop work in the engine); the
- * promise then rejects with an AbortError. Every other failure rejects with a SceneError.
+ * aborted AND the engine is told to cancel the request by client id and request id, at once (aborting a request alone does
+ * not stop work in the engine); the promise then rejects with an AbortError. Every other failure rejects with a SceneError.
+ *
+ * Ordering of overlapping starts is the engine's job: each start carries this client's id and a strictly increasing `seq`.
+ * As resilience, not as the fix, a wanted request that comes back cancelled or refused as superseded is started ONCE more
+ * with a fresh request id; a second such outcome is reported as it is.
  */
 export async function loadScene(path: string, opts: LoadSceneOptions): Promise<SceneV1> {
+  const { signal } = opts;
+  if (signal.aborted) throw abortError();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await runOnce(path, opts, attempt === 0 ? opts.requestId ?? newRequestId() : newRequestId());
+    } catch (error) {
+      const again = error instanceof SceneError && SUPERSEDED.has(error.code) && attempt === 0 && !signal.aborted;
+      if (!again) throw error;
+    }
+  }
+}
+
+async function runOnce(path: string, opts: LoadSceneOptions, requestId: string): Promise<SceneV1> {
   const { signal } = opts;
   const transport = opts.transport ?? defaultTransport;
   const sleep = opts.sleep ?? defaultSleep;
   const pollMs = opts.pollMs ?? 250;
-  if (signal.aborted) throw abortError();
-
-  const startBody = { path, request_id: opts.requestId ?? newRequestId() };
   const startMs = opts.startTimeoutMs ?? 15000;
   const requestMs = opts.requestTimeoutMs ?? 30000;
-  const started = await inTurn(async () => {
-    // A caller that gave up while waiting its turn never starts a job at all.
-    if (signal.aborted) return null;
-    try {
-      return await limited((s) => transport("start", startBody, s), signal, startMs);
-    } catch (error) {
-      if (isAbort(error) || (error instanceof SceneError && error.code === "TIMEOUT")) recovering = cancelAbandonedStart(transport, startBody);
-      throw error;
-    }
-  });
-  if (started === null) throw abortError();
-  if (started.status !== 200) throw errorFromResponse(started.status, started.body);
-  const job = readStart(started.body);
-  const jobId = job.job_id;
-  const onAbort = () => cancelSceneJob(jobId, transport);
-  if (signal.aborted) { onAbort(); throw abortError(); }
+
+  // Registered before the start is sent, so leaving at ANY moment cancels this request, answered or not.
+  const onAbort = () => cancelSceneRequest(requestId, transport);
   signal.addEventListener("abort", onAbort, { once: true });
   try {
+    const started = await limited(
+      (s) => transport("start", { path, request_id: requestId, client_id: clientId, seq: ++startSeq }, s), signal, startMs,
+    );
+    if (started.status !== 200) throw errorFromResponse(started.status, started.body);
+    const job = readStart(started.body);
+    const jobId = job.job_id;
     // The start answer has no progress or error fields, so it becomes a status with those unknown (null).
     let status: JobStatus = {
       job_id: job.job_id, request_id: job.request_id, state: job.state, stage: null, completed: null, total: null, error: null, revision: job.revision,
@@ -318,8 +333,8 @@ export async function loadScene(path: string, opts: LoadSceneOptions): Promise<S
     return result.body as unknown as SceneV1;
   } catch (error) {
     if (signal.aborted && !isAbort(error)) throw abortError();
-    // An answer that never came: stop the job too (a no-op if it is already over).
-    if (error instanceof SceneError && error.code === "TIMEOUT") cancelSceneJob(jobId, transport);
+    // An answer that never came: stop the request too (a no-op if it is already over).
+    if (error instanceof SceneError && error.code === "TIMEOUT") cancelSceneRequest(requestId, transport);
     throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);

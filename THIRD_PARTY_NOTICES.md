@@ -48,8 +48,13 @@ The read-only 3D project view draws with the framework-free viewport from
 SlicerX contributors), vendored at commit `edb521fe41306dd60d01bda8a0f6bf8aa54fcb29` under
 `desktop/src/vendor/slicerx/`, together with the SXPV and plate type definitions it imports
 from `packages/contracts`. Both are Apache-2.0; the licence text and SlicerX's own NOTICE are
-kept beside the source (`LICENSE-APACHE`, `NOTICE`). Studio's local changes are listed in
-`desktop/src/vendor/slicerx/UPDATING.md`.
+kept beside the source (`LICENSE-APACHE`, `NOTICE`). **Modified files:** seven of the vendored
+viewport files (`palette.ts`, `stage.ts`, `summary.ts`, `toolchanger.ts`, `toolpaths.ts`, `types.ts`,
+`viewport.ts`) differ from upstream in exactly one line, the import path of the contracts module
+(`'@slicerx/contracts'` became `'../contracts/index'`). Each carries a clearly marked "MODIFIED BY
+SNAPMAKER STUDIO" notice after its unchanged upstream header. Every local change, with the upstream
+blob id and current sha256 of each file, is listed in `desktop/src/vendor/slicerx/UPDATING.md`, and a
+test (`project-scene/vendor.integrity.test.ts`) checks that nothing else differs.
 
 What this does and does not include: only the viewport and the contract types are vendored.
 SlicerX's slicing engine, profiles, printer pictures and other AGPL-licensed data are **not**

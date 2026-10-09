@@ -145,7 +145,7 @@ export default function ProjectScenePanel({ path, wide = false }: { path: string
                           <span className="min-w-0 break-words font-medium">{o.label}</span>
                           <span className="min-w-0 break-words text-xs text-muted-foreground">{o.roleText}, {o.plateText}</span>
                           {o.tone && (
-                            <span className={cn("rounded border px-1.5 text-xs", TONE_CLASS[o.tone])}>{TONE_TEXT[o.tone]}</span>
+                            <span className={cn("min-w-0 max-w-full whitespace-normal break-words rounded border px-1.5 text-xs", TONE_CLASS[o.tone])}>{TONE_TEXT[o.tone]}</span>
                           )}
                         </button>
                       </li>
@@ -200,7 +200,7 @@ export default function ProjectScenePanel({ path, wide = false }: { path: string
         </div>
         <div className="space-y-1 text-xs text-muted-foreground">
           <p>Review placement and supports in Snapmaker Orca.</p>
-          <p>3D view: {SLICERX_CREDIT}</p>
+          <p>{SLICERX_CREDIT}</p>
           <details>
             <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Licenses for the 3D view</summary>
             <div className="mt-2 space-y-3">

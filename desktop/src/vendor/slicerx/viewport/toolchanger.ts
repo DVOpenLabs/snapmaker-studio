@@ -22,6 +22,11 @@
 // so the head never jumps. The firmware's own work (cutting, loading, flushing, latching) is a dwell of
 // the seconds the slicer counts for the change (`fixedSeconds`, from `ChangeClock`), spent where the
 // machine spends it. Positions are bed coordinates in mm, origin at the front left corner, z up.
+// ---------------------------------------------------------------------------------------------------------------
+// MODIFIED BY SNAPMAKER STUDIO (DVOpenLabs/snapmaker-studio): the only change in this file is the import path of the
+// contracts module ('@slicerx/contracts' -> '../contracts/index'). Upstream: slicerx-oss/slicerx @
+// edb521fe41306dd60d01bda8a0f6bf8aa54fcb29 (Apache-2.0). See ../UPDATING.md.
+// ---------------------------------------------------------------------------------------------------------------
 import type { Bed, PreviewBuffers } from '../contracts/index'
 
 export type V3 = [number, number, number]

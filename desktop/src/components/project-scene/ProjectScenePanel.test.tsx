@@ -104,7 +104,7 @@ describe("ProjectScenePanel", () => {
     resolveWith(offBedScene());
     const { unmount } = render(<ProjectScenePanel path="a.3mf" wide />);
     await screen.findByRole("button", { name: "Top" });
-    expect(screen.getByText(/^3D view: Made possible by SlicerX: https:\/\/slicerx\.app\/support$/)).toBeTruthy();
+    expect(screen.getByText(/^Made possible by SlicerX: https:\/\/slicerx\.app\/support$/)).toBeTruthy();
     expect(screen.getByRole("region", { name: "Apache License 2.0 (SlicerX viewport)" }).textContent).toContain("Apache License");
     expect(screen.getByRole("region", { name: "SlicerX notice (Apache-2.0)" }).textContent).toContain("Made possible by SlicerX");
     expect(screen.getByRole("region", { name: "three.js (MIT)" }).textContent).toContain("Copyright");
