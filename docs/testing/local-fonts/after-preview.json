@@ -1,0 +1,38 @@
+{
+  "tag": "after",
+  "mode": "preview",
+  "requestsSeen": 6,
+  "nonLoopbackAttempts": [],
+  "results": [
+    {
+      "theme": "dark",
+      "bodyFont": "ui-sans-serif, system-ui, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "monoFont": "ui-monospace, SFMono-Regular, \"Cascadia Mono\", Consolas, Menlo, monospace",
+      "textLength": 1958,
+      "dark": true,
+      "fontFacesLoaded": 0
+    },
+    {
+      "theme": "light",
+      "bodyFont": "ui-sans-serif, system-ui, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "monoFont": "ui-monospace, SFMono-Regular, \"Cascadia Mono\", Consolas, Menlo, monospace",
+      "textLength": 1958,
+      "dark": false,
+      "fontFacesLoaded": 0
+    }
+  ],
+  "checks": [
+    {
+      "check": "no request left loopback",
+      "pass": true
+    },
+    {
+      "check": "text rendered in both themes",
+      "pass": true
+    },
+    {
+      "check": "theme applied as requested",
+      "pass": true
+    }
+  ]
+}
