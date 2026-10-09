@@ -95,7 +95,7 @@ const ERROR_TEXT: Record<SceneErrorCode, string> = {
   STALE_START: "A newer request for the 3D view replaced this one.",
   CANCELLED_BEFORE_START: "This 3D view request was cancelled before it started.",
   SESSION_EXPIRED: "Studio lost its connection to the engine for the 3D view. Try again.",
-  SESSION_LIMIT: "The engine is already serving as many 3D views as it allows. Close another Studio window, then try again.",
+  SESSION_LIMIT: "The engine is serving as many 3D views as it allows. Close another Studio window, then try again.",
 };
 export function sceneErrorText(code: SceneErrorCode): string {
   return ERROR_TEXT[code] ?? ERROR_TEXT.INTERNAL;
