@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { createReadOnlyViewport, ViewerUnavailableError, type ReadOnlyViewport } from "./readOnlyViewport";
-import { makeFakeFactory } from "./fakeViewport";
+import { createReadOnlyViewport, type InspectionPort, type ReadOnlyViewport } from "./readOnlyViewport";
+import { makeFakeFactory, makeFakePort, type FakeStats } from "./fakeViewport";
 import { buildModel, buildViewScene } from "./sceneModel";
 import { offBedScene } from "./sceneFixtures";
 
-const canvas = () => ({ addEventListener() {}, removeEventListener() {} }) as unknown as HTMLCanvasElement;
+const canvas = () => ({ addEventListener() {}, removeEventListener() {}, isConnected: true }) as unknown as HTMLCanvasElement;
+const fresh = () => {
+  const stats: FakeStats = { created: 0, disposed: 0, liveContexts: 0, peakContexts: 0, liveListeners: 0, disposedDetached: 0, calls: [] };
+  const handlers = new Map<string, Set<(p: never) => void>>();
+  const emit = (event: string, payload: unknown) => { for (const h of [...(handlers.get(event) ?? [])]) (h as (p: unknown) => void)(payload); };
+  return { stats, emit, port: makeFakePort(canvas(), stats, handlers) };
+};
 
 describe("read-only viewport facade", () => {
-  it("fixes the tool to probe and calls nothing that edits", () => {
-    const { factory, stats } = makeFakeFactory();
-    const vp = createReadOnlyViewport(canvas(), factory, "dark");
+  it("calls only inspection members of the port", () => {
+    const { port, stats } = fresh();
+    const vp = createReadOnlyViewport(port, "dark");
     const s = offBedScene();
     vp.show(buildViewScene(s, buildModel(s)));
     vp.setSelected(["b1"]);
@@ -17,25 +23,23 @@ describe("read-only viewport facade", () => {
     vp.setSlopeView(true);
     vp.setSlopeView(false);
     vp.setTheme("light");
-    const tools = stats.calls.filter((c) => c.startsWith("setTool"));
-    expect(tools).toEqual(["setTool:probe"]);
-    const editing = /paint|cut|scale|rotate|transform|arrange|sketch|push|brim|setPaint|setCutPlane|setTransforms|setPartStyle/i;
+    const editing = /paint|cut|scale|rotate|transform|arrange|sketch|push|brim|setTool|setPartStyle/i;
     expect(stats.calls.filter((c) => editing.test(c))).toEqual([]);
     expect(stats.calls).toContain("view:top");
     expect(stats.calls).toContain("setRenderMode:overhang");
   });
 
-  it("exposes exactly the inspection surface and never the raw viewport", () => {
-    const { factory } = makeFakeFactory();
-    const vp = createReadOnlyViewport(canvas(), factory, "light");
+  it("exposes exactly the inspection surface and never the port or the raw viewport", () => {
+    const vp = createReadOnlyViewport(fresh().port, "light");
     expect(Object.keys(vp).sort()).toEqual(
-      ["dispose", "onPick", "onTrouble", "setCamera", "setSelected", "setSlopeView", "setTheme", "show"],
+      ["dispose", "onPick", "onSelect", "onTrouble", "setCamera", "setSelected", "setSlopeView", "setTheme", "show"],
     );
     for (const value of Object.values(vp)) expect(typeof value).toBe("function");
   });
 
-  it("does not type-check any editing call (type-level test)", () => {
+  it("does not type-check any editing call, setTool or a generic subscription (type-level test)", () => {
     const vp = null as unknown as ReadOnlyViewport;
+    const port = null as unknown as InspectionPort;
     const never = () => {
       // @ts-expect-error no setTool on the facade
       vp.setTool("move");
@@ -49,32 +53,39 @@ describe("read-only viewport facade", () => {
       vp.setTransforms({});
       // @ts-expect-error no arrange on the facade
       vp.arrange();
+      // @ts-expect-error no generic event subscription on the facade
+      vp.on("transform", () => undefined);
       // @ts-expect-error no raw handle
       vp.viewport;
       // @ts-expect-error camera presets are a closed set
       vp.setCamera("paint");
+      // @ts-expect-error the port has no setTool either
+      port.setTool("move");
+      // @ts-expect-error the port has no generic on
+      port.on("transform", () => undefined);
+      // @ts-expect-error the port has no editing calls
+      port.setCutPlane(null);
     };
     expect(typeof never).toBe("function");
   });
 
-  it("turns a failed WebGL start into ViewerUnavailableError", () => {
-    const { factory } = makeFakeFactory({ failCreate: () => true });
-    expect(() => createReadOnlyViewport(canvas(), factory, "dark")).toThrow(ViewerUnavailableError);
-  });
-
-  it("forwards picks and trouble, stops after unsubscribe, and disposes once", () => {
-    const { factory, stats, emit } = makeFakeFactory();
-    const vp = createReadOnlyViewport(canvas(), factory, "dark");
+  it("forwards picks, selection clears and trouble, stops after unsubscribe, and disposes once", () => {
+    const { port, stats, emit } = fresh();
+    const vp = createReadOnlyViewport(port, "dark");
     const picks: (string | null)[] = [];
+    const selects: string[][] = [];
     const fatals: boolean[] = [];
     const off = vp.onPick((id) => picks.push(id));
+    vp.onSelect((ids) => selects.push(ids));
     vp.onTrouble((t) => fatals.push(t.fatal));
     emit("pick", { objectId: "b1" });
+    emit("select", { ids: [] });
     emit("error", { message: "x" });
     emit("degrade", { message: "slow" });
     off();
     emit("pick", { objectId: "b0" });
     expect(picks).toEqual(["b1"]);
+    expect(selects).toEqual([[]]);
     expect(fatals).toEqual([true, false]);
     vp.dispose();
     vp.dispose();
@@ -82,5 +93,13 @@ describe("read-only viewport facade", () => {
     expect(stats.liveListeners).toBe(0);
     vp.setCamera("top");
     expect(stats.calls.filter((c) => c === "view:top")).toEqual([]);
+  });
+
+  it("the fake factory builds the same facade", () => {
+    const { factory, stats } = makeFakeFactory();
+    const vp = factory(canvas(), { theme: "dark" });
+    vp.dispose();
+    expect(stats.created).toBe(1);
+    expect(stats.disposed).toBe(1);
   });
 });

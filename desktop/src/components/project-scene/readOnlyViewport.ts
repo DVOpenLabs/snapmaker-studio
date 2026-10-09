@@ -1,16 +1,27 @@
-// The ONLY door to the vendored SlicerX viewport. The vendored source ships editing code (move, rotate, scale, paint, cut,
-// sketch). That code is still in the bundle, but nothing here can reach it: the viewport handle is never returned, the
-// tool is fixed to "probe" (a click only reports what is under the cursor), and the methods below are the whole surface.
+// The read-only facade. Studio code never holds the vendored SlicerX viewport. The vendored source ships editing code
+// (move, rotate, scale, paint, cut, sketch) and that code is still in the bundle, so the boundary is structural:
+//   * defaultViewport.ts is the only file that imports the viewport's factory. It sets the tool to "probe" (a click only
+//     reports what is under the cursor), keeps the viewport inside a closure, and hands out an `InspectionPort`;
+//   * this file turns that port into `ReadOnlyViewport`. The port has no setTool and no generic `on`: only the named
+//     inspection calls below and four named subscriptions;
+//   * readOnly.guard.test.ts scans all of src/ so no other file can import the vendor tree or name an editing call.
 import type { Viewport } from "@/vendor/slicerx/entry";
 import type { ViewScene } from "./sceneModel";
 
-/** The exact members of the vendored viewport this file may call. Editing methods are deliberately absent. */
-export type ViewportSubset = Pick<
+/** The members of the vendored viewport the port may forward. Editing members, setTool and the generic `on` are absent. */
+export type InspectionCalls = Pick<
   Viewport,
-  "canvas" | "setTool" | "setPlate" | "setSelection" | "view" | "zoomBy" | "setRenderMode" | "setDisplayStyle" | "setOverhangAngle"
-  | "setTheme" | "setGuides" | "setBedAlert" | "on" | "dispose"
+  "setPlate" | "setSelection" | "view" | "zoomBy" | "setRenderMode" | "setOverhangAngle" | "setTheme" | "setGuides"
+  | "setBedAlert" | "dispose"
 >;
-export type ViewportFactory = (canvas: HTMLCanvasElement, options: { label: string; quality: "balanced" }) => ViewportSubset;
+export type InspectionPort = InspectionCalls & {
+  onPick(handler: (objectId: string | null) => void): () => void;
+  onSelect(handler: (ids: string[]) => void): () => void;
+  onError(handler: (message: string) => void): () => void;
+  onDegrade(handler: (message: string) => void): () => void;
+};
+/** Builds a read-only viewer on a fresh canvas. Throws if graphics cannot start; never leaves a half-built viewer behind. */
+export type SceneViewerFactory = (canvas: HTMLCanvasElement, options: { theme: ThemeMode }) => ReadOnlyViewport;
 
 export type CameraPreset = "iso" | "top" | "front" | "back" | "left" | "right" | "fit" | "bed";
 export const CAMERA_PRESETS: { id: CameraPreset; label: string }[] = [
@@ -45,6 +56,8 @@ export interface ReadOnlyViewport {
   setTheme(mode: ThemeMode): void;
   /** A click on an object reports its id, a click on empty space reports null. Returns an unsubscribe function. */
   onPick(handler: (id: string | null) => void): () => void;
+  /** The viewer cleared or changed its own selection (for example Escape). */
+  onSelect(handler: (ids: string[]) => void): () => void;
   /** Graphics trouble. `fatal` means the drawing surface is gone and the view must be rebuilt on a new canvas. */
   onTrouble(handler: (t: Trouble) => void): () => void;
   dispose(): void;
@@ -57,59 +70,53 @@ export class ViewerUnavailableError extends Error {
   }
 }
 
-export function createReadOnlyViewport(
-  canvas: HTMLCanvasElement, factory: ViewportFactory, theme: ThemeMode,
-): ReadOnlyViewport {
-  let vp: ViewportSubset;
-  try {
-    vp = factory(canvas, { label: "3D view of the project. Drag to orbit, scroll to zoom.", quality: "balanced" });
-  } catch {
-    throw new ViewerUnavailableError();
-  }
-  // "probe": a click reports what is under the cursor and moves, rotates, scales and paints nothing.
-  vp.setTool("probe");
-  vp.setTheme({ scene: THEMES[theme] });
+export function createReadOnlyViewport(port: InspectionPort, theme: ThemeMode): ReadOnlyViewport {
+  port.setTheme({ scene: THEMES[theme] });
   const picks = new Set<(id: string | null) => void>();
+  const selects = new Set<(ids: string[]) => void>();
   const troubles = new Set<(t: Trouble) => void>();
   const offs = [
-    vp.on("pick", (e) => { for (const h of [...picks]) h(e.objectId); }),
-    vp.on("error", (e) => { for (const h of [...troubles]) h({ message: e.message, fatal: true }); }),
-    vp.on("degrade", (e) => { for (const h of [...troubles]) h({ message: e.message, fatal: false }); }),
+    port.onPick((id) => { for (const h of [...picks]) h(id); }),
+    port.onSelect((ids) => { for (const h of [...selects]) h(ids); }),
+    port.onError((message) => { for (const h of [...troubles]) h({ message, fatal: true }); }),
+    port.onDegrade((message) => { for (const h of [...troubles]) h({ message, fatal: false }); }),
   ];
   let disposed = false;
   return {
     show(scene) {
       if (disposed) return;
-      vp.setPlate({
+      port.setPlate({
         bed: scene.bed,
         objects: scene.objects.map((o) => ({
           id: o.id, name: o.name, transform: o.transform,
           parts: o.parts.map((p) => ({ name: p.name, positions: p.positions, indices: p.indices, color: p.color })),
         })),
       });
-      vp.setGuides(scene.marginLoop ? { loops: [{ points: scene.marginLoop, soft: true }] } : {});
-      vp.setBedAlert(scene.bedAlert);
-      vp.view("bed", { animate: false });
+      port.setGuides(scene.marginLoop ? { loops: [{ points: scene.marginLoop, soft: true }] } : {});
+      port.setBedAlert(scene.bedAlert);
+      port.view("bed", { animate: false });
       // An object placed past the bed edge has to stay in frame, so back the camera away a little.
-      if (scene.bedAlert) vp.zoomBy(0.7, { animate: false });
+      if (scene.bedAlert) port.zoomBy(0.7, { animate: false });
     },
-    setSelected(ids) { if (!disposed) vp.setSelection([...ids]); },
-    setCamera(preset) { if (!disposed) vp.view(preset); },
+    setSelected(ids) { if (!disposed) port.setSelection([...ids]); },
+    setCamera(preset) { if (!disposed) port.view(preset); },
     setSlopeView(on) {
       if (disposed) return;
-      vp.setRenderMode(on ? "overhang" : "studio");
-      if (on) vp.setOverhangAngle(SLOPE_ANGLE_DEG);
+      port.setRenderMode(on ? "overhang" : "studio");
+      if (on) port.setOverhangAngle(SLOPE_ANGLE_DEG);
     },
-    setTheme(mode) { if (!disposed) vp.setTheme({ scene: THEMES[mode] }); },
+    setTheme(mode) { if (!disposed) port.setTheme({ scene: THEMES[mode] }); },
     onPick(handler) { picks.add(handler); return () => { picks.delete(handler); }; },
+    onSelect(handler) { selects.add(handler); return () => { selects.delete(handler); }; },
     onTrouble(handler) { troubles.add(handler); return () => { troubles.delete(handler); }; },
     dispose() {
       if (disposed) return;
       disposed = true;
       for (const off of offs) off();
       picks.clear();
+      selects.clear();
       troubles.clear();
-      vp.dispose();
+      port.dispose();
     },
   };
 }

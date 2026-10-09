@@ -25,11 +25,19 @@ Upstream `viewport.ts` constructs its move, rotate, scale, paint, cut, sketch an
 and about 190 lines of it refer to them. They were **not** removed: that would be an extensive rewrite of a pinned file.
 They are in the bundle. Studio keeps them inert by construction:
 
-* `src/components/project-scene/readOnlyViewport.ts` is the only importer of the viewport's type, and
-  `defaultViewport.ts` the only importer of its factory. The facade never returns the viewport handle, calls
-  `setTool("probe")` once (a click only reports what is under the cursor; nothing is selected, dragged or painted) and
-  exposes only inspection calls (`readOnly.guard.test.ts` pins the list).
-* `readOnlyViewport.test.ts` has a type-level test that editing calls do not type-check on the facade.
+* **Enforced where.** `src/components/project-scene/defaultViewport.ts` is the only file that imports the viewport's
+  factory (`entry.ts`) and the only one that touches its tool: it calls `setTool("probe")` once (a click only reports what is
+  under the cursor; nothing is selected, dragged or painted), keeps the viewport in a closure, and returns a
+  `ReadOnlyViewport` built from an `InspectionPort` that has no `setTool`, no generic `on`, no editing member and no handle.
+  A throw after the viewport exists disposes it. `readOnlyViewport.ts` holds the facade and a type-only import of the
+  vendor entry; `credits.ts` imports `NOTICE` and `LICENSE-APACHE` as plain text and nothing else from this tree.
+* `readOnly.guard.test.ts` scans every non-test file in `src/` (not only the view's folder) and fails on any other
+  mention of this tree (import, re-export, dynamic or computed `import()`, `?raw`, relative path), on any editing member
+  name in any spelling, and on `createViewport` outside the adapter. Mutation tests prove it fails for bypasses placed in
+  `project-scene/sub/`, `routes/` and `lib/`. When you update the vendored source, a new upstream default that turned an
+  editing tool on under `probe` is what the real-browser interaction check (in the docs README) would catch.
+* `readOnlyViewport.test.ts` has a type-level test that editing calls, `setTool` and a generic `on` do not type-check on
+  the facade or the port; `defaultViewport.test.ts` tests the adapter against a stand-in viewport.
 * `docs/testing/project-viewer/README.md` records a real-browser run that drives mouse, modifier and keyboard input at
   the viewport and shows no object moved, with a control run (the upstream default tool) that does move it.
 

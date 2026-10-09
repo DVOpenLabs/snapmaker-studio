@@ -56,7 +56,11 @@ SlicerX's slicing engine, profiles, printer pictures and other AGPL-licensed dat
 part of Studio. The vendored viewport still contains SlicerX's editing code (move, rotate,
 scale, paint, cut, sketch) because its entry class imports it; Studio never calls it. The 3D
 view is read-only and reaches the viewport only through
-`desktop/src/components/project-scene/readOnlyViewport.ts`. "SlicerX" and its logo are
+`desktop/src/components/project-scene/defaultViewport.ts` and `readOnlyViewport.ts` (see `UPDATING.md`).
+
+The installed app shows these credits itself: the 3D view panel carries "Made possible by SlicerX" with the link above and a
+"Licenses for the 3D view" section with SlicerX's NOTICE, the Apache License 2.0 text and the three.js MIT text
+(`desktop/src/components/project-scene/credits.ts`). This file is not shipped by the installer. "SlicerX" and its logo are
 trademarks of the SlicerX project; Studio is not affiliated with or endorsed by SlicerX.
 
 ---

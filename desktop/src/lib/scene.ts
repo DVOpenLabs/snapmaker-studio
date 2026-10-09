@@ -164,6 +164,10 @@ export type LoadSceneOptions = {
   pollMs?: number;
   transport?: SceneTransport;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** How long to wait for the engine to answer the start call. Default 15 s. */
+  startTimeoutMs?: number;
+  /** How long to wait for any one status or result answer. Default 30 s. */
+  requestTimeoutMs?: number;
 };
 
 function abortError(): Error {
@@ -184,12 +188,54 @@ function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
 
 // Scene starts leave one at a time, in the order they were requested. The engine handles requests on separate threads, so
 // two starts sent back to back (React StrictMode's start, cancel, start) could be handled in the opposite order, and the
-// newer view's job would then be replaced by the older one's and come back cancelled.
+// newer view's job would then be replaced by the older one's and come back cancelled. Every turn is bounded (see
+// `limited`), so one start that never answers cannot hold up the ones behind it.
 let startTurn: Promise<unknown> = Promise.resolve();
+// The clean-up of an abandoned start. The caller is released at once; the next turn waits for this (it is bounded).
+let recovering: Promise<void> = Promise.resolve();
 function inTurn<T>(task: () => Promise<T>): Promise<T> {
   const run = startTurn.then(task, task);
-  startTurn = run.catch(() => undefined);
+  startTurn = run.catch(() => undefined).then(() => recovering);
   return run;
+}
+
+/**
+ * Runs one engine call that gives up when the caller aborts or after `ms`. The result is a race, so a transport that
+ * ignores its signal still cannot hold the caller: the answer is dropped. Rejects with an AbortError or a TIMEOUT SceneError.
+ */
+function limited<T>(run: (signal: AbortSignal) => Promise<T>, caller: AbortSignal, ms: number): Promise<T> {
+  if (caller.aborted) return Promise.reject(abortError());
+  const ctl = new AbortController();
+  let timedOut = false;
+  const onCaller = () => ctl.abort();
+  caller.addEventListener("abort", onCaller, { once: true });
+  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, ms);
+  let onLimit: () => void = () => undefined;
+  return new Promise<T>((resolve, reject) => {
+    onLimit = () => reject(timedOut ? new SceneError("TIMEOUT") : abortError());
+    ctl.signal.addEventListener("abort", onLimit, { once: true });
+    run(ctl.signal).then(resolve, reject);
+  }).finally(() => {
+    clearTimeout(timer);
+    caller.removeEventListener("abort", onCaller);
+    ctl.signal.removeEventListener("abort", onLimit);
+  });
+}
+
+const RECOVERY_MS = 3000;
+
+/**
+ * A start that was abandoned (the caller left, or the engine did not answer in time) may still have made a job.
+ * Asking again with the same request id returns that job without making another one; it is then cancelled. This runs
+ * before the next start is sent, so that start cannot be replaced by it, and it is bounded, so it cannot hold the turn for long.
+ */
+async function cancelAbandonedStart(transport: SceneTransport, body: { path: string; request_id: string }): Promise<void> {
+  try {
+    const again = await limited((s) => transport("start", body, s), new AbortController().signal, RECOVERY_MS);
+    if (again.status === 200 && isObject(again.body) && typeof again.body.job_id === "string") {
+      cancelSceneJob(again.body.job_id, transport);
+    }
+  } catch { /* best effort */ }
 }
 
 /**
@@ -204,12 +250,18 @@ export async function loadScene(path: string, opts: LoadSceneOptions): Promise<S
   const pollMs = opts.pollMs ?? 250;
   if (signal.aborted) throw abortError();
 
-  // The start call is not tied to the signal: if it were aborted mid-flight the job id would be lost and the job
-  // could not be cancelled. It is a short call; the signal is checked as soon as it returns.
+  const startBody = { path, request_id: opts.requestId ?? newRequestId() };
+  const startMs = opts.startTimeoutMs ?? 15000;
+  const requestMs = opts.requestTimeoutMs ?? 30000;
   const started = await inTurn(async () => {
     // A caller that gave up while waiting its turn never starts a job at all.
     if (signal.aborted) return null;
-    return transport("start", { path, request_id: opts.requestId ?? newRequestId() });
+    try {
+      return await limited((s) => transport("start", startBody, s), signal, startMs);
+    } catch (error) {
+      if (isAbort(error) || (error instanceof SceneError && error.code === "TIMEOUT")) recovering = cancelAbandonedStart(transport, startBody);
+      throw error;
+    }
   });
   if (started === null) throw abortError();
   if (started.status !== 200) throw errorFromResponse(started.status, started.body);
@@ -227,12 +279,13 @@ export async function loadScene(path: string, opts: LoadSceneOptions): Promise<S
       if (status.state === "failed") throw new SceneError(asCode(status.error?.code));
       if (status.state === "cancelled") throw new SceneError("CANCELLED");
       await sleep(pollMs, signal);
-      const polled = await transport("status", { job_id: jobId }, signal);
+      const polled = await limited((s) => transport("status", { job_id: jobId }, s), signal, requestMs);
       if (polled.status !== 200) throw errorFromResponse(polled.status, polled.body);
       status = readStatus(polled.body);
     }
-    const result = await transport(
-      "result", { job_id: jobId, ...(status.revision ? { expected_revision: status.revision } : {}) }, signal,
+    const result = await limited(
+      (s) => transport("result", { job_id: jobId, ...(status.revision ? { expected_revision: status.revision } : {}) }, s),
+      signal, requestMs,
     );
     if (signal.aborted) throw abortError();
     if (result.status !== 200) throw errorFromResponse(result.status, result.body);
@@ -242,6 +295,8 @@ export async function loadScene(path: string, opts: LoadSceneOptions): Promise<S
     return result.body as unknown as SceneV1;
   } catch (error) {
     if (signal.aborted && !isAbort(error)) throw abortError();
+    // An answer that never came: stop the job too (a no-op if it is already over).
+    if (error instanceof SceneError && error.code === "TIMEOUT") cancelSceneJob(jobId, transport);
     throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);

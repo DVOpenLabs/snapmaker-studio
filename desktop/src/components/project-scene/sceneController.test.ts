@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SceneController, type ControllerDeps } from "./sceneController";
 import { makeFakeFactory } from "./fakeViewport";
 import { offBedScene, scene } from "./sceneFixtures";
-import { SceneError, type LoadSceneOptions, type SceneV1 } from "@/lib/scene";
+import { SceneError, loadScene, type LoadSceneOptions, type SceneTransport, type SceneV1 } from "@/lib/scene";
 
 function abortError() { const e = new Error("aborted"); e.name = "AbortError"; return e; }
 
@@ -209,6 +209,66 @@ describe("SceneController", () => {
     expect(stats.disposed).toBe(1);
     expect(stats.disposedDetached).toBe(0);
     expect(document.querySelectorAll("canvas")).toHaveLength(0);
+  });
+
+  it("shows a failure with Retry when the engine never answers the start, and Retry works afterwards", async () => {
+    let answer = false;
+    const job = (state: string, revision: string | null) => ({ job_id: "j", request_id: "r", state, stage: null, completed: null, total: null, error: null, revision });
+    const transport: SceneTransport = (route) => {
+      if (route === "start") {
+        // Until `answer` is set it never answers, and ignores its signal.
+        return answer ? Promise.resolve({ status: 200, body: job("succeeded", "a".repeat(64)) }) : new Promise(() => undefined);
+      }
+      if (route === "result") return Promise.resolve({ status: 200, body: scene() });
+      return Promise.resolve({ status: 200, body: job("cancelled", null) });
+    };
+    const { factory } = makeFakeFactory();
+    const c = new SceneController({
+      load: (path, opts) => loadScene(path, { ...opts, transport, startTimeoutMs: 30, sleep: () => Promise.resolve() }),
+      viewportFactory: factory, theme: "dark",
+    });
+    c.setHost(host());
+    c.setPath("a.3mf");
+    expect(c.getState().phase).toBe("loading");
+    await new Promise((r) => setTimeout(r, 120));
+    expect(c.getState()).toMatchObject({ phase: "failed", error: "TIMEOUT" });
+    answer = true;
+    c.retryLoad();
+    await new Promise((r) => setTimeout(r, 3400)); // the abandoned start's clean-up holds the next start for at most 3 s
+    expect(c.getState().phase).toBe("shown");
+    c.dispose();
+  }, 10000);
+
+  it("reports a scene whose geometry cannot be decoded as a load problem, not as missing graphics", async () => {
+    const { load, pending } = manualLoader();
+    const { factory, stats } = makeFakeFactory();
+    const c = new SceneController({ load, viewportFactory: factory, theme: "dark" });
+    c.setHost(host());
+    c.setPath("a.3mf");
+    const bad = scene();
+    bad.meshes[0].positions_f32le_base64 = "AAAA"; // wrong size for the counts
+    pending[0].resolve(bad);
+    await flush();
+    expect(c.getState()).toMatchObject({ phase: "failed", error: "BAD_RESPONSE" });
+    expect(stats.created).toBe(0);
+    expect(document.querySelectorAll("canvas")).toHaveLength(0);
+    c.dispose();
+  });
+
+  it("clears the list selection when the viewer clears its own (Escape), and ignores echoes of its own selections", async () => {
+    const { load, pending } = manualLoader();
+    const { factory, emit } = makeFakeFactory();
+    const c = new SceneController({ load, viewportFactory: factory, theme: "dark" });
+    c.setHost(host());
+    c.setPath("a.3mf");
+    pending[0].resolve(scene());
+    await flush();
+    c.selectFromList("b1");
+    emit("select", { ids: ["b1"] });
+    expect(c.getState().selectedId).toBe("b1");
+    emit("select", { ids: [] });
+    expect(c.getState().selectedId).toBeNull();
+    c.dispose();
   });
 
   it("never throws out of dispose even if the viewport's dispose throws", async () => {

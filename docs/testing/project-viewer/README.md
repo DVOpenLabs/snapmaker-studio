@@ -17,7 +17,7 @@ a discrete NVIDIA GPU through ANGLE/Direct3D 11). Raw numbers are in `results.js
 | Check | Status |
 |---|---|
 | `npx tsc --noEmit` | 0 errors |
-| `npm run test` (vitest) | 76 files, 879 tests, 0 failed (includes the existing prepare-copy guard) |
+| `npm run test` (vitest) | 77 files, 912 tests, 0 failed (includes the existing prepare-copy guard) |
 | `npm run build` | passes |
 | Real-browser run, dev server, real engine, real WebGL, light and dark, wide and narrow | run (this folder) |
 | Production build served with the app's real Tauri CSP | run: viewer works, no violation from the viewer |
@@ -34,23 +34,41 @@ The vendored SlicerX viewport (`desktop/src/vendor/slicerx/UPDATING.md`) still c
 scale, paint, cut, sketch), because its entry class imports and constructs it. That code is **in the bundle**; it was
 not removed. Studio cannot reach it:
 
-* One facade, `components/project-scene/readOnlyViewport.ts`, is the only door. It never returns the viewport
-  handle, sets the tool to `probe` once (a click only reports what is under the cursor), and offers only: show,
-  select, camera preset, slope view, theme, pick and trouble callbacks, dispose.
-* Type-level test: editing calls (`setTool`, `setPlate`, `setPaintSettings`, `setCutPlane`, `setTransforms`, `arrange`,
-  raw handle, unknown camera preset) do not type-check on the facade (`@ts-expect-error` lines in
-  `readOnlyViewport.test.ts`, enforced by `tsc`).
-* Source scan (`readOnly.guard.test.ts`): only `defaultViewport.ts` imports the viewport factory; only the vendor
-  `entry.ts` is imported; `setTool("probe")` is the only tool call; no edit event is subscribed; the facade's
-  allowed-member list is pinned; no file-writing API, Tauri call or `fetch` is used in the view's code.
+The boundary is structural, in three places, and a test pins each:
+
+* **`defaultViewport.ts`** is the only file that imports the viewport's factory, and the only place that touches its
+  tool: it calls `setTool("probe")` once (a click only reports what is under the cursor), keeps the viewport inside a
+  closure, and hands out an inspection port (`InspectionPort`, defined in `readOnlyViewport.ts`) that has no `setTool`, no
+  generic `on` and no editing member, only the ten named pass-through calls pinned in the guard test and four named
+  subscriptions (pick, select, error, degrade). If anything after creation throws, it disposes the half-built viewport.
+  `defaultViewport.test.ts` proves, against a stand-in viewport, that the tool is set once and first, that the adapter
+  hands out no `setTool` or `on`, and that a throw from `setTool`, `setTheme` or any of the four subscriptions disposes
+  the viewport.
+* **`readOnlyViewport.ts`** turns the port into the facade (`ReadOnlyViewport`: show, select, camera preset, slope view,
+  theme, onPick, onSelect, onTrouble, dispose). Type-level test: editing calls, `setTool`, a generic `on`, a raw handle
+  and an unknown camera preset do not type-check on the facade, and `setTool`, `on` and `setCutPlane` do not type-check on the
+  port (`@ts-expect-error` lines in `readOnlyViewport.test.ts`, enforced by `tsc`).
+* **`readOnly.guard.test.ts`** scans ALL of `src/` (not just the view's folder; vendor and tests excluded, about 140
+  files). It fails when any file other than those named below mentions the vendor tree in any quoted string (import,
+  re-export, dynamic `import()`, `?raw`, alias, relative path), when a dynamic `import()` has a computed argument, when any
+  editing member name (`setTool`, `setCutPlane`, `setTransforms`, `setPaint*`, ...) appears in any spelling that keeps the name
+  (call, bracket access, destructuring, alias, string), when `.arrange(` is used, or when `createViewport` is named
+  outside the adapter. Allowed: `readOnlyViewport.ts` (a type import of the vendor entry), `defaultViewport.ts` (the value
+  import of it, with exactly one `setTool("probe")`) and `credits.ts` (the vendored NOTICE and LICENSE-APACHE as plain text).
+  **Mutation tests** feed the scan a bypass in `components/project-scene/sub/`, in `routes/`, in `lib/`, a computed and a
+  literal dynamic import, a re-export, bracket access, destructuring, an alias, a value import in the facade, a second or
+  different `setTool`, and extra imports in `credits.ts`; each must fail, and does. I also dropped real bypass files into
+  `project-scene/sub/` and `routes/` on disk, ran the guard, saw it fail naming both files, and deleted them.
+  Limit: a source scan cannot see a member name built at run time ("set" + "Tool"); code review covers that.
 * UI test: no button in the panel is named move, rotate, scale, paint, cut and so on, and the panel has no input.
-* Real input: with the facade on the real viewport, a script sends left, right and middle drags with no modifier and
+* Real input: on the real viewport set up the way the adapter sets it up (create, `setTool("probe")`; the adapter itself is
+  covered by the unit tests above), a script sends left, right and middle drags with no modifier and
   with Shift, Control, Alt, Shift+Control and Shift+Alt, Space+drag, double click, wheel (also with each modifier) and 21
   key presses (Delete, Backspace, R, S, M, P, C, X, B, F, Enter, arrows, Control+Z/Y/C/V/A, Escape). The viewport
   emitted only `camera` (185) and `pick` (4) events. The center of each object, read through the viewport's own hit test
   before and after, was identical (`b0` 109.5, 109, 10 and `b1` 149.5, 109, 10).
   **Control run:** the same input on the same viewport with its upstream default tool did move an object (center
-  109.5, 109, 10 became 193.279, 87.669, 10; 11 `transform` events), so the check can fail.
+  109.5, 109, 10 became 193.279, 87.669, 10; 11 `transform` events), so the check is able to detect movement and is not vacuous.
   Screenshots before and after were not byte identical in either run (adaptive quality and effects settle over time), so
   pixel equality is not claimed; the geometry check above is the evidence.
 * Original files: every fixture was hashed before and after all runs (including a 100,000-triangle project): unchanged.
@@ -76,11 +94,12 @@ not removed. Studio cannot reach it:
 
 * **Facade, 50 create/dispose cycles** (each with a fresh canvas): 0 connected canvases left, 0 viewer-created canvases
   with a live context, 0 listeners left (all `addEventListener` calls counted, including `once`), 0 live observers,
-  never more than one canvas in the page. Contexts created: 100 (two per viewer, one is transient); still live at the end: 0.
+  never more than one canvas in the page. This runs the real adapter (`createSceneViewer`). Contexts created: 100 (two per
+  viewer, one is transient); still live at the end: 0.
 * **App, the real panel mounted and unmounted 75 times under React StrictMode** (50 waited until the 3D view was
   working, 25 unmounted while still loading): 1 connected canvas at the end (the live one), 0 listeners on detached
-  canvases, 1 live context, 2 live observers (the one live viewer's), 21 listeners on connected targets (19 are the one
-  live viewer's; 2 are `invalid` listeners of unrelated input elements; counts by type in `results.json`); the panel still
+  canvases, 1 live context, 2 live observers (the one live viewer's), 22 listeners on connected targets (19 are the one
+  live viewer's; 2 are `invalid` listeners of unrelated input elements; 1 is the credits `<details>` toggle; counts by type in `results.json`); the panel still
   worked afterwards. 51 viewers were actually created over the 75 mounts (the rest unmounted before the scene arrived).
 * A first version of this check found two real defects, both fixed and now tested: (1) when React unmounts a route it
   removes the DOM before passive cleanup runs, and three.js then fails to remove a document-level keydown listener
@@ -90,6 +109,14 @@ not removed. Studio cannot reach it:
   After the fixes three full runs showed no stuck view.
 * Closing a view aborts the browser requests and sends an authenticated `/scene/cancel`. The start/start/cancel/status/
   result sequence under StrictMode was observed on the wire, with no `BUSY`.
+* **An engine that stops answering cannot stall the view.** Every engine call has a limit (start 15 s, status and result
+  30 s) and ends with an `AbortError` (the caller left) or `TIMEOUT` (shown as "Reading the project took too long" with a
+  **Try again** button). The limit is a race, so a transport that ignores its abort signal still releases the caller. A start
+  that was abandoned may still have made a job, so before the next start is sent it is asked for again with the same
+  request id (the engine returns the same job) and cancelled; that clean-up is bounded to 3 s and never replaces a newer
+  job. Tests: a start that never resolves times out and the next start works; an abort releases the caller at once; a status
+  answer that never comes gives `TIMEOUT` and cancels the job; at controller level, a start that never answers shows the
+  failed state with Retry, and Retry then shows the view.
 * Stale answers are dropped by generation and path (`sceneController.test.ts`, including A, then B, then A).
 * No WebGL: the context-creation failure is caught; the object list and notes stay, the camera buttons are disabled, and
   **Retry 3D view** builds a new canvas. A lost context (forced with `WEBGL_lose_context`) shows the same panel with a
@@ -101,10 +128,10 @@ not removed. Studio cannot reach it:
 
 ## Memory and size
 
-* Bundle: the main chunk grew by 962 bytes (396 gzipped) for the mount code; the lazy viewer chunk is 888,689 bytes,
-  243,274 gzipped (`gzip -9`); the spike measured 887,866 and 245,773. Baseline built from `58d193a` with the same Vite.
-* Large scene: a 99,458-triangle project took 5.7 s from pressing Open to a working view (including the Doctor run and the
-  engine job) and the page's JS heap grew from 10.4 MB to 17.6 MB (`large-100k`).
+* Bundle: the main chunk grew by 962 bytes (396 gzipped) for the mount code; the lazy viewer chunk is 906,753 bytes,
+  249,905 gzipped (`gzip -9`); the earlier prototype measured 887,866 and 245,773. The growth since the first version is the license texts and the structural facade. Baseline built from `58d193a` with the same Vite.
+* Large scene: a 99,458-triangle project took 5.1 s from pressing Open to a working view (including the Doctor run and the
+  engine job) and the page's JS heap grew from 10.4 MB to 20.1 MB (`large-100k`).
 * **Finding, not fixed:** creating and disposing the vendored viewport retains about 108 KB of JS heap each time, even
   with an empty plate (empty viewport 108 KB, with plate 116 KB, through Studio's facade 121 KB; forced GC each time,
   linear over 150 cycles). GPU contexts are released. In the app, 75 mounts (51 viewers created) grew the heap from 17.5 MB to 38.9 MB. Mounting the panel 40 more times
@@ -121,6 +148,19 @@ not removed. Studio cannot reach it:
   before this change.
 * three 0.186.1 (MIT) and the SlicerX viewport (Apache-2.0, "Made possible by SlicerX") are in `THIRD_PARTY_NOTICES.md`;
   provenance and every local patch are in `desktop/src/vendor/slicerx/UPDATING.md`.
+* **Credits and licenses inside the installed app.** The panel shows "Made possible by SlicerX: https://slicerx.app/support"
+  (the link as text, not a clickable link, so nothing navigates the app window away) and a **Licenses for the 3D view**
+  section holding SlicerX's NOTICE, the Apache License 2.0 text and the three.js MIT text. They are imported as text into the
+  lazily loaded 3D view chunk (`project-scene/credits.ts`), so every installed copy carries them with no installer or
+  `tauri.conf.json` change. A test checks they are on screen. `THIRD_PARTY_NOTICES.md` is not shipped by the installer;
+  shipping the files as Tauri bundle resources would need a `bundle.resources` entry in `src-tauri/tauri.conf.json`
+  (`../../THIRD_PARTY_NOTICES.md`, `../src/vendor/slicerx/LICENSE-APACHE`, `../src/vendor/slicerx/NOTICE`). That change
+  was deliberately not made here (it is outside this PR's file ownership and untested against the installer lanes).
+* The legend about red and amber marks, and the margin figure, come from the scene (`bed.edge_margin_mm`) and appear only
+  when highlighting is on.
+* Screenshot pairs that are byte-identical are the same state reached two ways, by design: `wide-dark-selected` and
+  `wide-dark-picked-by-click` (a row chosen from the list, and a click on the model), and `wide-dark-offbed` and
+  `csp-production` (the development page and the production build served with the real CSP).
 
 ## Known limits
 

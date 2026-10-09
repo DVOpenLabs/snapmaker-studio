@@ -8,10 +8,8 @@
 //   * a canvas is never reused: each graphics start creates a canvas, and dispose removes it;
 //   * late callbacks after dispose do nothing.
 import { SceneError, isAbort, type LoadSceneOptions, type SceneErrorCode, type SceneProgress, type SceneV1 } from "@/lib/scene";
-import {
-  createReadOnlyViewport, type CameraPreset, type ReadOnlyViewport, type ThemeMode, type ViewportFactory,
-} from "./readOnlyViewport";
-import { buildModel, buildViewScene, type SceneModel } from "./sceneModel";
+import type { CameraPreset, ReadOnlyViewport, SceneViewerFactory, ThemeMode } from "./readOnlyViewport";
+import { buildModel, buildViewScene, type SceneModel, type ViewScene } from "./sceneModel";
 
 export type GraphicsState = "none" | "working" | "unavailable" | "lost";
 export type ViewerState = {
@@ -30,7 +28,7 @@ export type ViewerState = {
 
 export type ControllerDeps = {
   load: (path: string, opts: LoadSceneOptions) => Promise<SceneV1>;
-  viewportFactory: ViewportFactory;
+  viewportFactory: SceneViewerFactory;
   theme: ThemeMode;
 };
 
@@ -47,6 +45,7 @@ export class SceneController {
   private path: string | null = null;
   private abort: AbortController | null = null;
   private scene: SceneV1 | null = null;
+  private viewScene: ViewScene | null = null;
   private host: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private viewer: ReadOnlyViewport | null = null;
@@ -75,6 +74,7 @@ export class SceneController {
     this.cancelLoad();
     this.teardownGraphics();
     this.scene = null;
+    this.viewScene = null;
     this.path = path;
     this.set({ ...INITIAL });
     if (!path) return;
@@ -129,13 +129,21 @@ export class SceneController {
   startGraphics(): void {
     if (this.disposed || !this.host || !this.scene || !this.state.model) return;
     this.teardownGraphics();
+    // Decode the geometry first: a scene the engine sent badly is a load problem with its own message, not a graphics one.
+    let viewScene: ViewScene;
+    try {
+      viewScene = this.viewScene ?? (this.viewScene = buildViewScene(this.scene, this.state.model));
+    } catch (error) {
+      this.set({ phase: "failed", error: error instanceof SceneError ? error.code : "BAD_RESPONSE", graphics: "none" });
+      return;
+    }
     const canvas = this.host.ownerDocument.createElement("canvas");
     canvas.style.cssText = "display:block;width:100%;height:100%";
     this.host.appendChild(canvas);
     this.canvas = canvas;
     let viewer: ReadOnlyViewport;
     try {
-      viewer = createReadOnlyViewport(canvas, this.deps.viewportFactory, this.theme);
+      viewer = this.deps.viewportFactory(canvas, { theme: this.theme });
     } catch {
       this.removeCanvas();
       this.set({ graphics: "unavailable", graphicsNote: null });
@@ -144,6 +152,8 @@ export class SceneController {
     this.viewer = viewer;
     this.offs.push(
       viewer.onPick((id) => this.select(id)),
+      // The viewer cleared its own selection (Escape): keep the list in step. Selections we make ourselves are not echoed.
+      viewer.onSelect((ids) => { if (ids.length === 0 && this.state.selectedId !== null) this.set({ selectedId: null }); }),
       viewer.onTrouble((t) => {
         if (this.viewer !== viewer) return;
         if (t.fatal) {
@@ -155,7 +165,7 @@ export class SceneController {
       }),
     );
     try {
-      viewer.show(buildViewScene(this.scene, this.state.model));
+      viewer.show(viewScene);
       viewer.setSlopeView(this.state.slope);
       viewer.setSelected(this.state.selectedId ? this.meshIdsUnder(this.state.selectedId) : []);
       if (this.state.preset !== "bed") viewer.setCamera(this.state.preset);

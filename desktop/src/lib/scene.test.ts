@@ -83,7 +83,10 @@ describe("loadScene", () => {
     };
     const failure = await loadScene("p.3mf", { signal: controller.signal, transport: wrapped, sleep: noSleep }).catch((e) => e);
     expect(isAbort(failure)).toBe(true);
-    expect(calls.map((c) => c.route)).toEqual(["start", "cancel"]);
+    await new Promise((r) => setTimeout(r, 20)); // the clean-up runs just after the caller is released
+    // The abandoned start is asked for again with the same request id (the engine returns the same job), then cancelled.
+    expect(calls.map((c) => c.route)).toEqual(["start", "start", "cancel"]);
+    expect(calls[1].body).toEqual(calls[0].body);
   });
 
   it("does not start anything when it is already aborted", async () => {
@@ -132,6 +135,51 @@ describe("loadScene", () => {
     const { transport } = transportFor({ start: [{ status: 200, body: status("cancelled") }] });
     const failure = (await loadScene("p.3mf", { signal: new AbortController().signal, transport }).catch((e) => e)) as SceneError;
     expect(failure.code).toBe("CANCELLED");
+  });
+});
+
+describe("a start that never answers", () => {
+  it("times out with TIMEOUT, asks for and cancels any job it may have made, and does not block later starts", async () => {
+    const calls: string[] = [];
+    let starts = 0;
+    // The first start ignores its signal on purpose: the caller must still get away.
+    const transport: SceneTransport = (route, body) => {
+      calls.push(route);
+      if (route === "start" && ++starts === 1) return new Promise(() => undefined);
+      if (route === "start") return Promise.resolve({ status: 200, body: status("succeeded", { job_id: "j2", revision: REVISION }) });
+      if (route === "result") return Promise.resolve({ status: 200, body: scene });
+      return Promise.resolve({ status: 200, body: status("cancelled", { body }) });
+    };
+    const failure = (await loadScene("a.3mf", { signal: new AbortController().signal, transport, sleep: noSleep, startTimeoutMs: 20 }).catch((e) => e)) as SceneError;
+    expect(failure).toBeInstanceOf(SceneError);
+    expect(failure.code).toBe("TIMEOUT");
+    expect(sceneErrorText(failure.code)).toContain("took too long");
+    const next = await loadScene("a.3mf", { signal: new AbortController().signal, transport, sleep: noSleep, startTimeoutMs: 20 });
+    expect(next.schema).toBe("scene/1");
+    expect(calls.filter((c) => c === "start").length).toBeGreaterThanOrEqual(3); // hung start, its recovery ask, the new start
+    expect(calls).toContain("cancel");
+  });
+
+  it("is released at once when the caller aborts, even if the transport never answers", async () => {
+    const controller = new AbortController();
+    const transport: SceneTransport = (route) => (route === "start" ? new Promise(() => undefined) : Promise.resolve({ status: 200, body: scene }));
+    const pending = loadScene("a.3mf", { signal: controller.signal, transport, sleep: noSleep, startTimeoutMs: 60000 }).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 10));
+    controller.abort();
+    expect(isAbort(await pending)).toBe(true);
+  }, 10000);
+
+  it("gives up on a status answer that never comes and cancels the job", async () => {
+    const calls: string[] = [];
+    const transport: SceneTransport = (route) => {
+      calls.push(route);
+      if (route === "start") return Promise.resolve({ status: 200, body: status("running") });
+      if (route === "status") return new Promise(() => undefined);
+      return Promise.resolve({ status: 200, body: status("cancelled") });
+    };
+    const failure = (await loadScene("a.3mf", { signal: new AbortController().signal, transport, sleep: noSleep, requestTimeoutMs: 20 }).catch((e) => e)) as SceneError;
+    expect(failure.code).toBe("TIMEOUT");
+    expect(calls).toContain("cancel");
   });
 });
 

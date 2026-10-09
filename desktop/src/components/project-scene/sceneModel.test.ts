@@ -73,9 +73,50 @@ describe("findings and highlighting", () => {
     expect(model.findings[0].selectId).toBe("p0");
   });
 
+  it("treats several targets as object-level only when they are one object", () => {
+    const parent = node("p0", "9", 100, 100, { mesh_key: null });
+    const a = node("p0.0", "1", 100, 100, { parent_id: "p0" });
+    const b = node("p0.1", "2", 110, 100, { parent_id: "p0" });
+    const other = node("o1", "3", 200, 100);
+    const same = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0", "p0.1"] })] }));
+    expect(same.findings[0].projectLevel).toBe(false);
+    expect(same.findings[0].selectId).toBe("p0");
+    expect([...same.highlighted.keys()].sort()).toEqual(["p0.0", "p0.1"]);
+    // Two different objects: no first-target guess, nothing highlighted, nothing selected.
+    const mixed = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0", "o1"] })] }));
+    expect(mixed.findings[0].projectLevel).toBe(true);
+    expect(mixed.findings[0].selectId).toBeNull();
+    expect(mixed.highlighted.size).toBe(0);
+    // One known target and one unknown id: also project-level.
+    const unknown = buildModel(scene({ nodes: [parent, a, b, other], findings: [finding({ target_ids: ["p0.0", "ghost"] })] }));
+    expect(unknown.findings[0].projectLevel).toBe(true);
+  });
+
   it("lets a placement note outrank a size note on the same node", () => {
     const s = scene({ findings: [finding({ id: "f1", kind: "size", value: { code: "SIZE_EXCEEDS_BED", overhang_mm: null } }), finding()] });
     expect(buildModel(s).highlighted.get("b1")).toBe("placement");
+  });
+});
+
+describe("gate wording", () => {
+  it("says what a stand-in position means, once, and merges the other reasons with their fuller limitation text", () => {
+    const stl = buildModel(scene({ nodes: [node("b0", "1", 0, 0, { placement_state: "unknown" })], limitations: [{ code: "UNKNOWN_PLACEMENT", target_ids: ["b0"] }] }));
+    expect(stl.limitations).toEqual([
+      "Highlighting is off because the file does not say where some objects sit, so they are drawn at a stand-in position that is not their real place.",
+    ]);
+    const plates = buildModel(scene({ plates: [{ id: "1", ui_number: 1, origin_mm: null }, { id: "2", ui_number: 2, origin_mm: null }], limitations: [{ code: "MULTI_PLATE_PLACEMENT_UNCHECKED", target_ids: [] }] }));
+    expect(plates.limitations).toEqual([
+      "Highlighting is off because this project has more than one plate. All plates are drawn on one bed, so objects may look closer together than they are.",
+    ]);
+    const inch = buildModel(scene({ sources: [{ part: "3D/3dmodel.model", unit: "inch", mm_per_unit: 25.4 }], limitations: [{ code: "NON_MM_SOURCE_UNIT", target_ids: [] }] }));
+    expect(inch.limitations).toEqual(["Highlighting is off because this project is not written in millimeters. It is converted to millimeters for the view."]);
+    const bad = buildModel(scene({ limitations: [{ code: "UNSUPPORTED_UNIT", target_ids: [] }] }));
+    expect(bad.limitations).toHaveLength(1);
+    expect(bad.limitations[0]).toContain("does not recognize");
+  });
+
+  it("carries the scene's margin for the legend", () => {
+    expect(buildModel(scene()).marginMm).toBe(0.5);
   });
 });
 

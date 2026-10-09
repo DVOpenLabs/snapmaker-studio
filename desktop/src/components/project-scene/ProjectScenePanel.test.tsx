@@ -10,7 +10,7 @@ const fake = vi.hoisted(() => ({ current: null as null | ReturnType<typeof impor
 const loader = vi.hoisted(() => ({ loadScene: vi.fn() }));
 vi.mock("@/lib/scene", async (original) => ({ ...(await original<typeof import("@/lib/scene")>()), loadScene: loader.loadScene }));
 vi.mock("./defaultViewport", () => ({
-  defaultViewportFactory: (...args: Parameters<ReturnType<typeof makeFakeFactory>["factory"]>) => fake.current!.factory(...args),
+  createSceneViewer: (...args: Parameters<ReturnType<typeof makeFakeFactory>["factory"]>) => fake.current!.factory(...args),
 }));
 
 import ProjectScenePanel, { progressText } from "./ProjectScenePanel";
@@ -100,6 +100,30 @@ describe("ProjectScenePanel", () => {
     await screen.findByRole("button", { name: "Top" });
   });
 
+  it("carries the SlicerX credit with its link and the license texts, and shows the legend only when highlighting is on", async () => {
+    resolveWith(offBedScene());
+    const { unmount } = render(<ProjectScenePanel path="a.3mf" wide />);
+    await screen.findByRole("button", { name: "Top" });
+    expect(screen.getByText(/^3D view: Made possible by SlicerX: https:\/\/slicerx\.app\/support$/)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Apache License 2.0 (SlicerX viewport)" }).textContent).toContain("Apache License");
+    expect(screen.getByRole("region", { name: "SlicerX notice (Apache-2.0)" }).textContent).toContain("Made possible by SlicerX");
+    expect(screen.getByRole("region", { name: "three.js (MIT)" }).textContent).toContain("Copyright");
+    expect(screen.getByText(/Studio keeps a 0\.5 mm margin/)).toBeTruthy();
+    unmount();
+    resolveWith(scene({ plates: [{ id: "1", ui_number: 1, origin_mm: null }, { id: "2", ui_number: 2, origin_mm: null }] }));
+    render(<ProjectScenePanel path="b.3mf" wide />);
+    await screen.findByRole("button", { name: "Top" });
+    expect(screen.queryByText(/Studio keeps a 0\.5 mm margin/)).toBeNull();
+  });
+
+  it("shows a timeout in plain words with Try again instead of staying on the starting message", async () => {
+    loader.loadScene.mockRejectedValueOnce(new SceneError("TIMEOUT"));
+    render(<ProjectScenePanel path="a.3mf" />);
+    expect((await screen.findByRole("alert")).textContent).toContain("took too long");
+    expect(screen.queryByText("Starting the 3D view")).toBeNull();
+    expect(screen.getByRole("button", { name: /Try again/ })).toBeTruthy();
+  });
+
   it("shows the scene's limits in words when highlighting is off", async () => {
     const s = offBedScene();
     s.limitations = [{ code: "MULTI_PLATE_PLACEMENT_UNCHECKED", target_ids: [] }];
@@ -141,5 +165,8 @@ describe("progressText", () => {
     expect(progressText(null)).toBe("Starting the 3D view");
     expect(progressText({ state: "queued", stage: null, completed: null, total: null })).toBe("Waiting for the engine");
     expect(progressText({ state: "running", stage: "parsing", completed: 1, total: 4 })).toBe("Reading the model (25%)");
+    // Never 100%: at completed == total the figure is dropped, and a near-complete one stops at 99.
+    expect(progressText({ state: "running", stage: "encoding", completed: 4, total: 4 })).toBe("Preparing the view");
+    expect(progressText({ state: "running", stage: "encoding", completed: 999, total: 1000 })).toBe("Preparing the view (99%)");
   });
 });

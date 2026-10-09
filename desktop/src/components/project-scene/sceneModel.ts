@@ -37,7 +37,7 @@ const LIMITATION_TEXT: Record<LimitationCode, string> = {
   NON_MM_SOURCE_UNIT: "This project is not written in millimeters. It is converted for the view, and placement notes are turned off.",
   UNSUPPORTED_UNIT: "This project declares a unit Studio does not recognize. It is drawn as millimeters and no size or placement notes are made.",
   MULTI_PLATE_PLACEMENT_UNCHECKED: "This project has more than one plate. Studio does not know how the plates are spaced, so it does not check placement.",
-  NO_BUILD_ITEMS: "This file lists no objects to print, so there is nothing to show.",
+  NO_BUILD_ITEMS: "This file lists no build items, so its objects are drawn without a known position.",
 };
 export function limitationText(code: LimitationCode): string {
   return LIMITATION_TEXT[code] ?? "Studio could not read part of this file, so the view is incomplete.";
@@ -49,19 +49,24 @@ export function highlightGate(scene: SceneV1): HighlightGate {
   const covered: LimitationCode[] = [];
   const codes = new Set(scene.limitations.map((l) => l.code));
   if (scene.sources.some((s) => s.unit !== "millimeter") || codes.has("NON_MM_SOURCE_UNIT") || codes.has("UNSUPPORTED_UNIT")) {
-    reasons.push("Highlighting is off because this project is not written in millimeters.");
+    if (codes.has("UNSUPPORTED_UNIT")) {
+      reasons.push("Highlighting is off because this project declares a unit Studio does not recognize. It is drawn as if it were in millimeters.");
+      covered.push("UNSUPPORTED_UNIT");
+    } else {
+      reasons.push("Highlighting is off because this project is not written in millimeters. It is converted to millimeters for the view.");
+    }
     covered.push("NON_MM_SOURCE_UNIT");
   }
   if (scene.plates.length > 1 || codes.has("MULTI_PLATE_PLACEMENT_UNCHECKED")) {
-    reasons.push("Highlighting is off because this project has more than one plate.");
+    reasons.push("Highlighting is off because this project has more than one plate. All plates are drawn on one bed, so objects may look closer together than they are.");
     covered.push("MULTI_PLATE_PLACEMENT_UNCHECKED");
   }
   if (scene.nodes.some((n) => n.mesh_key !== null && n.placement_state !== "known") || codes.has("UNKNOWN_PLACEMENT")) {
-    reasons.push("Highlighting is off because the file does not say where some objects sit.");
+    reasons.push("Highlighting is off because the file does not say where some objects sit, so they are drawn at a stand-in position that is not their real place.");
     covered.push("UNKNOWN_PLACEMENT");
   }
   if (scene.bed.policy !== "u1_template" || codes.has("BED_TEMPLATE_UNAVAILABLE")) {
-    reasons.push("Highlighting is off because Studio could not load its printer bed outline.");
+    reasons.push("Highlighting is off because Studio could not load its printer bed outline, so no placement notes are shown.");
     covered.push("BED_TEMPLATE_UNAVAILABLE");
   }
   return { enabled: reasons.length === 0, reasons, covered };
@@ -108,6 +113,8 @@ export type SceneModel = {
   highlighted: Map<string, Tone>;
   summary: string;
   partial: boolean;
+  /** The policy margin inside the bed edge, from the scene. */
+  marginMm: number;
 };
 
 function childrenOf(nodes: SceneNode[]): Map<string, SceneNode[]> {
@@ -159,10 +166,14 @@ export function buildModel(scene: SceneV1): SceneModel {
     if (f.kind !== "placement" && f.kind !== "size") continue;
     const tone: Tone = f.kind === "placement" ? "placement" : "size";
     const targets = f.target_ids.map((id) => byId.get(id));
-    // An exact match to known nodes is object-level. Anything else, or a closed gate, stays project-level.
-    const exact = f.scope === "instance" && targets.length > 0 && targets.every((t): t is SceneNode => t !== undefined);
+    // Object-level only when the finding names known nodes that are one object: a single target, or several that all sit
+    // under the same top-level object. Unknown ids, or targets in different objects, stay project-level: picking "the
+    // first" would select and highlight the wrong thing.
+    const resolved = f.scope === "instance" && targets.length > 0 && targets.every((t): t is SceneNode => t !== undefined);
+    const topIds = resolved ? new Set((targets as SceneNode[]).map((t) => topOf(t).id)) : new Set<string>();
+    const exact = resolved && topIds.size === 1;
     const known = exact ? (targets as SceneNode[]) : [];
-    const label = known.length === 1 ? nameOf(known[0]) : "An object";
+    const label = exact ? nameOf(known[0]) : "An object";
     const projectLevel = !exact || !gate.enabled;
     findings.push({
       id: f.id, tone, text: findingText(f, label, scene.bed.edge_margin_mm),
@@ -210,7 +221,9 @@ export function buildModel(scene: SceneV1): SceneModel {
   }
   const shown = objects.filter((o) => o.hasGeometry).length;
   const summary = `${shown} ${shown === 1 ? "object" : "objects"}, ${scene.counts.rendered_triangles.toLocaleString("en-US")} triangles`;
-  return { gate, objects, findings, limitations, highlighted, summary, partial: scene.status === "partial" };
+  return {
+    gate, objects, findings, limitations, highlighted, summary, partial: scene.status === "partial", marginMm: scene.bed.edge_margin_mm,
+  };
 }
 
 export function roleWords(role: VolumeRole): string {
@@ -226,16 +239,9 @@ export function roleWords(role: VolumeRole): string {
 
 // ---- Geometry for the viewer ---------------------------------------------------------------------------------------
 
-/** Swaps two indices of every triangle: a mirrored instance would otherwise draw inside out. */
-function flipWinding(indices: Uint32Array): Uint32Array {
-  const out = new Uint32Array(indices);
-  for (let i = 0; i + 2 < out.length; i += 3) {
-    const t = out[i + 1];
-    out[i + 1] = out[i + 2];
-    out[i + 2] = t;
-  }
-  return out;
-}
+// A mirrored instance (negative-determinant world matrix) keeps its triangle order. three.js reads the sign of the matrix
+// determinant and flips the front face itself when drawing, and ray picking works in the mesh's own space. Reversing the
+// triangles as well would turn the faces inward a second time.
 
 const meshId = (k: { part: string; object_id: string }) => `${k.part}\u0000${k.object_id}`;
 
@@ -266,7 +272,7 @@ export function buildViewScene(scene: SceneV1, model: SceneModel): ViewScene {
     if (!data) { data = decodeMesh(mesh); decoded.set(meshId(mesh.key), data); }
     const tone = model.highlighted.get(node.id);
     const contextRole = node.role_context;
-    const indices = node.mirrored ? flipWinding(data.indices) : data.indices;
+    const indices = data.indices;
     const parts: ViewPart[] = mesh.volumes.map((v) => {
       const role = contextRole ?? v.role;
       const color = role !== "part" ? COLORS.other : tone ? COLORS[tone] : COLORS.part;

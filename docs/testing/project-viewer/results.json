@@ -1,14 +1,14 @@
 {
   "schema": "project-viewer-results/1",
-  "base": "58d193a (PR 3a scene contract), branch feat/project-viewer, uncommitted",
+  "base": "d0b2257 (repair round on feat/project-viewer), uncommitted",
   "machine": {
     "os": "Windows 11",
     "browser": "Microsoft Edge 154.0.4258.62 (headless, playwright-core)",
     "webgl": "ANGLE Direct3D 11 on a discrete NVIDIA GPU (hardware, not software rendering)"
   },
   "unit": {
-    "vitestFiles": 76,
-    "vitestTests": 879,
+    "vitestFiles": 77,
+    "vitestTests": 912,
     "failed": 0,
     "tscErrors": 0,
     "build": "npm run build OK"
@@ -20,13 +20,13 @@
     "mainChunkGzip9": 189839,
     "mainChunkDeltaBytes": 962,
     "mainChunkDeltaGzip": 396,
-    "lazyViewerChunkBytes": 888689,
-    "lazyViewerChunkGzip9": 243274,
-    "spikeReference": {
+    "lazyViewerChunkBytes": 906753,
+    "lazyViewerChunkGzip9": 249905,
+    "note": "Baseline built from git archive of 58d193a with the same Vite; gzip -9 by the gzip tool. The lazy chunk grew from 888,689 after the first version by the license texts and the structural facade.",
+    "earlierPrototype": {
       "bytes": 887866,
       "gzip": 245773
-    },
-    "note": "Baseline built from git archive of 58d193a with the same Vite. gzip -9 by the gzip tool; Vite's own gzip column reads 245.44 kB for the lazy chunk."
+    }
   },
   "interaction": {
     "facade": {
@@ -34,6 +34,7 @@
         "camera": 185,
         "pick": 4
       },
+      "objectsDidNotMove": true,
       "objectCentersBefore": {
         "b0": [
           109.5,
@@ -58,16 +59,17 @@
           10
         ]
       },
-      "objectsDidNotMove": true,
-      "screenshotsByteIdentical": false
+      "screenshotsByteIdentical": false,
+      "setup": "real viewport set up as the adapter sets it (create, setTool probe)"
     },
     "controlWithUpstreamDefaultTool": {
       "eventsSeen": {
-        "camera": 187,
+        "camera": 186,
         "pick": 2,
         "select": 2,
         "transform": 11
       },
+      "objectsDidNotMove": false,
       "objectCentersBefore": {
         "b0": [
           109.5,
@@ -87,12 +89,11 @@
           10
         ],
         "b0": [
-          194.189,
-          87.52,
+          193.3,
+          87.666,
           10
         ]
-      },
-      "objectsDidNotMove": false
+      }
     }
   },
   "cyclesFacade50": {
@@ -117,8 +118,9 @@
     "liveContextsAttachedToDetachedCanvas": 0,
     "connectedCanvasesAtEnd": 1,
     "connectedCanvasesBefore": 1,
-    "listenersOnConnectedTargets": 21,
+    "listenersOnConnectedTargets": 22,
     "listenersByKind": {
+      "HTMLDetailsElement:toggle": 1,
       "HTMLInputElement:invalid": 2,
       "canvas:webglcontextlost": 2,
       "canvas:webglcontextrestored": 1,
@@ -137,7 +139,7 @@
       "canvas:dblclick": 1
     },
     "liveObservers": 2,
-    "secondsForAllCycles": 25.452,
+    "secondsForAllCycles": 25.005,
     "panelStillWorks": true,
     "clickOnModelSelectsRow": {
       "x": 502,
@@ -147,9 +149,8 @@
     "errors": []
   },
   "memory": {
-    "panelShownJsHeapBytes": 17485320,
-    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 38872844,
-    "note": "JS heap after forced GC. See README for the per-viewer growth measurement."
+    "panelShownJsHeapBytes": 17624444,
+    "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39246012
   },
   "perViewerJsHeapGrowthBytesPerCreateDispose": {
     "emptyUpstreamViewport": 108185,
@@ -159,9 +160,9 @@
     "appMountWithoutWebGl40Cycles": 11135
   },
   "largeScene100kTriangles": {
-    "secondsUntilViewerWorking": 5.681,
-    "jsHeapBeforeBytes": 10418484,
-    "jsHeapAfterBytes": 17594252,
+    "secondsUntilViewerWorking": 5.138,
+    "jsHeapBeforeBytes": 10418060,
+    "jsHeapAfterBytes": 20121224,
     "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
     "errors": []
   },
@@ -281,5 +282,14 @@
     "screen reader",
     "weak or software-rendered GPU",
     "real printer (never used)"
-  ]
+  ],
+  "repairRound": {
+    "startTimeouts": {
+      "startMs": 15000,
+      "requestMs": 30000,
+      "recoveryMs": 3000
+    },
+    "guard": "scans all of src/, mutation tests included",
+    "credits": "in-app, credits.ts"
+  }
 }

@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { loadScene, sceneErrorText } from "@/lib/scene";
 import { useTheme } from "@/store/theme";
-import { defaultViewportFactory } from "./defaultViewport";
+import { createSceneViewer } from "./defaultViewport";
 import { CAMERA_PRESETS, SLOPE_LABEL } from "./readOnlyViewport";
+import { CREDIT_SECTIONS, SLICERX_CREDIT } from "./credits";
 import { SceneController, type ViewerState } from "./sceneController";
 
 const STAGE_TEXT: Record<string, string> = {
@@ -19,7 +20,8 @@ export function progressText(p: ViewerState["progress"]): string {
   if (!p) return "Starting the 3D view";
   if (p.state === "queued") return "Waiting for the engine";
   const stage = p.stage ? STAGE_TEXT[p.stage] : "Working";
-  return p.completed !== null && p.total ? `${stage} (${Math.min(100, Math.round((p.completed / p.total) * 100))}%)` : stage;
+  // Never "100%": the job is still working until it reports done, so the figure stops at 99 and disappears when complete.
+  return p.completed !== null && p.total && p.completed < p.total ? `${stage} (${Math.min(99, Math.round((p.completed / p.total) * 100))}%)` : stage;
 }
 
 const TONE_TEXT = { placement: "Placement note", size: "Size note" } as const;
@@ -44,7 +46,7 @@ export default function ProjectScenePanel({ path, wide = false }: { path: string
 
   // One controller per effect: StrictMode's mount, cleanup, mount makes two, and the first is fully disposed.
   useEffect(() => {
-    const controller = new SceneController({ load: loadScene, viewportFactory: defaultViewportFactory, theme: themeRef.current });
+    const controller = new SceneController({ load: loadScene, viewportFactory: createSceneViewer, theme: themeRef.current });
     controllerRef.current = controller;
     const off = controller.subscribe(() => setView(controller.getState()));
     controller.setHost(hostRef.current);
@@ -174,9 +176,12 @@ export default function ProjectScenePanel({ path, wide = false }: { path: string
                     ))}
                   </ul>
                 )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  On the model, red marks a placement note and amber a size note. The bed outline turns orange for a placement note. Studio keeps a 0.5 mm margin inside the bed edge.
-                </p>
+                {model.gate.enabled && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    On the model, red marks a placement note and amber a size note. The bed outline turns orange for a placement note.
+                    Studio keeps a {Number(model.marginMm.toFixed(2))} mm margin inside the bed edge.
+                  </p>
+                )}
               </section>
 
               {model.limitations.length > 0 && (
@@ -188,12 +193,26 @@ export default function ProjectScenePanel({ path, wide = false }: { path: string
                 </section>
               )}
               {model.partial && (
-                <p className="text-xs text-muted-foreground">Some of this file could not be fully read, so the view may be incomplete.</p>
+                <p className="text-xs text-muted-foreground">Studio could not learn everything it needs from this file, so the view may be incomplete.</p>
               )}
             </div>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">3D view made possible by SlicerX. Review placement and supports in Snapmaker Orca.</p>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>Review placement and supports in Snapmaker Orca.</p>
+          <p>3D view: {SLICERX_CREDIT}</p>
+          <details>
+            <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Licenses for the 3D view</summary>
+            <div className="mt-2 space-y-3">
+              {CREDIT_SECTIONS.map((s) => (
+                <section key={s.title} aria-label={s.title}>
+                  <h4 className="font-semibold">{s.title}</h4>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-border p-2 text-[11px]">{s.text}</pre>
+                </section>
+              ))}
+            </div>
+          </details>
+        </div>
       </CardContent>
     </Card>
   );
