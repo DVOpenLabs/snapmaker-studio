@@ -19,7 +19,7 @@ when that line says the tree was clean outside this folder. `harness/README.md` 
 | Type check, unit tests, build | run by `collect-results.mjs` (see Measurements) |
 | Real-browser run: dev server, real engine, real WebGL, light and dark, wide and narrow | run by the harness |
 | Production build served with the app's real Tauri CSP | run by the harness |
-| Overlapping-start ordering against the **real engine** with `client_id` and `seq` | **NOT RUN.** The client follows the contract agreed for the engine update (PR #97) and is tested against a stand-in engine that implements that contract. It has not been run against the real engine until that update is merged into this branch. |
+| Overlapping-start ordering against the **real engine** (sessions, `client_id`, `seq`) | **NOT RUN.** The client follows the session contract agreed for the engine update (PR #97) and is tested against a stand-in engine that implements it. It has not been run against the real engine until that update is merged into this branch; the harness will not work against an engine without `/scene/session`. |
 | **Packaged Windows Tauri via `tools/acceptance/run.ps1`** | **NOT RUN (outstanding).** The lane installs a rewrapped release installer with an attestation; this branch has no released installer, and building one (frozen sidecar, Tauri bundle, rewrap) was not attempted. Edge is the same engine family as WebView2, but WebView2 inside the Tauri window was not exercised. |
 | **Linux WebKitGTK graphics-enabled lane** | **NOT RUN (outstanding).** No Linux desktop with a graphics session was available. The existing lane disables compositing, so it would need a graphics-enabled variant. |
 | macOS, screen reader, software-rendered or weak GPU, a real printer | not run (a printer is never used) |
@@ -97,19 +97,28 @@ removed. Studio cannot reach it. The boundary is structural, in three places, an
 
 `scene.ts` starts a job, follows it, and returns the scene. What it relies on, and what it does not:
 
-* **Ordering of overlapping starts is the engine's job.** Each start carries `client_id` (random, once per app run) and `seq`
-  (strictly increasing, one per start attempt). The agreed engine rules: a start whose `seq` is lower than the highest seen for
-  that `client_id` is refused (`STALE_START`); a start for a `(client_id, request_id)` that was cancelled is refused
-  (`CANCELLED_BEFORE_START`); `/scene/cancel` takes `{job_id}` or `{client_id, request_id}`, and the second form also marks the
-  request cancelled so a late start is refused. The client sends the cancel by `{client_id, request_id}` immediately when a
-  view is abandoned (unmount, path change, StrictMode's first mount), whether or not the start has been answered. The cancel is
-  best effort, bounded, never awaited and never holds up the next start.
-* An abandoned start that reaches the engine after a newer one therefore cannot cancel or replace it. This is proved against a
-  stand-in engine that implements the rules above, with every delivery order controlled by hand (no timers):
-  `scene.test.ts`, "ordering of overlapping starts". It has **not** been run against the real engine yet (see the table above).
-* **Residual, stated plainly.** If a wanted request still comes back cancelled or refused as superseded, the client starts it
-  ONCE more with a fresh request id and the next `seq`; a second such outcome is shown as an error with Try again. This is
-  resilience only. It is not what makes the ordering correct.
+* **Ordering of overlapping starts is the engine's job, within one session.** The client opens ONE session lazily per app run
+  (`POST /scene/session`, answered with `client_id` and a time to live) and opens another after `SESSION_EXPIRED`. Every start
+  carries that `client_id` and a `seq` that is strictly increasing within the session, starting at 1. The agreed engine rules:
+  a start whose `seq` is not higher than the highest seen is refused (`STALE_START`; this includes an exact retry of a start
+  already processed, so every retry uses a fresh request id and the next `seq`); a start for a cancelled request or `seq` is
+  refused (`CANCELLED_BEFORE_START`); an unknown or idle-expired session is refused (`SESSION_EXPIRED`); more sessions than the
+  engine allows is `503 SESSION_LIMIT`. `/scene/cancel` takes `{client_id, request_id, seq}` and keeps that `seq` dead for the
+  session; on an expired session it answers `SESSION_EXPIRED`, which the client ignores (best effort).
+* The client sends that cancel immediately when a view is abandoned (unmount, path change, StrictMode's first mount), whether
+  or not the start has been answered or even delivered. It is best effort, bounded, never awaited and never holds up the next
+  start. A load abandoned before it learned the session, or before it took its `seq`, sent nothing and has nothing to cancel.
+* An abandoned start that reaches the engine after a newer one therefore cannot cancel or replace it, and one that reaches the
+  engine after its session expired meets an unknown session: its answer is dropped and it triggers nothing. This is proved
+  against a stand-in engine that implements the rules above, with every delivery order controlled by hand (no timers):
+  `scene.test.ts`, "sessions". It has **not** been run against the real engine yet (see the table above).
+* **The guarantee is per session only.** A start from another session (another Studio window, or a client that did not use
+  this session) replaces the running job as it always did. Sessions do not make one engine serve two windows at once.
+* **Residual, stated plainly.** After `SESSION_EXPIRED` the client opens a new session, starts `seq` again at 1, and restarts
+  ONCE with a fresh request id; a second expiry is shown ("Studio lost its connection to the engine for the 3D view. Try
+  again."). `SESSION_LIMIT` is shown in plain words with Try again and never retried. Separately, if a wanted request still comes
+  back cancelled or refused as superseded, the client starts it ONCE more with a fresh request id and the next `seq`. Both
+  restarts are resilience only; neither is what makes the ordering correct.
 * **An engine that stops answering cannot stall the view.** Every call has a limit (start 15 s, status and result 30 s) and
   ends with an `AbortError` (the caller left) or `TIMEOUT` ("Reading the project took too long", with a **Try again** button).
   The limit is a race, so a transport that ignores its abort signal still releases the caller. A timeout also cancels the
@@ -117,7 +126,7 @@ removed. Studio cannot reach it. The boundary is structural, in three places, an
 * `/scene/start` answers only job id, request id, state, revision and the id of a job it replaced; it carries no stage,
   progress or error. `scene.ts` models that as `JobStart`. A request id the engine still holds can come back already failed; the
   reason is then fetched from `/scene/status`, so the user sees the real message and not a generic one.
-* `STALE_START` and `CANCELLED_BEFORE_START` have plain wording. For an abandoned generation they never reach the screen:
+* `STALE_START`, `CANCELLED_BEFORE_START`, `SESSION_EXPIRED` and `SESSION_LIMIT` have plain wording. For an abandoned generation they never reach the screen:
   answers for a generation that is no longer current, or a path that changed, are dropped (`sceneController.test.ts`, including
   A, then B, then A).
 
@@ -129,7 +138,7 @@ removed. Studio cannot reach it. The boundary is structural, in three places, an
 * An earlier version of this check found two real defects, both fixed and tested: when React unmounts a route it removes the DOM
   before passive cleanup runs, and three.js then fails to remove a document-level keydown listener, so the controller now
   disposes the viewer with its canvas attached; and two scene starts sent back to back could be handled by the engine in the
-  opposite order (the ordering contract above is the fix for that).
+  opposite order (the session contract above is the fix for that).
 * No WebGL: the context-creation failure is caught; the object list and notes stay, the camera buttons are disabled, and
   **Retry 3D view** builds a new canvas. A lost context (forced with `WEBGL_lose_context`) shows the same panel with a different
   message and Retry builds a different canvas. Screenshots: `wide-dark-no-webgl`, `narrow-light-no-webgl`,

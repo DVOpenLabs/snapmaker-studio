@@ -1,10 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  SceneError, clientId, decodeMesh, isAbort, loadScene, newRequestId, sceneErrorText,
-  type SceneMesh, type SceneTransport,
+  SceneError, currentSceneClientId, decodeMesh, isAbort, loadScene, newRequestId, sceneErrorText,
+  resetSceneSession, type SceneMesh, type SceneTransport,
 } from "./scene";
 
 vi.mock("@/api", () => ({ engineConnection: vi.fn() }));
+
+// Every test starts with no session, as at app start.
+beforeEach(() => resetSceneSession());
 
 const REVISION = "a".repeat(64);
 const status = (state: string, extra: Record<string, unknown> = {}) => ({
@@ -26,7 +29,7 @@ function transportFor(
   const transport: SceneTransport = async (route, body) => {
     calls.push({ route, body });
     const q = queues[route] as ({ status: number; body: unknown } | (() => { status: number; body: unknown }))[] | undefined;
-    if (!q?.length) return { status: 200, body: status("cancelled") };
+    if (!q?.length) return route === "session" ? { status: 200, body: { client_id: "session-scripted", ttl_s: 900 } } : { status: 200, body: status("cancelled") };
     const next = q.length > 1 ? q.shift()! : q[0];
     return typeof next === "function" ? next() : next;
   };
@@ -74,10 +77,10 @@ describe("loadScene", () => {
     const sleep = vi.fn(async () => { controller.abort(); });
     const failure = await loadScene("p.3mf", { signal: controller.signal, transport, sleep }).catch((e) => e);
     expect(isAbort(failure)).toBe(true);
-    const startBody = calls.find((c) => c.route === "start")!.body as { request_id: string; client_id: string };
+    const startBody = calls.find((c) => c.route === "start")!.body as { request_id: string; client_id: string; seq: number };
     const cancels = calls.filter((c) => c.route === "cancel");
-    expect(cancels).toEqual([{ route: "cancel", body: { client_id: clientId, request_id: startBody.request_id } }]);
-    expect(Object.keys(cancels[0].body as object).sort()).toEqual(["client_id", "request_id"]); // no job_id
+    expect(cancels).toEqual([{ route: "cancel", body: { client_id: currentSceneClientId(), request_id: startBody.request_id, seq: startBody.seq } }]);
+    expect(Object.keys(cancels[0].body as object).sort()).toEqual(["client_id", "request_id", "seq"]); // no job_id
   });
 
   it("cancels a request whose start was answered just before the caller aborted", async () => {
@@ -90,8 +93,8 @@ describe("loadScene", () => {
     };
     const failure = await loadScene("p.3mf", { signal: controller.signal, transport: wrapped, sleep: noSleep }).catch((e) => e);
     expect(isAbort(failure)).toBe(true);
-    expect(calls.map((c) => c.route)).toEqual(["start", "cancel"]);
-    expect((calls[1].body as { request_id: string }).request_id).toBe((calls[0].body as { request_id: string }).request_id);
+    expect(calls.map((c) => c.route)).toEqual(["session", "start", "cancel"]);
+    expect((calls[2].body as { request_id: string }).request_id).toBe((calls[1].body as { request_id: string }).request_id);
   });
 
   it("does not start anything when it is already aborted", async () => {
@@ -152,6 +155,7 @@ describe("a start that never answers", () => {
     // The first start ignores its signal on purpose: the caller must still get away.
     const transport: SceneTransport = (route, body) => {
       calls.push({ route, body });
+      if (route === "session") return Promise.resolve({ status: 200, body: { client_id: "session-t", ttl_s: 900 } });
       if (route === "start" && ++starts === 1) return new Promise(() => undefined);
       if (route === "start") return Promise.resolve({ status: 200, body: started("succeeded", { job_id: "j2", revision: REVISION }) });
       if (route === "result") return Promise.resolve({ status: 200, body: scene });
@@ -161,8 +165,8 @@ describe("a start that never answers", () => {
     expect(failure).toBeInstanceOf(SceneError);
     expect(failure.code).toBe("TIMEOUT");
     expect(sceneErrorText(failure.code)).toContain("took too long");
-    const firstStart = calls[0].body as { request_id: string };
-    expect(calls.find((c) => c.route === "cancel")!.body).toEqual({ client_id: clientId, request_id: firstStart.request_id });
+    const firstStart = calls.find((c) => c.route === "start")!.body as { request_id: string; seq: number };
+    expect(calls.find((c) => c.route === "cancel")!.body).toEqual({ client_id: "session-t", request_id: firstStart.request_id, seq: firstStart.seq });
     const next = await loadScene("a.3mf", { signal: new AbortController().signal, transport, sleep: noSleep, startTimeoutMs: 20 });
     expect(next.schema).toBe("scene/1");
     expect(calls.filter((c) => c.route === "start")).toHaveLength(2); // the hung start and the new one: no re-send protocol
@@ -170,7 +174,7 @@ describe("a start that never answers", () => {
 
   it("is released at once when the caller aborts, even if the transport never answers", async () => {
     const controller = new AbortController();
-    const transport: SceneTransport = (route) => (route === "start" ? new Promise(() => undefined) : Promise.resolve({ status: 200, body: scene }));
+    const transport: SceneTransport = (route) => (route === "start" ? new Promise(() => undefined) : route === "session" ? Promise.resolve({ status: 200, body: { client_id: "session-t", ttl_s: 900 } }) : Promise.resolve({ status: 200, body: scene }));
     const pending = loadScene("a.3mf", { signal: controller.signal, transport, sleep: noSleep, startTimeoutMs: 60000 }).catch((e) => e);
     await Promise.resolve();
     controller.abort();
@@ -181,6 +185,7 @@ describe("a start that never answers", () => {
     const calls: string[] = [];
     const transport: SceneTransport = (route) => {
       calls.push(route);
+      if (route === "session") return Promise.resolve({ status: 200, body: { client_id: "session-t", ttl_s: 900 } });
       if (route === "start") return Promise.resolve({ status: 200, body: started("running") });
       if (route === "status") return new Promise(() => undefined);
       return Promise.resolve({ status: 200, body: status("cancelled") });
@@ -191,20 +196,21 @@ describe("a start that never answers", () => {
   });
 });
 
-// ---- The ordering contract with the engine -----------------------------------------------------------------------
-// A stand-in engine that follows the contract agreed for PR #97: starts carry client_id and a strictly increasing seq; a
-// start with a lower seq than the highest seen for that client is refused (STALE_START); a start for a (client, request)
-// that was cancelled is refused (CANCELLED_BEFORE_START); a newer start replaces the running job; cancel takes {job_id} or
-// {client_id, request_id} and the second form also tombstones the request. Delivery of any call can be held and released
-// by hand, so every ordering below is deterministic: no timers, no sleeping.
-type Job = { id: string; request: string; state: "running" | "succeeded" | "cancelled" };
+// ---- The session contract with the engine ------------------------------------------------------------------------------
+// A stand-in engine that follows the session contract agreed for the engine update (PR #97): POST /scene/session opens a
+// session; starts carry client_id and a strictly increasing seq; a start whose seq is not higher than the highest seen is
+// refused (STALE_START), which includes an exact retry; a start for a cancelled request or seq is refused
+// (CANCELLED_BEFORE_START); an unknown or expired session gives 409 SESSION_EXPIRED; more sessions than allowed gives 503
+// SESSION_LIMIT; a newer start replaces the running job; cancel takes {client_id, request_id, seq} and keeps that seq dead.
+// Delivery of any call can be held and released by hand, so every ordering below is deterministic: no timers, no sleeping.
+type Job = { id: string; request: string; session: string; state: "running" | "succeeded" | "cancelled" };
 type Reply = { status: number; body: unknown };
-function makeEngine() {
-  const highest = new Map<string, number>();
-  const tombstones = new Set<string>();
+function makeEngine(options: { maxSessions?: number } = {}) {
+  const sessions = new Map<string, { highest: number; deadSeqs: Set<number>; deadRequests: Set<string> }>();
   const jobs: Job[] = [];
   const byRequest = new Map<string, Job>();
   let running: Job | null = null;
+  let opened = 0;
   const log: { route: string; body: Record<string, unknown> }[] = [];
   const held: { match: (route: string, body: Record<string, unknown>) => boolean; release: () => void; gate: Promise<void> }[] = [];
   const hold = (match: (route: string, body: Record<string, unknown>) => boolean) => {
@@ -214,18 +220,24 @@ function makeEngine() {
     held.push(h);
     return h;
   };
+  const expire = (clientId: string) => { sessions.delete(clientId); };
   const handle = (route: string, body: Record<string, unknown>): Reply => {
+    if (route === "session") {
+      if (options.maxSessions !== undefined && sessions.size >= options.maxSessions) return { status: 503, body: { error: "SESSION_LIMIT" } };
+      const id = `session-${++opened}`;
+      sessions.set(id, { highest: 0, deadSeqs: new Set(), deadRequests: new Set() });
+      return { status: 200, body: { client_id: id, ttl_s: 900 } };
+    }
     if (route === "start") {
-      const client = String(body.client_id), seq = Number(body.seq), request = String(body.request_id);
-      if (tombstones.has(`${client}|${request}`)) return { status: 409, body: { error: "CANCELLED_BEFORE_START" } };
-      const top = highest.get(client) ?? 0;
-      if (seq < top) return { status: 409, body: { error: "STALE_START" } };
-      const existing = byRequest.get(request);
-      if (existing && seq === top) return { status: 200, body: started(existing.state, { job_id: existing.id, request_id: request }) };
-      highest.set(client, seq);
+      const s = sessions.get(String(body.client_id));
+      if (!s) return { status: 409, body: { error: "SESSION_EXPIRED" } };
+      const seq = Number(body.seq), request = String(body.request_id);
+      if (s.deadSeqs.has(seq) || s.deadRequests.has(request)) return { status: 409, body: { error: "CANCELLED_BEFORE_START" } };
+      if (seq <= s.highest) return { status: 409, body: { error: "STALE_START" } };
+      s.highest = seq;
       let replaced: string | null = null;
       if (running) { running.state = "cancelled"; replaced = running.id; }
-      const job: Job = { id: `job-${jobs.length + 1}`, request, state: "running" };
+      const job: Job = { id: `job-${jobs.length + 1}`, request, session: String(body.client_id), state: "running" };
       jobs.push(job);
       byRequest.set(request, job);
       running = job;
@@ -244,14 +256,12 @@ function makeEngine() {
       return j.state === "succeeded" ? { status: 200, body: { ...scene, revision: REVISION } } : { status: 409, body: { error: "CANCELLED" } };
     }
     // cancel
-    if (typeof body.job_id === "string") {
-      const j = jobOf();
-      if (j && j.state === "running") j.state = "cancelled";
-    } else {
-      tombstones.add(`${body.client_id}|${body.request_id}`);
-      const j = byRequest.get(String(body.request_id));
-      if (j && j.state === "running") j.state = "cancelled";
-    }
+    const s = sessions.get(String(body.client_id));
+    if (!s) return { status: 409, body: { error: "SESSION_EXPIRED" } };
+    s.deadSeqs.add(Number(body.seq));
+    s.deadRequests.add(String(body.request_id));
+    const j = byRequest.get(String(body.request_id));
+    if (j && j.state === "running") j.state = "cancelled";
     return { status: 200, body: status("cancelled") };
   };
   const transport: SceneTransport = async (route, body) => {
@@ -264,15 +274,60 @@ function makeEngine() {
     }
     return handle(route, b);
   };
-  return { transport, log, hold, jobs, starts: () => log.filter((l) => l.route === "start").map((l) => l.body) };
+  return {
+    transport, log, hold, jobs, expire,
+    starts: () => log.filter((l) => l.route === "start").map((l) => l.body),
+    sessionOpens: () => log.filter((l) => l.route === "session").length,
+  };
 }
 const flushMicrotasks = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 const opts = (signal: AbortSignal, transport: SceneTransport) => ({ signal, transport, sleep: noSleep });
 
-describe("ordering of overlapping starts", () => {
+describe("sessions", () => {
+  it("opens ONE session lazily, shared by concurrent loads, and every start carries it with a seq that starts at 1", async () => {
+    const engine = makeEngine();
+    expect(currentSceneClientId()).toBeNull();
+    const holdOpen = engine.hold((route) => route === "session");
+    const aSignal = new AbortController();
+    const a = loadScene("a.3mf", opts(aSignal.signal, engine.transport)).catch((e) => e);
+    const b = loadScene("b.3mf", opts(new AbortController().signal, engine.transport));
+    await flushMicrotasks();
+    expect(engine.sessionOpens()).toBe(1); // both loads wait on the same open
+    holdOpen.release();
+    aSignal.abort(); // A is abandoned before it learns the session, so it never sends a start
+    expect(isAbort(await a)).toBe(true);
+    await b;
+    await loadScene("c.3mf", opts(new AbortController().signal, engine.transport));
+    expect(engine.sessionOpens()).toBe(1);
+    const starts = engine.starts();
+    expect(new Set(starts.map((s) => s.client_id))).toEqual(new Set(["session-1"]));
+    expect(currentSceneClientId()).toBe("session-1");
+    expect(starts.map((s) => s.path)).toEqual(["b.3mf", "c.3mf"]);
+    expect(starts.map((s) => Number(s.seq))).toEqual([1, 2]);
+    expect(new Set(starts.map((s) => s.request_id)).size).toBe(2);
+  });
+
+  it("a load aborted before the session is known sends nothing, and the next load uses the same session", async () => {
+    const engine = makeEngine();
+    const holdOpen = engine.hold((route) => route === "session");
+    const first = new AbortController();
+    const a = loadScene("same.3mf", opts(first.signal, engine.transport)).catch((e) => e); // StrictMode's first mount
+    await flushMicrotasks();
+    first.abort();
+    expect(isAbort(await a)).toBe(true);
+    const b = loadScene("same.3mf", opts(new AbortController().signal, engine.transport)); // the second mount
+    await flushMicrotasks();
+    holdOpen.release();
+    expect((await b).schema).toBe("scene/1");
+    expect(engine.sessionOpens()).toBe(1);
+    expect(engine.starts()).toHaveLength(1); // the abandoned mount never reached the engine
+    expect(engine.log.filter((l) => l.route === "cancel")).toHaveLength(0);
+  });
+
   it("an abandoned start A delivered AFTER the wanted start B cannot cancel or replace B, and B loads", async () => {
     const engine = makeEngine();
     const aSignal = new AbortController();
+    await loadScene("warm.3mf", opts(new AbortController().signal, engine.transport)); // opens the session
     const holdA = engine.hold((route, body) => route === "start" && body.path === "a.3mf");
     const a = loadScene("a.3mf", opts(aSignal.signal, engine.transport)).catch((e) => e);
     await flushMicrotasks(); // A's start is issued and held on the way to the engine
@@ -283,60 +338,111 @@ describe("ordering of overlapping starts", () => {
     holdA.release(); // A's late start finally arrives
     await flushMicrotasks();
     const starts = engine.starts();
-    expect(starts.map((s) => s.path)).toEqual(["a.3mf", "b.3mf"]);
-    expect(Number(starts[1].seq)).toBeGreaterThan(Number(starts[0].seq));
-    expect(engine.jobs.map((j) => j.state)).toEqual(["succeeded"]); // only B's job exists; A registered nothing
-    // A's cancel went out by client id and request id, and tombstoned it.
+    expect(starts.map((s) => s.path)).toEqual(["warm.3mf", "a.3mf", "b.3mf"]);
+    expect(starts.map((s) => Number(s.seq))).toEqual([1, 2, 3]);
+    expect(engine.jobs.map((j) => j.state)).toEqual(["cancelled", "succeeded"]); // warm (replaced by B) and B; A registered nothing
     const cancels = engine.log.filter((l) => l.route === "cancel");
     expect(cancels).toHaveLength(1);
-    expect(Object.keys(cancels[0].body).sort()).toEqual(["client_id", "request_id"]);
-    expect(cancels[0].body.request_id).toBe(starts[0].request_id);
+    expect(Object.keys(cancels[0].body).sort()).toEqual(["client_id", "request_id", "seq"]);
+    expect(cancels[0].body).toEqual({ client_id: "session-1", request_id: starts[1].request_id, seq: starts[1].seq });
   });
 
-  it("the same delivery order under a StrictMode style start, cancel, start for the same path", async () => {
+  it("cancel before start: the cancel reaches the engine first, and the late start is refused and registers nothing", async () => {
     const engine = makeEngine();
-    const first = new AbortController();
-    const holdFirst = engine.hold((route) => route === "start");
-    const a = loadScene("same.3mf", opts(first.signal, engine.transport)).catch((e) => e);
-    await flushMicrotasks();
-    first.abort();
-    await a;
-    const loaded = await loadScene("same.3mf", opts(new AbortController().signal, engine.transport));
-    holdFirst.release();
-    await flushMicrotasks();
-    expect(loaded.schema).toBe("scene/1");
-    const starts = engine.starts();
-    expect(starts).toHaveLength(2);
-    expect(starts[0].request_id).not.toBe(starts[1].request_id);
-    expect(engine.jobs.filter((j) => j.state === "cancelled")).toHaveLength(0);
-  });
-
-  it("an abandoned A delivered before B is replaced by B, and B still loads", async () => {
-    const engine = makeEngine();
+    await loadScene("warm.3mf", opts(new AbortController().signal, engine.transport));
+    const jobsBefore = engine.jobs.length;
+    const holdStart = engine.hold((route, body) => route === "start" && body.path === "a.3mf");
     const aSignal = new AbortController();
     const a = loadScene("a.3mf", opts(aSignal.signal, engine.transport)).catch((e) => e);
-    await flushMicrotasks(); // A's start reached the engine and A's job runs
+    await flushMicrotasks();
     aSignal.abort();
     await a;
-    const loaded = await loadScene("b.3mf", opts(new AbortController().signal, engine.transport));
-    expect(loaded.schema).toBe("scene/1");
-    expect(engine.jobs.map((j) => j.state)).toEqual(["cancelled", "succeeded"]);
+    await flushMicrotasks(); // the cancel was delivered while the start is still on its way
+    expect(engine.log.filter((l) => l.route === "cancel")).toHaveLength(1);
+    holdStart.release();
+    await flushMicrotasks();
+    expect(engine.jobs).toHaveLength(jobsBefore); // the late start created no job
+    expect(engine.jobs.every((j) => j.state !== "running" || j.request !== engine.starts()[1].request_id)).toBe(true);
   });
 
-  it("gives every start attempt a higher seq, retries included, and one client id", async () => {
+  it("gives every start attempt a higher seq, retries included", async () => {
     const engine = makeEngine();
     for (let i = 0; i < 3; i++) await loadScene(`p${i}.3mf`, opts(new AbortController().signal, engine.transport));
-    const refusing: SceneTransport = async (route) => (route === "start" ? { status: 422, body: { error: "UNSUPPORTED_FORMAT" } } : { status: 200, body: status("cancelled") });
+    const refusing: SceneTransport = async (route, body) => (route === "start" ? { status: 422, body: { error: "UNSUPPORTED_FORMAT" } } : engine.transport(route, body));
     const failure = await loadScene("x.obj", opts(new AbortController().signal, refusing)).catch((e) => e);
     expect((failure as SceneError).code).toBe("UNSUPPORTED_FORMAT");
-    const more = makeEngine();
-    await loadScene("again.3mf", opts(new AbortController().signal, more.transport)); // the user presses Try again
-    const all = [...engine.starts(), ...more.starts()];
-    const seqs = all.map((s) => Number(s.seq));
-    expect(seqs.every((n, i) => i === 0 || n > seqs[i - 1])).toBe(true);
-    expect(seqs[seqs.length - 1] - seqs[0]).toBeGreaterThanOrEqual(seqs.length); // the refused start used a seq in between
-    expect(new Set(all.map((s) => s.client_id))).toEqual(new Set([clientId]));
-    expect(clientId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    await loadScene("again.3mf", opts(new AbortController().signal, engine.transport)); // the user presses Try again
+    const seqs = engine.starts().map((s) => Number(s.seq));
+    expect(seqs).toEqual([1, 2, 3, 5]); // the refused start used seq 4
+    expect(new Set(engine.starts().map((s) => s.request_id)).size).toBe(4);
+  });
+
+  it("an expired session opens a NEW session, restarts ONCE with seq back at 1 and a fresh request id, and loads", async () => {
+    const engine = makeEngine();
+    await loadScene("a.3mf", opts(new AbortController().signal, engine.transport));
+    engine.expire("session-1"); // the engine restarted, or the session sat idle too long
+    const loaded = await loadScene("b.3mf", opts(new AbortController().signal, engine.transport));
+    expect(loaded.schema).toBe("scene/1");
+    expect(engine.sessionOpens()).toBe(2);
+    const starts = engine.starts();
+    expect(starts.map((s) => [s.client_id, Number(s.seq)])).toEqual([["session-1", 1], ["session-1", 2], ["session-2", 1]]);
+    expect(starts[2].request_id).not.toBe(starts[1].request_id);
+    expect(currentSceneClientId()).toBe("session-2");
+  });
+
+  it("repeated expiry stops after one restart and is reported: no loop", async () => {
+    const engine = makeEngine();
+    const alwaysExpired: SceneTransport = async (route, body) => {
+      const reply = await engine.transport(route, body);
+      if (route === "session") engine.expire(String((reply.body as { client_id: string }).client_id));
+      return reply;
+    };
+    const failure = (await loadScene("a.3mf", opts(new AbortController().signal, alwaysExpired)).catch((e) => e)) as SceneError;
+    expect(failure.code).toBe("SESSION_EXPIRED");
+    expect(sceneErrorText(failure.code)).toContain("Try again");
+    expect(engine.sessionOpens()).toBe(2);
+    expect(engine.starts()).toHaveLength(2);
+  });
+
+  it("an abandoned start delivered after its session expired never revives: it opens nothing and its answer is dropped", async () => {
+    const engine = makeEngine();
+    await loadScene("warm.3mf", opts(new AbortController().signal, engine.transport));
+    const holdA = engine.hold((route, body) => route === "start" && body.path === "a.3mf");
+    const aSignal = new AbortController();
+    const a = loadScene("a.3mf", opts(aSignal.signal, engine.transport)).catch((e) => e);
+    await flushMicrotasks();
+    aSignal.abort();
+    expect(isAbort(await a)).toBe(true);
+    engine.expire("session-1");
+    const loaded = await loadScene("b.3mf", opts(new AbortController().signal, engine.transport)); // opens session-2 and loads
+    expect(loaded.schema).toBe("scene/1");
+    const opensBefore = engine.sessionOpens();
+    holdA.release(); // A's late start meets an unknown session
+    await flushMicrotasks();
+    expect(engine.sessionOpens()).toBe(opensBefore); // A did not trigger a new session or a restart
+    expect(engine.starts().filter((s) => s.path === "a.3mf")).toHaveLength(1);
+    expect(engine.jobs.filter((j) => j.session === "session-2").map((j) => j.state)).toEqual(["succeeded"]);
+  });
+
+  it("an engine at its session limit gives SESSION_LIMIT in plain words, and a later load works once there is room", async () => {
+    const engine = makeEngine({ maxSessions: 0 });
+    const failure = (await loadScene("a.3mf", opts(new AbortController().signal, engine.transport)).catch((e) => e)) as SceneError;
+    expect(failure.code).toBe("SESSION_LIMIT");
+    expect(sceneErrorText("SESSION_LIMIT")).toContain("as many 3D views as it allows");
+    expect(engine.starts()).toHaveLength(0);
+    expect(engine.sessionOpens()).toBe(1); // no loop
+    const roomy = makeEngine();
+    expect((await loadScene("a.3mf", opts(new AbortController().signal, roomy.transport))).schema).toBe("scene/1");
+  });
+
+  it("cancel on an expired session is ignored: the load still ends with an AbortError", async () => {
+    const engine = makeEngine();
+    const controller = new AbortController();
+    const slowSleep = async () => { engine.expire("session-1"); controller.abort(); };
+    const failure = await loadScene("a.3mf", { signal: controller.signal, transport: engine.transport, sleep: slowSleep }).catch((e) => e);
+    expect(isAbort(failure)).toBe(true);
+    await flushMicrotasks();
+    expect(engine.log.filter((l) => l.route === "cancel")).toHaveLength(1); // sent, answered SESSION_EXPIRED, nothing thrown
   });
 });
 
@@ -345,6 +451,7 @@ describe("a wanted request that is replaced or refused", () => {
     const bodies: Record<string, unknown>[] = [];
     let starts = 0;
     const transport: SceneTransport = async (route, body) => {
+      if (route === "session") return { status: 200, body: { client_id: "session-x", ttl_s: 900 } };
       if (route === "start") {
         bodies.push(body as Record<string, unknown>);
         return { status: 200, body: ++starts === 1 ? started("cancelled") : started("succeeded", { revision: REVISION }) };
@@ -362,6 +469,7 @@ describe("a wanted request that is replaced or refused", () => {
   it.each([["CANCELLED_BEFORE_START"], ["STALE_START"]])("also restarts once when a start is refused as %s", async (code) => {
     let starts = 0;
     const transport: SceneTransport = async (route) => {
+      if (route === "session") return { status: 200, body: { client_id: "session-x", ttl_s: 900 } };
       if (route === "start") return ++starts === 1 ? { status: 409, body: { error: code } } : { status: 200, body: started("succeeded", { revision: REVISION }) };
       if (route === "result") return { status: 200, body: scene };
       return { status: 200, body: status("cancelled") };
@@ -373,6 +481,7 @@ describe("a wanted request that is replaced or refused", () => {
   it("repeated replacement stops after the second attempt and reports it: no loop", async () => {
     let starts = 0;
     const transport: SceneTransport = async (route) => {
+      if (route === "session") return { status: 200, body: { client_id: "session-x", ttl_s: 900 } };
       if (route === "start") { ++starts; return { status: 200, body: started("cancelled") }; }
       return { status: 200, body: status("cancelled") };
     };
@@ -381,6 +490,7 @@ describe("a wanted request that is replaced or refused", () => {
     expect(starts).toBe(2);
     let refused = 0;
     const stale: SceneTransport = async (route) => {
+      if (route === "session") return { status: 200, body: { client_id: "session-x", ttl_s: 900 } };
       if (route === "start") { ++refused; return { status: 409, body: { error: "STALE_START" } }; }
       return { status: 200, body: status("cancelled") };
     };
@@ -392,6 +502,7 @@ describe("a wanted request that is replaced or refused", () => {
     const controller = new AbortController();
     let starts = 0;
     const transport: SceneTransport = async (route) => {
+      if (route === "session") return { status: 200, body: { client_id: "session-x", ttl_s: 900 } };
       if (route === "start") { ++starts; controller.abort(); return { status: 200, body: started("cancelled") }; }
       return { status: 200, body: status("cancelled") };
     };
@@ -399,11 +510,13 @@ describe("a wanted request that is replaced or refused", () => {
     expect(starts).toBe(1);
   });
 
-  it("gives the two new refusals plain wording", () => {
+  it("gives the new refusals plain wording", () => {
     expect(sceneErrorText("STALE_START")).toBe("A newer request for the 3D view replaced this one.");
     expect(sceneErrorText("CANCELLED_BEFORE_START")).toBe("This 3D view request was cancelled before it started.");
+    expect(sceneErrorText("SESSION_EXPIRED")).toContain("Try again");
   });
 });
+
 
 describe("decodeMesh", () => {
   const b64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));

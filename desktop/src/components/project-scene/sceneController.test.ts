@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { SceneController, type ControllerDeps } from "./sceneController";
 import { makeFakeFactory } from "./fakeViewport";
 import { offBedScene, scene } from "./sceneFixtures";
-import { SceneError, loadScene, type LoadSceneOptions, type SceneTransport, type SceneV1 } from "@/lib/scene";
+import { SceneError, loadScene, resetSceneSession, type LoadSceneOptions, type SceneTransport, type SceneV1 } from "@/lib/scene";
+
+// The scene client keeps one session per app run; every test starts as at app start.
+beforeEach(() => resetSceneSession());
 
 function abortError() { const e = new Error("aborted"); e.name = "AbortError"; return e; }
 
@@ -215,6 +218,7 @@ describe("SceneController", () => {
     let answer = false;
     const job = (state: string, revision: string | null) => ({ job_id: "j", request_id: "r", state, stage: null, completed: null, total: null, error: null, revision });
     const transport: SceneTransport = (route) => {
+      if (route === "session") return Promise.resolve({ status: 200, body: { client_id: "session-ctl", ttl_s: 900 } });
       if (route === "start") {
         // Until `answer` is set it never answers, and ignores its signal.
         return answer ? Promise.resolve({ status: 200, body: job("succeeded", "a".repeat(64)) }) : new Promise(() => undefined);

@@ -57,7 +57,9 @@ export type SceneErrorCode =
   // Client-side only: the engine could not be reached, or sent something that is not a scene/1 document.
   | "UNREACHABLE" | "BAD_RESPONSE"
   // The engine refused a start as out of order (a newer one was seen from this client) or as already cancelled.
-  | "STALE_START" | "CANCELLED_BEFORE_START";
+  | "STALE_START" | "CANCELLED_BEFORE_START"
+  // The engine does not know this client session (restarted, or idle too long), or will not open another one.
+  | "SESSION_EXPIRED" | "SESSION_LIMIT";
 export type JobStatus = {
   job_id: string; request_id: string; state: JobState; stage: JobStage; completed: number | null; total: number | null;
   error: { code: SceneErrorCode; message: string } | null; revision: string | null;
@@ -92,6 +94,8 @@ const ERROR_TEXT: Record<SceneErrorCode, string> = {
   BAD_RESPONSE: "The engine sent a 3D view Studio does not understand.",
   STALE_START: "A newer request for the 3D view replaced this one.",
   CANCELLED_BEFORE_START: "This 3D view request was cancelled before it started.",
+  SESSION_EXPIRED: "Studio lost its connection to the engine for the 3D view. Try again.",
+  SESSION_LIMIT: "The engine is already serving as many 3D views as it allows. Close another Studio window, then try again.",
 };
 export function sceneErrorText(code: SceneErrorCode): string {
   return ERROR_TEXT[code] ?? ERROR_TEXT.INTERNAL;
@@ -104,7 +108,7 @@ function asCode(value: unknown): SceneErrorCode {
 
 /** One engine call: POST a JSON body to a scene route and return the parsed body with its HTTP status. */
 export type SceneTransport = (
-  route: "start" | "status" | "result" | "cancel", body: unknown, signal?: AbortSignal,
+  route: "session" | "start" | "status" | "result" | "cancel", body: unknown, signal?: AbortSignal,
 ) => Promise<{ status: number; body: unknown }>;
 
 export const defaultTransport: SceneTransport = async (route, body, signal) => {
@@ -164,39 +168,74 @@ function errorFromResponse(status: number, body: unknown): SceneError {
   return new SceneError(status >= 500 ? "INTERNAL" : "BAD_RESPONSE");
 }
 
-// An id for this run of the app (8-64 characters of A-Z a-z 0-9 _ -). The engine uses it to order start calls from one
-// client (a start with a lower `seq` than one it has already seen is refused as STALE_START) and to cancel a request by
-// its id even before the engine has seen its start (the late start is then refused as CANCELLED_BEFORE_START).
-function newClientId(): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
-  const bytes = new Uint8Array(24);
-  const c = (globalThis as { crypto?: Crypto }).crypto;
-  if (c?.getRandomValues) c.getRandomValues(bytes);
-  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-  return Array.from(bytes, (b) => alphabet[b & 63]).join("");
+// ---- Sessions ------------------------------------------------------------------------------------------------------------
+// The engine orders overlapping starts within a SESSION. The client opens one session lazily (the first time it needs one)
+// and uses its `client_id` on every start and cancel. Each start attempt takes the next `seq` of the session (strictly
+// increasing from 1). The engine's rules, which the stand-in engine in scene.test.ts implements:
+//   * a start whose seq is not higher than the highest seen is refused (STALE_START). That includes an exact retry of a start
+//     the engine already processed, so every retry uses a fresh request id and the next seq;
+//   * a start whose request or seq was cancelled is refused (CANCELLED_BEFORE_START);
+//   * an unknown or idle-expired session is refused (SESSION_EXPIRED): the client opens a new session (seq starts again at 1)
+//     and restarts ONCE; more sessions than the engine allows is SESSION_LIMIT (shown, with Try again);
+//   * the guarantee is per session only: a start from another session replaces the running job as before.
+type Session = { clientId: string; seq: number };
+let session: Session | null = null;
+let opening: Promise<Session> | null = null;
+
+/** Forgets the session. For tests; the app never needs it. */
+export function resetSceneSession(): void {
+  session = null;
+  opening = null;
 }
-export const clientId: string = newClientId();
-let startSeq = 0;
+/** The current session's client id, or null before one is opened. For tests and diagnostics. */
+export function currentSceneClientId(): string | null {
+  return session?.clientId ?? null;
+}
+
+/** Opens the session once, however many loads ask at the same time. A caller can stop waiting without cancelling the open. */
+function ensureSession(transport: SceneTransport, caller: AbortSignal, ms: number): Promise<Session> {
+  if (session) return Promise.resolve(session);
+  if (!opening) {
+    const attempt = (async (): Promise<Session> => {
+      const reply = await limited((s) => transport("session", {}, s), new AbortController().signal, ms);
+      if (reply.status !== 200) throw errorFromResponse(reply.status, reply.body);
+      const id = isObject(reply.body) ? reply.body.client_id : undefined;
+      if (typeof id !== "string" || id.length === 0 || id.length > 128) throw new SceneError("BAD_RESPONSE");
+      session = { clientId: id, seq: 0 };
+      return session;
+    })();
+    opening = attempt;
+    const done = () => { if (opening === attempt) opening = null; };
+    attempt.then(done, done);
+  }
+  const shared = opening;
+  return limited(() => shared, caller, ms);
+}
+
+/** One start attempt: enough to cancel it. */
+export type StartAttempt = { clientId: string; requestId: string; seq: number };
 
 const CANCEL_MS = 3000;
 
 /**
- * Tells the engine a request is no longer wanted: by client id and request id, so it works whether or not the start has
- * been answered. Best effort and silent: it runs from cleanup paths that must never throw or wait. It is bounded and never
- * awaited, so it cannot hold up the next start.
+ * Tells the engine a start attempt is no longer wanted, by `{client_id, request_id, seq}`, so it works whether or not the
+ * start has been answered or even delivered (a late start is then refused). Best effort and silent: it runs from cleanup
+ * paths that must never throw or wait, it is bounded, and it is never awaited, so it cannot hold up the next start. A
+ * SESSION_EXPIRED answer (the session is gone, so the request is too) needs nothing more.
  */
-export function cancelSceneRequest(requestId: string, transport: SceneTransport = defaultTransport): void {
+export function cancelSceneRequest(attempt: StartAttempt, transport: SceneTransport = defaultTransport): void {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), CANCEL_MS);
   let sent: Promise<unknown>;
   try {
-    sent = transport("cancel", { client_id: clientId, request_id: requestId }, ctl.signal);
+    sent = transport("cancel", { client_id: attempt.clientId, request_id: attempt.requestId, seq: attempt.seq }, ctl.signal);
   } catch {
     clearTimeout(timer);
     return;
   }
   void sent.catch(() => undefined).finally(() => clearTimeout(timer));
 }
+
 
 export type LoadSceneOptions = {
   signal: AbortSignal;
@@ -257,22 +296,28 @@ const SUPERSEDED = new Set<SceneErrorCode>(["CANCELLED", "STALE_START", "CANCELL
 
 /**
  * Starts a scene job for `path`, follows it, and resolves with the scene. If `signal` aborts, the browser requests are
- * aborted AND the engine is told to cancel the request by client id and request id, at once (aborting a request alone does
- * not stop work in the engine); the promise then rejects with an AbortError. Every other failure rejects with a SceneError.
+ * aborted AND the engine is told to cancel the start attempt by client id, request id and seq, at once (aborting a request
+ * alone does not stop work in the engine); the promise then rejects with an AbortError. Every other failure rejects with a
+ * SceneError.
  *
- * Ordering of overlapping starts is the engine's job: each start carries this client's id and a strictly increasing `seq`.
- * As resilience, not as the fix, a wanted request that comes back cancelled or refused as superseded is started ONCE more
- * with a fresh request id; a second such outcome is reported as it is.
+ * Ordering of overlapping starts is the engine's job, within a session (see "Sessions" above). As resilience, not as the
+ * fix, there are at most two automatic restarts, each with a fresh request id and the next seq: ONE after SESSION_EXPIRED
+ * (a new session is opened first), and ONE when a wanted request comes back cancelled or refused as superseded. A second
+ * outcome of the same kind is reported as it is.
  */
 export async function loadScene(path: string, opts: LoadSceneOptions): Promise<SceneV1> {
   const { signal } = opts;
   if (signal.aborted) throw abortError();
+  let sessionRestarted = false;
+  let supersededRestarted = false;
   for (let attempt = 0; ; attempt++) {
     try {
       return await runOnce(path, opts, attempt === 0 ? opts.requestId ?? newRequestId() : newRequestId());
     } catch (error) {
-      const again = error instanceof SceneError && SUPERSEDED.has(error.code) && attempt === 0 && !signal.aborted;
-      if (!again) throw error;
+      if (!(error instanceof SceneError) || signal.aborted) throw error;
+      if (error.code === "SESSION_EXPIRED" && !sessionRestarted) { sessionRestarted = true; continue; }
+      if (SUPERSEDED.has(error.code) && !supersededRestarted) { supersededRestarted = true; continue; }
+      throw error;
     }
   }
 }
@@ -285,12 +330,18 @@ async function runOnce(path: string, opts: LoadSceneOptions, requestId: string):
   const startMs = opts.startTimeoutMs ?? 15000;
   const requestMs = opts.requestTimeoutMs ?? 30000;
 
-  // Registered before the start is sent, so leaving at ANY moment cancels this request, answered or not.
-  const onAbort = () => cancelSceneRequest(requestId, transport);
+  // Registered before anything is sent, so leaving at ANY moment cancels the start attempt once there is one (before the
+  // session is known, or before the attempt takes its seq, nothing has been sent and there is nothing to cancel).
+  let attempt: StartAttempt | null = null;
+  const onAbort = () => { if (attempt) cancelSceneRequest(attempt, transport); };
   signal.addEventListener("abort", onAbort, { once: true });
   try {
+    const sess = await ensureSession(transport, signal, startMs);
+    if (signal.aborted) throw abortError();
+    attempt = { clientId: sess.clientId, requestId, seq: ++sess.seq };
+    const sent = attempt;
     const started = await limited(
-      (s) => transport("start", { path, request_id: requestId, client_id: clientId, seq: ++startSeq }, s), signal, startMs,
+      (s) => transport("start", { path, request_id: sent.requestId, client_id: sent.clientId, seq: sent.seq }, s), signal, startMs,
     );
     if (started.status !== 200) throw errorFromResponse(started.status, started.body);
     const job = readStart(started.body);
@@ -333,13 +384,18 @@ async function runOnce(path: string, opts: LoadSceneOptions, requestId: string):
     return result.body as unknown as SceneV1;
   } catch (error) {
     if (signal.aborted && !isAbort(error)) throw abortError();
-    // An answer that never came: stop the request too (a no-op if it is already over).
-    if (error instanceof SceneError && error.code === "TIMEOUT") cancelSceneRequest(requestId, transport);
+    if (error instanceof SceneError) {
+      // An answer that never came: stop the attempt too (a no-op if it is already over).
+      if (error.code === "TIMEOUT" && attempt) cancelSceneRequest(attempt, transport);
+      // The session is gone: forget it, so the next attempt opens a new one (seq starts again at 1).
+      if (error.code === "SESSION_EXPIRED" && attempt && session?.clientId === attempt.clientId) session = null;
+    }
     throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
 }
+
 
 // ---- Geometry helpers -------------------------------------------------------------------------------------------
 
