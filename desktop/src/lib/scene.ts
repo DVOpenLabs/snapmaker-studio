@@ -358,7 +358,7 @@ async function runOnce(path: string, opts: LoadSceneOptions, requestId: string):
       if (status.state === "failed") {
         // Asking again with a request id the engine still holds returns a failed job without its reason; fetch it.
         if (fromStart) {
-          const why = await limited((s) => transport("status", { job_id: jobId }, s), signal, requestMs);
+          const why = await limited((s) => transport("status", { job_id: jobId, client_id: sent.clientId }, s), signal, requestMs);
           if (why.status !== 200) throw errorFromResponse(why.status, why.body);
           status = readStatus(why.body);
           fromStart = false;
@@ -367,13 +367,13 @@ async function runOnce(path: string, opts: LoadSceneOptions, requestId: string):
       }
       if (status.state === "cancelled") throw new SceneError("CANCELLED");
       await sleep(pollMs, signal);
-      const polled = await limited((s) => transport("status", { job_id: jobId }, s), signal, requestMs);
+      const polled = await limited((s) => transport("status", { job_id: jobId, client_id: sent.clientId }, s), signal, requestMs);
       if (polled.status !== 200) throw errorFromResponse(polled.status, polled.body);
       status = readStatus(polled.body);
       fromStart = false;
     }
     const result = await limited(
-      (s) => transport("result", { job_id: jobId, ...(status.revision ? { expected_revision: status.revision } : {}) }, s),
+      (s) => transport("result", { job_id: jobId, client_id: sent.clientId, ...(status.revision ? { expected_revision: status.revision } : {}) }, s),
       signal, requestMs,
     );
     if (signal.aborted) throw abortError();

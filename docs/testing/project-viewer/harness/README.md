@@ -21,10 +21,11 @@ afterwards):
 2. `node shots.mjs`: screenshots (light, dark, wide, narrow, no WebGL, lost context).
 3. `node behave.mjs`: interaction check, create/dispose loop, real panel mounts under StrictMode, memory, the large scene.
 4. `node heap.mjs` and `node heap2.mjs`: JS heap growth per viewer and per mount.
-5. `npm run build` in `desktop`, then `node csp.mjs`: the production build served with the app's real Tauri CSP.
-6. `node collect-results.mjs`: runs the type check, the unit tests and the build, reads the files above from `P3B_OUT`, records
+5. `node real-engine.mjs`: the real client against the real engine (sessions, credentials, cancel, ordering, expiry, limit).
+6. `npm run build` in `desktop`, then `node csp.mjs`: the production build served with the app's real Tauri CSP.
+7. `node collect-results.mjs`: runs the type check, the unit tests and the build, reads the files above from `P3B_OUT`, records
    the commit and whether the tree was clean outside the evidence folder, writes `../results.json`, and copies the screenshots.
-7. `node make-readme-tables.mjs`: regenerates the Measurements block of `../README.md` from `../results.json`.
+8. `node make-readme-tables.mjs`: regenerates the Measurements block of `../README.md` from `../results.json`.
    `node make-readme-tables.mjs --check` fails if the block is out of date.
 
 Every script exits non-zero on a caught failure, a stuck mount, or a changed original file; `collect-results.mjs` also fails

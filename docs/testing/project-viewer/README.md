@@ -19,7 +19,7 @@ when that line says the tree was clean outside this folder. `harness/README.md` 
 | Type check, unit tests, build | run by `collect-results.mjs` (see Measurements) |
 | Real-browser run: dev server, real engine, real WebGL, light and dark, wide and narrow | run by the harness |
 | Production build served with the app's real Tauri CSP | run by the harness |
-| Overlapping-start ordering against the **real engine** (sessions, `client_id`, `seq`) | **NOT RUN.** The client follows the session contract agreed for the engine update (PR #97) and is tested against a stand-in engine that implements it. It has not been run against the real engine until that update is merged into this branch; the harness will not work against an engine without `/scene/session`. |
+| The scene client against the **real engine** (sessions, credentials, ordering) | run by `harness/real-engine.mjs` on a working tree that contains the reviewed engine: see "Against the real engine" below for exactly what was and was not covered. |
 | **Packaged Windows Tauri via `tools/acceptance/run.ps1`** | **NOT RUN (outstanding).** The lane installs a rewrapped release installer with an attestation; this branch has no released installer, and building one (frozen sidecar, Tauri bundle, rewrap) was not attempted. Edge is the same engine family as WebView2, but WebView2 inside the Tauri window was not exercised. |
 | **Linux WebKitGTK graphics-enabled lane** | **NOT RUN (outstanding).** No Linux desktop with a graphics session was available. The existing lane disables compositing, so it would need a graphics-enabled variant. |
 | macOS, screen reader, software-rendered or weak GPU, a real printer | not run (a printer is never used) |
@@ -111,7 +111,13 @@ removed. Studio cannot reach it. The boundary is structural, in three places, an
 * An abandoned start that reaches the engine after a newer one therefore cannot cancel or replace it, and one that reaches the
   engine after its session expired meets an unknown session: its answer is dropped and it triggers nothing. This is proved
   against a stand-in engine that implements the rules above, with every delivery order controlled by hand (no timers):
-  `scene.test.ts`, "sessions". It has **not** been run against the real engine yet (see the table above).
+  `scene.test.ts`, "sessions" and "job credentials". The same orderings are then exercised against the real engine, below.
+* **Job credentials.** `/scene/status` and `/scene/result` carry the session's `client_id` along with the `job_id`; a job that
+  belongs to a session is visible only to the same session. A foreign, missing or unknown `client_id` all answer
+  `404 EXPIRED` (no leak), which the client reports as expired. Cancel by `{client_id, request_id, seq}` cancels the job only when
+  its `seq` is exactly that `seq`, and raises a mark below which every start of the session is refused. After an admitted start
+  is rejected (503 `WORKER_WEDGED`, 422 `UNSUPPORTED_FORMAT`, a missing file) the client's next try always uses a fresh request id
+  and a higher `seq`. `replaced_job_id` is set only for a job of the same session.
 * **The guarantee is per session only.** A start from another session (another Studio window, or a client that did not use
   this session) replaces the running job as it always did. Sessions do not make one engine serve two windows at once.
 * **Residual, stated plainly.** After `SESSION_EXPIRED` the client opens a new session, starts `seq` again at 1, and restarts
@@ -129,6 +135,31 @@ removed. Studio cannot reach it. The boundary is structural, in three places, an
 * `STALE_START`, `CANCELLED_BEFORE_START`, `SESSION_EXPIRED` and `SESSION_LIMIT` have plain wording. For an abandoned generation they never reach the screen:
   answers for a generation that is no longer current, or a path that changed, are dropped (`sceneController.test.ts`, including
   A, then B, then A).
+
+## Against the real engine
+
+`harness/real-engine.mjs` runs the real client (`src/lib/scene.ts`, in Edge, over real loopback HTTP) against the real engine
+process, using the repository example projects and one synthetic large project. Its output is `real-engine-results.json`
+(collected into `results.json` by `collect-results.mjs`). What it covers, each with assertions on the wire:
+
+* **Round trip:** session, start (seq 1, with the session's client id), status polls and result, every status and result carrying
+  the client id and answered 200.
+* **Cancel round trip:** a load of the large project is abandoned right after its start is answered; the cancel goes by
+  `{client_id, request_id, seq}` and is answered 200; the job is then `cancelled`. Status for that job with a foreign client id,
+  and with none, is `404 EXPIRED`.
+* **Abandoned A after B:** A's start is held in the browser on its way out, A is abandoned (the cancel is real), B loads, and A's
+  start body is then replayed by hand to the real `/scene/start` route: it is refused (`CANCELLED_BEFORE_START`), a start with a
+  lower seq is refused, B's job is neither cancelled nor replaced, and an exact retry of B's start returns B's same job (the
+  client never sends one).
+* **`SESSION_EXPIRED` after a fresh engine process:** the engine is stopped and a new process started on the same port; the
+  client's next start is answered `SESSION_EXPIRED`, one new session is opened, and the restart (seq 1, fresh request id) loads.
+* **`SESSION_LIMIT`:** sessions are opened until the real engine refuses; a load then fails with `SESSION_LIMIT` in plain words
+  and nothing loops.
+
+**Not covered, plainly:** a start that is genuinely in flight at the engine when the browser aborts it (the browser cannot recall
+a request already on the wire, and a held request was never sent, so the late delivery was replayed by hand rather than raced);
+the idle expiry of a session after its time to live (a fresh engine process was used instead); the packaged Windows and Linux
+apps (below).
 
 ## Lifecycle on real WebGL
 

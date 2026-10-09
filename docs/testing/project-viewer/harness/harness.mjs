@@ -26,16 +26,16 @@ export function cleanup() {
 process.on("exit", cleanup);
 for (const s of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(s, () => { cleanup(); process.exit(130); });
 
-const freePort = () => new Promise((resolve, reject) => {
+export const freePort = () => new Promise((resolve, reject) => {
   const p = net.createServer(); p.once("error", reject);
   p.listen(0, "127.0.0.1", () => { const { port } = p.address(); p.close(() => resolve(port)); });
 });
 
-export async function start({ preview = false, noUi = false } = {}) {
-  const work = mkdtempSync(join(tmpdir(), "p3b-"));
+/** Starts the local engine in its own data directory (optionally on a fixed port) and waits for its handshake line. */
+export async function spawnEngine({ port, work = mkdtempSync(join(tmpdir(), "p3b-")) } = {}) {
   const backend = spawn(process.env.P3B_PYTHON ?? "py", ["-m", "snapstudio_api"], {
     cwd: join(REPO, "backend"), stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONPATH: join(REPO, "backend"), PYTHONUNBUFFERED: "1" },
+    env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONPATH: join(REPO, "backend"), PYTHONUNBUFFERED: "1", ...(port ? { SNAPSTUDIO_API_PORT: String(port) } : {}) },
   });
   children.push(backend);
   const handshake = await new Promise((resolve, reject) => {
@@ -43,14 +43,24 @@ export async function start({ preview = false, noUi = false } = {}) {
     backend.stdout.on("data", (d) => { buf += d; const m = buf.match(/\{[^{}]*\}/); if (m) { try { resolve(JSON.parse(m[0])); } catch {} } });
     setTimeout(() => reject(new Error("engine did not report its port")), 60000);
   });
-  if (noUi) return { work, handshake };
+  return { backend, handshake, work };
+}
+
+/** Stops one engine this script started (and its children). Never touches any other process. */
+export function stopEngine(backend) {
+  try { spawnSync("taskkill", ["/PID", String(backend.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
+}
+
+export async function start({ preview = false, noUi = false, enginePort } = {}) {
+  const { handshake, work, backend } = await spawnEngine({ port: enginePort });
+  if (noUi) return { work, handshake, backend };
   const uiPort = await freePort();
   const UI = `http://localhost:${uiPort}`;
   children.push(spawn("npx.cmd", ["vite", ...(preview ? ["preview"] : []), "--port", String(uiPort), "--strictPort", "--host", "localhost"], { cwd: join(REPO, "desktop"), stdio: "ignore", shell: true }));
   let up = false;
   for (let i = 0; i < 80 && !up; i++) { try { up = (await fetch(`${UI}/`)).ok; } catch {} if (!up) await sleep(500); }
   if (!up) throw new Error("UI not up");
-  return { work, handshake, UI };
+  return { work, handshake, UI, backend };
 }
 
 /** Copies a repo example to a neutral folder so no username or temp path can appear in a screenshot. */

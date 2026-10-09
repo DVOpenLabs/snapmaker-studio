@@ -74,6 +74,10 @@ export function render(r) {
     ["Seconds from pressing Open to a working view", n(l.secondsUntilViewerWorking)],
     ["JS heap before / after", `${mb(l.jsHeapBeforeBytes)} / ${mb(l.jsHeapAfterBytes)}`],
   ]));
+  if (r.realEngine) {
+    out.push("\n**Scene client against the real engine** (assertions on the wire; see \"Against the real engine\")\n");
+    out.push(table(["Scenario", "Passed"], Object.entries(r.realEngine.scenarios).map(([k, v]) => [`\`${k}\``, yes(v.passed)])));
+  }
   out.push("\n**Production build with the app's Content-Security-Policy**\n");
   out.push(table(["Measure", "Value"], [
     ["Production build", yes(r.csp.isProductionBuild)],

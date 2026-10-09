@@ -50,7 +50,9 @@ describe("loadScene", () => {
     });
     expect(out.schema).toBe("scene/1");
     expect(seen).toEqual(["queued", "running", "succeeded"]);
-    expect(calls.find((c) => c.route === "result")?.body).toEqual({ job_id: "job-1", expected_revision: REVISION });
+    expect(calls.find((c) => c.route === "result")?.body).toEqual({ job_id: "job-1", client_id: "session-scripted", expected_revision: REVISION });
+    // Every status and result call carries the session's client id.
+    expect(calls.filter((c) => c.route === "status" || c.route === "result").every((c) => (c.body as { client_id?: string }).client_id === "session-scripted")).toBe(true);
     expect(calls.some((c) => c.route === "cancel")).toBe(false);
   });
 
@@ -203,7 +205,7 @@ describe("a start that never answers", () => {
 // (CANCELLED_BEFORE_START); an unknown or expired session gives 409 SESSION_EXPIRED; more sessions than allowed gives 503
 // SESSION_LIMIT; a newer start replaces the running job; cancel takes {client_id, request_id, seq} and keeps that seq dead.
 // Delivery of any call can be held and released by hand, so every ordering below is deterministic: no timers, no sleeping.
-type Job = { id: string; request: string; session: string; state: "running" | "succeeded" | "cancelled" };
+type Job = { id: string; request: string; session: string; seq: number; state: "running" | "succeeded" | "cancelled" };
 type Reply = { status: number; body: unknown };
 function makeEngine(options: { maxSessions?: number } = {}) {
   const sessions = new Map<string, { highest: number; deadSeqs: Set<number>; deadRequests: Set<string> }>();
@@ -236,14 +238,15 @@ function makeEngine(options: { maxSessions?: number } = {}) {
       if (seq <= s.highest) return { status: 409, body: { error: "STALE_START" } };
       s.highest = seq;
       let replaced: string | null = null;
-      if (running) { running.state = "cancelled"; replaced = running.id; }
-      const job: Job = { id: `job-${jobs.length + 1}`, request, session: String(body.client_id), state: "running" };
+      if (running) { running.state = "cancelled"; if (running.session === String(body.client_id)) replaced = running.id; } // replaced_job_id only within one session
+      const job: Job = { id: `job-${jobs.length + 1}`, request, session: String(body.client_id), seq, state: "running" };
       jobs.push(job);
       byRequest.set(request, job);
       running = job;
       return { status: 200, body: started("running", { job_id: job.id, request_id: request, replaced_job_id: replaced }) };
     }
-    const jobOf = () => jobs.find((j) => j.id === body.job_id);
+    // A job that belongs to a session is visible only with the SAME session's client_id; foreign, missing and unknown all look alike.
+    const jobOf = () => jobs.find((j) => j.id === body.job_id && j.session === body.client_id);
     if (route === "status") {
       const j = jobOf();
       if (!j) return { status: 404, body: { error: "EXPIRED" } };
@@ -261,7 +264,7 @@ function makeEngine(options: { maxSessions?: number } = {}) {
     s.deadSeqs.add(Number(body.seq));
     s.deadRequests.add(String(body.request_id));
     const j = byRequest.get(String(body.request_id));
-    if (j && j.state === "running") j.state = "cancelled";
+    if (j && j.session === String(body.client_id) && j.seq === Number(body.seq) && j.state === "running") j.state = "cancelled"; // only the exact attempt
     return { status: 200, body: status("cancelled") };
   };
   const transport: SceneTransport = async (route, body) => {
@@ -443,6 +446,60 @@ describe("sessions", () => {
     expect(isAbort(failure)).toBe(true);
     await flushMicrotasks();
     expect(engine.log.filter((l) => l.route === "cancel")).toHaveLength(1); // sent, answered SESSION_EXPIRED, nothing thrown
+  });
+});
+
+describe("job credentials", () => {
+  it("status and result carry the session client id; the engine hides a job from any other client id (EXPIRED)", async () => {
+    const engine = makeEngine();
+    await loadScene("a.3mf", opts(new AbortController().signal, engine.transport));
+    const calls = engine.log.filter((l) => l.route === "status" || l.route === "result");
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.body.client_id === "session-1" && typeof c.body.job_id === "string")).toBe(true);
+    // The same job id with a foreign, a missing or an unknown client id is "EXPIRED", never "forbidden".
+    for (const body of [{ job_id: "job-1", client_id: "someone-else" }, { job_id: "job-1" }, { job_id: "job-999", client_id: "session-1" }]) {
+      for (const route of ["status", "result"] as const) {
+        expect(await engine.transport(route, body)).toEqual({ status: 404, body: { error: "EXPIRED" } });
+      }
+    }
+    expect(sceneErrorText("EXPIRED")).toContain("Try again");
+  });
+
+  it("cancel by request cancels a job only when its seq is exactly the cancelled seq", async () => {
+    const engine = makeEngine();
+    await loadScene("a.3mf", opts(new AbortController().signal, engine.transport)); // job-1, seq 1, finished
+    const hold = engine.hold((route, body) => route === "status" && body.job_id === "job-2");
+    const running = loadScene("b.3mf", opts(new AbortController().signal, engine.transport)).catch((e) => e); // job-2, seq 2, running
+    await flushMicrotasks();
+    // A stale cancel for the earlier attempt (seq 1) must leave the running job alone.
+    await engine.transport("cancel", { client_id: "session-1", request_id: engine.starts()[0].request_id, seq: 1 });
+    expect(engine.jobs.find((j) => j.id === "job-2")!.state).toBe("running");
+    await engine.transport("cancel", { client_id: "session-1", request_id: engine.starts()[1].request_id, seq: 2 });
+    expect(engine.jobs.find((j) => j.id === "job-2")!.state).toBe("cancelled");
+    hold.release();
+    await running;
+  });
+
+  it("after an admitted start is rejected (WORKER_WEDGED, UNSUPPORTED_FORMAT) the next try uses a fresh request id and a higher seq", async () => {
+    const engine = makeEngine();
+    let reject: { status: number; code: string } | null = { status: 503, code: "WORKER_WEDGED" };
+    const flaky: SceneTransport = async (route, body) => {
+      if (route === "start" && reject) {
+        await engine.transport(route, body); // the engine admitted it (seq consumed), then failed it
+        const r = reject; reject = null;
+        return { status: r.status, body: { error: r.code } };
+      }
+      return engine.transport(route, body);
+    };
+    const failure = (await loadScene("a.3mf", opts(new AbortController().signal, flaky)).catch((e) => e)) as SceneError;
+    expect(failure.code).toBe("WORKER_WEDGED");
+    const ok = await loadScene("a.3mf", opts(new AbortController().signal, flaky)); // the user presses Try again
+    expect(ok.schema).toBe("scene/1");
+    const [first, second] = engine.starts();
+    expect(second.request_id).not.toBe(first.request_id);
+    expect(Number(second.seq)).toBeGreaterThan(Number(first.seq));
+    // An exact retry of the admitted start is refused as stale, which is why the client never sends one.
+    expect(await engine.transport("start", first)).toEqual({ status: 409, body: { error: "STALE_START" } });
   });
 });
 

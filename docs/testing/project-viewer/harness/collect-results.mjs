@@ -27,6 +27,7 @@ const shots = read("shots-results.json");
 const csp = read("csp-results.json");
 const heap = read("heap-results.json");
 const heap2 = read("heap2-results.json");
+const realEngine = read("real-engine-results.json");
 
 // Identity of the run. "dirty" ignores the evidence folder itself, which is committed after the run.
 const commit = git("rev-parse", "HEAD");
@@ -81,10 +82,11 @@ const results = {
   cyclesApp: { ...behave.uiCycles, documentKeydownStacks: undefined },
   memory: { app: behave.memory, perViewerCreateDispose: heap.facadeHeap, perAppMount: heap2 },
   largeScene: behave.large,
+  realEngine: { scenarios: Object.fromEntries(Object.entries(realEngine.scenarios).map(([k, v]) => [k, { passed: v.passed, observed: v.observed ?? null }])), failures: realEngine.failures, notCovered: realEngine.notCovered },
   csp: { policy: csp.csp, violations: csp.violations, canvasCount: csp.canvasCount, isProductionBuild: csp.isProductionBuild, harnessError: csp.harnessError ?? null },
   originalFilesUnchanged: { ...behave.originalsUnchanged, ...shots.originalsUnchanged, csp: csp.originalUnchanged },
   screenshots: Object.fromEntries(Object.entries(shots.shots).map(([k, v]) => [k, { overflowX: v.overflowX, canvases: v.canvases, consoleErrors: v.errors }])),
-  harnessErrors: [behave.harnessError, shots.harnessError, csp.harnessError].filter(Boolean),
+  harnessErrors: [behave.harnessError, shots.harnessError, csp.harnessError, ...realEngine.failures].filter(Boolean),
   notRun: [
     "Packaged Windows Tauri via tools/acceptance/run.ps1",
     "Linux WebKitGTK graphics-enabled lane",
