@@ -2079,15 +2079,16 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
 
 
 def predict_success(path: str, host: str | None = None, port: int = 7125) -> dict:
-    """Print Success Prediction: synthesise design readiness + toolhead fit +
-    first-layer risk + (when a printer is reachable) its health score and this
-    file's prior-failure count into one pre-print likelihood. Read-only; the
-    printer-side signals are simply skipped when no host is given."""
+    """Print risk signals: list what design validation, toolhead fit, first-layer
+    risk and (when a printer is reachable) its health and this file's prior
+    failures flagged, plus what was and was not checked. No percentage or
+    verdict. Read-only; the printer-side signals are skipped when no host is given."""
     from snapstudio_core import success_predict as sp
     from snapstudio_core.validation_report import readiness_report
     import os
     readiness = toolfit = fl = health = None
     prior = 0
+    history_ok = False
     try:
         readiness = readiness_report(path)
     except Exception:
@@ -2100,7 +2101,16 @@ def predict_success(path: str, host: str | None = None, port: int = 7125) -> dic
         fl = first_layer(path, host, port)
     except Exception:
         pass
+    # Only count the printer-side signals as checked when the printer answered;
+    # printer_health() scores an unreachable printer as healthy.
+    reachable = False
     if host:
+        try:
+            from snapstudio_core import moonraker
+            reachable = moonraker.diagnostics(host, port).get("klippy_state") is not None
+        except Exception:
+            pass
+    if host and reachable:
         try:
             health = printer_health(host, port)
         except Exception:
@@ -2114,10 +2124,11 @@ def predict_success(path: str, host: str | None = None, port: int = 7125) -> dic
             for ro in (fa.get("repeat_offenders") or []):
                 if (ro.get("filename") or "").lower() == base:
                     prior = int(ro.get("failures") or 0)
+            history_ok = True
         except Exception:
             pass
-    return sp.predict(readiness=readiness, toolfit=toolfit, first_layer=fl,
-                      health=health, prior_failures=prior)
+    return sp.findings(readiness=readiness, toolfit=toolfit, first_layer=fl,
+                       health=health, prior_failures=prior, printer_checked=history_ok)
 
 
 def pricing_doctor(path: str, host: str | None = None, filename: str | None = None,
@@ -2235,7 +2246,7 @@ def demo_report() -> dict:
 def intelligence_report(path: str, host: str | None = None, filename: str | None = None,
                         port: int = 7125, currency: str = "$", **factors) -> dict:
     """Studio Intelligence Report: run every Doctor and synthesise one verdict —
-    Studio score, will-it-print, cost, price, profit, biggest risk, next action,
+    Studio score, risk signals, cost, price, profit, biggest risk, next action,
     with each Doctor as supporting evidence. Read-only; one failing Doctor never
     sinks the report."""
     from snapstudio_core import intelligence_report as ir

@@ -34,8 +34,9 @@ def demo() -> dict:
     Built through the REAL synthesis engine from realistic Doctor outputs (with a
     bed-fit risk + a colour note so the value is visible), then flagged is_demo."""
     out = build(
-        predict={"available": True, "likelihood": 72, "band": "uncertain",
-                 "factors": ["more colours than toolheads — needs a swap or remap"]},
+        predict={"available": True,
+                 "signals": [{"id": "toolhead-fit", "level": "warn",
+                              "title": "More colors than toolheads"}]},
         bed_fit={"available": True, "overall_level": "risk",
                  "overall_text": "It won't fit as-is — this is the out-of-bounds error.",
                  "findings": [{"level": "risk", "text": "Too big for the bed: 286×140 mm on a 270×270 mm bed — scale to 94% to fit."}],
@@ -82,19 +83,13 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     cur = (cost or {}).get("currency") or (pricing or {}).get("currency") or "$"
 
     # --- headline scores ---
-    success = predict.get("likelihood") if avail["predict"] else None
     health_score = health.get("score") if avail["health"] else None
 
-    # Studio Intelligence Score: blend print-success and printer-health when both
-    # are known; otherwise lean on whichever exists, then on the doctors' levels.
-    comp = []
-    if success is not None:
-        comp.append((success, 0.6))
+    # Studio Intelligence Score: the printer-health score when it is known;
+    # otherwise the doctors' levels. The risk-signal list (predict) is never
+    # turned into a number: it is not calibrated against print outcomes (#92).
     if health_score is not None:
-        comp.append((health_score, 0.4))
-    if comp:
-        wsum = sum(w for _, w in comp)
-        studio_score = round(sum(v * w for v, w in comp) / wsum)
+        studio_score = round(health_score)
     else:
         worst = "ok"
         for d in (bed_fit, mm, first_layer):
@@ -127,9 +122,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
             if "no problem" not in d.lower():
                 risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
     if avail["predict"]:
-        for f in (predict.get("factors") or []):
-            if "no risk" not in f.lower():
-                risks.append({"doctor": "Project Doctor", "level": "warn", "text": f})
+        for sig in (predict.get("signals") or []):
+            risks.append({"doctor": "Project Doctor",
+                          "level": "risk" if sig.get("level") == "risk" else "warn",
+                          "text": sig.get("title") or ""})
     if avail["profit"] and (profit.get("profit_per_print") or 0) <= 0:
         risks.append({"doctor": "Profit Doctor", "level": "warn",
                       "text": "Priced below cost — not profitable as-is."})
@@ -166,18 +162,6 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         pass
 
     biggest_risk = risks[0] if risks else None
-
-    # Expected Improvement (clearly an estimate): applying the recommended fixes
-    # clears most of the gap to a clean print. We recover ~80% of the shortfall.
-    expected_improvement = None
-    if success is not None:
-        after = success if not recommendations or success >= 95 else round(success + (95 - success) * 0.8)
-        expected_improvement = {
-            "current": success,
-            "after_fixes": after,
-            "is_estimate": True,
-            "label": f"Estimate: ~{success}% now → ~{after}% after the recommended fixes",
-        }
 
     # --- the one next action ---
     if biggest_risk:
@@ -244,9 +228,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "comparison": comparison,
-        "expected_improvement": expected_improvement,
         "studio_score": studio_score,
-        "print_success_score": success,
         "cost": cost_v,
         "suggested_price": price_v,
         "margin_pct": margin_pct,

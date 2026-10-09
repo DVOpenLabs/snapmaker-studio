@@ -24,15 +24,14 @@ def test_unavailable_with_nothing():
     assert out["available"] is False
 
 
-def test_headline_from_success_and_health():
+def test_headline_from_printer_health_and_no_success_percentage():
     out = ir.build(
-        predict={"available": True, "likelihood": 80, "band": "likely", "factors": []},
+        predict={"available": True, "signals": []},
         health={"available": True, "score": 90, "grade": "A", "drivers": []},
     )
     assert out["available"] is True
-    # composite of success (80) and printer health (90)
-    assert 80 <= out["studio_score"] <= 90
-    assert out["print_success_score"] == 80
+    assert out["studio_score"] == 90
+    assert "print_success_score" not in out
     assert out["printer_compatibility"] in ("Compatible", "Check", "Unknown")
 
 
@@ -65,7 +64,7 @@ def test_risks_collected_and_biggest_is_highest_severity():
 
 def test_next_action_when_clean_is_positive():
     out = ir.build(
-        predict={"available": True, "likelihood": 100, "band": "likely", "factors": []},
+        predict={"available": True, "signals": []},
         bed_fit={"available": True, "overall_level": "ok", "findings": [], "fixes": []},
     )
     assert out["biggest_risk"] is None
@@ -122,23 +121,21 @@ def test_risks_carry_community_guidance():
     assert rk["community"]["sources"]
 
 
-def test_expected_improvement_is_a_labelled_estimate():
+def test_no_expected_success_percentage_after_fixes():
     out = ir.build(
-        predict={"available": True, "likelihood": 65, "band": "uncertain",
-                 "factors": ["more colours than toolheads"]},
+        predict={"available": True,
+                 "signals": [{"id": "toolhead-fit", "level": "warn", "title": "More colors than toolheads"}]},
         bed_fit={"available": True, "overall_level": "risk",
                  "findings": [{"level": "risk", "text": "out of bounds"}], "fixes": ["Scale"]},
     )
-    ei = out["expected_improvement"]
-    assert ei["current"] == 65
-    assert ei["after_fixes"] > 65 and ei["after_fixes"] <= 95
-    assert ei["is_estimate"] is True
-    assert "estimate" in ei["label"].lower()
+    assert "expected_improvement" not in out
+    assert any(r["text"] == "More colors than toolheads" for r in out["risks"])
 
 
 def test_headline_questions_present():
-    out = ir.build(predict={"available": True, "likelihood": 70, "band": "uncertain", "factors": []})
-    for k in ("studio_score", "print_success_score", "cost", "suggested_price",
+    out = ir.build(predict={"available": True, "signals": [{"id": "x", "level": "warn", "title": "x"}]},
+                   health={"available": True, "score": 70, "grade": "C", "drivers": []})
+    for k in ("studio_score", "cost", "suggested_price",
               "margin_pct", "printer_compatibility", "risks", "biggest_risk",
               "recommendations", "next_action", "supporting", "verdict"):
         assert k in out
