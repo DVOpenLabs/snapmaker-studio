@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .container import ThreeMF
 from .config_io import load_model_settings
+from . import units as _units
 
 # Mirror intelligence.py's byte guard; plus a triangle cap for analysis cost.
 _MAX_BYTES = 80 * 1024 * 1024
@@ -44,6 +45,7 @@ def _parse_3mf_model(raw: bytes, verts: list, faces: list) -> None:
     hardened XML parser (no XXE/DTD/network). Triangle indices are local to each
     <mesh>, so we offset by the vertex count at the start of that mesh."""
     root = load_model_settings(raw)
+    scale = _units.mm_per_unit(raw)   # the part's declared unit -> millimetres (1.0 for mm)
     for mesh in root.iter(f"{_3MF_CORE_NS}mesh"):
         vstart = len(verts)
         vnode = mesh.find(f"{_3MF_CORE_NS}vertices")
@@ -51,7 +53,11 @@ def _parse_3mf_model(raw: bytes, verts: list, faces: list) -> None:
         if vnode is None or tnode is None:
             continue
         for v in vnode.iterfind(f"{_3MF_CORE_NS}vertex"):
-            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+            if scale == 1.0:
+                verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+            else:
+                verts.append((float(v.get("x", 0)) * scale, float(v.get("y", 0)) * scale,
+                              float(v.get("z", 0)) * scale))
         for t in tnode.iterfind(f"{_3MF_CORE_NS}triangle"):
             faces.append((vstart + int(t.get("v1")), vstart + int(t.get("v2")), vstart + int(t.get("v3"))))
             if len(faces) > _MAX_TRIANGLES:
@@ -113,8 +119,11 @@ def build_item_dims(path: str) -> list[dict]:
 
         # object_id -> (verts, [(component_objectid, component_path, component_xform)]), per file
         parsed: dict[str, dict[str, tuple]] = {}
+        unit_scale: dict[str, float] = {}
         for fname, raw in model_files.items():
             root = load_model_settings(raw)
+            scale = _units.mm_per_unit(raw)   # this part's declared unit -> millimetres
+            unit_scale[fname] = scale
             objs: dict[str, tuple] = {}
             for ob in root.iter(f"{_3MF_CORE_NS}object"):
                 oid = ob.get("id")
@@ -124,14 +133,18 @@ def build_item_dims(path: str) -> list[dict]:
                     vn = mesh.find(f"{_3MF_CORE_NS}vertices")
                     if vn is not None:
                         for v in vn.iterfind(f"{_3MF_CORE_NS}vertex"):
-                            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+                            if scale == 1.0:
+                                verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+                            else:
+                                verts.append((float(v.get("x", 0)) * scale, float(v.get("y", 0)) * scale,
+                                              float(v.get("z", 0)) * scale))
                 comps = []
                 cn = ob.find(f"{_3MF_CORE_NS}components")
                 if cn is not None:
                     for c in cn.iterfind(f"{_3MF_CORE_NS}component"):
                         comps.append((c.get("objectid"),
                                       c.get(f"{_3MF_PROD_NS}path"),
-                                      _xform(c.get("transform"))))
+                                      _units.scale_translation(_xform(c.get("transform")), scale)))
                 objs[oid] = (verts, comps)
             parsed[fname] = objs
 
@@ -170,7 +183,9 @@ def build_item_dims(path: str) -> list[dict]:
         for it in load_model_settings(model_files[root_file]).iter(f"{_3MF_CORE_NS}item"):
             oid = it.get("objectid")
             acc: list = []
-            collect(oid, root_file, _xform(it.get("transform")), acc, frozenset())
+            collect(oid, root_file,
+                    _units.scale_translation(_xform(it.get("transform")), unit_scale[root_file]),
+                    acc, frozenset())
             if not acc:
                 continue
             xs = [p[0] for p in acc]; ys = [p[1] for p in acc]; zs = [p[2] for p in acc]

@@ -32,6 +32,7 @@ import re
 from importlib.resources import files
 from pathlib import Path
 
+from . import units as _units
 from .container import ThreeMF
 
 SCHEMA_VERSION = "placement/1"
@@ -606,7 +607,11 @@ def prepare_placed_copy(path: str, out_dir: str | None = None,
                 "before": before}
 
     offset = before["suggested_offset"]
-    offset_for = _uniform_offset(offset["x"], offset["y"])
+    # The geometry above is measured in millimetres, but a build item's translation is written in the
+    # ROOT model's own unit. Convert the offset back before it is added, or an inch project would be
+    # shifted by 25.4 times too little (and the move would silently not land).
+    root_scale = _units.mm_per_unit(tm.read_part(ROOT_MODEL))
+    offset_for = _uniform_offset(offset["x"] / root_scale, offset["y"] / root_scale)
 
     try:
         rewritten, moved = _rewrite_items(tm.read_part(ROOT_MODEL), offset_for)
@@ -643,14 +648,13 @@ def prepare_placed_copy(path: str, out_dir: str | None = None,
         }
     ok = bool(after.get("available")) and not after.get("off_plate")
     if not ok:
-        # The copy is left in place so a user can inspect it, but the result says
-        # plainly that the move did not achieve what it was supposed to.
+        # A copy that did not achieve what it was supposed to is not kept on disk: the
+        # result says plainly that the move did not work and names no file.
+        out.unlink(missing_ok=True)
         return {
             "schema_version": SCHEMA_VERSION, "ok": False,
-            "reason": ("Studio moved the arrangement but the copy still has objects "
-                       "off the plate, so it is not safe to rely on. Open the original "
-                       "in Snapmaker Orca and use Arrange."),
-            "output_path": str(out), "output_name": out.name,
+            "reason": ("Studio could not move the objects onto the plate, so it did not "
+                       "keep a copy. Open the original in Snapmaker Orca and use Arrange."),
             "before": before, "after": after,
         }
 

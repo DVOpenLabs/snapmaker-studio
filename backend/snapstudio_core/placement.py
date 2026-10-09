@@ -25,6 +25,8 @@ import json
 import re
 import zipfile
 
+from . import units as _units
+
 SCHEMA_VERSION = "placement/1"
 
 #: The states an object's footprint can be in against the target polygon. They are
@@ -226,6 +228,7 @@ def read_objects(path: str) -> dict:
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         root = _read(archive, ROOT_MODEL)
+        root_scale = _units.mm_per_unit(root)   # the unit the root model declares -> mm
         settings_text = _read(archive, MODEL_SETTINGS)
         try:
             project = json.loads(_read(archive, PROJECT_SETTINGS) or "{}")
@@ -234,15 +237,16 @@ def read_objects(path: str) -> dict:
         meshes: dict[str, list[tuple]] = {}
         for name in sorted(n for n in names if n.startswith(OBJECTS_DIR)):
             body = _read(archive, name)
+            part_scale = _units.mm_per_unit(body)   # each part's own declared unit
             for mesh_id in re.findall(r'<object id="([0-9]+)"', body):
                 block = re.search(rf'<object id="{mesh_id}".*?</object>', body, re.S)
                 if block:
-                    meshes[mesh_id] = _points(block.group(0))
+                    meshes[mesh_id] = _scaled(_points(block.group(0)), part_scale)
         if not meshes:
             # A project whose geometry is still in the root model.
             for mesh_id, block in zip(_OBJECT_WITH_ID.findall(root),
                                       _OBJECT_BLOCK.findall(root)):
-                meshes[mesh_id] = _points(block)
+                meshes[mesh_id] = _scaled(_points(block), root_scale)
 
     polygon = polygon_of(project)
     parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
@@ -251,7 +255,7 @@ def read_objects(path: str) -> dict:
 
     objects = []
     for object_id, transform_text in placements.items():
-        item = parse_transform(transform_text)
+        item = _units.scale_translation(parse_transform(transform_text), root_scale)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
         roles = dict(parts_by_object.get(object_id, []))
         own_components = components.get(object_id) or [
@@ -262,7 +266,8 @@ def read_objects(path: str) -> dict:
             points = meshes.get(mesh_id)
             if points is None:
                 continue
-            whole = compose(item, parse_transform(component_transform))
+            whole = compose(item, _units.scale_translation(parse_transform(component_transform),
+                                                     root_scale))
             moved = [apply(whole, point) for point in points]
             every.extend(moved)
             if roles.get(mesh_id, "normal_part") == "normal_part":
@@ -280,6 +285,13 @@ def read_objects(path: str) -> dict:
     return {"schema_version": SCHEMA_VERSION, "objects": objects,
             "polygon": polygon,
             "polygon_source": PROJECT_SETTINGS if polygon else None}
+
+
+def _scaled(points: list[tuple], factor: float) -> list[tuple]:
+    """Mesh points in millimetres. A millimetre part is returned untouched."""
+    if factor == 1.0:
+        return points
+    return [(x * factor, y * factor, z * factor) for x, y, z in points]
 
 
 def _components_by_object(root: str) -> dict:
