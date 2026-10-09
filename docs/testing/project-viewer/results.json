@@ -1,8 +1,8 @@
 {
   "schema": "project-viewer-results/2",
-  "commit": "a5ec37f9f7e8f3281d3cd08a32e4b7017d904559",
-  "dirtyOutsideEvidenceFolder": true,
-  "collectedAt": "2026-10-09T16:00:45.464Z",
+  "commit": "1836fd0dfdcc747b2f5281b5b048c0a44f7354e2",
+  "dirtyOutsideEvidenceFolder": false,
+  "collectedAt": "2026-10-09T20:08:45.127Z",
   "machine": {
     "os": "win32",
     "browser": "154.0.4258.62",
@@ -14,8 +14,8 @@
     },
     "vitest": {
       "files": 78,
-      "tests": 928,
-      "passed": 928,
+      "tests": 937,
+      "passed": 937,
       "failed": 0
     },
     "build": {
@@ -25,11 +25,11 @@
   "bundle": {
     "mainChunk": {
       "bytes": 711409,
-      "gzip9": 190529
+      "gzip9": 190530
     },
     "lazyViewerChunk": {
-      "bytes": 907261,
-      "gzip9": 251511
+      "bytes": 908016,
+      "gzip9": 251765
     },
     "baseline": {
       "ref": "58d193a",
@@ -47,7 +47,7 @@
         "y": 248
       },
       "events": {
-        "camera": 186,
+        "camera": 187,
         "pick": 4
       },
       "objectCentersBefore": {
@@ -77,7 +77,7 @@
       "objectsDidNotMove": true,
       "imagesIdentical": false,
       "bytesA": 169471,
-      "bytesB": 169172
+      "bytesB": 169199
     },
     "control": {
       "hit": {
@@ -85,7 +85,7 @@
         "y": 248
       },
       "events": {
-        "camera": 186,
+        "camera": 187,
         "pick": 2,
         "select": 2,
         "transform": 11
@@ -109,15 +109,15 @@
           10
         ],
         "b0": [
-          193.425,
-          87.645,
+          193.054,
+          87.706,
           10
         ]
       },
       "objectsDidNotMove": false,
       "imagesIdentical": false,
       "bytesA": 169471,
-      "bytesB": 169211
+      "bytesB": 169573
     },
     "errors": []
   },
@@ -172,7 +172,7 @@
     "stuckPageErrors": null,
     "mountsAndUnmounts": 75,
     "ofWhichShownBeforeUnmount": 50,
-    "secondsForAllCycles": 25.487,
+    "secondsForAllCycles": 26.976,
     "panelStillWorks": true,
     "clickOnModelSelectsRow": {
       "x": 502,
@@ -183,45 +183,99 @@
   },
   "memory": {
     "app": {
-      "panelShownJsHeapBytes": 17620412,
-      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39176612
+      "panelShownJsHeapBytes": 17648884,
+      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39218792
     },
     "perViewerCreateDispose": [
       {
         "mode": "raw-empty",
         "cycles": 40,
-        "bytesPerCycle": 108207
+        "bytesPerCycle": 108187
       },
       {
         "mode": "raw-plate",
         "cycles": 40,
-        "bytesPerCycle": 115988
+        "bytesPerCycle": 115943
       },
       {
         "mode": "facade",
         "cycles": 40,
-        "bytesPerCycle": 120808
+        "bytesPerCycle": 120971
       }
     ],
     "perAppMount": [
       {
         "noWebgl": false,
         "cycles": 40,
-        "bytesPerCycle": 263336
+        "bytesPerCycle": 262658
       },
       {
         "noWebgl": true,
         "cycles": 40,
-        "bytesPerCycle": 11116
+        "bytesPerCycle": 10852
       }
     ]
   },
   "largeScene": {
-    "secondsUntilViewerWorking": 6.106,
-    "jsHeapBeforeBytes": 10413052,
-    "jsHeapAfterBytes": 20136012,
+    "secondsUntilViewerWorking": 7.199,
+    "jsHeapBeforeBytes": 10428760,
+    "jsHeapAfterBytes": 20168256,
     "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
     "errors": []
+  },
+  "realEngine": {
+    "scenarios": {
+      "roundTrip": {
+        "passed": true,
+        "observed": [
+          "session -> 200",
+          "start seq=1 -> 200 queued",
+          "status e4e8da -> 200 succeeded",
+          "result e4e8da -> 200"
+        ]
+      },
+      "cancelRoundTrip": {
+        "passed": true,
+        "observed": [
+          "start seq=2 -> 200 queued",
+          "cancel seq=2 -> 200 cancelled"
+        ]
+      },
+      "abandonedAfterB": {
+        "passed": true,
+        "observed": [
+          "start seq=3 -> no answer",
+          "cancel seq=3 -> 200 cancelled",
+          "start seq=4 -> 200 queued",
+          "status e443a0 -> 200 succeeded",
+          "result e443a0 -> 200",
+          "start seq=3 -> 409 CANCELLED_BEFORE_START",
+          "start seq=1 -> 409 CANCELLED_BEFORE_START",
+          "start seq=4 -> 200 succeeded",
+          "status e443a0 -> 200"
+        ]
+      },
+      "sessionExpiredAfterFreshEngine": {
+        "passed": true,
+        "observed": [
+          "start seq=5 -> 409 SESSION_EXPIRED",
+          "session -> 200",
+          "start seq=1 -> 200 queued",
+          "status 1dce3a -> 200 succeeded",
+          "result 1dce3a -> 200"
+        ]
+      },
+      "sessionLimit": {
+        "passed": true,
+        "observed": null
+      }
+    },
+    "failures": [],
+    "notCovered": [
+      "Delivery of an abandoned start that is genuinely in flight at the engine when the browser aborts it: the browser cannot recall a request already on the wire, and a held request was never sent, so that case was replayed by hand against the real route rather than raced.",
+      "Idle expiry of a session after its 15-minute TTL (a fresh engine process was used instead).",
+      "The packaged Windows Tauri app and the Linux WebKitGTK build (NOT RUN)."
+    ]
   },
   "csp": {
     "policy": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'",
