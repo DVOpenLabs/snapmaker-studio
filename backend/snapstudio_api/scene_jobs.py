@@ -34,7 +34,6 @@ Model (frozen by plan v3/v4/v5/v6):
 """
 from __future__ import annotations
 
-import collections
 import errno
 import hashlib
 import os
@@ -51,14 +50,13 @@ from snapstudio_core import scene
 from snapstudio_core import scene_limits as L
 from . import request_validation as rv
 
-ROUTES = ("/scene/start", "/scene/status", "/scene/result", "/scene/cancel")
+ROUTES = ("/scene/session", "/scene/start", "/scene/status", "/scene/result", "/scene/cancel")
 TERMINAL = ("succeeded", "failed", "cancelled")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{8,%d}$" % L.MAX_REQUEST_ID_LENGTH)
 _REVISION = re.compile(r"^[0-9a-f]{64}$")
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 MAX_SEQ = 2 ** 53 - 1
-MAX_CLIENTS = 16          # client_id -> highest accepted seq (LRU)
-MAX_TOMBSTONES = 64       # cancelled (client_id, request_id) pairs (FIFO)
+# (session capacity and idle TTL live in scene_limits: MAX_SESSIONS, SESSION_TTL_SECONDS)
 
 
 class JobError(Exception):
@@ -70,6 +68,21 @@ class JobError(Exception):
 
     def body(self) -> dict:
         return {"error": self.code, "message": self.message, **self.extra}
+
+
+class Session:
+    """O(1) ordering state of one client session. Nothing else is remembered about its starts.
+
+    ``watermark``: the highest admitted seq. ``dead_through``: the highest cancelled seq (every start with
+    seq <= dead_through is refused for as long as the session lives). ``current``: (seq, request_id, path_key,
+    job_id) of the entry at seq == watermark, for the idempotent repeat.
+    """
+
+    def __init__(self, client_id: str, now: float) -> None:
+        self.client_id, self.last_touch = client_id, now
+        self.watermark = 0
+        self.dead_through = 0
+        self.current: tuple[int, str, str, str | None] | None = None
 
 
 class Job:
@@ -184,23 +197,23 @@ def sweep_stale(root: str | None = None, *, now: float | None = None) -> list[st
 class SceneJobs:
     def __init__(self, *, clock=time.monotonic, builder=None, snapshot_root: str | None = None,
                  deadline: float = L.JOB_DEADLINE_SECONDS, wedge_grace: float = L.WEDGE_GRACE_SECONDS,
-                 ttl: float = L.RESULT_TTL_SECONDS, max_terminal: int = L.MAX_TERMINAL_JOBS) -> None:
+                 ttl: float = L.RESULT_TTL_SECONDS, max_terminal: int = L.MAX_TERMINAL_JOBS,
+                 session_ttl: float = L.SESSION_TTL_SECONDS, max_sessions: int = L.MAX_SESSIONS) -> None:
+        self._session_ttl, self._max_sessions = session_ttl, max_sessions
         self._clock = clock
         self._builder = builder or scene.build_scene
         self._root = snapshot_root
         self._deadline, self._grace, self._ttl, self._max_terminal = deadline, wedge_grace, ttl, max_terminal
         self._lock = threading.RLock()
         self._jobs: dict[str, Job] = {}
-        self._by_request: dict[str, Job] = {}
+        self._by_request: dict[tuple[str | None, str], Job] = {}   # (client_id | None, request_id) -> job
         self._queued: Job | None = None
         self._running: Job | None = None
         self._worker: threading.Thread | None = None
         self._dir: str | None = None
         self._pending: list[list] = []        # [path, attempts, next_try] snapshot files that resisted deletion
-        # Ordering at the engine boundary (all guarded by self._lock, the same lock that registers jobs):
-        # an abandoned start must never replace or cancel a newer one, however late it arrives.
-        self._clients: "collections.OrderedDict[str, tuple[int, str]]" = collections.OrderedDict()   # client_id -> (highest seq, its request_id)
-        self._tombstones: "collections.OrderedDict[tuple[str, str], None]" = collections.OrderedDict()
+        # Ordering at the engine boundary (guarded by self._lock, the same lock that registers jobs).
+        self._sessions: dict[str, Session] = {}
 
     # ------------------------------------------------------------------ public API
     def _check_source(self, path: str) -> None:
@@ -208,33 +221,66 @@ class SceneJobs:
         if not os.path.isfile(path):
             raise JobError(400, "INVALID_REQUEST", "That file could not be found.")
 
-    def _admit_locked(self, client_id: str | None, seq: int | None, request_id: str) -> None:
-        """Ordering rules, evaluated under the registry lock, atomically with registration.
+    def open_session(self) -> dict:
+        """Issue a session (server-chosen id). I4: at capacity with nothing prunable it fails EXPLICITLY."""
+        with self._lock:
+            self._housekeeping()
+            if len(self._sessions) >= self._max_sessions:
+                raise JobError(503, "SESSION_LIMIT", "Too many scene sessions are open. Try again later.")
+            client_id = secrets.token_urlsafe(18)                # 24 characters of [A-Za-z0-9_-]
+            self._sessions[client_id] = Session(client_id, self._clock())
+            return {"client_id": client_id, "ttl_s": int(self._session_ttl)}
 
-        (a) seq below the client's highest accepted seq: STALE_START, nothing changes.
-        (c) this (client_id, request_id) was cancelled before it arrived: CANCELLED_BEFORE_START.
-        (b) seq equal to the highest with a DIFFERENT request_id: INVALID_REQUEST (equal + same request_id is
-            the idempotent repeat and passes). Legacy starts (no client_id/seq) pass untouched.
+    def _session_locked(self, client_id: str) -> Session:
+        """The live session or SESSION_EXPIRED (I1/I4: a late request from an expired or never-issued session is
+        refused, never re-created). Touches the session."""
+        session = self._sessions.get(client_id)
+        if session is None:
+            raise JobError(409, "SESSION_EXPIRED", "That scene session is no longer open. Open a new session.")
+        session.last_touch = self._clock()
+        return session
+
+    def _prune_sessions_locked(self) -> None:
+        """Remove only IDLE-EXPIRED sessions that own no registered job; a live session is never evicted."""
+        now = self._clock()
+        owners = {key[0] for key in self._by_request}
+        for cid in [c for c, sess in self._sessions.items()
+                    if now - sess.last_touch > self._session_ttl and c not in owners]:
+            del self._sessions[cid]
+
+    def _admit_locked(self, client_id: str | None, seq: int | None, request_id: str, path_key: str) -> "Job | None":
+        """THE admission function for every start (new job, idempotent repeat), under the registry lock.
+
+        Returns the registered job to hand back (idempotent), or None when a new job should be created; raises
+        otherwise. Legacy starts (no client_id) keep today's request_id-only behaviour in their own namespace.
+        For a session start, in order: unknown/expired session -> SESSION_EXPIRED; seq <= dead_through ->
+        CANCELLED_BEFORE_START; seq < watermark -> STALE_START; seq == watermark -> the same request_id and path
+        returns the job if it is still registered (otherwise STALE_START: an exact retry of a start that was
+        already processed is refused) and anything else is INVALID_REQUEST; seq > watermark -> new, except that
+        a request_id already registered for this session is INVALID_REQUEST (the old job is never handed back),
+        and that attempt still raises the watermark so an older attempt still in flight is refused.
         """
         if client_id is None:
-            return
-        known = self._clients.get(client_id)
-        if known is not None:
-            if seq < known[0]:
-                raise JobError(409, "STALE_START", "A newer scene start from this client has already been accepted.")
-        if (client_id, request_id) in self._tombstones:
+            return self._by_request.get((None, request_id))
+        session = self._session_locked(client_id)
+        if seq <= session.dead_through:
             raise JobError(409, "CANCELLED_BEFORE_START", "That scene start was cancelled before it arrived.")
-        if known is not None and seq == known[0] and request_id != known[1]:
-            raise JobError(400, "INVALID_REQUEST", "That seq was already used for another request.",
-                           reason="seq reused for another request_id")
-
-    def _record_locked(self, client_id: str | None, seq: int | None, request_id: str) -> None:
-        if client_id is None:
-            return
-        self._clients[client_id] = (seq, request_id)
-        self._clients.move_to_end(client_id)
-        while len(self._clients) > MAX_CLIENTS:
-            self._clients.popitem(last=False)
+        if seq < session.watermark:
+            raise JobError(409, "STALE_START", "A newer scene start from this session has already been accepted.")
+        existing = self._by_request.get((client_id, request_id))
+        if seq == session.watermark:
+            cur = session.current
+            if cur is None or cur[1] != request_id or cur[2] != path_key:
+                raise JobError(400, "INVALID_REQUEST", "That seq was already used for another request.",
+                               reason="seq reused for another request")
+            if existing is None or existing.job_id != cur[3]:
+                raise JobError(409, "STALE_START", "That scene start was already processed and its job is gone.")
+            return existing
+        if existing is not None:
+            session.watermark, session.current = seq, (seq, request_id, path_key, None)
+            raise JobError(400, "INVALID_REQUEST", "That request_id was already used by this session.",
+                           reason="request id reused")
+        return None
 
     def start(self, path: str, request_id: str, client_id: str | None = None, seq: int | None = None) -> dict:
         key = os.path.normcase(os.path.abspath(path))
@@ -245,26 +291,26 @@ class SceneJobs:
         for _attempt in range(2):
             with self._lock:
                 self._housekeeping()
-                self._admit_locked(client_id, seq, request_id)
-                existing = self._by_request.get(request_id)
+                existing = self._admit_locked(client_id, seq, request_id, key)
                 if existing is None:
                     return self._create_locked(path, key, request_id, client_id, seq)
                 self._same_path_or_raise(existing, key)
                 revision = existing.revision
-            # Hash OUTSIDE the lock (it can be slow), then re-check under it: the retained job may have
-            # been evicted meanwhile, and an evicted job must never be handed back.
-            if revision is not None and self._current_hash(path) != revision:
-                raise JobError(409, "SOURCE_CHANGED", "The file changed since that scene was built. Start a new one.")
+            # Hash OUTSIDE the lock (it can be slow), then decide under it. The admission rules run FIRST: if a
+            # newer start, a cancel or the end of the session happened meanwhile the answer is STALE_START /
+            # CANCELLED_BEFORE_START / SESSION_EXPIRED, not SOURCE_CHANGED.
+            changed = revision is not None and self._current_hash(path) != revision
             with self._lock:
                 self._housekeeping()
-                self._admit_locked(client_id, seq, request_id)      # a newer start may have arrived meanwhile
-                if self._jobs.get(existing.job_id) is existing and self._by_request.get(request_id) is existing:
+                current = self._admit_locked(client_id, seq, request_id, key)
+                if current is existing and self._jobs.get(existing.job_id) is existing:
+                    if changed:
+                        raise JobError(409, "SOURCE_CHANGED", "The file changed since that scene was built. Start a new one.")
                     return self._start_body(existing, None)
-            # evicted while hashing: go round once more and start a fresh job for the same request
+            # evicted while hashing (a legacy start only: a session start was refused above): start a fresh job
         with self._lock:
             self._housekeeping()
-            self._admit_locked(client_id, seq, request_id)
-            existing = self._by_request.get(request_id)
+            existing = self._admit_locked(client_id, seq, request_id, key)
             if existing is not None:
                 self._same_path_or_raise(existing, key)
                 return self._start_body(existing, None)
@@ -285,19 +331,28 @@ class SceneJobs:
         job = Job(uuid.uuid4().hex, request_id, key, self._clock())
         job.source = path
         job.client_id = client_id
-        self._record_locked(client_id, seq, request_id)
         self._jobs[job.job_id] = job
-        self._by_request[request_id] = job
+        self._by_request[(client_id, request_id)] = job
+        if client_id is not None:                            # every registration records the session state atomically
+            session = self._sessions[client_id]
+            session.watermark, session.current = seq, (seq, request_id, key, job.job_id)
         self._queued = job
         if self._worker is None:
             self._worker = threading.Thread(target=self._worker_main, name="scene-worker", daemon=True)
             self._worker.start()
         return self._start_body(job, replaced)
 
+    def _touch_owner_locked(self, job: Job) -> None:
+        session = self._sessions.get(job.client_id) if job.client_id is not None else None
+        if session is not None:
+            session.last_touch = self._clock()
+
     def status(self, job_id: str) -> dict:
         with self._lock:
             self._housekeeping()
-            return self._status_body(self._get(job_id))
+            job = self._get(job_id)
+            self._touch_owner_locked(job)
+            return self._status_body(job)
 
     def result(self, job_id: str, expected_revision: str | None = None) -> tuple[int, bytes | dict]:
         with self._lock:
@@ -313,17 +368,17 @@ class SceneJobs:
                 return 409, {"error": "CANCELLED", "message": "That scene was cancelled."}
             return 409, {"error": "NOT_READY", "message": "That scene is not ready yet.", "state": job.state}
 
-    def cancel_request(self, client_id: str, request_id: str) -> dict:
-        """Cancel by (client_id, request_id) and remember it, even when no job is registered yet, so a start
-        that was abandoned and arrives LATE is refused (CANCELLED_BEFORE_START). Matches exactly: another
-        client's, or another request's, job is never touched."""
+    def cancel_request(self, client_id: str, request_id: str, seq: int) -> dict:
+        """Cancel the start (client_id, request_id, seq). The session must exist (SESSION_EXPIRED otherwise).
+        ``dead_through`` rises to ``seq`` so that start, and every lower seq, stays refused for as long as the
+        session lives (O(1) memory: no per-request set), even when no job is registered yet. The registered job
+        is cancelled only if its client_id AND request_id both match exactly."""
         with self._lock:
             self._housekeeping()
-            self._tombstones[(client_id, request_id)] = None
-            while len(self._tombstones) > MAX_TOMBSTONES:
-                self._tombstones.popitem(last=False)
-            job = self._by_request.get(request_id)
-            if job is not None and job.client_id == client_id:
+            session = self._session_locked(client_id)
+            session.dead_through = max(session.dead_through, seq)
+            job = self._by_request.get((client_id, request_id))
+            if job is not None and job.client_id == client_id and job.request_id == request_id:
                 if job.state in ("queued", "running"):
                     if job is self._queued:
                         self._queued = None
@@ -417,6 +472,7 @@ class SceneJobs:
 
     def _housekeeping(self) -> None:
         now = self._clock()
+        self._prune_sessions_locked()
         for entry in list(self._pending):
             if now >= entry[2]:
                 self._try_unlink(entry)
@@ -440,8 +496,8 @@ class SceneJobs:
             job.snapshot = None
         job.result = None
         self._jobs.pop(job.job_id, None)
-        if self._by_request.get(job.request_id) is job:
-            del self._by_request[job.request_id]
+        if self._by_request.get((job.client_id, job.request_id)) is job:
+            del self._by_request[(job.client_id, job.request_id)]
 
     def _defer_unlink(self, path: str) -> None:
         """Delete a snapshot file now; if Windows (or anything) still holds it, KEEP the path on a retry list
@@ -667,24 +723,25 @@ def reset_default_for_tests() -> None:
 
 def _request_id(data: dict) -> str:
     value = rv.require_str(data, "request_id")
-    if not _REQUEST_ID.match(value):
+    if not _REQUEST_ID.fullmatch(value):          # fullmatch: a trailing newline is not an id
         raise rv.ValidationError("Invalid 'request_id'")
     return value
 
 
 def _client_id(data: dict) -> str:
     value = rv.require_str(data, "client_id")
-    if not _CLIENT_ID.match(value):
+    if not _CLIENT_ID.fullmatch(value):
         raise rv.ValidationError("Invalid 'client_id'")
     return value
 
 
 def _ordering(data: dict) -> tuple[str | None, int | None]:
-    """client_id and seq travel together or not at all (an absent pair is the legacy, unordered start)."""
-    has_client, has_seq = data.get("client_id") is not None, data.get("seq") is not None
+    """client_id and seq travel together or not at all. Presence is tested by KEY: only both keys absent is the
+    legacy, unordered start; a null or half-present pair is a malformed request, never a legacy one."""
+    has_client, has_seq = "client_id" in data, "seq" in data
     if not has_client and not has_seq:
         return None, None
-    if has_client != has_seq:
+    if not (has_client and has_seq):
         raise rv.ValidationError("'client_id' and 'seq' must be given together")
     seq = data["seq"]
     if isinstance(seq, bool) or not isinstance(seq, int) or seq < 1 or seq > MAX_SEQ:
@@ -705,6 +762,8 @@ def handle(route: str, data: dict, jobs: SceneJobs | None = None) -> tuple[int, 
     if not isinstance(data, dict):
         return 400, {"error": "INVALID_REQUEST", "message": "The request body must be a JSON object."}
     try:
+        if route == "/scene/session":
+            return 200, jobs.open_session()
         if route == "/scene/start":
             path = rv.require_bounded_str(data, "path", 4096)
             client_id, seq = _ordering(data)
@@ -713,15 +772,17 @@ def handle(route: str, data: dict, jobs: SceneJobs | None = None) -> tuple[int, 
             return 200, jobs.status(_job_id(data))
         if route == "/scene/result":
             expected = data.get("expected_revision")
-            if expected is not None and (not isinstance(expected, str) or not _REVISION.match(expected)):
+            if expected is not None and (not isinstance(expected, str) or not _REVISION.fullmatch(expected)):
                 raise rv.ValidationError("Invalid 'expected_revision'")
             return jobs.result(_job_id(data), expected)
         if route == "/scene/cancel":
-            if "job_id" in data and ("client_id" in data or "request_id" in data):
-                raise rv.ValidationError("Give either 'job_id' or 'client_id' and 'request_id', not both")
-            if "job_id" not in data and "client_id" in data:
-                client_id = _client_id(data)
-                return 200, jobs.cancel_request(client_id, _request_id(data))
+            if "job_id" in data and ("client_id" in data or "request_id" in data or "seq" in data):
+                raise rv.ValidationError("Give either 'job_id' or 'client_id', 'request_id' and 'seq', not both")
+            if "job_id" not in data and ("client_id" in data or "seq" in data):
+                if not ("client_id" in data and "seq" in data and "request_id" in data):
+                    raise rv.ValidationError("'client_id', 'request_id' and 'seq' must be given together")
+                client_id, seq = _ordering(data)
+                return 200, jobs.cancel_request(client_id, _request_id(data), seq)
             return 200, jobs.cancel(_job_id(data))
     except rv.ValidationError as exc:
         return 400, {"error": "INVALID_REQUEST", "message": str(exc)}

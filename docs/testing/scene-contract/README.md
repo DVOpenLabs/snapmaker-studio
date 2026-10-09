@@ -132,49 +132,63 @@ running. A terminal job is kept 120 s or until more than 8 terminal jobs exist. 
 
 | Route | Answers |
 |---|---|
-| `/scene/start {path, request_id, client_id?, seq?}` | 200 job; 400 `INVALID_REQUEST` (also: only one of `client_id`/`seq`, a bad `seq`/`client_id`, or the same `seq` reused for another request_id); 422 `UNSUPPORTED_FORMAT`; 409 `INVALID_REQUEST` (request_id reused for another path), `SOURCE_CHANGED`, `STALE_START` or `CANCELLED_BEFORE_START`; 503 `WORKER_WEDGED` |
+| `/scene/session {}` | 200 `{client_id, ttl_s}` (server-issued 24-character id); 503 `SESSION_LIMIT` |
+| `/scene/start {path, request_id, client_id?, seq?}` | 200 job; 400 `INVALID_REQUEST` (also: only one of `client_id`/`seq`, null or malformed values, `seq` reused for another request, `request_id` reused at a higher `seq`); 422 `UNSUPPORTED_FORMAT`; 409 `INVALID_REQUEST` (request_id reused for another path), `SOURCE_CHANGED`, `STALE_START`, `CANCELLED_BEFORE_START` or `SESSION_EXPIRED`; 503 `WORKER_WEDGED` |
 | `/scene/status {job_id}` | 200 `{state, stage, completed, total, error, revision}`; 404 `EXPIRED` |
 | `/scene/result {job_id, expected_revision?}` | 200 scene; 422 `{error: <code>}` for a failed job; 409 `CANCELLED` / `NOT_READY` / `SOURCE_CHANGED`; 404 `EXPIRED` |
-| `/scene/cancel {job_id}` or `{client_id, request_id}` | 200 status (idempotent; a late cancel on a terminal job is a no-op). By request: cancels the job registered for exactly that client_id + request_id (if any) and ALWAYS records a tombstone; with no such job the body is a `job_status` with `job_id: null`, `state: "cancelled"` |
+| `/scene/cancel {job_id}` or `{client_id, request_id, seq}` | 200 status (idempotent; a late cancel on a terminal job is a no-op). By request: 409 `SESSION_EXPIRED` for an unknown session; otherwise `dead_through` rises to `seq` and the job registered for exactly that client_id + request_id (if any) is cancelled; with no such job the body is a `job_status` with `job_id: null`, `state: "cancelled"` |
 
 Error codes: `INVALID_REQUEST UNSUPPORTED_FORMAT INVALID_ARCHIVE INVALID_GEOMETRY UNRESOLVED_REFERENCE
 LIMIT_EXCEEDED SOURCE_CHANGED CANCELLED TIMEOUT EXPIRED NOT_READY WORKER_WEDGED INTERNAL STALE_START
-CANCELLED_BEFORE_START` (`BUSY` is not an error code: a new start replaces the client's own earlier work).
+CANCELLED_BEFORE_START SESSION_EXPIRED SESSION_LIMIT` (`BUSY` is not an error code: a new start replaces the client's own earlier work).
 
-### Start ordering (an abandoned start can never replace a newer one)
+### Start ordering by session
 
 A client that aborts or times out a start cannot stop that request from still reaching the engine, possibly AFTER
-the start it actually wants. The engine therefore orders starts itself, under the same lock that registers and
-replaces jobs, so the decision is atomic with registration (nothing here uses timing):
+the start it actually wants. The engine therefore orders a client's starts itself. The design is a **session** with
+O(1) state, not a set of remembered requests. Four invariants, each pinned by tests named `test_i1_...` to
+`test_i4_...`:
 
-* `client_id` is 8-64 characters of `[A-Za-z0-9_-]`, random per app process; `seq` is an integer >= 1 that the
-  client increases for every start attempt. Both or neither; with neither the start behaves exactly as before.
-* The engine remembers the highest accepted `seq` per `client_id` (LRU, 16 clients) and the cancelled
-  `(client_id, request_id)` pairs (FIFO, 64 tombstones).
-* In order: `seq` below that client's highest -> 409 `STALE_START`, nothing changes (no replace, no cancel);
-  the pair is tombstoned -> 409 `CANCELLED_BEFORE_START`, nothing is registered; `seq` equal to the highest with
-  the same `request_id` -> the existing job (idempotent, as before); equal with a different `request_id` -> 400
-  `INVALID_REQUEST`; otherwise the job is registered (replacing the older one as before) and `seq` is recorded.
-  An idempotent repeat that was still hashing the file is re-checked under the lock, so a newer start that arrived
-  meanwhile makes it `STALE_START` too.
-* After `STALE_START` / `CANCELLED_BEFORE_START` the client retries with a FRESH `request_id` and a HIGHER `seq`.
-  A restarted app uses a new random `client_id` (seq starts again at 1); a remount in the same process just keeps
-  counting. If more than 16 clients are seen the least recently used one forgets its ordering (documented).
+* **I1: delayed starts cannot become valid through bookkeeping eviction.** A start is judged against the
+  session's watermark, not against whether its job is still retained, so an evicted job does not make an old
+  start admissible again.
+* **I2: cancellation cannot be forgotten while the start remains admissible.** A cancel raises the session's
+  `dead_through` mark, so that start and every lower `seq` stay refused for as long as the session lives.
+* **I3: idempotency is scoped to (session, request) and ownership is checked consistently on every path.** Jobs
+  are keyed by `(client_id, request_id)`; two sessions may use the same request_id and path and each gets, and
+  can cancel, its own job; cancel by request matches both ids exactly.
+* **I4: capacity exhaustion or session expiry fails explicitly; nothing old is silently revived.**
 
-Interruptibility: archive reads are at most 1 MiB, lxml `iterparse` checks the cancel/deadline hook every 1,000
-events and on every read, geometry transform/encode runs in batches of at most 5,000 triangles. Backstop: if the
-worker is still alive 5 s after a cancel or the deadline, the job is reported failed `TIMEOUT` (deadline case) and
-every new start answers 503 `WORKER_WEDGED` until the thread exits.
-**Accepted limitation:** a single stuck native or filesystem call cannot be interrupted in-process (there is no
-multiprocessing in the frozen sidecar); the wedged state is the fail-closed backstop.
+**Protocol.** `POST /scene/session {}` returns `{client_id, ttl_s}`; the engine chooses the id (24 characters of
+`[A-Za-z0-9_-]`). Starts and by-request cancels carry that `client_id` and a `seq`, an integer from 1 to 2**53-1 that
+the client treats as a strictly increasing generation counter for the session (the client only ever abandons lower
+seqs when it moves to a higher one). Both keys or neither: null or half-present pairs are `400 INVALID_REQUEST`,
+never a legacy start; ids must match in full (a trailing newline is rejected). With neither key the start behaves
+exactly as before, in its own request_id-only namespace.
 
-Snapshots live in `<data>/scene-tmp/<pid>-<nonce>/`. The worker deletes its own snapshot in its `finally` before it
-sets `worker_done`; eviction only touches terminal jobs whose worker is done (missing-file tolerant); cancel never
-deletes a file. A snapshot file that cannot be deleted (a Windows sharing violation) stays on a bounded retry list
-with back-off until it is gone, and the per-process folder is removed best-effort at shutdown. The per-process
-folder is re-created for every job. A startup sweep removes a `<pid>-<nonce>` folder ONLY when its owner pid is
-not running AND the folder is at least 10 minutes old; a folder owned by a live process is never removed,
-however old. Sharing violations are tolerated.
+**State per session** (nothing else): `watermark` (highest admitted seq), `dead_through` (highest cancelled seq),
+`current` = (seq, request_id, path, job_id) of the entry at the watermark.
+
+**Rules, in order, under the registry lock that also registers jobs** (one admission function for every
+successful start): unknown or expired `client_id` -> 409 `SESSION_EXPIRED` (a late start from an expired session
+is refused, never re-created); `seq <= dead_through` -> 409 `CANCELLED_BEFORE_START`; `seq < watermark` -> 409
+`STALE_START`; `seq == watermark` with the same request_id and path -> the registered job (idempotent), or 409
+`STALE_START` if that job is no longer registered (an exact retry of an already-processed start is refused); equal
+with anything else -> 400 `INVALID_REQUEST`; `seq > watermark` -> register (replacing the older job as before) and
+set the watermark, except that a request_id already registered for the session is 400 `INVALID_REQUEST`
+("request id reused": the old job is never handed back), and that attempt still raises the watermark so an older
+attempt still in flight is refused. An idempotent repeat that was still hashing the file is re-judged by the same
+rules BEFORE `SOURCE_CHANGED` is reported. After any refusal the client retries with a FRESH `request_id` and a
+HIGHER `seq`.
+
+**Sessions.** At most 32 (`MAX_SESSIONS`), idle TTL 15 minutes (`SESSION_TTL_SECONDS`), touched by every start,
+cancel and status. Only idle-expired sessions that own no registered job are pruned; a live session is never
+evicted. At capacity with nothing prunable, opening a session is 503 `SESSION_LIMIT`.
+
+**Limits, stated plainly.** Ordering is provided PER SESSION. It is not provided across sessions: a start from
+another session replaces the previous job exactly as before. An engine restart drops every session, so the first
+start from an old `client_id` answers `SESSION_EXPIRED` and the client must open a new session. Session expiry
+likewise ends that session's ordering (explicitly: `SESSION_EXPIRED`, never a silent revival).
 
 ## Budgets (provisional) and the coverage decision
 

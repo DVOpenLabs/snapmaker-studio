@@ -184,7 +184,7 @@
     "error_code": {"enum": [
       "INVALID_REQUEST", "UNSUPPORTED_FORMAT", "INVALID_ARCHIVE", "INVALID_GEOMETRY", "UNRESOLVED_REFERENCE",
       "LIMIT_EXCEEDED", "SOURCE_CHANGED", "CANCELLED", "TIMEOUT", "EXPIRED", "NOT_READY", "WORKER_WEDGED", "INTERNAL",
-      "STALE_START", "CANCELLED_BEFORE_START"]},
+      "STALE_START", "CANCELLED_BEFORE_START", "SESSION_EXPIRED", "SESSION_LIMIT"]},
     "job_state": {"enum": ["queued", "running", "succeeded", "failed", "cancelled"]},
     "error_response": {
       "type": "object", "additionalProperties": false, "required": ["error"],
@@ -208,6 +208,13 @@
         "error": {"type": ["object", "null"], "additionalProperties": false, "required": ["code", "message"],
           "properties": {"code": {"$ref": "#/$defs/error_code"}, "message": {"type": "string", "maxLength": 512}}},
         "revision": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+      }
+    },
+    "session": {
+      "type": "object", "additionalProperties": false, "required": ["client_id", "ttl_s"],
+      "properties": {
+        "client_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{24}$"},
+        "ttl_s": {"type": "integer", "minimum": 1}
       }
     },
     "job_start": {

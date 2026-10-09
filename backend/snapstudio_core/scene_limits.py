@@ -47,6 +47,8 @@ WEDGE_GRACE_SECONDS = 5.0               # worker still alive this long after can
 RESULT_TTL_SECONDS = 120.0              # a terminal job is kept this long
 MAX_TERMINAL_JOBS = 8                   # ... or until more than this many terminal jobs exist
 MAX_REQUEST_ID_LENGTH = 64
+MAX_SESSIONS = 32                       # open scene sessions (an idle-expired one that owns no job is pruned first)
+SESSION_TTL_SECONDS = 15 * 60           # idle time after which a session without a registered job is pruned
 SNAPSHOT_DIR_MIN_AGE_SECONDS = 600     # a dead engine's scene-tmp folder is swept only once it is this old (a live engine's NEVER is)
 MAX_PENDING_UNLINKS = 1024             # snapshot files that could not be deleted yet and are retried with back-off
 
