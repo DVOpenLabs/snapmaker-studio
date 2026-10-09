@@ -113,6 +113,17 @@ def _overhang(bounds: dict, bed: dict) -> dict:
     }
 
 
+def _instance_list(rows: list[dict]) -> str:
+    """'object 1 instance 1 of 2, object 3' — which placed items a sentence is about."""
+    named = []
+    for row in rows:
+        text = f"object {row['object_id']}"
+        if row.get("instance_count", 1) > 1:
+            text += f" instance {row['instance_index'] + 1} of {row['instance_count']}"
+        named.append(text)
+    return ", ".join(named)
+
+
 def _edges_text(over: dict) -> str:
     named = [name for name, mm in over.items() if mm > 0]
     return ", ".join(named)
@@ -179,7 +190,9 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
         read = placement.read_objects(path)
     except Exception:
         return items
-    footprints = {entry["object_id"]: entry["footprint"]
+    # Keyed by build item, not by object id: one object can be used by several items, each
+    # at its own place, and a table keyed by object id gives all of them the last one's.
+    footprints = {entry["item_index"]: entry["footprint"]
                   for entry in read.get("objects") or ()
                   if entry.get("footprint")}
     if not footprints:
@@ -187,7 +200,7 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
 
     out = []
     for item in items:
-        box = footprints.get(str(item.get("object_id")))
+        box = footprints.get(item.get("item_index"))
         if box is None:
             out.append(item)
             continue
@@ -236,15 +249,38 @@ MULTI_PLATE_REFUSAL = (
 )
 
 
+_MODEL_INSTANCE_RE = re.compile(r"<model_instance>(.*?)</model_instance>", re.S)
+_METADATA_RE = re.compile(r'key="([^"]*)"\s+value="([^"]*)"')
+
+
 def _plates_from_model_settings(tm: ThreeMF) -> list[dict]:
-    """UI plate number -> the object ids on it, from the project's own records."""
+    """UI plate number -> the objects on it, from the project's own records.
+
+    `object_ids` is every object named; `members` is the same list as
+    ``(object id, instance id or None)`` so a repeated object can be placed per instance.
+    """
     part = "Metadata/model_settings.config"
     if not tm.has_part(part):
         return []
     try:
         from .plate_remap import _parse_plates
 
-        return _parse_plates(tm.read_part(part).decode("utf-8", "ignore"))
+        text = tm.read_part(part).decode("utf-8", "ignore")
+        plates = _parse_plates(text)
+        bodies = re.findall(r"<plate>(.*?)</plate>", text, re.S)
+        # `_parse_plates` sorts by plate number; pair each body with its plate by number.
+        by_number: dict = {}
+        for body in bodies:
+            number = re.search(r'key="plater_id"\s+value="(\d+)"', body)
+            members = []
+            for instance in _MODEL_INSTANCE_RE.findall(body):
+                meta = dict(_METADATA_RE.findall(instance))
+                if meta.get("object_id") is not None:
+                    members.append((meta["object_id"], meta.get("instance_id")))
+            by_number.setdefault(int(number.group(1)) if number else None, []).extend(members)
+        for plate in plates:
+            plate["members"] = by_number.get(plate["ui_number"], [])
+        return plates
     except Exception:
         return []
 
@@ -252,21 +288,42 @@ def _plates_from_model_settings(tm: ThreeMF) -> list[dict]:
 def _group_items_by_plate(items: list[dict], plates: list[dict]):
     """Split build items across plates. Returns (grouped, unresolved).
 
-    An item whose object is on no plate record is 'unresolved': Studio cannot say
-    which plate it belongs to, and therefore cannot judge it.
+    Judged per instance: the n-th build item that uses an object is matched to the plate
+    record that names that instance. A record that names an object without saying which
+    instance can only place it when the object is used once. An item that no record (or
+    more than one plate) claims is 'unresolved': Studio cannot say which plate it is on,
+    and therefore cannot judge it.
     """
-    owner: dict[str, int] = {}
-    for plate in plates:
-        for oid in plate.get("object_ids") or []:
-            owner[str(oid)] = plate["ui_number"]
+    totals: dict[str, int] = {}
+    for item in items:
+        totals[str(item["object_id"])] = totals.get(str(item["object_id"]), 0) + 1
+    seen: dict[str, int] = {}
     grouped: dict[int, list[dict]] = {}
     unresolved: list[dict] = []
     for item in items:
-        plate_no = owner.get(str(item["object_id"]))
-        if plate_no is None:
+        oid = str(item["object_id"])
+        ordinal = seen.get(oid, 0)
+        seen[oid] = ordinal + 1
+        owners: set = set()
+        ambiguous = False
+        for plate in plates:
+            members = plate.get("members")
+            if members is None:      # a plate described by object ids alone
+                members = [(str(o), None) for o in plate.get("object_ids") or []]
+            for member_oid, instance in members:
+                if str(member_oid) != oid:
+                    continue
+                if instance is None:
+                    if totals[oid] == 1:
+                        owners.add(plate["ui_number"])
+                    else:
+                        ambiguous = True
+                elif str(instance).isdigit() and int(instance) == ordinal:
+                    owners.add(plate["ui_number"])
+        if ambiguous or len(owners) != 1 or None in owners:
             unresolved.append(item)
         else:
-            grouped.setdefault(plate_no, []).append(item)
+            grouped.setdefault(next(iter(owners)), []).append(item)
     return grouped, unresolved
 
 
@@ -287,6 +344,7 @@ def _plate_fit(grouped: dict[int, list[dict]], bed: dict,
             "width": round(width, 2),
             "depth": round(depth, 2),
             "object_ids": [i["object_id"] for i in grouped[number]],
+            "item_indexes": [i.get("item_index") for i in grouped[number]],
             "reason": None if fits else (
                 f"the objects on this plate span {width:.0f} × {depth:.0f} mm, which is "
                 f"larger than {whose} {usable_x:.0f} × {usable_y:.0f} mm plate"),
@@ -333,12 +391,20 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     if multi_plate:
         plates = _plates_from_model_settings(tm)
         grouped, unresolved_items = _group_items_by_plate(items, plates)
-        unresolved = [{"object_id": i["object_id"]} for i in unresolved_items]
+        unresolved = [{"object_id": i["object_id"], "item_index": i.get("item_index")}
+                      for i in unresolved_items]
         plate_fit = _plate_fit(grouped, target, whose)
 
+    totals: dict[str, int] = {}
+    for item in items:
+        totals[str(item["object_id"])] = totals.get(str(item["object_id"]), 0) + 1
+    seen: dict[str, int] = {}
     reported = []
     for item in items:
         lo, hi = item["bounds"]["min"], item["bounds"]["max"]
+        oid = str(item["object_id"])
+        instance_index = seen.get(oid, 0)
+        seen[oid] = instance_index + 1
         if multi_plate:
             # A plate's absolute coordinates on a multi-plate grid are an artefact
             # of the authoring slicer, not a fault. Judge the plate's *size*.
@@ -349,6 +415,10 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
             off = any(mm > 0 for mm in over.values())
         reported.append({
             "object_id": item["object_id"],
+            "item_index": item.get("item_index"),
+            "instance_index": instance_index,
+            "instance_count": totals[oid],
+            "bounds_mm": {"min": [round(v, 4) for v in lo], "max": [round(v, 4) for v in hi]},
             "dimensions": item["dimensions"],
             "position": {"x": round((lo[0] + hi[0]) / 2.0, 2),
                          "y": round((lo[1] + hi[1]) / 2.0, 2)},
@@ -359,9 +429,9 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
 
     oversized_plates = [p for p in plate_fit if not p["fits"]]
     if multi_plate:
-        oversized_ids = {oid for p in oversized_plates for oid in p["object_ids"]}
+        oversized_items = {ix for p in oversized_plates for ix in p["item_indexes"]}
         for row in reported:
-            if row["object_id"] in oversized_ids:
+            if row["item_index"] in oversized_items:
                 row["off_plate"] = True
 
     off_plate = [r for r in reported if r["off_plate"]]
@@ -378,6 +448,15 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     # the file, so any move would be a guess.
     fixable = (not multi_plate) and bool(off_plate) and would_fit
 
+    # A repeated object is one object at several places; the sentence counts the places, so the
+    # instance that is off the plate is never averaged away by the one that is not.
+    repeated = any(r["instance_count"] > 1 for r in reported)
+    if repeated:
+        count_text = (f"{len(off_plate)} of {len(reported)} placed instance(s) "
+                      f"({_instance_list(off_plate)})")
+    else:
+        count_text = f"{len(off_plate)} object(s)"
+
     if multi_plate and not off_plate:
         summary = (f"All {len(plate_fit)} plates fit {whose} printable area. Studio does "
                    "not reposition multi-plate projects — open the project in Snapmaker "
@@ -390,19 +469,21 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     elif multi_plate:
         summary = MULTI_PLATE_REFUSAL
     elif not off_plate:
-        summary = (f"Every object sits inside {whose} printable area."
+        summary = (f"Every placed instance sits inside {whose} printable area."
+                   if repeated else
+                   f"Every object sits inside {whose} printable area."
                    if len(reported) > 1 else
                    f"The object sits inside {whose} printable area.")
     elif too_wide:
-        summary = (f"{len(off_plate)} object(s) fall outside {whose} plate, and the "
+        summary = (f"{count_text} fall outside {whose} plate, and the "
                    "whole arrangement is wider than the plate — moving it cannot fix "
                    "this. Scale it down or split it across plates.")
     elif would_fit:
-        summary = (f"{len(off_plate)} object(s) fall outside {whose} plate, but the "
+        summary = (f"{count_text} fall outside {whose} plate, but the "
                    "whole arrangement fits — moving it as one piece brings everything "
                    "back on, keeping the creator's layout, rotation and scale.")
     else:
-        summary = (f"{len(off_plate)} object(s) fall outside {whose} plate and one "
+        summary = (f"{count_text} fall outside {whose} plate and one "
                    "move will not fix it. Open it in Snapmaker Orca and use Arrange.")
 
     return {
@@ -539,15 +620,20 @@ def verify_only_placement_moved(source: str, moved: str) -> dict:
     check("the root model's geometry and components are unchanged",
           strip(root_before) == strip(root_after))
 
-    items_before = dict(placement._BUILD_ITEM.findall(root_before))
-    items_after = dict(placement._BUILD_ITEM.findall(root_after))
-    check("every object is still placed", set(items_before) == set(items_after))
+    # Per build item, in order: an object used by two items is two items to compare.
+    items_before = placement.build_items(root_before)
+    items_after = placement.build_items(root_after)
+    check("every object is still placed",
+          [i["object_id"] for i in items_before] == [i["object_id"] for i in items_after])
 
     deltas = set()
-    same_basis = True
-    for object_id, text in items_before.items():
-        one = placement.parse_transform(text)
-        two = placement.parse_transform(items_after.get(object_id))
+    same_basis = len(items_before) == len(items_after)
+    for before_item, after_item in zip(items_before, items_after):
+        # an item with no transform is at the identity
+        one = (placement.parse_transform(before_item["transform"])
+               if before_item["transform"] else placement.IDENTITY)
+        two = (placement.parse_transform(after_item["transform"])
+               if after_item["transform"] else placement.IDENTITY)
         if one is None or two is None:
             same_basis = False
             break

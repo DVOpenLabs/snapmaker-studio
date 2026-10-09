@@ -1299,6 +1299,10 @@ export async function ecosystemAdvice(
 
 export interface PlacementItem {
   object_id: string;
+  // One object can be used by several build items; these tell the instances apart.
+  item_index?: number;
+  instance_index?: number;
+  instance_count?: number;
   dimensions: { x: number; y: number; z: number };
   position: { x: number; y: number };
   off_plate: boolean;

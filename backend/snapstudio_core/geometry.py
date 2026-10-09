@@ -180,7 +180,7 @@ def build_item_dims(path: str) -> list[dict]:
                 collect(cid, cpath or f, _compose(xform, ctf), acc, seen)
 
         out = []
-        for it in load_model_settings(model_files[root_file]).iter(f"{_3MF_CORE_NS}item"):
+        for ordinal, it in enumerate(load_model_settings(model_files[root_file]).iter(f"{_3MF_CORE_NS}item")):
             oid = it.get("objectid")
             acc: list = []
             collect(oid, root_file,
@@ -190,7 +190,10 @@ def build_item_dims(path: str) -> list[dict]:
                 continue
             xs = [p[0] for p in acc]; ys = [p[1] for p in acc]; zs = [p[2] for p in acc]
             lo = (min(xs), min(ys), min(zs)); hi = (max(xs), max(ys), max(zs))
+            # `item_index` is the build item's ordinal in the root model: one object used by two items is
+            # two entries, and this tells them apart (an item with no geometry leaves a gap in the sequence).
             out.append({"object_id": oid,
+                        "item_index": ordinal,
                         "dimensions": {"x": round(hi[0] - lo[0], 2),
                                        "y": round(hi[1] - lo[1], 2),
                                        "z": round(hi[2] - lo[2], 2)},

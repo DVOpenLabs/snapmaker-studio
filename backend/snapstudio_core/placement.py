@@ -250,11 +250,21 @@ def read_objects(path: str) -> dict:
 
     polygon = polygon_of(project)
     parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
-    placements = dict(_BUILD_ITEM.findall(root))
     components = _components_by_object(root)
 
+    # One entry per BUILD ITEM, in document order. Keying by object id would keep only the last
+    # transform of an object that several items use, and every instance would then be reported
+    # at the last one's position.
     objects = []
-    for object_id, transform_text in placements.items():
+    seen_per_object: dict[str, int] = {}
+    totals: dict[str, int] = {}
+    build = build_items(root)
+    for entry in build:
+        totals[entry["object_id"]] = totals.get(entry["object_id"], 0) + 1
+    for entry in build:
+        object_id, transform_text = entry["object_id"], entry["transform"]
+        instance_index = seen_per_object.get(object_id, 0)
+        seen_per_object[object_id] = instance_index + 1
         item = _units.scale_translation(parse_transform(transform_text), root_scale)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
         roles = dict(parts_by_object.get(object_id, []))
@@ -262,18 +272,21 @@ def read_objects(path: str) -> dict:
             (part_id, None) for part_id in part_ids]
         printable: list[tuple] = []
         every: list[tuple] = []
-        for mesh_id, component_transform in own_components:
+        for mesh_id, component_transform in _leaf_components(own_components, components,
+                                                             meshes, root_scale):
             points = meshes.get(mesh_id)
             if points is None:
                 continue
-            whole = compose(item, _units.scale_translation(parse_transform(component_transform),
-                                                     root_scale))
+            whole = compose(item, component_transform)
             moved = [apply(whole, point) for point in points]
             every.extend(moved)
             if roles.get(mesh_id, "normal_part") == "normal_part":
                 printable.extend(moved)
         objects.append({
             "object_id": object_id,
+            "item_index": entry["item_index"],
+            "instance_index": instance_index,
+            "instance_count": totals[object_id],
             "name": _name_of(settings_text, object_id),
             "transform": transform_text,
             "part_ids": part_ids,
@@ -285,6 +298,45 @@ def read_objects(path: str) -> dict:
     return {"schema_version": SCHEMA_VERSION, "objects": objects,
             "polygon": polygon,
             "polygon_source": PROJECT_SETTINGS if polygon else None}
+
+
+_ITEM_TAG = re.compile(r"<item\b[^>]*>")
+_OBJECTID_ATTR = re.compile(r'\bobjectid="([^"]*)"')
+_TRANSFORM_ATTR = re.compile(r'\btransform="([^"]*)"')
+_MAX_COMPONENT_DEPTH = 16
+
+
+def build_items(root: str) -> list[dict]:
+    """Every build item of a root model, in document order.
+
+    `item_index` is the ordinal of the item among ALL `<item>` tags, so it matches
+    `geometry.build_item_dims` and the scene's build index. `transform` is the item's
+    text, or None when it has none (the identity).
+    """
+    out = []
+    for ordinal, tag in enumerate(_ITEM_TAG.findall(root)):
+        object_id = _OBJECTID_ATTR.search(tag)
+        transform = _TRANSFORM_ATTR.search(tag)
+        out.append({"item_index": ordinal,
+                    "object_id": object_id.group(1) if object_id else "",
+                    "transform": transform.group(1) if transform else None})
+    return out
+
+
+def _leaf_components(entries: list, components: dict, meshes: dict, scale: float,
+                     depth: int = 0, outer: tuple | None = None, seen: frozenset = frozenset()):
+    """(mesh id, transform in mm) for every mesh an object reaches through its components.
+
+    A component may itself be an object made of components, with its own transform; the
+    transforms compose down the path rather than being applied one after the other.
+    """
+    for mesh_id, text in entries:
+        here = compose(outer, _units.scale_translation(parse_transform(text), scale))
+        if meshes.get(mesh_id):
+            yield mesh_id, here
+        elif mesh_id in components and mesh_id not in seen and depth < _MAX_COMPONENT_DEPTH:
+            yield from _leaf_components(components[mesh_id], components, meshes, scale,
+                                        depth + 1, here, seen | {mesh_id})
 
 
 def _scaled(points: list[tuple], factor: float) -> list[tuple]:
@@ -468,15 +520,24 @@ def assess(path: str, printer: str = "Snapmaker U1") -> dict:
     objects = []
     for entry in read["objects"]:
         verdict = classify(entry["footprint"], polygon, entry.get("printable_points"))
+        label = entry["name"]
+        if entry["instance_count"] > 1:
+            # Two instances of one object need telling apart, or the sentence about the
+            # one that is off the plate reads as if it were about both.
+            label = (f"{label or 'This object'} (instance {entry['instance_index'] + 1} "
+                     f"of {entry['instance_count']})")
         objects.append({
             "object_id": entry["object_id"],
+            "item_index": entry["item_index"],
+            "instance_index": entry["instance_index"],
+            "instance_count": entry["instance_count"],
             "name": entry["name"],
             "transform": entry["transform"],
             "footprint_mm": _rounded(entry["footprint"]),
             "status": verdict["status"],
             "excess_mm": verdict.get("excess_mm") or {},
             "fits_by_translation": verdict.get("fits_by_translation"),
-            "message": describe(entry["name"], verdict, printer),
+            "message": describe(label, verdict, printer),
             "reason": verdict.get("reason"),
         })
 

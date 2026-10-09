@@ -30,23 +30,40 @@ export function placementVerdict(check: PlacementCheck | null): PlacementVerdict
       canFix: false,
     };
   }
+  const repeated = check.items.some((entry) => (entry.instance_count ?? 1) > 1);
   if (check.off_plate.length === 0) {
     const many = (check.item_count ?? 0) > 1;
     return {
       tone: "ok",
-      headline: many
-        ? "Every object sits inside the U1's printable area."
-        : "The object sits inside the U1's printable area.",
+      headline: repeated
+        ? "Every placed instance sits inside the U1's printable area."
+        : many
+          ? "Every object sits inside the U1's printable area."
+          : "The object sits inside the U1's printable area.",
       canFix: false,
     };
   }
   const count = check.off_plate.length;
-  const noun = count === 1 ? "object is" : "objects are";
+  // A repeated object is one object at several places: count the places.
+  const noun = repeated
+    ? count === 1
+      ? "placed instance is"
+      : "placed instances are"
+    : count === 1
+      ? "object is"
+      : "objects are";
   return {
     tone: check.fixable ? "warn" : "blocked",
     headline: `${count} ${noun} outside the U1's printable area.`,
     canFix: check.fixable,
   };
+}
+
+/** "Object 1", or "Object 1 · instance 2 of 3" when the same object is placed more than once. */
+export function itemLabel(item: PlacementItem): string {
+  const total = item.instance_count ?? 1;
+  if (total <= 1) return `Object ${item.object_id}`;
+  return `Object ${item.object_id} · instance ${(item.instance_index ?? 0) + 1} of ${total}`;
 }
 
 /** How far off, and which way — as a sentence rather than four numbers. */
