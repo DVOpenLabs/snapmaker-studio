@@ -113,6 +113,35 @@ def project_info(path: str) -> dict:
     except Exception:
         pass  # geometry/materials are best-effort; diagnosis still stands
 
+    # SIZE and PLACEMENT are different facts and are kept apart here.
+    #   object_sizes_mm  how big each object is (per object, millimetres, before any build item
+    #                    moves, turns or scales it). Says nothing about where anything sits.
+    #   placed           where each instance sits and on which plate (placed bounds).
+    #   dimensions_mm    kept for existing readers: the overall extents of all the mesh data
+    #                    together. A size-only figure; for several objects it is NOT one object's
+    #                    size and NOT a position (dimensions_basis says so).
+    object_sizes: list[dict] = []
+    placed: dict
+    if is_stl:
+        if dims:
+            object_sizes = [{"object_id": None, "instance_count": 1, "dimensions_mm": dict(dims)}]
+        placed = {"available": False, "basis": "placed_bounds", "instances": [],
+                  "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                  "reason": "A bare STL has no placement of its own; Studio centers it when it wraps "
+                            "the model into a U1 project."}
+    else:
+        try:
+            from . import geometry, plate_placement
+            placed_items, sizes = geometry.measure(path)
+            object_sizes = [{"object_id": s["object_id"], "instance_count": s["instance_count"],
+                             "dimensions_mm": {k: round(v, 1) for k, v in s["dimensions"].items()}}
+                            for s in sizes]
+            placed = plate_placement.placed_instances(path, items=placed_items)
+        except Exception:
+            placed = {"available": False, "basis": "placed_bounds", "instances": [],
+                      "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                      "reason": "Studio could not read where the objects sit in this project."}
+
     return {
         "schema_version": SCHEMA_VERSION,
         "name": Path(path).name,
@@ -128,6 +157,9 @@ def project_info(path: str) -> dict:
         "painted": diag.get("painted"),
         "materials": materials,
         "dimensions_mm": dims,
+        "dimensions_basis": "overall_extents_by_size",
+        "object_sizes_mm": object_sizes,
+        "placed": placed,
         "triangles": triangles,
         "complexity": _complexity(triangles),
         "issues": [*(diag.get("validation_issues") or []), *(diag.get("compatibility_issues") or [])],

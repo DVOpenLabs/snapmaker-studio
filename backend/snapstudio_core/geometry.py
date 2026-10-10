@@ -106,16 +106,33 @@ def _compose(a, b):
 def build_item_dims(path: str) -> list[dict]:
     """Per-build-item bounding-box dimensions (mm), with the 3MF build transform and
     nested component transforms applied — i.e. each placed object's real on-plate
-    size. Read-only, exception-safe (returns [] on any failure). Used by the Scale
-    Doctor size-options ladder for per-plate dimensions."""
+    size, one entry per build item (a repeated object appears once per item).
+    Read-only, exception-safe (returns [] on any failure). Used by the Scale Doctor
+    size-options ladder for per-plate dimensions. This is a PLACED measure: it
+    depends on where, and how turned, the item is. For the size of the object
+    itself see ``object_sizes``."""
+    return measure(path)[0]
+
+
+def object_sizes(path: str) -> list[dict]:
+    """Per-object size (mm): each root object as modelled, with its nested component
+    transforms applied but BEFORE any build item moves, turns or scales it. One entry
+    per distinct object (``instance_count`` says how many build items use it). This is
+    a SIZE measure and says nothing about where anything sits."""
+    return measure(path)[1]
+
+
+def measure(path: str) -> tuple[list[dict], list[dict]]:
+    """``(placed items, object sizes)`` from a single read of the project. See
+    ``build_item_dims`` and ``object_sizes``."""
     try:
         tm = ThreeMF.open(path)
     except Exception:
-        return []
+        return [], []
     try:
         model_files = {p: tm.read_part(p) for p in tm.list_parts() if p.endswith(".model")}
         if sum(len(b) for b in model_files.values()) > _MAX_BYTES:
-            return []
+            return [], []
 
         # object_id -> (verts, [(component_objectid, component_path, component_xform)]), per file
         parsed: dict[str, dict[str, tuple]] = {}
@@ -150,7 +167,7 @@ def build_item_dims(path: str) -> list[dict]:
 
         root_file = "3D/3dmodel.model"
         if root_file not in parsed:
-            return []
+            return [], []
 
         def find_obj(objid, prefer):
             if prefer in parsed and objid in parsed[prefer]:
@@ -179,17 +196,32 @@ def build_item_dims(path: str) -> list[dict]:
             for cid, cpath, ctf in comps:
                 collect(cid, cpath or f, _compose(xform, ctf), acc, seen)
 
+        def box_of(acc):
+            xs = [p[0] for p in acc]; ys = [p[1] for p in acc]; zs = [p[2] for p in acc]
+            return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
+
         out = []
+        sizes: dict[str, dict] = {}
         for ordinal, it in enumerate(load_model_settings(model_files[root_file]).iter(f"{_3MF_CORE_NS}item")):
             oid = it.get("objectid")
+            if oid in sizes:
+                sizes[oid]["instance_count"] += 1
+            else:
+                bare: list = []
+                collect(oid, root_file, None, bare, frozenset())
+                if bare:
+                    lo, hi = box_of(bare)
+                    sizes[oid] = {"object_id": oid, "instance_count": 1,
+                                  "dimensions": {"x": round(hi[0] - lo[0], 2),
+                                                 "y": round(hi[1] - lo[1], 2),
+                                                 "z": round(hi[2] - lo[2], 2)}}
             acc: list = []
             collect(oid, root_file,
                     _units.scale_translation(_xform(it.get("transform")), unit_scale[root_file]),
                     acc, frozenset())
             if not acc:
                 continue
-            xs = [p[0] for p in acc]; ys = [p[1] for p in acc]; zs = [p[2] for p in acc]
-            lo = (min(xs), min(ys), min(zs)); hi = (max(xs), max(ys), max(zs))
+            lo, hi = box_of(acc)
             # `item_index` is the build item's ordinal in the root model: one object used by two items is
             # two entries, and this tells them apart (an item with no geometry leaves a gap in the sequence).
             out.append({"object_id": oid,
@@ -198,11 +230,11 @@ def build_item_dims(path: str) -> list[dict]:
                                        "y": round(hi[1] - lo[1], 2),
                                        "z": round(hi[2] - lo[2], 2)},
                         "bounds": {"min": lo, "max": hi}})
-        return out
+        return out, list(sizes.values())
     except _TooLarge:
-        return []
+        return [], []
     except Exception:
-        return []
+        return [], []
 
 
 def load_mesh(path: str) -> Mesh | None:

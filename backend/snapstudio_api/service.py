@@ -2074,8 +2074,20 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
                 bed, bed_known = bm, True
         except Exception:
             pass
-    return bf.assess(dims, bed=bed, bed_known=bed_known,
-                     object_count=object_count, multi_material=multi)
+    # Two separate facts: how big each object is (size, per object) and where the instances sit
+    # (placement, per instance and plate). A combined extent is neither, and is never used here.
+    placed = None
+    try:
+        from snapstudio_core import plate_placement
+        rect = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(bed["x"]), "max_y": float(bed["y"])}
+                if bed_known and bed else None)
+        placed = plate_placement.assess(
+            path, bed=rect, bed_name=("your connected printer's" if rect else None))
+    except Exception:
+        placed = None
+    return bf.assess_objects(info.get("object_sizes_mm"), fallback_dims=dims, placed=placed,
+                             bed=bed, bed_known=bed_known, object_count=object_count,
+                             multi_material=multi)
 
 
 def predict_success(path: str, host: str | None = None, port: int = 7125) -> dict:

@@ -339,7 +339,13 @@ export interface Insights {
   colors: number | null;
   painted: boolean;
   materials: { color: string; type: string | null }[];
+  // Overall extents of all the mesh data together: a size-only figure, not one object's size and not a position.
   dimensions_mm: { x: number; y: number; z: number } | null;
+  dimensions_basis?: string;
+  // Per-object size (mm), before any build item moves, turns or scales it.
+  object_sizes_mm?: ObjectSize[];
+  // Where each instance sits and on which plate (placed bounds), kept apart from the sizes above.
+  placed?: PlacedInstances;
   triangles: number | null;
   complexity: string | null;
   issues: string[];
@@ -1296,6 +1302,30 @@ export async function ecosystemAdvice(
 // A small object placed at another printer's coordinates lands off the U1 plate
 // while passing every size check. These read where each object sits and, when a
 // single honest move fixes it, write a NEW copy — the original is never touched.
+
+export interface ObjectSize {
+  object_id: string | null;
+  instance_count: number;
+  dimensions_mm: { x: number; y: number; z: number };
+}
+
+export interface PlacedInstances {
+  available: boolean;
+  basis: string;
+  reason?: string | null;
+  plate_count: number;
+  instances: {
+    item_index: number | null;
+    object_id: string;
+    instance_index: number;
+    instance_count: number;
+    plate: number | null;
+    bounds_mm: { min: number[]; max: number[] };
+    dimensions_mm: { x: number; y: number; z: number };
+  }[];
+  plate_extents: { plate: number; instances: number; x: number; y: number }[];
+  combined_extent_mm: { x: number; y: number } | null;
+}
 
 export interface PlacementItem {
   object_id: string;

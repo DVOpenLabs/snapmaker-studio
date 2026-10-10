@@ -428,7 +428,7 @@ export default function DesignInsights() {
             <Card>
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Design Health</div>
-                <DesignHealth mesh={meshData} dims={dims} bed={caps?.bed_mm} mode="simple" />
+                <DesignHealth mesh={meshData} dims={dims} objects={ins?.object_sizes_mm} bed={caps?.bed_mm} mode="simple" />
               </CardContent>
             </Card>
           )}

@@ -48,13 +48,36 @@ def readiness_report(path: str) -> dict:
         verdict in (READY, CONVERTIBLE, "REPAIRABLE"),
         "Prepare a U1 copy and review in Orca" if verdict != READY
         else "Review in Orca before slicing"))
-    if dims:
+    # SIZE, not position: each object against the bed on its own. Where the objects sit on the plate is
+    # judged below under "Layout / plate fit", and the combined extents of several separated objects or
+    # plates are never read as one big object.
+    sized = [o for o in (info.get("object_sizes_mm") or []) if o.get("dimensions_mm")]
+    if sized:
+        def _over(entry):
+            d = entry["dimensions_mm"]
+            return d["x"] > U1_BUILD[0] or d["y"] > U1_BUILD[1] or d["z"] > U1_BUILD[2]
+        too_big = [o for o in sized if _over(o)]
+        shown = too_big[0] if too_big else max(
+            sized, key=lambda o: o["dimensions_mm"]["x"] * o["dimensions_mm"]["y"])
+        d = shown["dimensions_mm"]
+        many = len(sized) > 1 and shown.get("object_id") is not None
+        label = f'object {shown["object_id"]} ' if many else ""
+        fits = not too_big
+        checks.append(_check(
+            "Fits the print bed",
+            fits,
+            f'By size, {label}{d["x"]} × {d["y"]} × {d["z"]} mm '
+            + (("is the largest object and fits 270 × 270 × 270" if len(sized) > 1 else "fits 270 × 270 × 270")
+               if fits else
+               "is larger than the U1 bed — scale or split" + (
+                   f" ({len(too_big)} objects are)" if len(too_big) > 1 else ""))))
+    elif dims:
         fits = dims["x"] <= U1_BUILD[0] and dims["y"] <= U1_BUILD[1] and dims["z"] <= U1_BUILD[2]
         checks.append(_check(
             "Fits the print bed",
             fits,
-            f'{dims["x"]} × {dims["y"]} × {dims["z"]} mm '
-            + ("fits 270 × 270 × 270" if fits else "is larger than the U1 bed — scale or split")))
+            f'By size, the overall extents {dims["x"]} × {dims["y"]} × {dims["z"]} mm '
+            + ("fit 270 × 270 × 270" if fits else "are larger than the U1 bed — check each object in Orca")))
     if colors:
         colors_ok = colors <= U1_TOOLHEADS
         checks.append(_check(

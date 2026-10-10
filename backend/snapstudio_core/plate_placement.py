@@ -214,6 +214,71 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     return out
 
 
+def placed_instances(path: str, items: list[dict] | None = None) -> dict:
+    """Where each build item sits, with the plate it belongs to: PLACED bounds.
+
+    This is the placed counterpart of a size. It answers "where is each instance" and
+    "which plate is it on", never "is the object small enough" (that is a size, per
+    object, from ``geometry.object_sizes``). Bounds are per instance in millimetres,
+    measured from the parts that print. ``items`` may carry ``geometry.build_item_dims``
+    output already read, to save reading the project twice. When the project has more than one plate the
+    plates sit on one shared grid whose spacing the file does not record, so no extent
+    is combined across them: ``plate_extents`` gives each plate its own, and
+    ``combined_extent_mm`` is None. Read-only, never raises.
+    """
+    from . import geometry
+
+    try:
+        tm = ThreeMF.open(path)
+    except Exception:
+        return {"available": False, "basis": "placed_bounds", "instances": [],
+                "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                "reason": "Studio could not open this file as a 3MF project."}
+    items = _printable_only(path, geometry.build_item_dims(path) if items is None else items)
+    if not items:
+        return {"available": False, "basis": "placed_bounds", "instances": [],
+                "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                "reason": "Studio could not read where the objects sit in this project."}
+
+    plates = _plates_from_model_settings(tm)
+    numbers = sorted({p["ui_number"] for p in plates if p.get("ui_number") is not None})
+    plate_count = max(len(numbers), 1)
+    grouped, _unresolved = _group_items_by_plate(items, plates) if plates else ({}, items)
+    plate_of = {i.get("item_index"): number for number, members in grouped.items() for i in members}
+
+    totals: dict[str, int] = {}
+    for item in items:
+        totals[str(item["object_id"])] = totals.get(str(item["object_id"]), 0) + 1
+    seen: dict[str, int] = {}
+    instances = []
+    for item in items:
+        oid = str(item["object_id"])
+        ordinal = seen.get(oid, 0)
+        seen[oid] = ordinal + 1
+        lo, hi = item["bounds"]["min"], item["bounds"]["max"]
+        instances.append({
+            "item_index": item.get("item_index"),
+            "object_id": item["object_id"],
+            "instance_index": ordinal,
+            "instance_count": totals[oid],
+            "plate": plate_of.get(item.get("item_index")),
+            "bounds_mm": {"min": [round(v, 2) for v in lo], "max": [round(v, 2) for v in hi]},
+            "dimensions_mm": dict(item["dimensions"]),
+        })
+
+    def extent(members: list[dict]) -> dict:
+        cluster = _cluster_bounds(members)
+        return {"x": round(cluster["max_x"] - cluster["min_x"], 1),
+                "y": round(cluster["max_y"] - cluster["min_y"], 1)}
+
+    plate_extents = [dict(plate=number, instances=len(members), **extent(members))
+                     for number, members in sorted(grouped.items())]
+    return {"available": True, "basis": "placed_bounds", "instances": instances,
+            "plate_count": plate_count, "plate_extents": plate_extents,
+            "combined_extent_mm": extent(items) if plate_count <= 1 else None,
+            "reason": None}
+
+
 def _unavailable(reason: str) -> dict:
     return {"schema_version": SCHEMA_VERSION, "available": False, "reason": reason,
             "items": [], "off_plate": [], "fixable": False}

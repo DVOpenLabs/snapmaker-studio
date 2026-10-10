@@ -1,7 +1,8 @@
 import { CheckCircle2, AlertTriangle, ShieldAlert, Droplets, Boxes, MoveVertical, LifeBuoy, Ruler } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MeshReport } from "@/api";
+import type { MeshReport, ObjectSize } from "@/api";
+import { sizeRow } from "@/lib/sizeFit";
 
 // U1 build volume (mm) — matches the engine's bed-fit check.
 const U1_BED = { x: 270, y: 270, z: 270 };
@@ -18,7 +19,7 @@ const STATUS_ICON: Record<Level, LucideIcon> = { ok: CheckCircle2, warn: AlertTr
 
 function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } | null,
                    bed?: { x: number; y: number; z: number } | null,
-                   mode: "simple" | "advanced" = "simple"): Row[] {
+                   mode: "simple" | "advanced" = "simple", objects?: ObjectSize[] | null): Row[] {
   const rows: Row[] = [];
   const integ = mesh.integrity;
   const fitBed = bed ?? U1_BED;
@@ -67,30 +68,28 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
         : "Few steep overhangs — this should print without supports." });
   }
 
-  // 5. Bed fit (from dimensions vs the real connected printer bed, else the U1 default)
-  if (dims) {
-    const fits = dims.x <= fitBed.x && dims.y <= fitBed.y && dims.z <= fitBed.z;
-    const bedStr = `${fitBed.x} × ${fitBed.y} × ${fitBed.z} mm`;
-    rows.push({ key: "bedfit", label: "Bed fit", icon: Ruler, level: fits ? "ok" : "risk",
-      status: fits ? "Fits" : "Too big",
-      detail: fits
-        ? `${dims.x} × ${dims.y} × ${dims.z} mm fits ${bedSource} ${bedStr} bed.`
-        : `${dims.x} × ${dims.y} × ${dims.z} mm is larger than ${bedSource} ${bedStr} bed — scale it down or split it.` });
+  // 5. Bed fit BY SIZE: each object against the real connected printer bed, else the U1 default.
+  //    A size says nothing about position; placement is its own card.
+  const fit = sizeRow(objects, dims, fitBed, bedSource);
+  if (fit) {
+    rows.push({ key: "bedfit", label: "Bed fit (by size)", icon: Ruler, level: fit.level,
+      status: fit.status, detail: fit.detail });
   }
   return rows;
 }
 
 /** Design Health — at-a-glance geometry verdicts with plain-language what/why/do.
  *  `mode` "advanced" appends the raw metric footer. */
-export function DesignHealth({ mesh, dims, bed, mode = "simple" }: {
+export function DesignHealth({ mesh, dims, objects, bed, mode = "simple" }: {
   mesh?: MeshReport; dims?: { x: number; y: number; z: number } | null;
+  objects?: ObjectSize[] | null;
   bed?: { x: number; y: number; z: number } | null; mode?: "simple" | "advanced";
 }) {
   if (!mesh) return null;
   if (!mesh.available) {
     return <p className="text-xs text-muted-foreground">Geometry analysis isn’t available for this file (it may be too large).</p>;
   }
-  const rows = buildRows(mesh, dims, bed, mode);
+  const rows = buildRows(mesh, dims, bed, mode, objects);
   if (!rows.length) return null;
 
   return (
