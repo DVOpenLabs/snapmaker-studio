@@ -696,7 +696,7 @@ export function printerFailureInsights(host: string, port = 7125): Promise<Failu
   return printerPost("/printer/failure_insights", { host, port });
 }
 
-// Printer Health Score: one 0–100 from the U1's own read-only firmware + history signals.
+// Printer health: what the U1's own read-only firmware state and print history show.
 export interface PrinterHealth {
   available: boolean;
   score?: number;

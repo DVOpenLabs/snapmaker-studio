@@ -22,7 +22,10 @@ def _push_findings(risks, recs, doctor, doc):
         return
     for f in (doc.get("findings") or []):
         if f.get("level") in ("warn", "risk"):
-            risks.append({"doctor": doctor, "level": f["level"], "text": f["text"]})
+            risk = {"doctor": doctor, "level": f["level"], "text": f["text"]}
+            if (doc.get("fixes") or []):
+                risk["action"] = doc["fixes"][0]   # what to do about THIS doctor's findings
+            risks.append(risk)
     for fx in (doc.get("fixes") or []):
         recs.append(fx)
 
@@ -106,27 +109,45 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     _push_findings(risks, recs, "Size fit (dimensions only)", bed_fit)
     _push_findings(risks, recs, "Multi-Material Doctor", mm)
     _push_findings(risks, recs, "First Layer Doctor", first_layer)
-    if avail["health"]:
-        failure_history_counted = False
-        for d in (health.get("drivers") or []):
-            if "no problem" in d.lower():
+    drivers = [d for d in ((health or {}).get("drivers") or []) if "no problem" not in d.lower()] if avail["health"] else []
+    signals = [sg for sg in ((predict or {}).get("signals") or [])] if avail["predict"] else []
+    repeat = next((sg for sg in signals if sg.get("id") == "repeat-failure"), None)
+
+    # One condition, one risk. Failure history reaches us three ways (failure-rate driver, failure-streak
+    # driver, exact-file repeat signal); keep the strongest evidence, which is the exact-file signal.
+    failure_done = False
+    for d in drivers:
+        if "prints failed" in d:
+            if repeat is not None or failure_done:
                 continue
-            if "prints failed" in d:
-                # the failure-rate and failure-streak drivers describe the same failed jobs: count them once
-                if failure_history_counted:
-                    continue
-                failure_history_counted = True
-            risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
-    if avail["predict"]:
-        for sig in (predict.get("signals") or []):
-            if sig.get("id") == "printer-health":
-                continue   # the same drivers are already listed as Printer Doctor risks
-            if sig.get("id") == "repeat-failure" and any(
-                    "prints failed" in str(d) for d in ((health or {}).get("drivers") or [])):
-                continue   # the same failed jobs are already counted by the Printer Doctor's failure driver
-            risks.append({"doctor": "Project Doctor",
-                          "level": "risk" if sig.get("level") == "risk" else "warn",
-                          "text": sig.get("title") or ""})
+            failure_done = True
+        risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
+
+    def _level(sg):
+        return "risk" if sg.get("level") == "risk" else "warn"
+
+    def _merge_into_doctor(doctor, sg):
+        """The Doctor already reports this condition: raise its severity if the signal is stronger, do not add a second risk."""
+        mine = [r for r in risks if r["doctor"] == doctor]
+        if not mine:
+            return False
+        for r in mine:
+            if _ORDER[_level(sg)] > _ORDER.get(r["level"], 0):
+                r["level"] = _level(sg)
+        return True
+
+    for sg in signals:
+        sid = sg.get("id")
+        if sid == "printer-health":
+            continue   # the same drivers are already listed as Printer Doctor risks
+        if sid == "toolhead-fit" and _merge_into_doctor("Multi-Material Doctor", sg):
+            continue   # the Multi-Material Doctor reports this same colors-vs-toolheads condition
+        if sid == "first-layer" and _merge_into_doctor("First Layer Doctor", sg):
+            continue
+        risk = {"doctor": "Project Doctor", "level": _level(sg), "text": sg.get("title") or ""}
+        if sg.get("action"):
+            risk["action"] = sg["action"]
+        risks.append(risk)
     if avail["profit"] and (profit.get("profit_per_print") or 0) <= 0:
         risks.append({"doctor": "Profit Doctor", "level": "warn",
                       "text": "Priced below cost — not profitable as-is."})
@@ -164,7 +185,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     # --- the one next action ---
     if biggest_risk:
-        next_action = recommendations[0] if recommendations else f"Look into: {biggest_risk['text']}"
+        # The step that goes with the biggest risk, not just the first fix in Doctor order.
+        next_action = biggest_risk.get("action") or f"Look into: {biggest_risk['text']}"
     else:
         next_action = ("Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing."
                        if spacing_unverified else

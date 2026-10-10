@@ -8,7 +8,7 @@
 [![CI](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml)
 ![Status: stable](https://img.shields.io/badge/status-stable-brightgreen.svg)
 
-### You downloaded a model. Will it actually print on your U1?
+### You downloaded a model. What should you check before it goes to your U1?
 
 **Snapmaker Studio checks it against your real printer before you slice — tells you
 what is likely to go wrong, fixes what it can prove, and shows you exactly what
@@ -526,7 +526,7 @@ is the first printer target; the workflow is built to grow across ecosystems.
   confirmation. Studio never auto-starts a print and uploads sliced gcode only (it
   does not slice).
 - **Design Library** — everything you open is checked, and kept with its full
-  history, so you always know what's ready.
+  history, so you can see what Studio found.
 - **Engine + CLI** — the same workflow as a pure-Python engine and `u1convert` CLI for
   scripting and automation.
 

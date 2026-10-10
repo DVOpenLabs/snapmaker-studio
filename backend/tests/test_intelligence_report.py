@@ -245,19 +245,6 @@ def test_unverified_spacing_is_never_reported_as_found_nothing():
     assert with_risk["next_action"].startswith("Look into:") and "Address:" not in with_risk["next_action"]
 
 
-def test_a_failed_print_is_counted_once_not_by_both_the_file_signal_and_the_health_driver():
-    out = ir.build(
-        predict={"available": True, "signals": [
-            {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 1 time before"}]},
-        health={"available": True, "drivers": ["1 of the last 5 prints failed"]},
-    )
-    assert out["risks_found"] == 1
-    # with no printer-wide failure driver the file-specific signal still counts
-    solo = ir.build(predict={"available": True, "signals": [
-        {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 1 time before"}]})
-    assert solo["risks_found"] == 1
-
-
 def test_health_verdict_has_no_number_or_good_to_print():
     from snapstudio_core import health_score
     for failures in (None, {"available": True, "failure_rate": 0.5, "failed": 5, "total": 10, "recent_failure_streak": 0}):
@@ -265,12 +252,59 @@ def test_health_verdict_has_no_number_or_good_to_print():
         assert not re.search(r"[0-9]|good to print|healthy", v.lower()), v
 
 
-def test_failure_history_is_counted_once_across_rate_streak_and_file_signal():
-    out = ir.build(
-        predict={"available": True, "signals": [
-            {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 2 times before"}]},
-        health={"available": True, "drivers": ["3 of the last 10 prints failed", "3 prints failed in a row", "1 firmware warning"]},
+# --- real Doctor/predictor output, not hand-set levels ---
+from snapstudio_core import bed_fit as _bf, health_score as _hs, mm_doctor as _mm, success_predict as _sp, toolhead_fit as _tf
+
+
+def test_failure_history_counts_once_and_keeps_the_exact_file_evidence():
+    """Rate driver + streak driver + exact-file repeat signal are one condition: keep the strongest (the file signal)."""
+    health = _hs.score(
+        diagnostics={"klippy_state": "ready", "warnings": [], "failed_components": []},
+        failures={"available": True, "failure_rate": 0.4, "failed": 4, "total": 10, "recent_failure_streak": 4},
     )
-    texts = [r["text"] for r in out["risks"]]
-    assert texts == ["3 of the last 10 prints failed", "1 firmware warning"]
-    assert out["risks_found"] == 2
+    predict = _sp.findings(readiness={"ready": True}, prior_failures=2, health=health, printer_checked=True)
+    assert any("prints failed" in d for d in health["drivers"]) and len([d for d in health["drivers"] if "failed" in d]) == 2
+    out = ir.build(predict=predict, health=health)
+    failure = [r for r in out["risks"] if "failed" in r["text"]]
+    assert len(failure) == 1
+    assert failure[0]["level"] == "risk" and "file name" in failure[0]["text"]   # success_predict marks >=2 same-name failures a risk
+    assert out["risks_found"] == 1 and out["biggest_risk"]["level"] == "risk"
+
+
+def test_generic_failure_driver_alone_still_counts_once():
+    health = _hs.score(
+        diagnostics={"klippy_state": "ready", "warnings": [], "failed_components": []},
+        failures={"available": True, "failure_rate": 0.4, "failed": 4, "total": 10, "recent_failure_streak": 4},
+    )
+    out = ir.build(predict=_sp.findings(readiness={"ready": True}, health=health, printer_checked=True), health=health)
+    assert len(out["risks"]) == 1 and "failed" in out["risks"][0]["text"]   # rate and streak describe the same jobs
+
+
+def test_five_color_project_is_one_risk_not_two():
+    """The Multi-Material Doctor and the predictor describe the same colors-vs-toolheads condition."""
+    mm = _mm.assess(5, heads=4, heads_known=True)
+    tf = _tf.assess(5, 4, True)
+    predict = _sp.findings(readiness={"ready": True}, toolfit=tf)
+    assert any(sg["id"] == "toolhead-fit" for sg in predict["signals"])
+    out = ir.build(predict=predict, mm=mm)
+    assert out["risks_found"] == 1 and out["risks"][0]["doctor"] == "Multi-Material Doctor"
+    assert out["risks"][0]["level"] == "risk"
+
+
+def test_first_layer_condition_is_not_counted_by_both_doctor_and_predictor():
+    fl = {"available": True, "overall_level": "warn", "findings": [{"level": "warn", "text": "Small contact area"}],
+          "fixes": ["Add a brim."]}
+    predict = _sp.findings(readiness={"ready": True}, first_layer=fl)
+    out = ir.build(predict=predict, first_layer=fl)
+    assert out["risks_found"] == 1 and out["risks"][0]["doctor"] == "First Layer Doctor"
+
+
+def test_next_action_goes_with_the_biggest_risk():
+    """Near-full bed (warn) listed first by Doctor order + too many colors (risk): Next must be the colors step."""
+    bed = _bf.assess({"x": 268, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True,
+                     object_count=1, multi_material=False)
+    mm = _mm.assess(5, heads=4, heads_known=True)
+    out = ir.build(bed_fit=bed, mm=mm)
+    assert out["biggest_risk"]["doctor"] == "Multi-Material Doctor" and out["biggest_risk"]["level"] == "risk"
+    assert out["next_action"] == mm["fixes"][0]
+    assert out["next_action"] != bed["fixes"][0]

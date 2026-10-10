@@ -86,7 +86,7 @@ export default function Printers() {
     queryFn: () => printerFailureInsights(connected as string),
     enabled: !!connected, refetchInterval: connected ? 60000 : false, retry: false,
   });
-  // Printer Health Score: one 0–100 folding firmware state + history failures.
+  // Printer health: firmware state and history failures, as the printer reports them.
   const health = useQuery({
     queryKey: ["printer-health", connected],
     queryFn: () => printerHealth(connected as string),

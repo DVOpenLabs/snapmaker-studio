@@ -8,7 +8,9 @@ const BANNED: [string, RegExp][] = [
   ["star rating", /\bStars?\b|StarHalf|readinessStars|of 5`/],
   ["score field", /<dt>Score<\/dt>|d\.score|scoreCap|studio_score|print_success_score/],
   ["readiness score copy", /print-readiness score|readiness score|Readiness \(est/i],
-  ["will-it-print promise", /will it print/i],
+  ["will-it-print promise", /will it print|will actually print|will stick|will print|will it fit and print/i],
+  ["certainty paraphrase", /always know|ready to print|print-ready|what's ready|what.s ready/i],
+  ["0-100 health score", /0\s*[–-]\s*100/],
 ];
 
 describe("no numeric readiness or will-it-print copy in the UI", () => {

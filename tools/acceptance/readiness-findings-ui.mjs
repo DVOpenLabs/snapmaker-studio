@@ -151,6 +151,7 @@ async function visit(label, file, theme, { expand = false } = {}) {
 }
 
 try {
+  await assertPort7125Free();   // the no-printer scenarios must really have no printer listening
   for (const theme of ["light", "dark"]) {
     const { text: t, pageText: tp } = await visit("01-signals-found", flagged, theme);
     check(`${theme}: card lists signals with what to do`, /What to do:/.test(t) && /(Risk|Heads up):/.test(t), t.slice(0, 200));
