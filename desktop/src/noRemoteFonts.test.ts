@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 
-// Studio is local-first: no stylesheet, page or component may pull a font (or anything else) from a remote host (#94).
+// Studio is local-first: nothing may pull a font from a remote host (#94). This guard covers named font hosts
+// (Google Fonts, Bunny, Typekit, ...) and any remote @import in CSS/HTML/TS/TSX; it does not detect other remote URLs.
 const sources = {
   ...import.meta.glob("./**/*.{css,html,ts,tsx}", { query: "?raw", import: "default", eager: true }),
   ...import.meta.glob("../index.html", { query: "?raw", import: "default", eager: true }),
@@ -20,6 +21,8 @@ describe("no remote font requests (#94)", () => {
     expect(Object.keys(sources).length).toBeGreaterThan(50);
     expect(Object.keys(sources)).toContain("./index.css");
     expect(Object.keys(sources)).toContain("../index.html");
+    // Vacuity guard: if raw CSS is stubbed to empty (vitest.config.ts css.include), the scan below would pass on nothing.
+    expect(sources["./index.css"]).toContain("@tailwind");
   });
 
   it("no CSS, HTML or TSX under desktop/src or index.html references an external font host", () => {

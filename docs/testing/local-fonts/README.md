@@ -20,7 +20,7 @@ recorded, aborts anything that is not loopback / `data:` / `blob:`, and fails if
 Screenshots: `before-dark.png`, `before-light.png`, `after-dark.png`, `after-light.png` (dev server, no engine running, so
 the status bar says "Reconnecting"; no real data, printers, paths or model names).
 
-The before and after pictures look the same on the test machine. That is expected, not a missed change: the font request
+The before and after screenshots are byte-identical (same SHA-256 for the dark pair and for the light pair). That is expected, not a missed change: the font request
 was blocked in the "before" run, and Inter is not installed on this machine, so both fell back to the system UI font.
 On a machine that has Inter installed, or with the font host reachable, the "before" look could differ slightly.
 
