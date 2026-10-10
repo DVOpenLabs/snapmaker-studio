@@ -20,9 +20,9 @@ when that line says the tree was clean outside this folder. `harness/README.md` 
 | Real-browser run: dev server, real engine, real WebGL, light and dark, wide and narrow | run by the harness |
 | Production build served with the app's real Tauri CSP | run by the harness |
 | The scene client against the **real engine** (sessions, credentials, ordering) | run by `harness/real-engine.mjs` on a working tree that contains the reviewed engine: see "Against the real engine" below for exactly what was and was not covered. |
-| **Packaged Windows Tauri via `tools/acceptance/run.ps1`** | **NOT RUN (outstanding).** The lane installs a rewrapped release installer with an attestation; this branch has no released installer, and building one (frozen sidecar, Tauri bundle, rewrap) was not attempted. Edge is the same engine family as WebView2, but WebView2 inside the Tauri window was not exercised. |
-| **Linux WebKitGTK graphics-enabled lane** | **NOT RUN (outstanding).** No Linux desktop with a graphics session was available. The existing lane disables compositing, so it would need a graphics-enabled variant. |
-| macOS, screen reader, software-rendered or weak GPU, a real printer | not run (a printer is never used) |
+| **Packaged Windows app (Tauri, real WebView2)** | **Run, on the CI-built installer of commit `1836fd0`:** 10 of 10 steps passed in the acceptance-identity copy on a clean local account, with the production-state tripwire clean. Details and limits: [packaged-windows/README.md](packaged-windows/README.md). It is not the final head (later commits change one message string, tests, docs and these measurements) and not the production-identity installer. |
+| **Packaged Linux app under real WebKitGTK** | **Run, on the CI-built `.deb` of commit `1836fd0`:** 15 of 15 checks on each of two example projects, graphics-enabled WSLg session, no Chromium. **WebGL ran on Mesa software rendering (llvmpipe), so GPU-backed WebGL in WebKitGTK is not proven.** Both example projects contain one object. Mouse wheel over the canvas also scrolls the page (not judged here). Details: [webkitgtk/README.md](webkitgtk/README.md). |
+| macOS, screen reader, weak or GPU-specific rendering, a real printer | not run (a printer is never used) |
 
 Do not read the browser results as proof for the packaged apps. They show the code works in a Chromium browser with
 hardware WebGL.
