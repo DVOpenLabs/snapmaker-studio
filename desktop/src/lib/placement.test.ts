@@ -129,4 +129,20 @@ describe("repeated instances", () => {
     const verdict = placementVerdict(check({ items: [first, { ...first, item_index: 2 }], item_count: 2 }));
     expect(verdict.headline).toBe("Every placed instance sits inside the U1's printable area.");
   });
+
+  it("never shows the ok headline while an instance could not be judged", () => {
+    const verdict = placementVerdict(
+      check({ items: [first], item_count: 1, off_plate: [], not_judged: 2, unresolved_objects: [{ object_id: "1" }, { object_id: "1" }] }),
+    );
+    expect(verdict.tone).toBe("blocked");
+    expect(verdict.headline).toBe(
+      "2 placed instances could not be judged, so Studio cannot say whether everything is inside the U1's printable area.",
+    );
+    expect(verdict.canFix).toBe(false);
+  });
+
+  it("explains unjudged instances even when nothing is off the plate", () => {
+    const reason = blockedReason(check({ off_plate: [], not_judged: 1, unresolved_objects: [{ object_id: "1" }] }));
+    expect(reason).toContain("could not be found or are not listed on any plate");
+  });
 });

@@ -71,7 +71,7 @@ u1convert placement ../examples/demo_offplate_foreign.3mf
 ```
 
 ```
-1 object(s) fall outside the U1's plate, but the whole arrangement fits —
+1 object falls outside the U1's plate, but the whole arrangement fits —
 moving it as one piece brings everything back on, keeping the creator's
 layout, rotation and scale.
 ```

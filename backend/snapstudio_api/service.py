@@ -574,7 +574,10 @@ def prepare_placed(path: str, out_dir: str | None = None) -> dict:
             changes=[{"key": "object placement", "old": "off the U1 plate",
                       "new": change.get("detail"), "reason": change.get("kept")}
                      for change in (result.get("changes") or [])],
-            findings=[{"title": f"Object {item.get('object_id')} outside the plate",
+            findings=[{"title": (f"Object {item.get('object_id')}, instance "
+                                 f"{(item.get('instance_index') or 0) + 1} of {item['instance_count']} "
+                                 "outside the plate" if (item.get("instance_count") or 1) > 1
+                                 else f"Object {item.get('object_id')} outside the plate"),
                        "detail": item.get("edges") and f"past the {item['edges']} edge"}
                       for item in (before.get("off_plate") or [])],
             validated=not ((result.get("after") or {}).get("off_plate")))

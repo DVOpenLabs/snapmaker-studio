@@ -50,10 +50,6 @@ OBJECTS_DIR = "3D/Objects/"
 TOLERANCE = 5e-4
 
 _VERTEX = re.compile(r'<vertex[^>]*x="([^"]*)"[^>]*y="([^"]*)"[^>]*z="([^"]*)"')
-_OBJECT_WITH_ID = re.compile(r'<object[^>]* id="([0-9]+)"[^>]*>.*?</object>', re.S)
-_OBJECT_BLOCK = re.compile(r"<object[^>]*>.*?</object>", re.S)
-_COMPONENT = re.compile(r'<component[^>]* objectid="([0-9]+)"[^>]*'
-                        r'(?: transform="([^"]*)")?[^>]*/>')
 _BUILD_ITEM = re.compile(r'<item[^>]* objectid="([0-9]+)"[^>]*'
                          r' transform="([^"]*)"')
 
@@ -223,34 +219,37 @@ def read_objects(path: str) -> dict:
     problem the plate does not have. Whether the target agrees is a question for
     the target, and it is recorded in the project's own documentation.
     """
-    from . import multipart
+    from . import geometry, multipart
 
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
-        root = _read(archive, ROOT_MODEL)
+        root_bytes = archive.read(ROOT_MODEL) if ROOT_MODEL in names else b""
+        root = root_bytes.decode("utf-8", "ignore")
         root_scale = _units.mm_per_unit(root)   # the unit the root model declares -> mm
         settings_text = _read(archive, MODEL_SETTINGS)
         try:
             project = json.loads(_read(archive, PROJECT_SETTINGS) or "{}")
         except json.JSONDecodeError:
             project = {}
-        meshes: dict[str, list[tuple]] = {}
-        for name in sorted(n for n in names if n.startswith(OBJECTS_DIR)):
+        # (part, object id) -> its points / its components. An object id is only unique within
+        # its own part: object 1 in one file and object 1 in another are different objects.
+        parts: dict[str, dict] = {}
+        for name in sorted(n for n in names if n.endswith(".model")):
             body = _read(archive, name)
-            part_scale = _units.mm_per_unit(body)   # each part's own declared unit
-            for mesh_id in re.findall(r'<object id="([0-9]+)"', body):
-                block = re.search(rf'<object id="{mesh_id}".*?</object>', body, re.S)
-                if block:
-                    meshes[mesh_id] = _scaled(_points(block.group(0)), part_scale)
-        if not meshes:
-            # A project whose geometry is still in the root model.
-            for mesh_id, block in zip(_OBJECT_WITH_ID.findall(root),
-                                      _OBJECT_BLOCK.findall(root)):
-                meshes[mesh_id] = _scaled(_points(block), root_scale)
+            scale = _units.mm_per_unit(body)   # each part's own declared unit
+            meshes: dict[str, list[tuple]] = {}
+            components: dict[str, list] = {}
+            for block in _OBJECT_BLOCK.findall(body):
+                tag = block[:block.index(">") + 1]
+                found = re.search(r'\bid="([0-9]+)"', tag)
+                if not found:
+                    continue
+                meshes[found.group(1)] = _scaled(_points(block), scale)
+                components[found.group(1)] = _components_of(block)
+            parts[name] = {"scale": scale, "meshes": meshes, "components": components}
 
     polygon = polygon_of(project)
     parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
-    components = _components_by_object(root)
 
     # One entry per BUILD ITEM, in document order. Keying by object id would keep only the last
     # transform of an object that several items use, and every instance would then be reported
@@ -258,7 +257,7 @@ def read_objects(path: str) -> dict:
     objects = []
     seen_per_object: dict[str, int] = {}
     totals: dict[str, int] = {}
-    build = build_items(root)
+    build = geometry.build_items(root_bytes) if root_bytes else []
     for entry in build:
         totals[entry["object_id"]] = totals.get(entry["object_id"], 0) + 1
     for entry in build:
@@ -268,15 +267,20 @@ def read_objects(path: str) -> dict:
         item = _units.scale_translation(parse_transform(transform_text), root_scale)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
         roles = dict(parts_by_object.get(object_id, []))
-        own_components = components.get(object_id) or [
-            (part_id, None) for part_id in part_ids]
+        item_part = entry["part"] or ROOT_MODEL
+        explicit = entry["part"] is not None
+        top = parts.get(item_part, {}).get("components", {})
         printable: list[tuple] = []
         every: list[tuple] = []
-        for mesh_id, component_transform in _leaf_components(own_components, components,
-                                                             meshes, root_scale):
-            points = meshes.get(mesh_id)
-            if points is None:
-                continue
+        resolved = True
+        if explicit and object_id not in parts.get(item_part, {}).get("meshes", {}):
+            resolved = False     # a named part that does not hold the object: not the root's object
+        entries = top.get(object_id) or [(None, part_id, None) for part_id in part_ids]
+        leaves, ok = _leaves(entries, parts, item_part, explicit, root_scale if item_part == ROOT_MODEL
+                             else parts.get(item_part, {}).get("scale", 1.0))
+        resolved = resolved and ok
+        for leaf_part, mesh_id, component_transform in leaves:
+            points = parts[leaf_part]["meshes"][mesh_id]
             whole = compose(item, component_transform)
             moved = [apply(whole, point) for point in points]
             every.extend(moved)
@@ -284,15 +288,17 @@ def read_objects(path: str) -> dict:
                 printable.extend(moved)
         objects.append({
             "object_id": object_id,
+            "part": item_part,
             "item_index": entry["item_index"],
             "instance_index": instance_index,
             "instance_count": totals[object_id],
             "name": _name_of(settings_text, object_id),
             "transform": transform_text,
             "part_ids": part_ids,
-            "footprint": _footprint(printable),
-            "footprint_with_helpers": _footprint(every),
-            "printable_points": [(x, y) for x, y, _z in printable],
+            "resolved": resolved,
+            "footprint": _footprint(printable) if resolved else None,
+            "footprint_with_helpers": _footprint(every) if resolved else None,
+            "printable_points": [(x, y) for x, y, _z in printable] if resolved else [],
         })
 
     return {"schema_version": SCHEMA_VERSION, "objects": objects,
@@ -300,43 +306,75 @@ def read_objects(path: str) -> dict:
             "polygon_source": PROJECT_SETTINGS if polygon else None}
 
 
-_ITEM_TAG = re.compile(r"<item\b[^>]*>")
-_OBJECTID_ATTR = re.compile(r'\bobjectid="([^"]*)"')
-_TRANSFORM_ATTR = re.compile(r'\btransform="([^"]*)"')
+_OBJECT_BLOCK = re.compile(r"<object\b[^>]*>.*?</object>", re.S)
+_COMPONENT_TAG = re.compile(r"<component\b[^>]*/>")
+_ATTR_OBJECTID = re.compile(r'\bobjectid="([0-9]+)"')
+_ATTR_TRANSFORM = re.compile(r'\btransform="([^"]*)"')
+_ATTR_PATH = re.compile(r'\b(?:[A-Za-z_][\w.-]*:)?path="([^"]*)"')
 _MAX_COMPONENT_DEPTH = 16
 
 
 def build_items(root: str) -> list[dict]:
-    """Every build item of a root model, in document order.
+    """Every build item of a root model, in document order (see ``geometry.build_items``).
 
-    `item_index` is the ordinal of the item among ALL `<item>` tags, so it matches
-    `geometry.build_item_dims` and the scene's build index. `transform` is the item's
-    text, or None when it has none (the identity).
+    One reader serves the whole engine, so ``item_index`` means the same thing in every
+    module. ``transform`` is the item's text, or None when it has none (the identity).
     """
+    from . import geometry
+
+    return geometry.build_items(root)
+
+
+def _components_of(block: str) -> list:
+    """(part path or None, object id, transform text or None) for each component of an object."""
     out = []
-    for ordinal, tag in enumerate(_ITEM_TAG.findall(root)):
-        object_id = _OBJECTID_ATTR.search(tag)
-        transform = _TRANSFORM_ATTR.search(tag)
-        out.append({"item_index": ordinal,
-                    "object_id": object_id.group(1) if object_id else "",
-                    "transform": transform.group(1) if transform else None})
+    for tag in _COMPONENT_TAG.findall(block):
+        mesh_id = _ATTR_OBJECTID.search(tag)
+        if not mesh_id:
+            continue
+        transform = _ATTR_TRANSFORM.search(tag)
+        path = _ATTR_PATH.search(tag)
+        out.append((path.group(1).lstrip("/") if path else None, mesh_id.group(1),
+                    transform.group(1) if transform else None))
     return out
 
 
-def _leaf_components(entries: list, components: dict, meshes: dict, scale: float,
-                     depth: int = 0, outer: tuple | None = None, seen: frozenset = frozenset()):
-    """(mesh id, transform in mm) for every mesh an object reaches through its components.
+def _leaves(entries: list, parts: dict, part: str, explicit: bool, scale: float,
+            depth: int = 0, outer: tuple | None = None, seen: frozenset = frozenset()):
+    """``([(part, mesh id, transform in mm)], resolved)`` for every mesh an object reaches.
 
     A component may itself be an object made of components, with its own transform; the
-    transforms compose down the path rather than being applied one after the other.
+    transforms compose down the path rather than being applied one after the other. A
+    component that names a part is looked up in that part and nowhere else: if it is not there
+    the object is NOT resolved, and nothing is measured from some other part's object that
+    happens to share the id.
     """
-    for mesh_id, text in entries:
+    found: list = []
+    ok = True
+    for cpart, oid, text in entries:
+        here_part = cpart if cpart is not None else part
+        strict = cpart is not None or explicit
+        holder = parts.get(here_part)
+        if holder is None or oid not in holder["meshes"]:
+            if strict:
+                ok = False
+                continue
+            # no p:path: the object is expected in this part; otherwise in the only part that has it
+            owners = [name for name, held in parts.items() if oid in held["meshes"]]
+            if len(owners) != 1:
+                continue            # absent (nothing to measure) or ambiguous (not guessed)
+            here_part, holder = owners[0], parts[owners[0]]
         here = compose(outer, _units.scale_translation(parse_transform(text), scale))
-        if meshes.get(mesh_id):
-            yield mesh_id, here
-        elif mesh_id in components and mesh_id not in seen and depth < _MAX_COMPONENT_DEPTH:
-            yield from _leaf_components(components[mesh_id], components, meshes, scale,
-                                        depth + 1, here, seen | {mesh_id})
+        points = holder["meshes"][oid]
+        if points:
+            found.append((here_part, oid, here))
+        elif holder["components"].get(oid) and (here_part, oid) not in seen \
+                and depth < _MAX_COMPONENT_DEPTH:
+            more, more_ok = _leaves(holder["components"][oid], parts, here_part, False,
+                                    holder["scale"], depth + 1, here, seen | {(here_part, oid)})
+            found.extend(more)
+            ok = ok and more_ok
+    return found, ok
 
 
 def _scaled(points: list[tuple], factor: float) -> list[tuple]:
@@ -344,21 +382,6 @@ def _scaled(points: list[tuple], factor: float) -> list[tuple]:
     if factor == 1.0:
         return points
     return [(x * factor, y * factor, z * factor) for x, y, z in points]
-
-
-def _components_by_object(root: str) -> dict:
-    out: dict[str, list] = {}
-    for match in re.finditer(
-            r'<object id="([0-9]+)"[^>]*>\s*<components>(.*?)</components>', root, re.S):
-        entries = []
-        for component in re.findall(r"<component[^>]*/>", match.group(2)):
-            mesh_id = re.search(r'objectid="([0-9]+)"', component)
-            transform = re.search(r'transform="([^"]*)"', component)
-            if mesh_id:
-                entries.append((mesh_id.group(1),
-                                transform.group(1) if transform else None))
-        out[match.group(1)] = entries
-    return out
 
 
 def _name_of(settings: str, object_id: str) -> str | None:

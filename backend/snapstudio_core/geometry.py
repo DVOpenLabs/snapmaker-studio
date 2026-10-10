@@ -103,21 +103,63 @@ def _compose(a, b):
             t[0] + a[9], t[1] + a[10], t[2] + a[11]]
 
 
+ROOT_MODEL = "3D/3dmodel.model"
+
+
+def normalize_part(path: str | None) -> str | None:
+    """A ``p:path`` as an archive entry name (leading slash removed); None when absent."""
+    if not path:
+        return None
+    return path.lstrip("/")
+
+
+def build_items(root: bytes | str) -> list[dict]:
+    """Every build item of a root model, in document order, read with the XML parser.
+
+    The ONE reader of build items: ``item_index`` is the ordinal among all ``<item>``
+    elements, so a commented-out tag or a namespace prefix cannot make two readers number
+    the items differently. ``part`` is the item's ``p:path`` (None when it has none) and
+    ``attributes`` is every attribute of the element, by name.
+    """
+    data = root.encode("utf-8") if isinstance(root, str) else root
+    out = []
+    for ordinal, it in enumerate(load_model_settings(data).iter(f"{_3MF_CORE_NS}item")):
+        out.append({"item_index": ordinal,
+                    "object_id": it.get("objectid"),
+                    "transform": it.get("transform"),
+                    "part": normalize_part(it.get(f"{_3MF_PROD_NS}path")),
+                    "attributes": dict(it.attrib)})
+    return out
+
+
 def build_item_dims(path: str) -> list[dict]:
     """Per-build-item bounding-box dimensions (mm), with the 3MF build transform and
     nested component transforms applied — i.e. each placed object's real on-plate
-    size. Read-only, exception-safe (returns [] on any failure). Used by the Scale
-    Doctor size-options ladder for per-plate dimensions."""
+    size, one entry per build item (a repeated object appears once per item).
+    Read-only, exception-safe (returns [] on any failure). Used by the Scale Doctor
+    size-options ladder for per-plate dimensions.
+
+    An item (or component) that names a ``p:path`` is looked up in THAT part and nowhere
+    else; one that cannot be found is left out here and reported by ``measure_items``."""
+    return measure_items(path)[0]
+
+
+def measure_items(path: str) -> tuple[list[dict], list[dict]]:
+    """``(placed items, unresolved items)``.
+
+    ``unresolved`` lists the build items whose object could not be found where the file says
+    it is (a ``p:path`` naming a part that is absent, or an object the part does not hold).
+    They are never measured against some other object that happens to share the id."""
     try:
         tm = ThreeMF.open(path)
     except Exception:
-        return []
+        return [], []
     try:
         model_files = {p: tm.read_part(p) for p in tm.list_parts() if p.endswith(".model")}
         if sum(len(b) for b in model_files.values()) > _MAX_BYTES:
-            return []
+            return [], []
 
-        # object_id -> (verts, [(component_objectid, component_path, component_xform)]), per file
+        # (part, object_id) -> (verts, [(component_objectid, component_part|None, component_xform)])
         parsed: dict[str, dict[str, tuple]] = {}
         unit_scale: dict[str, float] = {}
         for fname, raw in model_files.items():
@@ -143,18 +185,22 @@ def build_item_dims(path: str) -> list[dict]:
                 if cn is not None:
                     for c in cn.iterfind(f"{_3MF_CORE_NS}component"):
                         comps.append((c.get("objectid"),
-                                      c.get(f"{_3MF_PROD_NS}path"),
+                                      normalize_part(c.get(f"{_3MF_PROD_NS}path")),
                                       _units.scale_translation(_xform(c.get("transform")), scale)))
                 objs[oid] = (verts, comps)
             parsed[fname] = objs
 
-        root_file = "3D/3dmodel.model"
+        root_file = ROOT_MODEL
         if root_file not in parsed:
-            return []
+            return [], []
 
-        def find_obj(objid, prefer):
-            if prefer in parsed and objid in parsed[prefer]:
-                return prefer
+        def find_obj(objid, part, explicit):
+            """The part that holds ``objid``. A named part is the only place looked in; with no
+            ``p:path`` the current part is preferred and any other part is a legacy fallback."""
+            if part in parsed and objid in parsed[part]:
+                return part
+            if explicit:
+                return None
             for f, oo in parsed.items():
                 if objid in oo:
                     return f
@@ -162,9 +208,10 @@ def build_item_dims(path: str) -> list[dict]:
 
         budget = [0]
 
-        def collect(objid, prefer_file, xform, acc, seen):
-            f = find_obj(objid, prefer_file)
+        def collect(objid, part, explicit, xform, acc, seen, bad):
+            f = find_obj(objid, part, explicit)
             if f is None:
+                bad.append(f"object {objid} is not in {part}")
                 return
             key = (f, objid)
             if key in seen or len(seen) > 4096:   # cycle / runaway-nesting guard
@@ -176,16 +223,23 @@ def build_item_dims(path: str) -> list[dict]:
                 budget[0] += 1
                 if budget[0] > _MAX_VERTS:
                     raise _TooLarge()
-            for cid, cpath, ctf in comps:
-                collect(cid, cpath or f, _compose(xform, ctf), acc, seen)
+            for cid, cpart, ctf in comps:
+                collect(cid, cpart or f, cpart is not None, _compose(xform, ctf), acc, seen, bad)
 
         out = []
-        for ordinal, it in enumerate(load_model_settings(model_files[root_file]).iter(f"{_3MF_CORE_NS}item")):
-            oid = it.get("objectid")
+        unresolved = []
+        for it in build_items(model_files[root_file]):
+            oid = it["object_id"]
             acc: list = []
-            collect(oid, root_file,
-                    _units.scale_translation(_xform(it.get("transform")), unit_scale[root_file]),
-                    acc, frozenset())
+            bad: list = []
+            part = it["part"] or root_file
+            collect(oid, part, it["part"] is not None,
+                    _units.scale_translation(_xform(it["transform"]), unit_scale[root_file]),
+                    acc, frozenset(), bad)
+            if bad:
+                unresolved.append({"item_index": it["item_index"], "object_id": oid,
+                                   "part": part, "reason": bad[0]})
+                continue
             if not acc:
                 continue
             xs = [p[0] for p in acc]; ys = [p[1] for p in acc]; zs = [p[2] for p in acc]
@@ -193,16 +247,17 @@ def build_item_dims(path: str) -> list[dict]:
             # `item_index` is the build item's ordinal in the root model: one object used by two items is
             # two entries, and this tells them apart (an item with no geometry leaves a gap in the sequence).
             out.append({"object_id": oid,
-                        "item_index": ordinal,
+                        "item_index": it["item_index"],
+                        "part": part,
                         "dimensions": {"x": round(hi[0] - lo[0], 2),
                                        "y": round(hi[1] - lo[1], 2),
                                        "z": round(hi[2] - lo[2], 2)},
                         "bounds": {"min": lo, "max": hi}})
-        return out
+        return out, unresolved
     except _TooLarge:
-        return []
+        return [], []
     except Exception:
-        return []
+        return [], []
 
 
 def load_mesh(path: str) -> Mesh | None:

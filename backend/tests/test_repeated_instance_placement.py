@@ -44,8 +44,8 @@ def test_an_in_bounds_instance_cannot_hide_an_off_plate_one(tmp_path, record, or
     assert [rows[i]["instance_index"] for i in (0, 1)] == [0, 1]
     assert rows[0]["instance_count"] == 2 and rows[0]["object_id"] == "1"
     # the summary names the instance, and does not claim everything is inside
-    assert "1 of 2 placed instance(s)" in report["summary"]
-    assert f"object 1 instance {off_item + 1} of 2" in report["summary"]
+    assert "1 of 2 placed instances" in report["summary"]
+    assert f"object 1, instance {off_item + 1} of 2" in report["summary"]
     assert "inside" not in report["summary"]
 
 
@@ -210,5 +210,5 @@ def test_prepare_placed_copy_refuses_when_one_move_cannot_fix_instances(tmp_path
 def test_a_millimetre_project_with_one_item_per_object_reports_as_before(tmp_path):
     path = fx.plain_cube_3mf(tmp_path / "one.3mf", at=(300, 60, 0))
     report = pp.assess(str(path))
-    assert report["summary"].startswith("1 object(s) fall outside")
+    assert report["summary"].startswith("1 object falls outside")
     assert [row["instance_count"] for row in report["items"]] == [1]
