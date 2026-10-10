@@ -14,6 +14,37 @@ All notable changes to this project are documented here. The format is based on
   It never shows a percentage or a verdict. The Intelligence Report no longer shows a readiness
   rating or an "expected success after fixes" figure; it shows how many risks were found.
 
+## [1.5.1] - 2026-10-09
+
+**Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**
+
+### Added
+- **Choose any spool from your inventory** (Project Materials). Each slot can open the provider's
+  whole spool list, searchable by vendor, material, colour or id, showing colour, vendor, material,
+  spool id, weight status and the status of the mapped Orca preset. When a spool is picked with no
+  Orca preset, the slot and the review say the project's existing filament preset will remain.
+- **Forget saved mapping.** A mapping Studio remembered for one spool, or for similar spools, can be
+  forgotten from the slot. The confirmation says what is forgotten and what is not changed (your
+  inventory, your Orca presets and the project).
+- **Why a setting changed.** The Prepare summary shows a short reason under each setting Studio
+  changed for the U1 and labels where the statement comes from: "Studio's check" or "Verify in
+  Snapmaker Orca". Lists Studio had to repair say exactly what was done.
+- **User guide links.** Help and Get Started link to the task-first user guide, which shows where
+  each statement comes from and which Studio version it was checked against. Its screenshots were
+  captured from v1.5.0 and have not been retaken.
+
+### Fixed
+- **A saved-mappings file Studio could not read is no longer treated as damaged.** If another
+  program briefly holds the file, Studio waits and retries; if it still cannot read it, it changes
+  nothing and asks you to try again.
+- **Printer-action confirmation is an accessible dialog.** Start, Cancel print and Emergency stop
+  now open a named, described dialog that starts on Cancel, is dismissed only by Escape or Cancel,
+  names the printer (and the file for Start), and is withdrawn if the printer changes or can no
+  longer take the action.
+- **Tool tabs work from the keyboard.** The Compatibility / Source Check and Print Quality / First
+  Layer tab rows respond to the arrow keys, Home and End, show a focus outline and wrap on narrow
+  windows. Moving along the row does not open or re-run a tool.
+
 ## [1.5.0] - 2026-10-06
 
 **Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**
