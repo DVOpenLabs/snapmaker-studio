@@ -1,0 +1,41 @@
+{
+  "tag": "before",
+  "mode": "dev",
+  "requestsSeen": 320,
+  "nonLoopbackAttempts": [
+    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  ],
+  "results": [
+    {
+      "theme": "dark",
+      "bodyFont": "Inter, system-ui, sans-serif",
+      "monoFont": "\"JetBrains Mono\", ui-monospace, monospace",
+      "textLength": 1958,
+      "dark": true,
+      "fontFacesLoaded": 0
+    },
+    {
+      "theme": "light",
+      "bodyFont": "Inter, system-ui, sans-serif",
+      "monoFont": "\"JetBrains Mono\", ui-monospace, monospace",
+      "textLength": 1958,
+      "dark": false,
+      "fontFacesLoaded": 0
+    }
+  ],
+  "checks": [
+    {
+      "check": "no request left loopback",
+      "pass": false
+    },
+    {
+      "check": "text rendered in both themes",
+      "pass": true
+    },
+    {
+      "check": "theme applied as requested",
+      "pass": true
+    }
+  ]
+}
