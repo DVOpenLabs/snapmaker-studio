@@ -254,3 +254,22 @@ def test_the_preview_is_exactly_what_recommended_changes_in_the_preserve_copy(tm
     preview = preserve.settings_summary["recommended_changes"]
     assert {r["key"] for r in preview} == {d["key"] for d in config_diff(applied, full)}
     assert all(r["old"] == display_value(applied.get(r["key"]), key=r["key"]) for r in preview)
+
+
+def test_the_late_guard_alone_withdraws_a_declaration_with_no_value():
+    cfg = {"different_settings_to_system": ["nozzle_volume_type;layer_height", "nozzle_volume_type", ""]}
+    changes = orca_import.withdraw_nozzle_volume_type_declaration(cfg)
+    assert cfg["different_settings_to_system"] == ["layer_height", "", ""]
+    assert [c["key"] for c in changes] == ["different_settings_to_system"]
+    assert "declared nozzle_volume_type" in changes[0]["explanation"]          # true: it was declared
+
+
+def test_the_late_guard_leaves_a_project_without_the_declaration_alone():
+    cfg = {"different_settings_to_system": ["layer_height", "", ""]}
+    assert orca_import.withdraw_nozzle_volume_type_declaration(cfg) == []
+    assert cfg["different_settings_to_system"] == ["layer_height", "", ""]
+
+
+def test_the_late_guard_does_nothing_while_the_key_is_still_in_the_project():
+    cfg = {"nozzle_volume_type": ["Standard"], "different_settings_to_system": ["nozzle_volume_type"]}
+    assert orca_import.withdraw_nozzle_volume_type_declaration(cfg) == []

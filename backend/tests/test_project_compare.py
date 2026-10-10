@@ -302,3 +302,12 @@ def test_paint_the_file_mentions_but_studio_cannot_decode_leaves_slots_unknown(e
 def test_a_file_with_no_painting_at_all_is_still_readable(env, tmp_path):
     out = service.project_materials(str(_five_colour_project(tmp_path)))
     assert out["usage_readable"] is True and out["slots"][4]["usage"]["verdict"] == "no_reference_found"
+
+
+def test_geometry_parts_that_cannot_be_read_are_unavailable_not_no_painting(tmp_path, monkeypatch):
+    from snapstudio_core import painted_color
+    tm = pc.ThreeMF.open(_five_colour_project(tmp_path))
+    def boom(part):
+        raise OSError("unreadable")
+    monkeypatch.setattr(tm, "read_part", boom)
+    assert painted_color.read_container(tm)["available"] is False

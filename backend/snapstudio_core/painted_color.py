@@ -574,15 +574,19 @@ def read_container(tm: ThreeMF) -> dict:
         return _unavailable("This project carries no model geometry.")
 
     dialect = None
+    readable = 0
     for part in model_parts:
         try:
             found = _dialect_of(tm.read_part(part))
+            readable += 1
         except Exception:
             continue
         if found:
             dialect = found
             break
     if dialect is None:
+        if not readable:
+            return _unavailable("Studio could not read any model geometry in this project.")
         return _none_found(len(model_parts))
 
     attribute = _ATTRIBUTE[dialect]
