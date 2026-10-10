@@ -215,6 +215,59 @@ def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
             RAFT_EXPANSION_REASON, RAFT_EXPANSION_WHY)
 
 
+NOZZLE_VOLUME_TYPE_REASON = "left out: Snapmaker Orca does not write this setting"
+NOZZLE_VOLUME_TYPE_WHY = (
+    "The projects Snapmaker Orca saves for the U1 do not contain a nozzle volume type; Bambu Studio and OrcaSlicer "
+    "write one (for example Standard). A copy that carried it was reported to show a 'newer version, values replaced' "
+    "notice naming it. Whether leaving it out removes that notice has not been confirmed in Snapmaker Orca, so check "
+    "the opened copy in Orca. The original file is not changed.")
+NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: Snapmaker Orca does not write this setting"
+
+
+def _withdraw_declaration(cfg: dict, key: str, changes: list) -> None:
+    """Take `key` out of every entry of `different_settings_to_system`, so a value that is gone is not still declared."""
+    old = cfg.get("different_settings_to_system")
+    if not isinstance(old, (list, str)):
+        return
+    new, touched = [], False
+    for entry in (old if isinstance(old, list) else [old]):      # a scalar string is the process entry
+        parts = [p.strip() for p in str(entry).split(";") if p.strip()]
+        if key in parts:
+            touched = True
+            entry = ";".join(p for p in parts if p != key)
+        new.append(entry)
+    if touched:
+        new = new if isinstance(old, list) else new[0]
+        cfg["different_settings_to_system"] = new
+        _change(changes, "different_settings_to_system", old, new, NOZZLE_VOLUME_TYPE_DECLARATION_REASON,
+                f"The project declared {key} as a deviation from its presets. The copy does not carry that setting, so "
+                "there is nothing left to declare.")
+
+
+def withdraw_nozzle_volume_type_declaration(cfg: dict) -> list[dict]:
+    """The last word on the key's declaration: run after every step that can declare, so none can bring it back."""
+    changes: list[dict] = []
+    if "nozzle_volume_type" not in cfg:
+        _withdraw_declaration(cfg, "nozzle_volume_type", changes)
+    return changes
+
+
+def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:
+    """Leave out `nozzle_volume_type`, which Snapmaker Orca does not write.
+
+    Measured on the committed fixtures: the Snapmaker Orca 2.3.5 and 2.3.6 projects have no such key; Bambu Studio
+    2.08 and OrcaSlicer 2.4.2 projects carry it (also OrcaSlicer ones that name a U1), so it is not Bambu-only.
+    Removing it makes the copy read like one Snapmaker Orca saved. OrcaSlicer-authored U1 files lose it too: nothing
+    here shows Orca needs it, and the 'not confirmed in Snapmaker Orca' label stays on the change. A project without
+    the key is left exactly as it was, unless it still declares the key: any declaration of it is withdrawn too."""
+    if "nozzle_volume_type" not in cfg:
+        return
+    old = cfg.pop("nozzle_volume_type")
+    _change(changes, "nozzle_volume_type", old, None, NOZZLE_VOLUME_TYPE_REASON, NOZZLE_VOLUME_TYPE_WHY)
+    changes[-1]["removed"] = True
+    _withdraw_declaration(cfg, "nozzle_volume_type", changes)
+
+
 # --- entry points -----------------------------------------------------------
 
 def apply_compatibility(cfg: dict, filament_count: int = 0) -> list[dict]:
@@ -231,6 +284,7 @@ def apply_compatibility(cfg: dict, filament_count: int = 0) -> list[dict]:
     _fix_tree_support_with_adaptive_layers(cfg, changes)
     _fix_filament_array_validity(cfg, changes, filament_count)
     _fix_negative_raft_expansion(cfg, changes)
+    _drop_foreign_nozzle_volume_type(cfg, changes)
     return changes
 
 

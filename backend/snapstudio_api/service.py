@@ -326,10 +326,11 @@ def project_materials(path: str, provider: str | None = None, provider_url: str 
     if "supported" in opened:
         return opened
     cfg, plates, kind, url, state = (opened[k] for k in ("cfg", "plates", "kind", "url", "state"))
-    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
-                      catalog=catalog if catalog is not None else _orca_catalog(),
-                      store=store if store is not None else _material_store(),
-                      limit=max(1, min(int(limit), 20)))
+    analysis = pm.analyze(cfg, plates, provider=kind if url else None, state=state,
+                          catalog=catalog if catalog is not None else _orca_catalog(),
+                          store=store if store is not None else _material_store(),
+                          limit=max(1, min(int(limit), 20)))
+    return pm.attach_usage(analysis, opened.get("usage"))
 
 
 def project_materials_inventory(path: str, slot: int, provider: str | None = None,
@@ -378,7 +379,14 @@ def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_b
             state = {"available": False, "error_code": "invalid_address", "spools": [], "slots": []}
         except Exception:
             state = {"available": False, "error_code": "unreachable", "spools": [], "slots": []}
-    return {"cfg": cfg, "plates": plates, "kind": kind, "url": url, "state": state}
+    usage = None
+    try:
+        if slot is None:                # the single-slot inventory has no use for it
+            from snapstudio_core.project_compare import slot_usage
+            usage = slot_usage(tm)
+    except Exception:
+        usage = None            # unreadable usage is reported as unknown, never as unused
+    return {"cfg": cfg, "plates": plates, "kind": kind, "url": url, "state": state, "usage": usage}
 
 
 def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
