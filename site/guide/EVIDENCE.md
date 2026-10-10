@@ -157,4 +157,5 @@ Automated checks cannot judge prose clarity or whether a cited source is the rig
 
 The **Print risk signals** card replaced the old "Print readiness (estimate)" percentage and its "Likely to print (N%)" verdict (issue #92), because nothing calibrated that number against print outcomes.
 The card now lists each signal Studio found, what it means and what to do, plus what was and was not checked (`success_predict.findings`). It shows no percentage, band or verdict.
-The "Studio score" on the Intelligence Report is a separate number and is not covered by this change.
+The Intelligence Report's "Studio score" was removed in the same change, and the report now shows a count of risks found.
+The Check stage cites the current code on `main` (tag-pinned links are only used for statements that were true at that tag), and says that v1.5.1 and earlier showed a percentage.

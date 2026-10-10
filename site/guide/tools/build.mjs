@@ -231,7 +231,7 @@ function differsHtml(items = []) {
 function sourcesHtml(page) {
   if (!page.sources?.length) return "";
   const labels = { file: "Read from your file", engine: "Studio's check", estimate: "Estimate", orca: "Verify in Snapmaker Orca" };
-  const rows = (page.sources || []).map((s) => `<li><a href="${esc(s.ref)}" target="_blank" rel="noopener noreferrer">${esc(s.label)}</a> — ${labels[s.kind]}; source code on GitHub.</li>`).join("");
+  const rows = (page.sources || []).map((s) => `<li><a href="${esc(s.ref.startsWith("@") ? G.links[s.ref.slice(1)] : s.ref)}" target="_blank" rel="noopener noreferrer">${esc(s.label)}</a> — ${labels[s.kind]}; source code on GitHub.</li>`).join("");
   const checked = page.checked ? `<p class="checked-version">Checked against Snapmaker Studio v${esc(page.checked)}.</p>` : "";
   return `<details class="sources"><summary>Where this comes from</summary><div>${checked}${rows ? `<ul>${rows}</ul>` : ""}</div></details>`;
 }
