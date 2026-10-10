@@ -81,6 +81,18 @@ console.log(`UI: this checkout (${join(repo, "desktop")}) on ${UI}`);
 const job = (filename, status) => ({ job_id: filename + status, filename, status, start_time: 1, end_time: 2, print_duration: 1, total_duration: 1, filament_used: 1, metadata: {} });
 const fakeJobs = [job("example-project.gcode", "error"), job("other-a.gcode", "completed"), job("other-b.gcode", "completed"), job("other-c.gcode", "completed"), job("other-d.gcode", "completed")];
 // Port 7125 is Moonraker's own; fail clearly (rather than test a real printer) if anything already listens on it.
+async function waitPort7125Free(seconds = 240) {
+  for (let i = 0; i < seconds / 5; i++) {
+    const busy = await new Promise((resolve) => {
+      const c = net.connect(7125, "127.0.0.1");
+      c.once("connect", () => { c.destroy(); resolve(true); });
+      c.once("error", () => resolve(false));
+    });
+    if (!busy) return;
+    await sleep(5000);
+  }
+  throw new Error("127.0.0.1:7125 stayed busy; the no-printer scenarios need nothing listening there");
+}
 async function assertPort7125Free() {
   const busy = await new Promise((resolve) => {
     const c = net.connect(7125, "127.0.0.1");
@@ -89,12 +101,12 @@ async function assertPort7125Free() {
   });
   if (busy) { console.error("Something already listens on 127.0.0.1:7125; refusing to run the fake-printer scenario."); process.exit(2); }
 }
-function startFakePrinter() {
+function startFakePrinter({ warnings = ["example firmware warning"] } = {}) {
   const srv = http.createServer((req, res) => {
     const url = req.url || "";
     const reply = (obj) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
     if (url.startsWith("/printer/info")) return reply({ result: { state: "ready", state_message: "Printer is ready", hostname: "example-printer" } });
-    if (url.startsWith("/server/info")) return reply({ result: { klippy_state: "ready", warnings: ["example firmware warning"], failed_components: [] } });
+    if (url.startsWith("/server/info")) return reply({ result: { klippy_state: "ready", warnings, failed_components: [] } });
     if (url.startsWith("/server/history/list")) return reply({ result: { jobs: fakeJobs } });
     if (url.startsWith("/server/history/totals")) return reply({ result: { job_totals: { total_jobs: 5 } } });
     res.writeHead(404); res.end("{}");
@@ -105,6 +117,9 @@ function startFakePrinter() {
   });
 }
 
+// What must never appear on the Printers page card: a number out of 100, a grade, a score, or a "good to print" verdict.
+const PRINTER_PAGE_BAD = new RegExp(String.raw`.{0,30}(\d+\s*\/\s*100|good to print|Healthy \(|Printer Health Score|\bScore\b|\bGrade\b).{0,30}`, "gi");
+
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  - " + detail : ""}`); };
 const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -113,6 +128,7 @@ const violations = [];
 const errors = [];
 
 async function visit(label, file, theme, { expand = false, notVerified = false } = {}) {
+  if (!expand) await waitPort7125Free();   // no-printer scenarios must really have no printer; the expand scenario starts its own
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 2800 }, colorScheme: theme });
   await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
   await ctx.route(`${ENGINE}/**`, async (route) => {
@@ -186,6 +202,11 @@ async function visitPrinters(label, theme) {
 }
 
 try {
+  // Self-test: the check above must fail on the strings it exists to catch, so a bad escape cannot make it pass everything.
+  for (const bad of ["Score 85", "Grade B", "Printer Health Score", "92/100", "Healthy (100/100) good to print"]) {
+    check(`self-test: the printer-page check catches "${bad}"`, [...`before ${bad} after`.matchAll(PRINTER_PAGE_BAD)].length > 0);
+  }
+  check("self-test: the printer-page check passes plain wording", [...`What the printer reported. 1 of the last 5 prints failed. From firmware state.`.matchAll(PRINTER_PAGE_BAD)].length === 0);
   await assertPort7125Free();   // the no-printer scenarios must really have no printer listening
   for (const theme of ["light", "dark"]) {
     const { text: t, pageText: tp } = await visit("01-signals-found", flagged, theme);
@@ -224,12 +245,24 @@ try {
     // The Printers page, with the fake printer answering: "What the printer reported", no grade or /100.
     for (const theme of ["light", "dark"]) {
       const { text: t, pageText: pt } = await visitPrinters("05-printers-what-the-printer-reported", theme);
-      const bad = [...pt.matchAll(/.{0,30}(\d+\s*\/\s*100|good to print|Healthy \(|Printer Health Score|Score|Grade).{0,30}/gi)].map((m) => m[0]);
+      const bad = [...pt.matchAll(PRINTER_PAGE_BAD)].map((m) => m[0]);
       check(`${theme}: Printers page card is "What the printer reported" with what was read and no grade, score or /100`,
         /What the printer reported/.test(t) && /From firmware state/.test(t) && bad.length === 0, bad.join(" | ") || t.slice(0, 200));
       check(`${theme}: Printers page verdict does not say "Nothing concerning" while listing concerns`,
         !(/Nothing concerning/.test(t) && /(failed|warning)/.test(t)), t.slice(0, 260));
     }
+    // Failed print only, no firmware warning, ready firmware, no diagnostics concern: the chip must not say Healthy.
+    fake.close();
+    await sleep(500);
+    await assertPort7125Free();
+    const quiet = await startFakePrinter({ warnings: [] });
+    try {
+      for (const theme of ["light", "dark"]) {
+        const { text: t, pageText: pt } = await visitPrinters("06-printers-failed-print-no-warning", theme);
+        check(`${theme}: ready firmware + one failed print and no warning: the chip says "See concerns", never "Healthy", and the card lists the failed print`,
+          /See concerns/.test(pt) && !/\bHealthy\b/.test(pt) && /1 of the last 5 prints failed/.test(t) && !/Nothing concerning/.test(t), t.slice(0, 240));
+      }
+    } finally { quiet.close(); }
   } finally { fake.close(); }
   // The "Not verified: Object spacing" state (one stubbed report reply, see visit()).
   for (const theme of ["light", "dark"]) {

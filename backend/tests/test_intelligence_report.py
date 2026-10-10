@@ -332,3 +332,28 @@ def test_printer_status_count_matches_the_deduped_risk_count():
     printer_risks = [r for r in out["risks"] if r["doctor"] == "Printer Doctor"]
     assert len(printer_risks) == 2
     assert out["printer_status"] == "Answered, 2 concerns"
+
+
+def test_merge_raises_only_the_matching_finding_not_the_whole_doctor():
+    """Real producers: 5 colors gives a colors risk AND an unrelated warn (filament settings). The predictor's
+    toolhead-fit signal must not promote the unrelated warn, and the biggest risk/next action are the colors ones."""
+    mm = _mm.assess(5, heads=4, heads_known=True, metadata_issues=["filament array mismatch"])
+    assert [f["level"] for f in mm["findings"]] == ["risk", "warn"]
+    predict = _sp.findings(readiness={"ready": True}, toolfit=_tf.assess(5, 4, True))
+    out = ir.build(predict=predict, mm=mm)
+    levels = {("toolheads" in r["text"]): r["level"] for r in out["risks"]}
+    assert levels == {True: "risk", False: "warn"}
+    assert out["risks_found"] == 2
+    assert "toolheads" in out["biggest_risk"]["text"] and out["next_action"] == mm["fixes"][0]   # already a risk: the Doctor's own fix stands
+
+
+def test_stronger_signal_raises_only_the_toolhead_finding_when_the_doctor_rated_it_lower():
+    mm = {"available": True, "overall_level": "warn", "findings": [
+        {"level": "warn", "text": "Filament settings are inconsistent"},
+        {"level": "warn", "text": "Uses 5 colors on 4 toolheads"}], "fixes": ["Conform the filament arrays.", "Remap to 4 colors."]}
+    predict = _sp.findings(readiness={"ready": True}, toolfit=_tf.assess(5, 4, True))
+    out = ir.build(predict=predict, mm=mm)
+    by_text = {r["text"]: r["level"] for r in out["risks"]}
+    assert by_text == {"Filament settings are inconsistent": "warn", "Uses 5 colors on 4 toolheads": "risk"}
+    assert out["biggest_risk"]["text"] == "Uses 5 colors on 4 toolheads"
+    assert out["next_action"] == predict["signals"][0]["action"] and "Remap" in out["next_action"]   # not the filament-arrays fix

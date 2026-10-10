@@ -6,7 +6,7 @@ Real Studio engine and this branch's own web UI, driven in **Microsoft Edge (Chr
 is reachable: the only printer address used is this machine's own, where nothing listens, and any engine request naming another host
 or discovery is aborted and fails the run.
 
-**Result: 36/36 checks passed (`results.json`)**, in light and dark, including a scan of the whole page (visible text and every accessible name) after the Intelligence Report has loaded: no score, "/ 100", percentage, star rating ("X of 5"), "Score" or "rating" label, readiness rating, "will it print" or success verdict. The only percentages allowed are measured geometry ("N% of surfaces", "steep overhangs") and the pricing margin (`results.json`).
+**Result: 44/44 checks passed (including six self-tests that the printer-page check fails on "Score 85", "Grade B", "Printer Health Score", "92/100" and "Healthy (100/100) good to print") (`results.json`)**, in light and dark, including a scan of the whole page (visible text and every accessible name) after the Intelligence Report has loaded: no score, "/ 100", percentage, star rating ("X of 5"), "Score" or "rating" label, readiness rating, "will it print" or success verdict. The only percentages allowed are measured geometry ("N% of surfaces", "steep overhangs") and the pricing margin (`results.json`).
 
 | Screenshot | What it shows |
 |---|---|
@@ -15,6 +15,7 @@ or discovery is aborted and fails the run.
 | [03 light](03-printer-answered-evidence-light-page.png), [03 dark](03-printer-answered-evidence-dark-page.png) | A fake printer (a Moonraker look-alike on this machine) answers; the Intelligence Report's evidence is expanded. The Printer line says "Answered, N concerns"; no health number, grade, "good to print" or "Compatible". |
 | [04 light](04-not-verified-object-spacing-light-page.png), [04 dark](04-not-verified-object-spacing-dark-page.png) | The Intelligence Report when object spacing is not verified and nothing else was found: the first tile reads "Not verified: Object spacing" (no "Risks found 0", no biggest risk), and the advisory line does not call it a count of risks. **One engine reply is stubbed for this state**: the script takes the real report reply for the cube and removes the risks / marks spacing not verified, because no real fixture here is both free of findings and a multi-object 3MF. The rest of the page is real. |
 | [05 light](05-printers-what-the-printer-reported-light-card.png), [05 dark](05-printers-what-the-printer-reported-dark-card.png) | The Printers page card "What the printer reported", with the fake printer answering: a plain verdict, the drivers, and "From firmware state + last 5 prints"; no grade, score or /100, and no "Nothing concerning" beside listed concerns. |
+| [06 light](06-printers-failed-print-no-warning-light-page.png), [06 dark](06-printers-failed-print-no-warning-dark-page.png) | The Printers page when the printer reports ready firmware, no firmware warning and one failed recent print: the state chip reads "See concerns" (not "Healthy") and the card below lists "1 of the last 5 prints failed". |
 | `*-page.png` | The whole page, taken after the Intelligence Report loaded: it shows "Risks found" and no score hero. |
 
 Checked on each: the card lists signals with "What to do"; names its evidence kind; has "Studio checked" and "Studio did not check"

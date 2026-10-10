@@ -133,21 +133,28 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     def _level(sg):
         return "risk" if sg.get("level") == "risk" else "warn"
 
-    def _merge_into_doctor(doctor, sg):
-        """The Doctor already reports this condition: raise its severity if the signal is stronger, do not add a second risk."""
+    def _merge_into_doctor(doctor, sg, same_condition=None):
+        """The Doctor already reports this condition: raise ONLY the matching finding to the signal's severity
+        (never its other findings), and do not add a second risk. Returns False when the Doctor has no finding."""
         mine = [r for r in risks if r["doctor"] == doctor]
         if not mine:
             return False
-        for r in mine:
+        matching = [r for r in mine if same_condition and same_condition(r)]
+        if not matching:   # the signal is derived from the Doctor's worst finding
+            top = max(_ORDER.get(r["level"], 0) for r in mine)
+            matching = [r for r in mine if _ORDER.get(r["level"], 0) == top]
+        for r in matching:
             if _ORDER[_level(sg)] > _ORDER.get(r["level"], 0):
                 r["level"] = _level(sg)
+                if sg.get("action"):
+                    r["action"] = sg["action"]   # the step for THIS condition, not the Doctor's first fix
         return True
 
     for sg in signals:
         sid = sg.get("id")
         if sid == "printer-health":
             continue   # the same drivers are already listed as Printer Doctor risks
-        if sid == "toolhead-fit" and _merge_into_doctor("Multi-Material Doctor", sg):
+        if sid == "toolhead-fit" and _merge_into_doctor("Multi-Material Doctor", sg, lambda r: "toolhead" in r["text"].lower()):
             continue   # the Multi-Material Doctor reports this same colors-vs-toolheads condition
         if sid == "first-layer" and _merge_into_doctor("First Layer Doctor", sg):
             continue
