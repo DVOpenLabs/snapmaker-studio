@@ -10,6 +10,7 @@ mechanics.
   for every future release, not just one.
 """
 import os
+import json
 import re
 
 import pytest
@@ -35,8 +36,7 @@ _BANNED = [
 @pytest.mark.parametrize("rel", _PUBLIC_DOCS)
 def test_no_print_success_guarantees(rel):
     path = os.path.join(_ROOT, rel)
-    if not os.path.exists(path):
-        pytest.skip(f"{rel} not present")
+    assert os.path.exists(path), f"required public file is missing: {rel}"
     text = open(path, encoding="utf-8").read().lower()
     for phrase in _BANNED:
         assert phrase not in text, f"banned claim '{phrase}' found in {rel}"
@@ -66,8 +66,7 @@ _BANNED_TOOLS = [
 ])
 def test_public_docs_have_no_tooling_names(rel):
     path = os.path.join(_ROOT, rel)
-    if not os.path.exists(path):
-        pytest.skip(f"{rel} not present")
+    assert os.path.exists(path), f"required public file is missing: {rel}"
     text = open(path, encoding="utf-8").read().lower()
     for label, pattern in _BANNED_TOOLS:
         assert not re.search(pattern, text), f"tooling term '{label}' found in {rel}"
@@ -106,8 +105,7 @@ _BANNED_INTERNAL = [
 @pytest.mark.parametrize("rel", _RELEASE_SURFACES)
 def test_release_notes_have_no_internal_tooling_terms(rel):
     path = os.path.join(_ROOT, rel)
-    if not os.path.exists(path):
-        pytest.skip(f"{rel} not present")
+    assert os.path.exists(path), f"required public file is missing: {rel}"
     text = open(path, encoding="utf-8").read().lower()
     for label, pattern in _BANNED_INTERNAL:
         assert not re.search(pattern, text), f"internal/tooling term '{label}' found in {rel}"
@@ -138,3 +136,25 @@ def test_intelligence_report_copy_is_advisory():
 def test_success_predict_verdict_not_overconfident():
     v = _sp.predict(readiness={"ready": True, "warnings": []})["verdict"].lower()
     assert "good to go" not in v
+
+
+def test_readme_and_release_notes_keep_the_golden_answer_for_success_unknown():
+    """Public-copy checks cannot detect a paraphrased overclaim or judge prose clarity."""
+    for rel in ("README.md", os.path.join("docs", "RELEASE_NOTES.md")):
+        path = os.path.join(_ROOT, rel)
+        assert os.path.exists(path), f"required public file is missing: {rel}"
+        text = open(path, encoding="utf-8").read().lower()
+        assert "guaranteed print" not in text
+        assert "100% print success" not in text
+
+
+def test_answers_forbidden_phrases_are_absent_from_all_public_guide_content():
+    """Forbidden-phrase coverage cannot judge prose clarity, source fitness, honest dates, physical behavior, paraphrased overclaims, or screen readers."""
+    answers = json.load(open(os.path.join(_ROOT, "site", "guide", "content", "answers.json"), encoding="utf-8"))
+    public = "\n".join(
+        json.dumps(json.load(open(os.path.join(_ROOT, "site", "guide", "content", name), encoding="utf-8")))
+        for name in ("guide.json", "examples.json", "shots.json")
+    ).lower()
+    for answer in answers["answers"]:
+        for phrase in answer["forbidden"]:
+            assert phrase.lower() not in public, f"forbidden phrase '{phrase}' found in guide content"

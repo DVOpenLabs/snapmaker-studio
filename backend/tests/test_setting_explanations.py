@@ -22,7 +22,9 @@ from snapstudio_core.rules import apply_clamps, clamp_explanation, load_rules
 
 def _project(tmp_path, settings: dict):
     path = tmp_path / "foreign.3mf"
-    base = {"printer_model": "Bambu Lab X1 Carbon", "filament_colour": ["#FF0000"], "filament_type": ["PLA"]}
+    array_lengths = [len(value) for value in settings.values() if isinstance(value, list)]
+    count = max(array_lengths or [1])
+    base = {"printer_model": "Bambu Lab X1 Carbon", "filament_colour": ["#FF0000"] * count, "filament_type": ["PLA"] * count}
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr("Metadata/project_settings.config", json.dumps({**base, **settings}))
@@ -82,6 +84,9 @@ def test_a_negative_raft_expansion_has_one_owner_per_run_and_one_explained_recor
     assert records[0]["explanation"] == orca_import.RAFT_EXPANSION_WHY
     # the reason is the engine's own, never empty, and never shown instead of the explanation
     assert records[0]["reason"] == orca_import.RAFT_EXPANSION_REASON
+    # whichever step wrote the surviving explanation also wrote its source and kind: never a mixed pair
+    assert records[0]["source"] == "Studio's import rule for this setting"
+    assert records[0]["kind"] == "orca"
 
 
 @pytest.mark.parametrize("mode", ["safe", "preserve", "u1", "optimize"])
@@ -109,8 +114,21 @@ def test_each_clamped_setting_reaches_the_summary_with_its_explanation(tmp_path)
 def test_an_ordinary_orca_import_change_keeps_its_own_explanation(tmp_path):
     summary, _ = _prepare(tmp_path, {"brim_type": "auto_brim"})
     (brim,) = [c for c in summary["compat_changed"] if c["key"] == "brim_type"]
-    assert "Snapmaker Orca" in brim["explanation"]
+    assert brim["explanation"] == "Studio replaced the automatic brim choice with no brim. A brim you chose yourself is kept."
+    assert brim["kind"] == "orca"
+    assert brim["source"] == "Studio's import rule for this setting"
+    assert brim["kind"] == "orca"
     assert brim["reason"] and brim["reason"] != brim["explanation"]
+
+
+@pytest.mark.parametrize("settings,key,phrase", [
+    ({"adaptive_layer_height": "1", "support_type": "tree", "support_style": "organic"}, "support_style", "Studio replaced the tree support style with the hybrid style for this U1 copy."),
+])
+def test_orca_verify_advice_names_only_studios_operation(settings, key, phrase, tmp_path):
+    summary, _ = _prepare(tmp_path, settings)
+    change = next(c for c in summary["compat_changed"] if c["key"] == key)
+    assert change["explanation"] == phrase
+    assert change["kind"] == "orca"
 
 
 def test_explanations_are_absent_or_non_empty_and_recommendations_carry_none(tmp_path):
@@ -121,3 +139,95 @@ def test_explanations_are_absent_or_non_empty_and_recommendations_carry_none(tmp
     # optional recommendations are a separate list and are not explained here
     for change in summary["recommended_changes"]:
         assert "explanation" not in change
+
+
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("value,count,expected,reason", [
+    ([220], 1, "Studio wrote each value in this list as text.", "wrote each value in the list as text"),
+    ([5, 5, 5, 5], 4, "Studio wrote each value in this list as text.", "wrote each value in the list as text"),
+    ([0, 0, 0, 0, 0], 5, "Studio wrote each value in this list as text.", "wrote each value in the list as text"),
+    ([" 5 ", 220, "", "7"], 4, "Studio filled an empty entry with the last non-empty value in this list. Studio trimmed whitespace around a string value. Studio wrote each value in this list as text.", "filled an empty entry with the last non-empty value; trimmed whitespace from a string; wrote each value in the list as text"),
+    (["", "5"], 2, "Studio filled an empty entry with the last non-empty value in this list.", "filled an empty entry with the last non-empty value"),
+    (["1", "2", "3", "4", "5", "6"], 4, "Studio resized this list to cover every filament slot.", "resized the list"),
+    ([" 1 ", "2", "3", "4", "5"], 4, "Studio resized this list to cover every filament slot. Studio trimmed whitespace around a string value.", "resized the list; trimmed whitespace from a string"),
+])
+def test_filament_import_explanation_matches_each_operation(key, value, count, expected, reason):
+    from snapstudio_core.orca_import import _fix_filament_array_validity
+    changes = []
+    cfg = {key: list(value)}
+    _fix_filament_array_validity(cfg, changes, count)
+    assert changes[0]["explanation"] == expected
+    assert changes[0]["kind"] == "engine"
+    assert cfg[key] != value
+    assert changes[0]["reason"] == reason
+    assert all(part in changes[0]["explanation"] for part in expected.split(". ") if part)
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("value", [[220], [5, 5, 5, 5], [0, 0, 0, 0, 0], [" 5 ", 220, "", "7"]])
+def test_filament_array_conversion_passes_real_convert_preservation_invariant(tmp_path, mode, key, value):
+    """The real converter records every normalization; this cannot establish prose clarity, source choice, physical behavior, Orca behavior, dates, paraphrased overclaims, or screen-reader behavior."""
+    summary, after = _prepare(tmp_path, {key: value}, mode=mode)
+    change = next(c for c in summary["compat_changed"] if c["key"] == key)
+    assert change["reason"] and change["explanation"]
+    assert all(isinstance(item, str) for item in after[key])
+    assert after[key] != value
+
+
+def test_action_reasons_replace_all_four_provenance_fields_as_one_record():
+    from snapstudio_core.convert import _action_reasons
+    records, _, _, = _action_reasons({"normalizations": [
+        {"key": "raft", "reason": "first", "explanation": "old", "source": "old source", "kind": "engine"},
+    ], "orca_compatibility": [
+        {"key": "raft", "reason": "second", "explanation": "new", "source": "new source", "kind": "engine"},
+    ]})
+    assert records["raft"] == {"reason": "second", "explanation": "new", "source": "new source", "kind": "engine"}
+
+
+def test_action_reasons_clear_a_stale_explanation_only_with_an_explicit_clear():
+    from snapstudio_core.convert import _action_reasons
+    records, _, _, = _action_reasons({"normalizations": [
+        {"key": "raft", "reason": "first", "explanation": "old", "source": "old source", "kind": "engine"},
+        {"key": "raft", "reason": ""},
+    ]})
+    assert "raft" not in records
+
+
+def test_action_reasons_keep_prior_record_when_later_item_has_no_reason():
+    from snapstudio_core.convert import _action_reasons
+    records, _, _, = _action_reasons({"normalizations": [
+        {"key": "raft", "reason": "first", "explanation": "old", "source": "old source", "kind": "engine"},
+        {"key": "raft"},
+    ]})
+    assert records["raft"] == {"reason": "first", "explanation": "old", "source": "old source", "kind": "engine"}
+
+
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("value,expected,reason", [
+    (["1", "2", "3", "4", " 5 "], "Studio resized this list to cover every filament slot.", "resized the list"),
+    (["1", "2", "3", "4", ""], "Studio resized this list to cover every filament slot.", "resized the list"),
+    (["1", "2", "3", "4", 5], "Studio resized this list to cover every filament slot.", "resized the list"),
+])
+def test_entries_dropped_by_truncation_are_reported_only_as_a_resize(key, value, expected, reason):
+    """An entry beyond the slot count is dropped, so no trim, fill or text conversion may be claimed for it."""
+    from snapstudio_core.orca_import import _fix_filament_array_validity
+    changes = []
+    cfg = {key: list(value)}
+    _fix_filament_array_validity(cfg, changes, 4)
+    assert cfg[key] == ["1", "2", "3", "4"]
+    assert changes[0]["explanation"] == expected
+    assert changes[0]["reason"] == reason
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+@pytest.mark.parametrize("key", ["filament_flush_temp", "filament_adaptive_volumetric_speed"])
+@pytest.mark.parametrize("dropped", [" 5 ", "", 5])
+def test_truncation_through_the_real_convert_path_reports_only_a_resize(tmp_path, mode, key, dropped):
+    """Same rule end to end: the dropped entry never leaks a trim, fill or conversion claim into the summary."""
+    four = ["#FF0000"] * 4
+    summary, after = _prepare(tmp_path, {key: ["1", "2", "3", "4", dropped], "filament_colour": four, "filament_type": ["PLA"] * 4}, mode=mode)
+    change = next(c for c in summary["compat_changed"] if c["key"] == key)
+    assert after[key] == ["1", "2", "3", "4"]
+    assert change["explanation"] == "Studio resized this list to cover every filament slot."
+    assert change["reason"] == "resized the list"

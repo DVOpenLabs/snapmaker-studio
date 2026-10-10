@@ -1,73 +1,59 @@
-# Snapmaker Studio v1.5.0 — Project Materials
+# Snapmaker Studio v1.5.1 — clearer Prepare, easier spool choices, accessible controls
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-Which real spool is in which colour slot, and which installed Snapmaker Orca preset goes with it,
-is now part of preparing a project (#39). Studio shows what the model asks for, suggests spools from
-your inventory, and writes your choices into a prepared copy. You pick every one of them.
-
-**Model → the materials and colours it needs → suggested spools from your inventory → the installed
-Orca preset you confirm → review → Prepare.**
+A small release on top of v1.5.0. It makes Project Materials easier to use with a real spool inventory,
+says why Studio changed a setting, and makes two screens work properly from the keyboard and with a
+screen reader. Your original files are still never modified, Studio still does not slice, and it never starts a print without your confirmation.
 
 ## Project Materials
 
-- **It appears on Prepare whenever the project has filament slots**, whether or not the
-  compatibility check found anything. Nothing on the page waits for a check result.
-- **Top spool candidates, with the reasons.** For each slot Studio lists the best three spools
-  from your provider (Spoolman, SpoolEase or Bambuddy) and says why: material match, whether the
-  subtype could be compared, colour distance, and whether the filament left looks like enough
-  (always marked as an estimate Studio cannot fully trust).
-- **Nothing is chosen for you.** No spool is selected automatically and no preset is confirmed
-  silently. Studio may suggest a generic preset; it never applies one on its own.
-- **You choose the physical spool**, then the installed Orca preset for it. The spool's colour is
-  carried into the prepared copy.
-- **Remember a mapping** for one spool or for similar spools. It is saved only after the prepared
-  copy was actually written, and it is checked again every time: a preset that was deleted,
-  renamed, replaced or no longer fits is not applied.
-- **Review before Prepare.** A plain-language summary lists, per slot, what was mapped, what
-  changed, what was kept and what the preset controls. Spool details are labelled as what you
-  selected, not as read from the file.
-- **Same-preset safety.** Snapmaker Orca copies a declared value to every slot that uses the same
-  preset. Studio removes only its own declarations from such a group, and stops (writing nothing,
-  and saying why) if the project's own vendor or type declarations would be copied onto a slot they
-  do not belong to.
-- **Recommended mode no longer silently writes the legacy "Snapmaker PLA" preset.** A slot keeps
-  the project's own filament identity unless you confirmed an installed preset for it.
+- **Choose any spool from your inventory.** Each slot can open your provider's whole spool list, searchable
+  by vendor, material, color or id, showing color, vendor, material, spool id, weight status and the status
+  of the mapped Orca preset.
+- **Studio says when a spool leaves the preset alone.** If you pick a spool but no Orca preset, the slot and
+  the review now say: "Spool selected, but no Orca preset selected. The project's existing filament preset
+  will remain."
+- **Forget a saved mapping.** A mapping Studio remembered for one spool, or for similar spools, now has a
+  **Forget saved mapping** button. The confirmation says what is forgotten and what is not changed (your
+  inventory, your Orca presets and the project).
+- **A file Studio could not read is no longer treated as damaged.** If another program briefly holds the
+  saved-mappings file, Studio now waits and retries, and if it still cannot read the file it changes nothing
+  and tells you to try again. Before, a brief lock could cause the file to be set aside as damaged.
 
-## Snapmaker Orca's own presets
+## Prepare: why a setting changed
 
-Studio reads the filament presets installed with Snapmaker Orca and can check each one against the
-U1 and your nozzle size. A preset Studio verifies that way is shown as **Proven**, and a confirmed
-Orca preset is the verified path: Snapmaker Orca applies its temperature, flow and cooling.
+- The Prepare summary now shows a short reason under each setting Studio changed for the U1, and labels where
+  the statement comes from: **Studio's check** (Studio did or checked it itself) or **Verify in Snapmaker
+  Orca** (advice to check it there; it makes no claim about how Snapmaker Orca behaves).
+- Lists that Studio had to repair (for example one value per filament) say exactly what was done.
 
-## Presets you made yourself — an important limit
+## Easier to use with a keyboard or screen reader
 
-- Studio can find compatible filament presets you created in Snapmaker Orca, map a spool to one,
-  and remember that mapping.
-- They are shown as **"Confirmed by you"** and **"Manual check in Orca required"**, never as Proven.
-- In testing, when Snapmaker Orca opened a project that names a preset someone made, it kept the
-  project's own values and showed the preset as modified, rather than applying the preset's own
-  temperature, flow and cooling (in one profile it also showed a "Customized Preset" prompt).
-- **Studio therefore does not say Orca will apply those values.** Check the filament in Snapmaker
-  Orca before slicing.
+- **Printer actions.** The confirmation for Start, Cancel print and Emergency stop is now a proper dialog:
+  it has a name and description, starts on **Cancel**, and Escape only ever dismisses it. It names the printer
+  (and the file for Start) and is withdrawn if the printer changes or can no longer take the action.
+- **Tool tabs.** The tab rows for Compatibility / Source Check and Print Quality / First Layer now work with
+  the arrow keys, Home and End, show a clear focus outline, and wrap on narrow windows. Moving along the row
+  does not open or re-run a tool; Enter, Space or a click does.
+
+## User guide
+
+- The in-app Help and Get Started pages link to the new task-first user guide, which now shows where each
+  statement comes from and which version of Studio it was checked against.
+- The guide's screenshots were captured from v1.5.0 and have not been retaken.
 
 ## Not in this release
 
-- Creating custom Orca presets.
-- Changing or decrementing anything in your spool provider.
-- Choosing a spool for you.
-- Writing print parameters of its own.
-- Keeping a project's arbitrary print parameters underneath a different preset.
-
-Studio does not slice and does not start prints: Snapmaker Orca slices, and anything sent to your
-printer is something you confirm.
+- No change to what Studio writes into a prepared copy beyond the explanations above.
+- No new printer actions. Studio does not start a print without your confirmation; anything sent to your printer is something you confirm.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.5.0_x64-setup.exe` — 21,944,474 bytes — SHA256 `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82`
-- Linux: `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` — 25,944,098 bytes — SHA256 `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a`
+- Windows: `Snapmaker.Studio_1.5.1_x64-setup.exe` — 21,962,736 bytes — SHA256 `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3`
+- Linux: `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb` — 25,954,272 bytes — SHA256 `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b`
 
 Neither installer is code-signed yet; verify the hash before you run it. Verification for this
 release is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/docs/TRUST_STATUS.md).
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/docs/TRUST_STATUS.md).

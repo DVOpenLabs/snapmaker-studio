@@ -94,12 +94,12 @@ def _starter_summary(*, geometry_only: bool) -> dict:
     }
 
 
-def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], dict[str, str]]:
+def _action_reasons(report: dict) -> tuple[dict[str, dict], set[str], set[str]]:
     """Consume RepairOutcome detail while the independent diff remains authoritative.
 
-    The last item is the plain-language explanation some pipeline steps write next to their reason."""
-    reasons: dict[str, str] = {}
-    explanations: dict[str, str] = {}
+    Each key has one atomic record. A later record replaces or clears all four
+    provenance fields together, so an explanation can never retain old source data."""
+    records: dict[str, dict] = {}
     cleared: set[str] = set()
     mapped: set[str] = set()
     groups = [report.get("normalizations", []), report.get("profile_changes", []),
@@ -119,19 +119,26 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], d
         for item in group:
             if not isinstance(item, dict) or "key" not in item:
                 continue
+            key = item["key"]
             reason = item.get("reason")
             if isinstance(reason, str) and reason:
-                reasons[item["key"]] = reason
-                explanations.pop(item["key"], None)  # an explanation belongs to the reason it came with
-                explanation = item.get("explanation")
-                if isinstance(explanation, str) and explanation:
-                    explanations[item["key"]] = explanation
+                # reason always; the other three only when this step supplied them, so a
+                # later record never inherits an earlier explanation, source or kind.
+                records[key] = {"reason": reason, **{field: item[field] for field in ("explanation", "source", "kind")
+                                                      if isinstance(item.get(field), str) and item[field]}}
+            elif reason == "":
+                # An explicit empty reason clears the complete atomic record.
+                records.pop(key, None)
+            else:
+                # A later report item without a reason is not a clear marker.
+                # Preserve the prior complete record.
+                pass
             if item.get("category") == "mapped":
                 mapped.add(item["key"])
     for item in report.get("foreign_cleared", []):
         if isinstance(item, dict):
             cleared.add(item["key"])
-    return reasons, cleared, mapped, explanations
+    return records, cleared, mapped
 
 
 def _strict_value_equal(a, b) -> bool:
@@ -174,7 +181,7 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                       recommended_after: dict | None = None) -> dict:
     profile = load_profile(profile_name)
     diffs = config_diff(before, after)  # independent source of truth (A13)
-    reasons, cleared, mapped_keys, explanations = _action_reasons(outcome.report)
+    records, cleared, mapped_keys = _action_reasons(outcome.report)
     allowlist = machine_compat_keys(profile)
     slice_info = {
         item["key"]: item["reason"]
@@ -189,19 +196,16 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         if key in cleared:
             # Values in this category were deliberately discarded.  They may
             # be credentials or arbitrary creator G-code, so never echo them.
-            could_not_carry.append({"key": key, "reason": reasons[key]})
+            could_not_carry.append({"key": key, "reason": records[key]["reason"]})
         elif key in mapped_keys and _is_preserved_value_mapping(item["old"], item["new"]):
             mapped_to_u1.append({
                 "key": key, "old": display_value(item["old"], key=key),
                 "new": display_value(item["new"], key=key),
                 "reason": "carried over to U1 toolheads (values preserved)",
             })
-        elif key in reasons:
+        elif key in records:
             entry = {"key": key, "old": display_value(item["old"], key=key),
-                     "new": display_value(item["new"], key=key),
-                     "reason": reasons[key]}
-            if key in explanations:
-                entry["explanation"] = explanations[key]
+                     "new": display_value(item["new"], key=key), **records[key]}
             compat.append(entry)
         elif key in allowlist:
             compat.append({"key": key, "old": display_value(item["old"], key=key),

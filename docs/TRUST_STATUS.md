@@ -9,6 +9,34 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.5.1 — ACCEPTED
+
+**Clearer Prepare, easier spool choices, accessible controls.** The Windows installer and Linux `.deb`
+named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by SHA256. Build:
+[run 37947895421](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421), commit
+`abf20bf0f74d44eb66b793c317fd303d518e5828`. This release's immutable snapshot: [internal/evidence/1.5.1.json](internal/evidence/1.5.1.json).
+
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2927 passed / 49 skipped**, desktop **852**, Rust **49** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account, upgrade variant from the published v1.5.0 installer; production-state tripwire 0 violations, no orphan processes) | **50/50** — [internal/acceptance-1.5.1.json](internal/acceptance-1.5.1.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, with both providers (Spoolman 0.27.0 and Bambuddy 1.2.5.7 as disposable local containers seeded with anonymous spools; six provider-on-hardware checks each, none skipped) | **76/76** — [internal/hardware-1.5.1.json](internal/hardware-1.5.1.json) |
+| Update-check state stays in the lane's own data directory: turning the preference on in the installed release candidate (acceptance-identity copy, not the production identity) wrote `update_check.json` inside the lane's data directory and left the production path absent before and after | **pass** |
+| Publish dry run | **pass** |
+| `tsc`, `cargo test`, production build, `u1convert selfcheck` (27/27) | clean |
+
+### What is verified, and what is not
+
+The acceptance run is the acceptance-identity copy of the release candidate, not the production
+installation; the real installer's upgrade was exercised on a disposable GitHub-hosted runner. The user
+guide's screenshots were captured from v1.5.0 and were not retaken. The limit on presets a person made in
+Snapmaker Orca is unchanged from v1.5.0 (below). No real SpoolEase device was tested, and nothing was
+written to a spool provider.
+
 ## v1.5.0 — ACCEPTED
 
 **Project Materials (#39).** The Windows installer and Linux `.deb` named in
