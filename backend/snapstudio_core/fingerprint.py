@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import re
 from dataclasses import dataclass
 from .container import ThreeMF
 from .config_io import load_project_settings
@@ -31,7 +32,7 @@ def compute_fingerprint(tm: ThreeMF) -> Fingerprint:
     # every multi-plate project look like it had lost plates.
     plate_count = 0
     if tm.has_part("Metadata/model_settings.config"):
-        plate_count = tm.read_part("Metadata/model_settings.config").count(b"<plate>")
+        plate_count = len(re.findall(rb"<plate\b", tm.read_part("Metadata/model_settings.config")))
     if not plate_count:
         plate_count = sum(1 for p in parts if p.startswith("Metadata/plate_") and p.endswith(".json"))
     colors = ()

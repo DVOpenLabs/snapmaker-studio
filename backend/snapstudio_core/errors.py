@@ -12,7 +12,7 @@ _UNVERIFIED = re.compile(
     r'^object (?P<id>\S+?)(?: \("(?P<name>[^"]*)"\))?: (?P<key>[A-Za-z0-9_]+) is not a setting '
     r"Studio has proved")
 _NIL_PART = re.compile(
-    r'^part (?P<part>\S+) of object (?P<id>\S+?)(?: \("(?P<name>[^"]*)"\))?: has speed values '
+    r'^part (?P<part>\S+) of object (?P<id>\S+?)(?: \("(?P<name>[^"]*)"\))?: has values '
     r"Snapmaker Orca 2.4.0 cannot read \(nil in (?P<keys>[^)]*)\)")
 _BAD_VALUE = re.compile(
     r'^object (?P<id>\S+?)(?: \("(?P<name>[^"]*)"\))?: (?P<key>[A-Za-z0-9_]+)=')
@@ -52,10 +52,10 @@ def plain_refusal(problems: list[str]) -> str:
         parts.append(
             "Snapmaker Orca 2.4.0 cannot load this project: "
             + "; ".join(nil_parts)
-            + " has speed values it cannot read (a blank 'nil' entry), and Orca stops "
+            + " has values it cannot read (a blank 'nil' entry), and Orca stops "
               "loading the whole file when it meets one. Studio does not edit those "
               "values for you. Open the original in the slicer that made it, reset those "
-              "part speed settings, and export it again.")
+              "part settings, and export it again.")
     if unverified:
         total = sum(len(keys) for keys in unverified.values())
         where = "; ".join(f"on {who}: {', '.join(sorted(set(keys)))}"

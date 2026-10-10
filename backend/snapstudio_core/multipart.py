@@ -45,6 +45,7 @@ import html as _html
 import re
 
 from . import overrides as object_overrides
+from .orca_nonnullable import NON_NULLABLE_VECTORS
 
 SCHEMA_VERSION = "multipart/1"
 
@@ -448,15 +449,8 @@ def _parts_by_object(settings_xml: str) -> dict:
     return out
 
 
-#: Options Snapmaker Orca 2.4.0 declares non-nullable that Bambu Studio can write
-#: `nil` into at part level (Orca v2.4.0 PrintConfig.cpp: inner_wall_speed L4258,
-#: small_perimeter_speed L1753, internal_solid_infill_speed L5055,
-#: sparse_infill_speed L3459, top_surface_speed L5925). `vertical_shell_speed` is
-#: not an Orca 2.4.0 option at all and is deliberately not listed.
-NIL_UNREADABLE = frozenset({
-    "inner_wall_speed", "small_perimeter_speed", "internal_solid_infill_speed",
-    "sparse_infill_speed", "top_surface_speed",
-})
+#: Every option Orca 2.4.0 declares as a non-nullable vector; see that module.
+NIL_UNREADABLE = NON_NULLABLE_VECTORS
 
 
 def _object_label(body: str) -> str:
@@ -619,7 +613,7 @@ def validate_archive(tm) -> dict:
                    if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
             if bad:
                 problems.append(
-                    f"part {part_id} of object {object_id}{label}: has speed values "
+                    f"part {part_id} of object {object_id}{label}: has values "
                     f"Snapmaker Orca 2.4.0 cannot read (nil in {', '.join(sorted(bad))})")
 
     for matrix in re.findall(r'key="matrix" value="([^"]*)"', settings):

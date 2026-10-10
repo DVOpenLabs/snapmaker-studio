@@ -188,27 +188,39 @@ def test_cli_dry_run_writes_no_backup(tmp_path):
 NIL_SPEEDS = {"inner_wall_speed": "50,nil", "small_perimeter_speed": "50%,nil",
               "internal_solid_infill_speed": "50,nil", "sparse_infill_speed": "50,nil",
               "top_surface_speed": "50,nil"}
+U1_BASE = Path(__file__).parent / "fixtures" / "painted" / "snapmaker-orca-2.3.5-authored.3mf"
 
 
-def _with_part_metadata(tmp_path, extra: dict, name="nil.3mf") -> str:
+def _edit(tmp_path, name, base, part_extra=None, object_extra=None) -> str:
     import re
     import zipfile
-    from tests.test_native_object_settings import BASE, CONFIG
     out = tmp_path / name
-    add = "".join(f'      <metadata key="{k}" value="{v}"/>\n' for k, v in extra.items())
-    with zipfile.ZipFile(BASE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+    part = "".join(f'      <metadata key="{k}" value="{v}"/>\n' for k, v in (part_extra or {}).items())
+    obj = "".join(f'    <metadata key="{k}" value="{v}"/>\n' for k, v in (object_extra or {}).items())
+    with zipfile.ZipFile(base) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
         for item in src.infolist():
             data = src.read(item.filename)
-            if item.filename == CONFIG:
-                text, n = re.subn(r'(<part id="1"[^>]*>\n)', lambda m: m.group(1) + add,
-                                  data.decode("utf-8"), count=1)
-                assert n
+            if item.filename == "Metadata/model_settings.config":
+                text = data.decode("utf-8")
+                if part:
+                    text, n = re.subn(r'(<part id="1"[^>]*>\r?\n)', lambda m: m.group(1) + part,
+                                      text, count=1)
+                    assert n
+                if obj:
+                    text, n = re.subn(r'(<object id="\d+">\r?\n)', lambda m: m.group(1) + obj,
+                                      text, count=1)
+                    assert n
                 data = text.encode("utf-8")
             dst.writestr(item, data)
     return str(out)
 
 
-def test_a_nil_in_a_non_nullable_part_speed_is_refused_plainly_and_the_doctor_agrees(tmp_path):
+def _with_part_metadata(tmp_path, extra: dict, name="nil.3mf") -> str:
+    from tests.test_native_object_settings import BASE
+    return _edit(tmp_path, name, BASE, part_extra=extra)
+
+
+def test_a_nil_in_a_non_nullable_part_option_is_refused_plainly_and_the_doctor_agrees(tmp_path):
     src = _with_part_metadata(tmp_path, {**NIL_SPEEDS, "vertical_shell_speed": "80%,nil"})
     problems = conv.structure_problems(ThreeMF.open(src))
     assert len(problems) == 1 and "part 1 of object 2" in problems[0]
@@ -222,14 +234,50 @@ def test_a_nil_in_a_non_nullable_part_speed_is_refused_plainly_and_the_doctor_ag
     assert not (tmp_path / "out").exists() or not list((tmp_path / "out").iterdir())
 
 
-def test_a_nil_in_a_nullable_or_unlisted_option_is_not_refused(tmp_path):
+def test_the_real_pa_line_shape_with_nil_in_outer_wall_speed_is_refused(tmp_path):
+    # Shape of a calibration project OrcaSlicer ships (not committed, AGPL): a per-part
+    # outer_wall_speed of "80,nil,80,nil".
+    src = _with_part_metadata(tmp_path, {"outer_wall_speed": "80,nil,80,nil"})
+    problems = conv.structure_problems(ThreeMF.open(src))
+    assert len(problems) == 1 and "outer_wall_speed" in problems[0]
+    with pytest.raises(UnsoundOutput):
+        conv.convert_to_u1(src, str(tmp_path / "out"))
+
+
+def test_the_nil_list_is_derived_from_orca_and_leaves_nullable_options_alone(tmp_path):
+    from snapstudio_core.orca_nonnullable import NON_NULLABLE_VECTORS as N
+    assert {"outer_wall_speed", "inner_wall_speed", "small_perimeter_speed",
+            "internal_solid_infill_speed", "sparse_infill_speed", "top_surface_speed"} <= N
+    assert "vertical_shell_speed" not in N
+    # the only add_nullable() options are filament_<retraction option>
+    assert "filament_retraction_length" not in N and "filament_z_hop" not in N
     src = _with_part_metadata(tmp_path, {"filament_retraction_length": "nil", "outer_wall_speed": "60"})
     assert conv.structure_problems(ThreeMF.open(src)) == []
 
 
+# --- Doctor never calls a file ready that Prepare would refuse ------------------
+
+def test_a_genuine_u1_project_prepare_would_refuse_is_not_ready(tmp_path):
+    clean = _edit(tmp_path, "clean.3mf", U1_BASE)
+    d = doctor.diagnose_path(clean)
+    assert d.verdict == doctor.READY and d.score == 100
+    for name, kwargs in (("unverified.3mf", {"object_extra": {"ironing_type": "top surface"}}),
+                         ("nil.3mf", {"part_extra": {"outer_wall_speed": "80,nil"}})):
+        src = _edit(tmp_path, name, U1_BASE, **kwargs)
+        assert d.score == 100 and doctor.diagnose_path(src).score == 100
+        got = doctor.diagnose_path(src)
+        assert got.verdict == doctor.HIGH_RISK and got.validation_issues
+        assert "slice" not in got.recommended_action.lower().replace("before slicing", "")
+        assert got.to_dict()["is_compatible"] is False
+        with pytest.raises(UnsoundOutput):
+            conv.convert_to_u1(src, str(tmp_path / "out"))
+
+
 # --- plate cache files are not plates -------------------------------------------
 
-def test_a_multi_plate_project_with_slice_cache_files_still_validates(tmp_path):
+@pytest.mark.parametrize("plate_tag", ["<plate>", "<plate >", '<plate id="1">'])
+@pytest.mark.parametrize("caches", [True, False])
+def test_plates_are_counted_from_the_plate_list_however_the_tag_is_written(tmp_path, plate_tag, caches):
     import re
     import zipfile
     from tests.test_native_object_settings import BASE, CONFIG
@@ -240,14 +288,14 @@ def test_a_multi_plate_project_with_slice_cache_files_still_validates(tmp_path):
             data = z.read(item.filename)
             if item.filename == CONFIG:
                 text = data.decode("utf-8")
-                block = re.search(r"  <plate>.*?</plate>\n", text, re.S).group(0)
-                data = text.replace(block, block + block.replace(
-                    '"plater_id" value="1"', '"plater_id" value="2"'), 1).encode("utf-8")
+                block = re.search(r"  <plate>.*?</plate>\r?\n", text, re.S).group(0)
+                second = block.replace("<plate>", plate_tag, 1)
+                data = text.replace(block, block + second, 1).encode("utf-8")
             dst.writestr(item, data)
-        for n in (1, 2):
-            dst.writestr(f"Metadata/plate_{n}.json", b"{}")
-    fp = compute_fingerprint(ThreeMF.open(str(src)))
-    assert fp.plate_count == 2
+        if caches:
+            for n in (1, 2):
+                dst.writestr(f"Metadata/plate_{n}.json", b"{}")
+    assert compute_fingerprint(ThreeMF.open(str(src))).plate_count == 2
     result = conv.convert_to_u1(str(src), str(tmp_path / "out"))
     assert result.validated_ok, result.errors
     assert compute_fingerprint(ThreeMF.open(result.output_path)).plate_count == 2

@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format is based on
 - When Prepare refuses a file, the message now says in plain language which settings or structure
   and on which object, and what to do next. The raw technical wording is kept in a collapsed
   "Technical details" area.
-- A project with blank (`nil`) per-part speed values that Snapmaker Orca 2.4.0 cannot read, which
+- A project with blank (`nil`) per-part values (for example speeds) that Snapmaker Orca 2.4.0 cannot read, which
   stops Orca loading the whole file, is now named in plain language by the Doctor and by Prepare
   instead of being passed on.
 - A prepared copy of a multi-plate project that carried the authoring slicer's per-plate cache

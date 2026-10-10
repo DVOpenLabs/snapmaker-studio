@@ -114,16 +114,18 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     if not res.structural_ok:
         verdict = HIGH_RISK
         action = "This file is not a usable U1 project (missing required parts); repair may not recover it."
+    elif structure:
+        # Checked BEFORE the score-based READY: a genuine U1 project that Prepare would
+        # refuse must not be told "open it and slice". Minimal change: schema doctor/1
+        # and the verdict set are unchanged; HIGH_RISK is shown as "needs review".
+        verdict = HIGH_RISK
+        action = ("Studio has not verified this file: it carries settings or structure "
+                  "Studio cannot confirm Snapmaker Orca reads, so it will not prepare a copy "
+                  "and does not call it ready. Your original is not changed. Open it in "
+                  "Snapmaker Orca to review it.")
     elif score == 100 and not compatibility_issues:
         verdict = READY
         action = "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice."
-    elif structure:
-        # Minimal change: keep schema doctor/1 and the existing verdict set. Prepare
-        # would refuse this file, so it is "needs review", not "fixable by Prepare".
-        verdict = HIGH_RISK
-        action = ("Studio cannot prepare a copy of this file yet: it carries settings or "
-                  "structure Studio has not verified Snapmaker Orca reads. Your original is "
-                  "not changed. Open it in Snapmaker Orca to review it.")
     else:
         verdict = REPAIRABLE
         action = "Prepare a U1 profile copy, then review it in Snapmaker Orca before slicing."
