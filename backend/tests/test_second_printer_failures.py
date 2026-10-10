@@ -70,6 +70,15 @@ def test_a_much_bigger_printable_area_is_used_when_the_printer_is_identified(tmp
     out = pf.evaluate(project, facts(bed_mm={"x": 1000.0, "y": 1000.0, "z": 1000.0}), placement=placement)
     bed = next(c for c in out["checks"] if c["id"] == "bed.fit")
     assert bed["result"] == pf.OK and "1000 × 1000 mm printable area" in bed["evidence"]
+    # and through the Bed-Fit API: identified by what it reports, judged against its recorded volume
+    from snapstudio_core import moonraker
+    monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {
+        "bed_mm": {"x": 271.0, "y": 335.0, "z": 275.0}, "klipper_objects": [], "toolhead_count": 1})
+    monkeypatch.setattr(printer_profiles, "identify", lambda facts, profiles=None: {"printer_id": "bigmachine"})
+    result = service.bed_fit(path, host="big.invalid")
+    assert result["overall_level"] == "ok" and result["bed_mm"]["x"] == 1000.0
+    assert result["bed_mm_source"] == "profile" and result["placement_checked"] is True
+    assert "bigmachine" not in result["bed_source"]
 
 
 def test_a_zero_tool_printer_does_not_divide_by_it():

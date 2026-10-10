@@ -2048,9 +2048,11 @@ def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
 
 
 def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
-    """Bed-Fit / Out-of-Bounds Doctor: does the model fit the U1 bed, and if not,
-    WHY (the cryptic 'out of bounds' error) and HOW to fix it. Uses the connected
-    U1's real bed when reachable, else the known U1 bed. Read-only; works offline."""
+    """Bed-Fit / Out-of-Bounds Doctor: does each object fit the printer's printable area (by size),
+    do the placed instances sit on it (by placement), and if not, WHY (the cryptic 'out of bounds'
+    error) and HOW to fix it. Uses the profile of the connected printer when it identifies itself,
+    else the known U1 profile; a connected printer Studio cannot identify is reported as unknown.
+    Read-only; works offline."""
     from snapstudio_core.intelligence import project_info
     from snapstudio_core import bed_fit as bf
     info = project_info(path, placement_aware=True)
@@ -2061,8 +2063,8 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     bed_known = False
     # Offline: the machine Studio prepares for (its profile polygon). Connected: the printable area of
     # the printer that identifies itself; a printer's reported bed is axis TRAVEL (about 271 x 335 on a
-    # U1, anchored at 0,0), never used as a printable rectangle, so a printer Studio cannot identify
-    # gets a size check against what it reported and NO placement check.
+    # U1, anchored at 0,0), never used as a printable rectangle or size, so a printer Studio cannot
+    # identify gets neither a size nor a placement verdict.
     target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
     profile = None
     if host:

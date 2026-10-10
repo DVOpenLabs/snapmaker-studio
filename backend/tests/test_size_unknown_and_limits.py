@@ -291,3 +291,30 @@ def test_a_tall_modifier_does_not_make_the_bed_fit_check_report_over_height(tmp_
     settings = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "modifier_part")]}, [(1, [("100", 0)])])
     path = str(fx.three_mf(tmp_path / "mod.3mf", root, {"3D/Objects/o.model": sub, SETTINGS: settings}))
     assert not any("stand up to" in f["text"] for f in service.bed_fit(path)["findings"])
+
+
+def test_the_size_check_counts_only_the_parts_that_print(tmp_path):
+    # a 10 mm printable cube and a 300 mm modifier volume in the same object
+    sub = fx.sub_model_xml([fx.cube_object("1", 10), fx.cube_object("2", 300, origin=(40, 0, 0))])
+    root = fx.model_xml([fx.composite_object("100", [("1", "/3D/Objects/o.model", None), ("2", "/3D/Objects/o.model", None)])],
+                        [("100", fx.tf(20, 20, 0))])
+    settings = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "modifier_part")]}, [(1, [("100", 0)])])
+    path = str(fx.three_mf(tmp_path / "mod.3mf", root, {"3D/Objects/o.model": sub, SETTINGS: settings}))
+    [size] = geometry.object_sizes(path)
+    assert size["dimensions"] == {"x": 10.0, "y": 10.0, "z": 10.0}
+    result = service.bed_fit(path)
+    assert result["overall_level"] == "ok", texts(result)
+    assert result["dims_mm"] == {"x": 10.0, "y": 10.0, "z": 10.0}
+    report = next(c for c in service.report(path)["checks"] if c["name"] == "Fits the print bed")
+    assert report["status"] == "pass" and "10.0 × 10.0 × 10.0 mm" in report["detail"]
+    # a tall PRINTABLE part is still too tall
+    settings2 = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "normal_part")]}, [(1, [("100", 0)])])
+    path2 = str(fx.three_mf(tmp_path / "tall.3mf", root, {"3D/Objects/o.model": sub, SETTINGS: settings2}))
+    assert service.bed_fit(path2)["overall_level"] == "risk"
+
+
+def test_a_part_sunk_below_the_plane_is_a_point_to_check_in_the_bed_fit(tmp_path):
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")], name="sunk.3mf")
+    result = service.bed_fit(path)
+    assert result["overall_level"] != "ok"
+    assert any(f["text"].startswith("By placement") and "below the build plate" in f["text"] for f in result["findings"])

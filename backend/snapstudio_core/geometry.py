@@ -273,7 +273,7 @@ def _measure_uncached(path: str):
         budget = [0]
         placed_budget = [0]
 
-        def collect(objid, part, explicit, xform, acc, seen, bad):
+        def collect(objid, part, explicit, xform, acc, seen, bad, printing=None, roles=None):
             f = find_obj(objid, part, explicit)
             if f is None:
                 bad.append(f"object {objid} is not in {part}")
@@ -283,19 +283,33 @@ def _measure_uncached(path: str):
                 return
             seen = seen | {key}
             verts, comps = parsed[f][objid]
+            # a mesh whose volume role is a modifier, negative volume or support blocker is an
+            # instruction to the slicer, not something that prints: it is in `acc` but not `printing`
+            prints = roles is None or roles.get(objid, "normal_part") == "normal_part"
             for v in verts:
-                acc.append(_apply(v, xform))
+                moved = _apply(v, xform)
+                acc.append(moved)
+                if printing is not None and prints:
+                    printing.append(moved)
                 budget[0] += 1
                 if budget[0] > _MAX_VERTS:
                     raise _TooLarge()
             for cid, cpart, ctf in comps:
-                collect(cid, cpart or f, cpart is not None, _compose(xform, ctf), acc, seen, bad)
+                collect(cid, cpart or f, cpart is not None, _compose(xform, ctf), acc, seen, bad,
+                        printing, roles)
 
         def box_of(points):
             xs = [p[0] for p in points]; ys = [p[1] for p in points]; zs = [p[2] for p in points]
             return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
 
         items = build_items(model_files[root_file])
+        try:
+            from . import multipart
+
+            settings_text = tm.read_part("Metadata/model_settings.config").decode("utf-8", "ignore")                 if tm.has_part("Metadata/model_settings.config") else ""
+            parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
+        except Exception:
+            parts_by_object = {}
         uses: dict[tuple, int] = {}
         for it in items:
             part = it["part"] or root_file
@@ -312,11 +326,14 @@ def _measure_uncached(path: str):
             key = (part, oid)
             if key not in collected:
                 points: list = []
+                printing: list = []
                 bad: list = []
-                collect(oid, part, it["part"] is not None, None, points, frozenset(), bad)
+                collect(oid, part, it["part"] is not None, None, points, frozenset(), bad,
+                        printing, dict(parts_by_object.get(oid, [])))
                 collected[key] = (points, bad)
-                if points and not bad:
-                    lo, hi = box_of(points)
+                # the SIZE of an object is the size of what prints, like its placed footprint
+                if printing and not bad:
+                    lo, hi = box_of(printing)
                     sizes[key] = {"object_id": oid, "part": part, "instance_count": uses[key],
                                   "dimensions": {"x": round(hi[0] - lo[0], 2),
                                                  "y": round(hi[1] - lo[1], 2),

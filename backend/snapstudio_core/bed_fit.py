@@ -16,11 +16,12 @@ Two different questions are answered here and the text always says which one:
 A size says nothing about a position, and a combined extent across several separated
 objects or plates is neither: it is never used to say "too big" or to suggest scaling.
 
-Read-only and offline-capable: it uses the connected printer's REAL bed when
-known, else the printable volume recorded in the profile of the machine the file
-is being prepared for. Honest: it explains only what the geometry proves, returns
-unavailable when there are no dimensions, and says which bed it measured against
-so a profile figure never reads as a measurement.
+Read-only and offline-capable: it uses the printable volume recorded in the profile of the
+printer (the connected one when it identifies itself, else the machine the file is being
+prepared for). A printer's reported axis travel is not a printable size and is never used as
+one. Honest: it explains only what the geometry proves, returns unavailable when there are no
+measurable dimensions or the printer's printable area is unknown, and says which bed it
+measured against so a profile figure never reads as a measurement.
 """
 from __future__ import annotations
 
@@ -199,10 +200,19 @@ def _placed_findings(placed: dict | None, findings: list, fixes: list) -> str | 
     which of them could not be judged at all."""
     if not placed or not placed.get("available"):
         return None
-    from .plate_placement import over_height
+    from .plate_placement import below_plate, over_height
 
     tall = over_height(placed)
+    sunk = below_plate(placed)
     level = _placed_sideways(placed, findings, fixes)
+    if sunk:
+        low = min(row["bounds_mm"]["min"][2] for row in sunk)
+        n = len(sunk)
+        findings.append(_f("warn", f"By placement, {n} placed instance{'s' if n != 1 else ''} reach down to "
+                                   f"{low:g} mm, below the build plate; Studio cannot confirm "
+                                   f"{'they print' if n != 1 else 'it prints'} as modelled."))
+        fixes.append("Check the height of the sunk instance in Snapmaker Orca.")
+        level = level or "warn"
     if tall:
         top = max(row["bounds_mm"]["max"][2] for row in tall)
         n = len(tall)
