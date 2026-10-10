@@ -513,10 +513,11 @@ def validate_archive(tm) -> dict:
         mesh_ids.extend(found)
         for object_id, kind in re.findall(r'<object id="(\d+)"[^>]*type="([^"]*)"', body):
             mesh_types[object_id] = kind
-        for object_id in found:
-            block = re.search(rf'<object id="{object_id}".*?</object>', body, re.S)
-            if block and "<triangle" not in block.group(0):
-                problems.append(f"object {object_id} in {path} carries no geometry")
+        # One pass over the file. (A search per object restarted from the top of a
+        # many-megabyte model each time, which made the Doctor several times slower.)
+        for block in re.finditer(r'<object id="(\d+)".*?</object>', body, re.S):
+            if "<triangle" not in block.group(0):
+                problems.append(f"object {block.group(1)} in {path} carries no geometry")
 
     missing = [c for c in components if c not in mesh_ids]
     if missing:

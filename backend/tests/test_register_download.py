@@ -65,7 +65,7 @@ def test_valid_3mf_registers_with_hash_size_and_provenance(data):
     assert r["ready_hint"] in ("check", "prepare")
     assert set(r) == {"ok", "project_id", "name", "filename", "site", "site_name", "sha256",
                       "size_bytes", "source_family", "verdict", "filament_count", "is_u1",
-                      "ready_hint"}
+                      "prepare_blocked", "ready_hint"}
     s = _source(r["project_id"])
     assert s["page_url"] == "https://www.printables.com/model/1-cube"
     assert s["sha256"] == r["sha256"] and s["filename"] == "cube.3mf"

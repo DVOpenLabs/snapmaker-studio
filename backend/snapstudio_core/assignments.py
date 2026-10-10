@@ -149,7 +149,7 @@ def _prusa(text: str) -> list[dict]:
                  # Zero placements is not a statement, it is a broken one.
                  "instances": (_int(_INSTANCES.search(head).group(1)) or None)
                               if _INSTANCES.search(head) else None,
-                 "overrides": {}}
+                 "overrides": {}, "dialect": DIALECT_PRUSA}
         for kind, key, value in _PRUSA_META.findall(chunk.split("<volume", 1)[0]):
             if key == "extruder":
                 slot = _int(value)
@@ -534,7 +534,13 @@ def _override_rows(source: dict, prepared: dict, name: str, index: int,
 
     # Settings that arrive in Snapmaker Orca's own words are kept as they are, not
     # translated: compare them key for key, before the translation table sees them.
-    for key in sorted(k for k in source_overrides if k in object_overrides.NATIVE_KEPT):
+    # Only a Bambu/Orca-dialect source states these in Orca's words. A PrusaSlicer
+    # project can reuse a name (its own `brim_type`) with its own meaning, which the
+    # prepared copy does not carry: that falls through to the translation table below,
+    # which reports it as not carried, exactly as before.
+    native = [] if source.get("dialect") == DIALECT_PRUSA else sorted(
+        k for k in source_overrides if k in object_overrides.NATIVE_KEPT)
+    for key in native:
         said = source_overrides.pop(key)
         found = kept.pop(key, None)
         if found == said and object_overrides.NATIVE_KEPT[key](said):

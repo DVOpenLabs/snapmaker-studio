@@ -228,3 +228,15 @@ def test_fidelity_reports_orca_worded_infill_density_and_support_as_preserved():
                                         ("enable_support", "true")])
 def test_orca_worded_density_and_support_keep_their_strict_gates(key, value):
     assert overrides.validate_emitted({key: value})
+
+
+def test_a_prusa_per_object_brim_type_is_still_not_carried_and_blocks_the_claim():
+    from snapstudio_core import assignments
+
+    src = {"dialect": assignments.DIALECT_PRUSA, "overrides": {"brim_type": "outer_only"}}
+    rows = assignments._override_rows(src, {"overrides": {}}, "Slide", 0)
+    assert [r["status"] for r in rows] == [assignments.UNSUPPORTED]
+    # the same key from a Bambu/Orca source is a dropped native setting, as before
+    bambu = assignments._override_rows({"overrides": {"brim_type": "outer_only"}},
+                                       {"overrides": {}}, "Slide", 0)
+    assert [r["status"] for r in bambu] == [assignments.CHANGED]

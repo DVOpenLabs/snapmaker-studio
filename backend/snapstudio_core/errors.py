@@ -22,7 +22,7 @@ def _who(object_id: str, name: str | None) -> str:
     return f'object {object_id} ("{name}")' if name else f"object {object_id}"
 
 
-def plain_refusal(problems: list[str]) -> str:
+def plain_refusal(problems: list[str], prepared_note: bool = True) -> str:
     """The refusal as a person reads it: which settings or structure, and what to do.
 
     Only describes next steps that exist today: reviewing the original in
@@ -78,7 +78,8 @@ def plain_refusal(problems: list[str]) -> str:
             "original in Snapmaker Orca to check that it looks right.")
     if not parts:
         parts.append("Studio could not vouch for a prepared copy of this file.")
-    parts.append("No prepared copy was saved, and your original file was not changed.")
+    if prepared_note:
+        parts.append("No prepared copy was saved, and your original file was not changed.")
     return " ".join(parts)
 
 

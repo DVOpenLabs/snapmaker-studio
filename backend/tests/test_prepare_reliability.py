@@ -41,9 +41,12 @@ def test_doctor_does_not_send_a_file_prepare_would_refuse_to_prepare(tmp_path):
     problems = conv.structure_problems(ThreeMF.open(src))
     assert any("ironing_type is not a setting Studio has proved" in p for p in problems)
     d = doctor.diagnose_path(src)
-    assert d.verdict == doctor.HIGH_RISK
+    assert d.prepare_blocked and d.verdict == doctor.REPAIRABLE   # readable, not "unusable"
     assert PREPARE_ACTION not in d.recommended_action
+    # people see one plain sentence; the raw engine wording is a separate field
     assert any("ironing_type" in i for i in d.validation_issues)
+    assert not any("must not be written" in i for i in d.validation_issues)
+    assert any("must not be written" in p for p in d.structure_problems)
     assert d.to_dict()["schema_version"] == "doctor/1"
     with pytest.raises(UnsoundOutput):                      # the same engine does refuse
         conv.convert_to_u1(src, str(tmp_path / "out"))
@@ -53,6 +56,7 @@ def test_doctor_still_recommends_prepare_when_prepare_will_work(tmp_path):
     src = _inject(tmp_path, SUPPORT_SHAPE)
     d = doctor.diagnose_path(src)
     assert d.verdict == doctor.REPAIRABLE and PREPARE_ACTION in d.recommended_action
+    assert not d.prepare_blocked
     assert conv.convert_to_u1(src, str(tmp_path / "out")).validated_ok
 
 
@@ -225,7 +229,7 @@ def test_a_nil_in_a_non_nullable_part_option_is_refused_plainly_and_the_doctor_a
     problems = conv.structure_problems(ThreeMF.open(src))
     assert len(problems) == 1 and "part 1 of object 2" in problems[0]
     assert "vertical_shell_speed" not in problems[0]        # not an Orca 2.4.0 option
-    assert doctor.diagnose_path(src).verdict == doctor.HIGH_RISK
+    assert doctor.diagnose_path(src).prepare_blocked
     with pytest.raises(UnsoundOutput) as ei:
         conv.convert_to_u1(src, str(tmp_path / "out"))
     text = str(ei.value)
@@ -266,7 +270,7 @@ def test_a_genuine_u1_project_prepare_would_refuse_is_not_ready(tmp_path):
         src = _edit(tmp_path, name, U1_BASE, **kwargs)
         assert d.score == 100 and doctor.diagnose_path(src).score == 100
         got = doctor.diagnose_path(src)
-        assert got.verdict == doctor.HIGH_RISK and got.validation_issues
+        assert got.prepare_blocked and got.verdict != doctor.READY and got.validation_issues
         assert "slice" not in got.recommended_action.lower().replace("before slicing", "")
         assert got.to_dict()["is_compatible"] is False
         with pytest.raises(UnsoundOutput):
@@ -299,3 +303,46 @@ def test_plates_are_counted_from_the_plate_list_however_the_tag_is_written(tmp_p
     result = conv.convert_to_u1(str(src), str(tmp_path / "out"))
     assert result.validated_ok, result.errors
     assert compute_fingerprint(ThreeMF.open(result.output_path)).plate_count == 2
+
+
+# --- a readable file Prepare would refuse is not an "unreadable" download ------
+
+def test_a_readable_project_prepare_would_refuse_is_still_added_to_the_library(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("SNAPSTUDIO_MODEL_DOWNLOADS_DIR", str(tmp_path))
+    for name, kwargs in (("ironing.3mf", {"extra": UNPROVEN}),):
+        src = _inject(tmp_path, kwargs["extra"], name)
+        got = service.register_downloaded_model(src, "www.printables.com",
+                                                "https://www.printables.com/model/1-x")
+        assert got["ok"] is True and got["prepare_blocked"] is True
+        assert got["verdict"] != "HIGH_RISK" and got["ready_hint"] == "review"
+    nil = _with_part_metadata(tmp_path, {"outer_wall_speed": "80,nil"}, "nil.3mf")
+    got = service.register_downloaded_model(nil, "www.printables.com",
+                                            "https://www.printables.com/model/2-y")
+    assert got["ok"] is True and got["prepare_blocked"] is True
+    assert doctor.diagnose_path(nil).prepare_blocked        # and it still cannot be prepared
+
+
+def test_the_readiness_report_does_not_recommend_a_prepare_that_would_be_refused(tmp_path):
+    from snapstudio_core.validation_report import readiness_report
+    src = _inject(tmp_path, UNPROVEN)
+    checks = readiness_report(src)["checks"]
+    fits = [c for c in checks if c["name"] == "Fits U1 profile checks"][0]
+    assert fits["status"] == "warn" and "Prepare a U1 copy" not in fits["detail"]
+
+
+def test_a_geometry_only_3mf_skips_the_structure_gate(tmp_path):
+    import zipfile
+    from tests.test_native_object_settings import BASE, CONFIG
+    out = tmp_path / "geom.3mf"
+    with zipfile.ZipFile(BASE) as z, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in z.infolist():
+            if item.filename in ("Metadata/project_settings.config",):
+                continue
+            data = z.read(item.filename)
+            if item.filename == CONFIG:
+                data = data.replace(b'<metadata key="extruder" value="1"/>',
+                                    b'<metadata key="extruder" value="1"/><metadata key="ironing_type" value="x"/>', 1)
+            dst.writestr(item, data)
+    d = doctor.diagnose_path(str(out))
+    assert not d.prepare_blocked and not d.structure_problems

@@ -28,6 +28,8 @@ export interface RegisteredModel {
   size_bytes?: number;
   source_family?: string | null;
   verdict?: string | null;
+  /** True when Studio would refuse to prepare this readable file. */
+  prepare_blocked?: boolean;
   filament_count?: number | null;
   is_u1?: boolean | null;
   ready_hint?: string | null;
@@ -80,6 +82,7 @@ export function familyLabel(family: string | null | undefined): string | null {
 }
 
 function verdictFact(r: RegisteredModel): string | null {
+  if (r.prepare_blocked) return "Studio can't prepare a U1 copy of this file yet — open it in Snapmaker Orca to review it.";
   switch (r.verdict) {
     case "READY": return "Profile compatible with the U1.";
     case "REPAIRABLE": return "Made for another printer or needs a few fixes — Studio can prepare a U1 copy.";
@@ -112,7 +115,7 @@ export function toAddedItem(path: string, r: RegisteredModel): AddedItem {
     siteName,
     heading: `Added from ${siteName}`,
     facts,
-    needsPrepare: r.verdict !== "READY",
+    needsPrepare: r.verdict !== "READY" && !r.prepare_blocked,
   };
 }
 
