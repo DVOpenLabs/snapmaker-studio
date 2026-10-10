@@ -12,12 +12,12 @@ const base: Report = {
   biggest_risk: { doctor: "Project Doctor", level: "warn", text: "Design validation flagged 6 issues" },
   next_action: "Read the issues in Design Health.",
   verdict: "1 risk found; top risk: Design validation flagged 6 issues.",
-  printer_compatibility: "Unknown",
+  printer_status: "Not checked",
   cost: 0.21,
   currency: "$",
 };
-const render = (r: Report) => renderToStaticMarkup(
-  <QueryClientProvider client={new QueryClient()}><IntelligenceReport data={r} /></QueryClientProvider>,
+const render = (r: Report, defaultOpen = false) => renderToStaticMarkup(
+  <QueryClientProvider client={new QueryClient()}><IntelligenceReport data={r} defaultOpen={defaultOpen} /></QueryClientProvider>,
 );
 
 describe("IntelligenceReport", () => {
@@ -39,5 +39,31 @@ describe("IntelligenceReport", () => {
     const html = render(base);
     expect(html).toContain("not a measure of how likely the print is to succeed");
     expect(html).toContain("Verify in Snapmaker Orca");
+  });
+
+  it("with the evidence expanded and a reachable (fake) printer, shows no health number, grade, 'good to print' or 'Compatible'", () => {
+    const html = render({
+      ...base,
+      printer_status: "Answered, 1 concern",
+      supporting: [
+        { doctor: "Printer", status: "Answered, 1 concern", detail: "What the printer reported about its own firmware and print history." },
+        { doctor: "First Layer Doctor", status: "OK", detail: "" },
+      ],
+    }, true);
+    expect(html).toContain("Supporting Doctors");
+    expect(html).toContain("Printer");
+    expect(html).toContain("Answered, 1 concern");
+    expect(html).not.toMatch(/\d+\s*\/\s*100|score|good to print|Healthy \(|Compatible/i);
+  });
+
+  it("uses one count for 'Risks found' and the comparison, and says only what was checked when nothing is found", () => {
+    const html = render({
+      ...base,
+      comparison: { issues_found: 1, fixes_offered: 0, prices_the_print: false,
+        orca_line: "Orca would slice this as-is, with no warning about the 1 risk Studio found.",
+        studio_line: "Studio found 1 risk and offered 0 fixes before you slice." },
+    });
+    expect(html).toContain("Studio found 1 risk");
+    expect(html).not.toMatch(/2 issues|no major blockers|it&#x27;d be fine/);
   });
 });

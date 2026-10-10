@@ -9,8 +9,8 @@ import { AlertTriangle, ArrowRight, ChevronDown, CheckCircle2, Stethoscope, Spar
 // evidence. It shows no headline score: nothing here is calibrated against print
 // outcomes, so a number would read as a measure of print readiness (#92).
 
-export function IntelligenceReport({ filePath, host, data }: { filePath?: string; host?: string | null; data?: Report }) {
-  const [open, setOpen] = useState(false);
+export function IntelligenceReport({ filePath, host, data, defaultOpen = false }: { filePath?: string; host?: string | null; data?: Report; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const { data: fetched, isLoading } = useQuery({
     queryKey: ["report", filePath, host],
     queryFn: () => intelligenceReport(filePath as string, host),
@@ -45,7 +45,7 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {metric("Risks found", String(r.risks_found ?? 0), (r.risks_found ?? 0) > 0 ? "--doctor-cost" : undefined)}
           {metric("Material cost", r.cost != null ? `${cur}${r.cost}` : "—", "--doctor-cost")}
-          {metric("Printer", r.printer_compatibility ?? "Unknown")}
+          {metric("Printer", r.printer_status ?? "Not checked")}
         </div>
         <p className="text-[11px] text-muted-foreground opacity-70">
           Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing.

@@ -526,7 +526,7 @@ export interface IntelligenceReport {
   margin_pct?: number | null;
   profit_per_print?: number | null;
   currency?: string;
-  printer_compatibility?: "Compatible" | "Check" | "Unknown";
+  printer_status?: string;
   risks?: ReportRisk[];
   biggest_risk?: ReportRisk | null;
   recommendations?: string[];
