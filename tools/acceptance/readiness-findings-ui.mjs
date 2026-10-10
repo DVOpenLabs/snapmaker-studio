@@ -1,0 +1,285 @@
+#!/usr/bin/env node
+// Browser check + screenshots of the "Print risk signals" card on Design Health (Windows).
+//
+//   node tools/acceptance/readiness-findings-ui.mjs --out <folder>
+//
+// Starts, on this machine and stopped again at the end: the real Studio engine (throwaway data folder) and this checkout's
+// own Studio web UI (a vite dev server). Opens two anonymous models with no printer reachable, in light and dark: one that
+// raises signals and one that raises none. Checks the card lists signals with what to do, says what was and was not checked,
+// and never shows a percentage, band or "Likely to print" verdict (#92). Any engine request naming a host other than this machine, or discovery,
+// is aborted and fails the run (the only printer address is this machine's own, where nothing listens).
+//
+// The browser is Microsoft Edge, not the Tauri window, WebKitGTK or a screen reader.
+import { createRequire } from "node:module";
+import { spawn, spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import http from "node:http";
+import net from "node:net";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+if (process.platform !== "win32") { console.error("This check is written for Windows (taskkill, npx.cmd)."); process.exit(2); }
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = join(here, "..", "..");
+const require = createRequire(import.meta.url);
+const { chromium } = require("playwright-core");
+const out = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : join(tmpdir(), "readiness-findings");
+mkdirSync(out, { recursive: true });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const children = [];
+let cleaned = false;
+function cleanup() {
+  if (cleaned) return;
+  cleaned = true;
+  for (const c of children) { try { spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ } }
+}
+process.on("exit", cleanup);
+for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => { cleanup(); process.exit(130); });
+
+/* ---------- two anonymous models in a throwaway folder ---------- */
+const work = mkdtempSync(join(tmpdir(), "readiness-ui-"));
+const flagged = join(work, "example-project.3mf");
+const clean = join(work, "example-cube.stl");
+copyFileSync(join(repo, "examples", "demo_offplate_foreign.3mf"), flagged);
+// A 20 mm cube standing on the plate: nothing for the checks to flag.
+{
+  const v = [0, 1].flatMap((c) => [0, 1].flatMap((b) => [0, 1].map((a) => [100 + a * 20, 100 + b * 20, c * 20])));
+  const quads = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]];
+  const tris = quads.flatMap(([a, b, c, d]) => [[v[a], v[b], v[c]], [v[a], v[c], v[d]]]);
+  const buf = Buffer.alloc(84 + 50 * tris.length);
+  buf.writeUInt32LE(tris.length, 80);
+  tris.forEach((t, i) => { const o = 84 + 50 * i; t.flat().forEach((n, j) => buf.writeFloatLE(n, o + 12 + 4 * j)); });
+  writeFileSync(clean, buf);
+}
+
+/* ---------- engine + UI ---------- */
+const backend = spawn(process.env.PYTHON || "py", ["-m", "snapstudio_api"], {
+  cwd: join(repo, "backend"), stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONPATH: join(repo, "backend"), PYTHONUNBUFFERED: "1" },
+});
+children.push(backend);
+const handshake = await new Promise((resolve, reject) => {
+  let buf = "";
+  backend.stdout.on("data", (d) => { buf += d; const m = buf.match(/\{[^{}]*\}/); if (m) { try { resolve(JSON.parse(m[0])); } catch { /* keep reading */ } } });
+  setTimeout(() => reject(new Error("engine did not report its port")), 60000);
+});
+const ENGINE = `http://127.0.0.1:${handshake.port}`;
+const uiPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once("error", reject);
+  probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
+const UI = `http://localhost:${uiPort}`;
+children.push(spawn("npx.cmd", ["vite", "--port", String(uiPort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
+let uiReady = false;
+for (let i = 0; i < 80 && !uiReady; i++) { try { uiReady = (await fetch(`${UI}/`)).ok; } catch { /* not yet */ } if (!uiReady) await sleep(500); }
+if (!uiReady) { console.error(`This checkout's UI did not come up on ${UI}.`); process.exit(2); }
+console.log(`UI: this checkout (${join(repo, "desktop")}) on ${UI}`);
+
+/* ---------- a fake printer (Moonraker look-alike) on this machine, started only for one scenario ---------- */
+const job = (filename, status) => ({ job_id: filename + status, filename, status, start_time: 1, end_time: 2, print_duration: 1, total_duration: 1, filament_used: 1, metadata: {} });
+const fakeJobs = [job("example-project.gcode", "error"), job("other-a.gcode", "completed"), job("other-b.gcode", "completed"), job("other-c.gcode", "completed"), job("other-d.gcode", "completed")];
+// Port 7125 is Moonraker's own; fail clearly (rather than test a real printer) if anything already listens on it.
+async function waitPort7125Free(seconds = 240) {
+  for (let i = 0; i < seconds / 5; i++) {
+    const busy = await new Promise((resolve) => {
+      const c = net.connect(7125, "127.0.0.1");
+      c.once("connect", () => { c.destroy(); resolve(true); });
+      c.once("error", () => resolve(false));
+    });
+    if (!busy) return;
+    await sleep(5000);
+  }
+  throw new Error("127.0.0.1:7125 stayed busy; the no-printer scenarios need nothing listening there");
+}
+async function assertPort7125Free() {
+  const busy = await new Promise((resolve) => {
+    const c = net.connect(7125, "127.0.0.1");
+    c.once("connect", () => { c.destroy(); resolve(true); });
+    c.once("error", () => resolve(false));
+  });
+  if (busy) { console.error("Something already listens on 127.0.0.1:7125; refusing to run the fake-printer scenario."); process.exit(2); }
+}
+function startFakePrinter({ warnings = ["example firmware warning"] } = {}) {
+  const srv = http.createServer((req, res) => {
+    const url = req.url || "";
+    const reply = (obj) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
+    if (url.startsWith("/printer/info")) return reply({ result: { state: "ready", state_message: "Printer is ready", hostname: "example-printer" } });
+    if (url.startsWith("/server/info")) return reply({ result: { klippy_state: "ready", warnings, failed_components: [] } });
+    if (url.startsWith("/server/history/list")) return reply({ result: { jobs: fakeJobs } });
+    if (url.startsWith("/server/history/totals")) return reply({ result: { job_totals: { total_jobs: 5 } } });
+    res.writeHead(404); res.end("{}");
+  });
+  return new Promise((resolve, reject) => {
+    srv.once("error", (e) => reject(new Error(`could not start the fake printer on 127.0.0.1:7125: ${e.message}`)));
+    srv.listen(7125, "127.0.0.1", () => resolve(srv));
+  });
+}
+
+// What must never appear on the Printers page card: a number out of 100, a grade, a score, or a "good to print" verdict.
+const PRINTER_PAGE_BAD = new RegExp(String.raw`.{0,30}(\d+\s*\/\s*100|good to print|Healthy \(|Printer Health Score|\bScore\b|\bGrade\b).{0,30}`, "gi");
+
+const results = [];
+const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  - " + detail : ""}`); };
+const browser = await chromium.launch({ channel: "msedge", headless: true });
+console.log(`browser: Edge ${browser.version()}`);
+const violations = [];
+const errors = [];
+
+async function visit(label, file, theme, { expand = false, notVerified = false } = {}) {
+  if (!expand) await waitPort7125Free();   // no-printer scenarios must really have no printer; the expand scenario starts its own
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 2800 }, colorScheme: theme });
+  await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
+  await ctx.route(`${ENGINE}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    let body = {};
+    try { body = JSON.parse(route.request().postData() || "{}") ?? {}; } catch { /* not JSON */ }
+    const otherHost = body.host !== undefined && String(body.host).trim() !== "" && String(body.host).trim() !== "127.0.0.1";
+    if (/discover/i.test(url.pathname) || otherHost) { violations.push(`${route.request().method()} ${url.pathname}`); await route.abort(); return; }
+    if (notVerified && url.pathname === "/intelligence_report") {
+      // Stub ONE reply: the real report with its risks removed and object spacing marked "not verified". No real
+      // fixture is both free of findings and a multi-object 3MF, so this state cannot be reached with a real file here.
+      const real = await (await route.fetch({ timeout: 280000 })).json();
+      Object.assign(real, {
+        risks: [], biggest_risk: null, risks_found: 0, not_verified: ["object spacing"],
+        verdict: "Studio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed.",
+        next_action: "Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing.",
+        comparison: { issues_found: 0, fixes_offered: 0, prices_the_print: false,
+          orca_line: "Only Snapmaker Orca's preview can show spacing between objects.",
+          studio_line: "Studio's other checks found nothing in this file, but object spacing was not verified. They do not cover slicer settings, filament condition, bed cleanliness or mid-print behavior. Verify in Snapmaker Orca before you print." },
+      });
+      await route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": route.request().headers().origin ?? "*" }, body: JSON.stringify(real) });
+      return;
+    }
+    await route.continue();
+  });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|net::ERR|Invalid DOM property/.test(m.text())) errors.push(m.text()); });
+  await page.goto(`${UI}/?api=${handshake.port}:${handshake.token}&file=${encodeURIComponent(file)}`);
+  await page.getByRole("button", { name: "Open a model" }).last().click();
+  const heading = page.getByText("Print risk signals", { exact: true });
+  await heading.waitFor({ timeout: 150000 });
+  // The Intelligence Report loads on its own request; wait for it so the page check covers it.
+  await page.getByText("Studio Intelligence Report", { exact: false }).first().waitFor({ timeout: 240000 });
+  await page.getByText(notVerified ? "Not verified" : "Risks found", { exact: true }).first().waitFor({ timeout: 30000 });
+  const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
+  await sleep(1000);
+  const text = (await card.innerText()).replace(/\s+/g, " ");
+  if (expand) {
+    await page.getByRole("button", { name: /See risks, recommendations/ }).click();
+    await page.getByText("Supporting Doctors", { exact: true }).waitFor({ timeout: 10000 });
+    await sleep(500);
+  }
+  // Visible text plus every accessible name, so a star rating ("3.5 of 5") or a "Score" label cannot hide in an aria-label.
+  const aria = await page.locator("[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || ""));
+  const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
+  await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
+  await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });   // taken after the report loaded
+  await ctx.close();
+  return { text, pageText };
+}
+
+async function visitPrinters(label, theme) {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 1500 }, colorScheme: theme });
+  await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto(`${UI}/printers?api=${handshake.port}:${handshake.token}`);
+  const heading = page.getByText("What the printer reported", { exact: true });
+  await heading.waitFor({ timeout: 120000 });
+  const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
+  await card.scrollIntoViewIfNeeded();
+  await sleep(500);
+  const text = (await card.innerText()).replace(/\s+/g, " ");
+  const aria = await page.locator("[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || ""));
+  const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
+  await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
+  await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });
+  await ctx.close();
+  return { text, pageText };
+}
+
+try {
+  // Self-test: the check above must fail on the strings it exists to catch, so a bad escape cannot make it pass everything.
+  for (const bad of ["Score 85", "Grade B", "Printer Health Score", "92/100", "Healthy (100/100) good to print"]) {
+    check(`self-test: the printer-page check catches "${bad}"`, [...`before ${bad} after`.matchAll(PRINTER_PAGE_BAD)].length > 0);
+  }
+  check("self-test: the printer-page check passes plain wording", [...`What the printer reported. 1 of the last 5 prints failed. From firmware state.`.matchAll(PRINTER_PAGE_BAD)].length === 0);
+  await assertPort7125Free();   // the no-printer scenarios must really have no printer listening
+  for (const theme of ["light", "dark"]) {
+    const { text: t, pageText: tp } = await visit("01-signals-found", flagged, theme);
+    check(`${theme}: card lists signals with what to do`, /What to do:/.test(t) && /(Risk|Heads up):/.test(t), t.slice(0, 200));
+    check(`${theme}: card names its evidence kind`, /Studio's check|Estimate/.test(t));
+    check(`${theme}: card says what was checked and not checked`, /Studio checked:/.test(t) && /Studio did not check:.*object spacing/.test(t) && /printer health/.test(t));
+    check(`${theme}: card says what Studio cannot know and to verify in Snapmaker Orca`, /cannot know/.test(t) && /Verify in Snapmaker Orca/.test(t));
+    check(`${theme}: no percentage, band or verdict`, !/\d\s*%/.test(t) && !/Likely to print|Risky|Few risks|readiness/i.test(t));
+    const { text: c, pageText: cp } = await visit("02-nothing-flagged", clean, theme);
+    check(`${theme}: with no signals it says what was covered and not that the print will succeed`, /did not flag anything/.test(c) && /not a sign the print will succeed/.test(c) && /Studio did not check:/.test(c), c.slice(0, 200));
+    check(`${theme}: the nothing-flagged result also has no percentage or verdict`, !/\d\s*%/.test(c) && !/Likely to print|Risky|Few risks|readiness|will print/i.test(c));
+    // Whole page, after the Intelligence Report has loaded: no score hero, "/ 100", percentage, readiness rating or success verdict.
+    // Allowed on the page: measured geometry ("16.7% of surfaces", "steep overhangs"), and the pricing margin;
+    // nothing else. No star rating ("X of 5"), "Score", "rating" or "will it print" may appear.
+    const allowed = /\d+(\.\d+)?\s*%\s*(of surfaces|margin|steep overhangs)/gi;
+    for (const [name, raw] of [["flagged project", tp], ["nothing flagged", cp]]) {
+      const pt = raw.replace(allowed, " ");
+      const bad = [...pt.matchAll(/.{0,40}(\d\s*%|\/\s*100\b|Likely to print|Risky|Few risks|Some risks|Several risks|Readiness|\d(?:\.\d)? of 5|\bScore\b|rating|will it print|Studio score|expected print success).{0,30}/gi)].map((m) => m[0]);
+      check(`${theme}: whole page (${name}) has no score, percentage, readiness rating or success verdict`, bad.length === 0, bad.join(" | "));
+      check(`${theme}: whole page (${name}) shows the Intelligence Report's "Risks found" count`, /Risks found\s*\d+/i.test(pt));
+    }
+  }
+  // A reachable (fake) printer, with the Intelligence Report's evidence expanded: no health number, grade, "good to print" or "Compatible".
+  await assertPort7125Free();
+  const fake = await startFakePrinter();
+  try {
+    for (const theme of ["light", "dark"]) {
+      const { text: t, pageText: pt } = await visit("03-printer-answered-evidence", flagged, theme, { expand: true });
+      check(`${theme}: with a reachable printer, the card counts printer history as checked`, /Studio checked:.*printer history for the same file name/.test(t) && /Studio checked:.*printer health/.test(t), t.slice(0, 260));
+      check(`${theme}: with a reachable printer, a failed print with the same file name is a signal`, /failed 1 time before/.test(t));
+      const body = pt;
+      const hits = [...body.matchAll(/.{0,40}(\d+\s*\/\s*100|good to print|Healthy \(|\bCompatible\b|Studio score|Readiness|Likely to print).{0,30}/gi)].map((m) => m[0]);
+      check(`${theme}: expanded evidence shows the Printer line without a health number, grade, "good to print" or "Compatible"`,
+        /Supporting Doctors/i.test(pt) && /Answered, \d+ concern/i.test(pt) && hits.length === 0, hits.join(" | ") || (/Answered, \d+ concern/i.test(pt) ? "" : "no 'Answered, N concern' line"));
+    }
+    // The Printers page, with the fake printer answering: "What the printer reported", no grade or /100.
+    for (const theme of ["light", "dark"]) {
+      const { text: t, pageText: pt } = await visitPrinters("05-printers-what-the-printer-reported", theme);
+      const bad = [...pt.matchAll(PRINTER_PAGE_BAD)].map((m) => m[0]);
+      check(`${theme}: Printers page card is "What the printer reported" with what was read and no grade, score or /100`,
+        /What the printer reported/.test(t) && /From firmware state/.test(t) && bad.length === 0, bad.join(" | ") || t.slice(0, 200));
+      check(`${theme}: firmware warning + failed print (healthy:false, firmware ready): the chip reads "See concerns", not "ready"`,
+        /See concerns/.test(pt) && !/ready.{0,3}live/i.test(pt), pt.match(/.{0,40}live/i)?.[0] ?? "");
+      check(`${theme}: Printers page verdict does not say "Nothing concerning" while listing concerns`,
+        !(/Nothing concerning/.test(t) && /(failed|warning)/.test(t)), t.slice(0, 260));
+    }
+    // Failed print only, no firmware warning, ready firmware, no diagnostics concern: the chip must not say Healthy.
+    fake.close();
+    await sleep(500);
+    await assertPort7125Free();
+    const quiet = await startFakePrinter({ warnings: [] });
+    try {
+      for (const theme of ["light", "dark"]) {
+        const { text: t, pageText: pt } = await visitPrinters("06-printers-failed-print-no-warning", theme);
+        check(`${theme}: ready firmware + one failed print and no warning: the chip says "See concerns", never "Healthy", and the card lists the failed print`,
+          /See concerns/.test(pt) && !/\bHealthy\b/.test(pt) && /1 of the last 5 prints failed/.test(t) && !/Nothing concerning/.test(t), t.slice(0, 240));
+      }
+    } finally { quiet.close(); }
+  } finally { fake.close(); }
+  // The "Not verified: Object spacing" state (one stubbed report reply, see visit()).
+  for (const theme of ["light", "dark"]) {
+    const { text: t, pageText: pt } = await visit("04-not-verified-object-spacing", clean, theme, { notVerified: true });
+    check(`${theme}: Not verified state shows "Not verified" and no "Risks found 0", biggest risk or "Orca slices the file as you give it"`,
+      /Not verified\s*Object spacing/i.test(pt) && !/Risks found/i.test(pt) && !/Biggest risk/i.test(pt) && !/Orca slices the file as you give it/.test(pt)
+      && !/a count of the risks Studio found/.test(pt), pt.match(/.{0,60}Not verified.{0,80}/i)?.[0] ?? "");
+  }
+  check("no engine request named a host other than this machine, or discovery", violations.length === 0, violations.join("; "));
+  check("no page errors", errors.length === 0, errors.join(" | ").slice(0, 300));
+} catch (e) {
+  check("script ran to completion", false, String(e).slice(0, 300));
+}
+await browser.close();
+const failed = results.filter((r) => !r.ok).length;
+writeFileSync(join(out, "results.json"), JSON.stringify({ browser: "Microsoft Edge (Chromium, headless)", passed: results.length - failed, total: results.length, results }, null, 2));
+console.log(`\n${results.length - failed}/${results.length} checks passed`);
+process.exit(failed ? 1 : 0);

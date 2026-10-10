@@ -1,3 +1,4 @@
+import { printerBadge } from "@/lib/printerBadge";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -86,12 +87,14 @@ export default function Printers() {
     queryFn: () => printerFailureInsights(connected as string),
     enabled: !!connected, refetchInterval: connected ? 60000 : false, retry: false,
   });
-  // Printer Health Score: one 0–100 folding firmware state + history failures.
+  // Printer health: firmware state and history failures, as the printer reports them.
   const health = useQuery({
     queryKey: ["printer-health", connected],
     queryFn: () => printerHealth(connected as string),
     enabled: !!connected, refetchInterval: connected ? 60000 : false, retry: false,
   });
+  // The state chip follows the same driver list as the health card below it (never "Healthy" beside listed concerns).
+  const badge = printerBadge({ diag: diag.data, concerns: health.data?.conditions?.length ?? 0 });
   // Firmware Capability Intelligence: what this U1's firmware actually exposes.
   const firmware = useQuery({
     queryKey: ["printer-firmware", connected],
@@ -232,9 +235,9 @@ export default function Printers() {
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-sm font-semibold"><Activity className="h-4 w-4 text-primary" /> {connected}</span>
               <span className="flex items-center gap-2">
-                {diag.data && (
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${diag.data.healthy ? "bg-ready/10 text-ready" : "bg-repairable/10 text-repairable"}`}>
-                    <HeartPulse className="h-3 w-3" /> {diag.data.healthy ? "Healthy" : (diag.data.klippy_state ?? "check")}
+                {badge && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.ok ? "bg-ready/10 text-ready" : "bg-repairable/10 text-repairable"}`}>
+                    <HeartPulse className="h-3 w-3" /> {badge.label}
                   </span>
                 )}
                 {status.isFetching && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> live</span>}
@@ -318,15 +321,7 @@ export default function Printers() {
       {connected && health.data?.available && health.data.score != null && (
         <Card>
           <CardContent className="space-y-3 p-5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Printer Health Score</span>
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold ${
-                health.data.grade === "A" || health.data.grade === "B" ? "bg-ready/10 text-ready"
-                  : health.data.grade === "C" ? "bg-repairable/10 text-repairable" : "bg-risk/10 text-risk"}`}>
-                <span className="text-lg leading-none">{health.data.grade}</span>
-                <span className="tabular-nums">{health.data.score}/100</span>
-              </span>
-            </div>
+            <span className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> What the printer reported</span>
             {health.data.verdict && <p className="text-sm text-muted-foreground">{health.data.verdict}</p>}
             {health.data.drivers && health.data.drivers.length > 0 && (
               <ul className="space-y-1 text-xs text-muted-foreground">

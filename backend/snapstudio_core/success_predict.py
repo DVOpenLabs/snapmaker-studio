@@ -1,93 +1,144 @@
-"""Print Success Prediction — "will this actually print on my U1?", before you start.
+"""Print risk signals — what Studio found that is worth settling before you slice.
 
-Studio already knows, separately: whether the design is validation-ready, whether
-its colours fit the toolheads, whether the first layer is risky, how healthy the
-printer is, and whether this exact file has failed before. A novice has to read all
-of those and judge. This synthesises them into one honest likelihood + the factors
-behind it, so the answer to "should I hit print?" is a single read.
+Studio already knows, separately: whether the design passed validation, whether
+its colors fit the toolheads, whether the first layer looks risky, how healthy
+the printer is, and whether this exact file name has failed before. This lists
+the ones that raised a flag, each with what it means and what to do, and says
+plainly what was checked and what Studio cannot know.
+
+It deliberately returns no percentage, band or "will it print" verdict: nothing
+here is calibrated against real print outcomes, so a number would read as a
+probability it is not. (Issue #92.)
 
 Pure read-only synthesis of signals Studio already has — no webcam, no AI vision,
-no control, no new printer calls. Honest: it scores only the signals present, names
-what's pulling the odds down, and stays calibrated (no false confidence).
+no control, no new printer calls.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = "successpredict/1"
+from . import conditions as C
+
+SCHEMA_VERSION = "successpredict/3"   # 3: one signal per stable condition id (snapstudio_core.conditions)
+
+# `kind` uses the same evidence kinds as the rest of the app: "engine" is one of
+# Studio's own checks, "estimate" is derived output, "orca" is advice to verify in
+# Snapmaker Orca.
+
+# Things no signal here can tell you, whatever was checked.
+LIMITATIONS = [
+    "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your "
+    "slicer settings, how the filament has been stored, how clean or level the bed "
+    "is, or how the printer behaves mid-print.",
+    "Studio does not slice and does not verify spacing between objects. "
+    "Verify in Snapmaker Orca before you print.",
+]
 
 
-def _band(likelihood: int) -> str:
-    if likelihood >= 75:
-        return "likely"
-    if likelihood >= 50:
-        return "uncertain"
-    return "risky"
+def _limitations(bed_measured: bool, spacing_unverified: bool) -> list:
+    """The fixed limits, minus any claim the inputs actually covered."""
+    first, second = LIMITATIONS
+    if bed_measured:
+        first = first.replace("how clean or level the bed is", "how clean the bed is")
+    if not spacing_unverified:
+        second = "Studio does not slice. Verify in Snapmaker Orca before you print."
+    return [first, second]
 
 
-def predict(readiness=None, toolfit=None, first_layer=None, health=None,
-            prior_failures: int = 0) -> dict:
-    """Combine pre-print signals into a 0–100 success likelihood.
+def findings(readiness=None, toolfit=None, first_layer=None, health=None,
+             prior_failures: int = 0, printer_checked: bool = False,
+             spacing_unverified: bool = True) -> dict:
+    """List the risk signals found in the pre-print checks Studio already has.
 
     readiness: validation_report.readiness_report() output (ready + warnings).
     toolfit:   toolhead_fit.assess() output (overall_level).
     first_layer: first_layer.assess() output (overall_level).
-    health:    health_score.score() output (score 0–100).
-    prior_failures: times this exact file has failed in the printer's history.
+    health:    health_score.score() output (available + drivers).
+    prior_failures: times this exact file name has failed in the printer's history.
+    printer_checked: True when a printer answered and its history was read, so
+        history counts as checked even when it found no failures.
+    spacing_unverified: False for a single-object model, where spacing does not apply.
     """
-    have_any = any([readiness, toolfit, first_layer,
-                    health and health.get("available"), prior_failures])
-    if not have_any:
+    health_ok = bool(health and health.get("available"))
+    toolfit_ok = bool(toolfit and toolfit.get("available"))
+    # An unavailable result is a gap, not a clean result.
+    readiness_ok = bool(readiness and readiness.get("available") is not False)
+    first_layer_ok = bool(first_layer and first_layer.get("available") is not False
+                          and first_layer.get("overall_level"))
+    bed_measured = bool(first_layer_ok and first_layer.get("bed_aware"))
+    have = {
+        "design validation": readiness_ok,
+        "colors against toolheads": toolfit_ok,
+        "first-layer risk": first_layer_ok,
+        "printer health": health_ok,
+        "printer history for the same file name": bool(printer_checked or prior_failures),
+    }
+    if not any(have.values()):
         return {"schema_version": SCHEMA_VERSION, "available": False,
-                "reason": "no design or printer signals available to predict from"}
+                "reason": "no design or printer information was available to check",
+                "limitations": _limitations(False, spacing_unverified)}
 
-    factors: list[tuple[int, str]] = []
+    # Gather what each source says about each condition, then build ONE signal per condition id.
+    contribs: list = []
 
-    if readiness and readiness.get("ready") is False:
-        w = len(readiness.get("warnings") or [])
-        factors.append((min(40, 20 + 5 * w),
-                        f"design isn't validation-ready ({w} issue{'s' if w != 1 else ''} to fix)"))
+    if readiness_ok and readiness.get("ready") is False:
+        warnings = [str(w) for w in (readiness.get("warnings") or [])]
+        n = len(warnings)
+        title = (f"Design validation flagged {n} issue{'s' if n != 1 else ''}" if n
+                 else "Design validation flagged an issue")
+        contribs.append(C.contribution(
+            C.DESIGN_VALIDATION, "warn", title,
+            facts=[title] + warnings[:5] + ([f"and {n - 5} more in Design Health"] if n > 5 else [])))
 
-    if toolfit and toolfit.get("available"):
+    if toolfit_ok:
         lvl = toolfit.get("overall_level")
-        if lvl == "risk":
-            factors.append((25, "more colours than toolheads — needs a swap or remap"))
-        elif lvl == "warn":
-            factors.append((10, "colour layout needs a filament swap or remap"))
+        if lvl in ("risk", "warn"):
+            contribs.append(C.contribution(
+                C.TOOLHEAD_FIT, lvl,
+                "More colors than toolheads" if lvl == "risk" else "Color layout needs a swap or remap",
+                action=("Remap to fewer colors in Snapmaker Orca, or plan a filament swap." if lvl == "risk"
+                        else "Check the color-to-toolhead mapping in Snapmaker Orca.")))
 
-    if first_layer:
-        lvl = first_layer.get("overall_level")
-        if lvl == "risk":
-            factors.append((20, "first-layer adhesion looks risky on this printer"))
-        elif lvl == "warn":
-            factors.append((10, "first layer is marginal — watch adhesion"))
+    if first_layer_ok:
+        contribs.extend(C.doctor_contributions(first_layer, "First Layer Doctor"))
 
-    if health and health.get("available"):
-        hs = int(health.get("score") or 100)
-        if hs < 60:
-            factors.append((round((60 - hs) * 0.5), f"printer health is low ({hs}/100)"))
+    if health_ok:
+        for cond in (health.get("conditions") or []):
+            contribs.append(C.contribution(cond["id"], cond.get("level", "warn"), cond["text"], source="health"))
 
     if prior_failures and prior_failures > 0:
-        factors.append((min(30, 15 * min(prior_failures, 2)),
-                        f"this exact file failed {prior_failures}× before"))
+        contribs.append(C.contribution(
+            C.PRINTER_FAILURE_HISTORY, "risk" if prior_failures >= 2 else "warn",
+            f"A print with this file name failed {prior_failures} time{'s' if prior_failures != 1 else ''} before",
+            source="history"))
 
-    likelihood = max(0, min(100, 100 - sum(p for p, _ in factors)))
-    band = _band(likelihood)
+    signals: list[dict] = []
+    for f in C.merge(contribs):
+        kind, meaning, action = C.COPY.get(f["id"], ("engine", "Studio's check flagged this.", None))
+        sig = {"id": f["id"], "kind": kind, "level": f["level"], "title": f["text"],
+               "meaning": meaning, "action": f["action"] or action or "Verify in Snapmaker Orca.",
+               "facts": f["evidence"]}
+        if f["id"] == C.DESIGN_VALIDATION and len(f["evidence"]) > 1:
+            sig["details"] = f["evidence"][1:]
+        signals.append(sig)
 
-    factors.sort(key=lambda f: f[0], reverse=True)
-    factor_text = [t for _, t in factors] or ["No risk signals in the design, printer, or history."]
+    checked = [name for name, ok in have.items() if ok]
+    not_checked = [name for name, ok in have.items() if not ok]
+    if spacing_unverified:
+        not_checked.append("object spacing")
+
+    n = len(signals)
+    if n:
+        summary = (f"Studio found {n} thing{'s' if n != 1 else ''} to sort out before you slice. "
+                   "Each says what it means and what to do.")
+    else:
+        summary = ("Studio's checks did not flag anything in what they covered: "
+                   + ", ".join(checked) + ". That is not a sign the print will succeed.")
 
     return {
         "schema_version": SCHEMA_VERSION,
         "available": True,
-        "likelihood": likelihood,
-        "band": band,
-        "factors": factor_text,
-        "verdict": _verdict(likelihood, band),
+        "signals": signals,
+        "checked": checked,
+        "not_checked": not_checked,
+        "limitations": _limitations(bed_measured, spacing_unverified),
+        "summary": summary,
     }
-
-
-def _verdict(likelihood: int, band: str) -> str:
-    if band == "likely":
-        return f"Likely to print ({likelihood}%) — review settings before printing."
-    if band == "uncertain":
-        return f"Could go either way ({likelihood}%) — clear the points below first."
-    return f"Risky ({likelihood}%) — fix the points below before starting a long print."

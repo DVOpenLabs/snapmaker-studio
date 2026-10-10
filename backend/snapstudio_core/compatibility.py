@@ -164,7 +164,8 @@ def check(path: str) -> dict:
             "Object layout (plate)",
             "Open in Snapmaker Orca and check for too-close / collision warnings; use "
             "Arrange or move objects before slicing.",
-            f"{oc} object(s) on the plate; spacing unchecked by Studio",
+            (f"{oc} object(s) on the plate; spacing unchecked by Studio" if oc
+             else "object count unknown; spacing unchecked by Studio"),
         ))
 
     # Support enforcers present but support generation disabled — Orca warns

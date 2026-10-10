@@ -66,8 +66,10 @@ def test_bad_values_flagged_with_severity_and_range(tmp_path):
 def test_valid_u1_project_is_clean(tmp_path):
     p = str(tmp_path / "good.3mf"); _make(p, _VALID)
     res = cc.check(p)
-    assert res["findings"] == []
-    assert "No known" in res["summary"]
+    # The fixture has no countable objects, so object spacing stays "not verified"
+    # (unknown is never treated as a single object); nothing else is flagged.
+    assert [f["id"] for f in res["findings"]] == ["layout.object_spacing"]
+    assert not [f for f in res["findings"] if f["severity"] == "error"]
 
 
 def test_relative_e_without_reset_flagged(tmp_path):

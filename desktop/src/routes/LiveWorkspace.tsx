@@ -46,15 +46,15 @@ export default function LiveWorkspace() {
   const meshQ = useQuery({ queryKey: ["mesh", file?.path], queryFn: () => apiMesh(file!.path), enabled: !!file && doctor.status === "done" });
   const insQ = useQuery({ queryKey: ["insights", file?.path], queryFn: () => apiInsights(file!.path), enabled: !!file && doctor.status === "done" });
   const toolFitQ = useQuery({ queryKey: ["toolhead-fit", file?.path, u1Host], queryFn: () => apiToolheadFit(file!.path, u1Host), enabled: !!file && doctor.status === "done", retry: false, staleTime: 30000 });
-  // Honest readiness report — the single source of truth for the score/headline (the raw
-  // doctor verdict/score only means profile compatibility).
+  // Honest readiness report — the single source of truth for the headline (the raw
+  // doctor verdict only means profile compatibility).
   const repQ = useQuery({ queryKey: ["report", file?.path], queryFn: () => apiReport(file!.path), enabled: !!file && doctor.status === "done" });
 
   // No file in session (e.g. hard refresh) — send the user back to start.
   if (!file) return <Navigate to="/" replace />;
 
   const d = doctor.data;
-  const rv = readinessView(repQ.data);   // honest readiness (score/headline authority)
+  const rv = readinessView(repQ.data);   // honest readiness (headline authority)
   const TypeIcon = file.ext === "stl" ? FileBox : Boxes;
   const converting = convert.status === "loading";
 
@@ -80,16 +80,12 @@ export default function LiveWorkspace() {
         </div>
       </div>
 
-      {/* Readiness verdict + score + issues — kept directly under the header CTA so the
+      {/* Readiness verdict + issues — kept directly under the header CTA so the
           decision data sits next to the "Prepare U1 copy" action it informs. */}
       {doctor.status === "done" && d && (
         <Card>
           <CardContent className="space-y-4 p-6">
             <div className="flex items-center gap-5">
-              <div className={cn("flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 text-2xl font-bold",
-                rv.tone === "ready" ? "border-ready/40 text-ready" : "border-repairable/40 text-repairable")}>
-                {rv.scoreCap ?? d.score ?? "—"}
-              </div>
               <div className="space-y-1.5">
                 <StatusBadge verdict={d.verdict as Verdict} />
                 <p className="text-sm font-medium">{rv.headline}</p>
@@ -330,7 +326,6 @@ export default function LiveWorkspace() {
                   <>
                     <div className="flex justify-between"><dt>U1 compatible</dt><dd className="text-foreground">{d.is_compatible ? "yes" : "no"}</dd></div>
                     {d.filament_count != null && <div className="flex justify-between"><dt>Filaments</dt><dd className="text-foreground">{d.filament_count}</dd></div>}
-                    {d.score != null && <div className="flex justify-between"><dt>Score</dt><dd className="text-foreground">{d.score}</dd></div>}
                   </>
                 )}
               </dl>

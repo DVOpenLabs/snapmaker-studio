@@ -44,7 +44,7 @@
     "means": "The verdict banner on the Workspace: the checks found something worth fixing before you slice.",
     "why": "The banner summarizes the findings (for example an object off the plate). The **Your fix plan** list underneath says where each step happens.",
     "do": ["Read the checks, then follow **Your fix plan**: you can do steps marked **Do this in Studio** now; leave steps marked **Do this in Orca** for Orca."],
-    "dont": "A star rating or banner summarizes the checks; it is not a prediction about the print.",
+    "dont": "A banner summarizes the checks (older builds also showed a star rating); it is not a prediction about the print.",
     "shot": "workspace-3mf", "tasks": ["move-onto-plate", "prepare-u1-copy"], "keywords": ["verdict", "banner", "fix plan", "stars", "needs a fix"]
   },
   {

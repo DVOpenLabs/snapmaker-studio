@@ -1,0 +1,237 @@
+{
+  "browser": "Microsoft Edge (Chromium, headless)",
+  "passed": 46,
+  "total": 46,
+  "results": [
+    {
+      "name": "self-test: the printer-page check catches \"Score 85\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "self-test: the printer-page check catches \"Grade B\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "self-test: the printer-page check catches \"Printer Health Score\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "self-test: the printer-page check catches \"92/100\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "self-test: the printer-page check catches \"Healthy (100/100) good to print\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "self-test: the printer-page check passes plain wording",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: card lists signals with what to do",
+      "ok": true,
+      "detail": "Print risk signals Studio found 1 thing to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found some"
+    },
+    {
+      "name": "light: card names its evidence kind",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: card says what was checked and not checked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: card says what Studio cannot know and to verify in Snapmaker Orca",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: no percentage, band or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: with no signals it says what was covered and not that the print will succeed",
+      "ok": true,
+      "detail": "Print risk signals Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed. Studio checked:"
+    },
+    {
+      "name": "light: the nothing-flagged result also has no percentage or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (flagged project) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (flagged project) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (nothing flagged) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (nothing flagged) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card lists signals with what to do",
+      "ok": true,
+      "detail": "Print risk signals Studio found 1 thing to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found some"
+    },
+    {
+      "name": "dark: card names its evidence kind",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card says what was checked and not checked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: card says what Studio cannot know and to verify in Snapmaker Orca",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: no percentage, band or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: with no signals it says what was covered and not that the print will succeed",
+      "ok": true,
+      "detail": "Print risk signals Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed. Studio checked:"
+    },
+    {
+      "name": "dark: the nothing-flagged result also has no percentage or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (flagged project) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (flagged project) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (nothing flagged) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (nothing flagged) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: with a reachable printer, the card counts printer history as checked",
+      "ok": true,
+      "detail": "Print risk signals Studio found 3 things to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found something in this project that can cause trouble when slicing. "
+    },
+    {
+      "name": "light: with a reachable printer, a failed print with the same file name is a signal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: expanded evidence shows the Printer line without a health number, grade, \"good to print\" or \"Compatible\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: with a reachable printer, the card counts printer history as checked",
+      "ok": true,
+      "detail": "Print risk signals Studio found 3 things to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found something in this project that can cause trouble when slicing. "
+    },
+    {
+      "name": "dark: with a reachable printer, a failed print with the same file name is a signal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: expanded evidence shows the Printer line without a health number, grade, \"good to print\" or \"Compatible\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: Printers page card is \"What the printer reported\" with what was read and no grade, score or /100",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
+    },
+    {
+      "name": "light: firmware warning + failed print (healthy:false, firmware ready): the chip reads \"See concerns\", not \"ready\"",
+      "ok": true,
+      "detail": " or tap Auto-detect my U1. Studio shows live"
+    },
+    {
+      "name": "light: Printers page verdict does not say \"Nothing concerning\" while listing concerns",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "dark: Printers page card is \"What the printer reported\" with what was read and no grade, score or /100",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
+    },
+    {
+      "name": "dark: firmware warning + failed print (healthy:false, firmware ready): the chip reads \"See concerns\", not \"ready\"",
+      "ok": true,
+      "detail": " or tap Auto-detect my U1. Studio shows live"
+    },
+    {
+      "name": "dark: Printers page verdict does not say \"Nothing concerning\" while listing concerns",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "light: ready firmware + one failed print and no warning: the chip says \"See concerns\", never \"Healthy\", and the card lists the failed print",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "dark: ready firmware + one failed print and no warning: the chip says \"See concerns\", never \"Healthy\", and the card lists the failed print",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "light: Not verified state shows \"Not verified\" and no \"Risks found 0\", biggest risk or \"Orca slices the file as you give it\"",
+      "ok": true,
+      "detail": "tudio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed. Powered by Studio Intelligence · yo"
+    },
+    {
+      "name": "dark: Not verified state shows \"Not verified\" and no \"Risks found 0\", biggest risk or \"Orca slices the file as you give it\"",
+      "ok": true,
+      "detail": "tudio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed. Powered by Studio Intelligence · yo"
+    },
+    {
+      "name": "no engine request named a host other than this machine, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -2,30 +2,29 @@
 
 Every Doctor answers one question. A user shouldn't have to read seven cards to
 know where they stand. This synthesises them into a single screen's worth of
-answer: a Studio Intelligence Score, the money headline, the biggest risk, and
+answer: the risks found, the money headline, the biggest risk, and
 the one next action — with each Doctor's finding as supporting evidence.
 
 Pure synthesis over already-computed Doctor dicts (no network, no fabrication):
-it scores only what's present, surfaces real findings, and stays honest about
+it uses only what's present, surfaces real findings, and stays honest about
 what it can't yet see.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = "report/1"
+from . import conditions as C
+
+SCHEMA_VERSION = "report/2"   # 2: no studio_score / print_success_score / expected_improvement (#92)
 
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
-_LEVEL_SCORE = {"ok": 100, "warn": 70, "risk": 40}
 
 
-def _push_findings(risks, recs, doctor, doc):
-    """Collect a doctor's non-ok findings as risks and its fixes as recommendations."""
-    if not doc or not doc.get("available", True):
-        return
-    for f in (doc.get("findings") or []):
-        if f.get("level") in ("warn", "risk"):
-            risks.append({"doctor": doctor, "level": f["level"], "text": f["text"]})
-    for fx in (doc.get("fixes") or []):
-        recs.append(fx)
+def _community_entries(ck, risk) -> list:
+    """Community entries for one report risk: only a FULL symptom phrase found in the risk text counts (a shared word
+    or a shared number does not), and printer failure history never gets one. The global matcher is left as it is."""
+    if risk.get("condition") == C.PRINTER_FAILURE_HISTORY:
+        return []
+    text = (risk.get("text") or "").lower()
+    return [e for e in ck.match(text, limit=6) if any(sym in text for sym in e["symptoms"])]
 
 
 def demo() -> dict:
@@ -34,20 +33,22 @@ def demo() -> dict:
     Built through the REAL synthesis engine from realistic Doctor outputs (with a
     bed-fit risk + a colour note so the value is visible), then flagged is_demo."""
     out = build(
-        predict={"available": True, "likelihood": 72, "band": "uncertain",
-                 "factors": ["more colours than toolheads — needs a swap or remap"]},
+        predict={"available": True,
+                 "signals": [{"id": "toolhead-fit", "level": "warn",
+                              "title": "More colors than toolheads"}]},
         bed_fit={"available": True, "overall_level": "risk",
                  "overall_text": "It won't fit as-is — this is the out-of-bounds error.",
-                 "findings": [{"level": "risk", "text": "Too big for the bed: 286×140 mm on a 270×270 mm bed — scale to 94% to fit."}],
+                 "findings": [{"level": "risk", "id": "bed-footprint", "text": "Too big for the bed: 286×140 mm on a 270×270 mm bed — scale to 94% to fit.",
+                              "action": "Scale to 94% so it fits the 270×270 mm bed."}],
                  "fixes": ["Scale to 94% so it fits the 270×270 mm bed.",
                            "Or rotate it ~45° — the diagonal fits within the bed."]},
         mm={"available": True, "overall_level": "warn",
             "overall_text": "Multi-material setup needs a tweak before slicing.",
-            "findings": [{"level": "warn", "text": "5 colours but only 4 toolheads — 1 colour can't load at once."}],
+            "findings": [{"level": "warn", "id": "toolhead-fit", "text": "5 colours but only 4 toolheads — 1 colour can't load at once.",
+                              "action": "Remap to 4 colours in Orca, or pause-and-swap mid-print."}],
             "fixes": ["Remap to 4 colours in Orca, or pause-and-swap mid-print."]},
         first_layer={"overall_level": "ok", "overall_text": "First layer looks solid.", "findings": []},
-        health={"available": True, "score": 88, "grade": "A", "drivers": [],
-                "verdict": "Healthy (88/100) — good to print."},
+        health={"available": True, "drivers": []},
         cost={"available": True, "true_cost": 6.40, "suggested_price": 11.84,
               "margin": 5.44, "margin_pct": 46.0, "currency": "$", "time_known": True,
               "basis": "printer slicer metadata"},
@@ -81,27 +82,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     cur = (cost or {}).get("currency") or (pricing or {}).get("currency") or "$"
 
-    # --- headline scores ---
-    success = predict.get("likelihood") if avail["predict"] else None
-    health_score = health.get("score") if avail["health"] else None
-
-    # Studio Intelligence Score: blend print-success and printer-health when both
-    # are known; otherwise lean on whichever exists, then on the doctors' levels.
-    comp = []
-    if success is not None:
-        comp.append((success, 0.6))
-    if health_score is not None:
-        comp.append((health_score, 0.4))
-    if comp:
-        wsum = sum(w for _, w in comp)
-        studio_score = round(sum(v * w for v, w in comp) / wsum)
-    else:
-        worst = "ok"
-        for d in (bed_fit, mm, first_layer):
-            lvl = (d or {}).get("overall_level")
-            if lvl and _ORDER[lvl] > _ORDER[worst]:
-                worst = lvl
-        studio_score = _LEVEL_SCORE[worst] if any([avail["bed_fit"], avail["mm"], avail["first_layer"]]) else None
+    # No headline score: nothing here is calibrated against print outcomes, and a
+    # number (even the printer's own health figure) read as design readiness (#92).
 
     # --- money headline ---
     money = cost or {}
@@ -110,42 +92,56 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     margin_pct = (profit.get("margin_pct") if avail["profit"] else money.get("margin_pct")) if (avail["profit"] or avail["cost"]) else None
     profit_v = profit.get("profit_per_print") if avail["profit"] else (money.get("margin") if avail["cost"] else None)
 
-    # --- printer compatibility ---
-    if avail["health"]:
-        compatibility = "Compatible" if (health_score or 0) >= 60 else "Check"
-    else:
-        compatibility = "Unknown"   # no printer connected; design-only signals
-
-    # --- risks + recommendations from every doctor ---
-    risks: list = []
+    # --- findings: ONE per stable condition id (snapstudio_core.conditions) ---
+    # Severity is the max over every source that reports the condition, evidence is merged, the action is the one that
+    # belongs to the condition. The risk list, Biggest risk, Next, the printer line and the counts all derive from this.
+    contribs: list = []
     recs: list = []
-    _push_findings(risks, recs, "Size fit (dimensions only)", bed_fit)
-    _push_findings(risks, recs, "Multi-Material Doctor", mm)
-    _push_findings(risks, recs, "First Layer Doctor", first_layer)
+    for label, doc in (("Size fit (dimensions only)", bed_fit), ("Multi-Material Doctor", mm), ("First Layer Doctor", first_layer)):
+        contribs.extend(C.doctor_contributions(doc, label))
+        if doc and doc.get("available", True):
+            recs.extend(doc.get("fixes") or [])
     if avail["health"]:
-        for d in (health.get("drivers") or []):
-            if "no problem" not in d.lower():
-                risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
+        conds = health.get("conditions")
+        if conds is None:   # an older health result: its lines are separate, never-merged conditions
+            conds = [{"id": f"unmapped:Printer Doctor:{i}", "level": "warn", "text": d}
+                     for i, d in enumerate(health.get("drivers") or []) if "no problem" not in d.lower()]
+        for cond in conds:
+            contribs.append(C.contribution(cond["id"], cond.get("level", "warn"), cond["text"], source="health"))
     if avail["predict"]:
-        for f in (predict.get("factors") or []):
-            if "no risk" not in f.lower():
-                risks.append({"doctor": "Project Doctor", "level": "warn", "text": f})
+        for i, sig in enumerate(predict.get("signals") or []):
+            sid = sig.get("id") or f"unmapped:Project Doctor:{i}"
+            title = sig.get("title") or ""
+            # A signal for a condition a Doctor also reports only restates it (severity/action); it adds evidence for the
+            # conditions only it can see (design validation, failure history).
+            facts = (sig.get("facts") or [title]) if (sid in C.PREDICTOR_ADDS_EVIDENCE or sid.startswith("unmapped:")) else []
+            contribs.append(C.contribution(sid, "risk" if sig.get("level") == "risk" else "warn", title,
+                                           facts=facts, action=sig.get("action"),
+                                           source="history" if sid == C.PRINTER_FAILURE_HISTORY else "predictor"))
     if avail["profit"] and (profit.get("profit_per_print") or 0) <= 0:
-        risks.append({"doctor": "Profit Doctor", "level": "warn",
-                      "text": "Priced below cost — not profitable as-is."})
+        contribs.append(C.contribution(C.PROFIT_BELOW_COST, "warn", "Priced below cost — not profitable as-is.",
+                                       action="Raise the price or cut cost before selling."))
         recs.append("Raise the price or cut cost before selling.")
 
-    # Object spacing / collisions not verified by Studio yet — a real blocker that
-    # must keep the report from saying "no major blockers found".
-    if spacing and spacing.get("status") == "unknown":
-        risks.append({"doctor": "Object spacing", "level": "warn",
-                      "text": "Object spacing / collisions not verified by Studio — "
-                              "check for too-close / collision warnings in Snapmaker Orca before slicing."})
+    findings = C.merge(contribs)
+    risks = [{"doctor": f["doctor"], "level": f["level"], "text": f["text"], "condition": f["id"],
+              "evidence": f["evidence"], **({"action": f["action"]} if f.get("action") else {})} for f in findings]
 
-    # dedup, severity-sort
-    seen = set()
-    risks = [r for r in risks if not (r["text"] in seen or seen.add(r["text"]))]
-    risks.sort(key=lambda r: _ORDER.get(r["level"], 0), reverse=True)
+    # --- what Studio read from the printer (never "compatible": printer health says nothing about whether this
+    # file suits this printer). The count is the number of printer conditions in the findings above. ---
+    printer_concerns = [f for f in findings if f["id"] in C.PRINTER_CONDITIONS or f["doctor"] == "Printer Doctor"]
+    if not avail["health"] and not printer_concerns:
+        printer_status = "Not checked"
+    elif printer_concerns:
+        printer_status = f"Answered, {len(printer_concerns)} concern{'s' if len(printer_concerns) != 1 else ''}"
+    else:
+        printer_status = "Answered, no concerns"
+
+    # Object spacing / collisions are not verified by Studio. That is a limitation, not a
+    # finding: it is listed as "not verified" and keeps the report from saying "found nothing".
+    spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
+    not_verified = ["object spacing"] if spacing_unverified else []
+
     seen_r = set()
     recommendations = [r for r in recs if not (r in seen_r or seen_r.add(r))]
 
@@ -153,7 +149,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     try:
         from . import community_knowledge as ck
         for rk in risks:
-            hit = ck.match(rk["text"], limit=1)
+            hit = _community_entries(ck, rk)
             if hit:
                 e = hit[0]
                 rk["community"] = {
@@ -167,23 +163,14 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     biggest_risk = risks[0] if risks else None
 
-    # Expected Improvement (clearly an estimate): applying the recommended fixes
-    # clears most of the gap to a clean print. We recover ~80% of the shortfall.
-    expected_improvement = None
-    if success is not None:
-        after = success if not recommendations or success >= 95 else round(success + (95 - success) * 0.8)
-        expected_improvement = {
-            "current": success,
-            "after_fixes": after,
-            "is_estimate": True,
-            "label": f"Estimate: ~{success}% now → ~{after}% after the recommended fixes",
-        }
-
     # --- the one next action ---
     if biggest_risk:
-        next_action = recommendations[0] if recommendations else f"Address: {biggest_risk['text']}"
+        # The step that goes with the biggest risk, not just the first fix in Doctor order.
+        next_action = biggest_risk.get("action") or f"Look into: {biggest_risk['text']}"
     else:
-        next_action = "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing."
+        next_action = ("Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing."
+                       if spacing_unverified else
+                       "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing.")
 
     # --- supporting evidence (each Doctor's one-line status) ---
     supporting = []
@@ -199,8 +186,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         (mm or {}).get("overall_text", ""))
     add("First Layer Doctor", avail["first_layer"], _lvl_status.get((first_layer or {}).get("overall_level"), "—"),
         (first_layer or {}).get("overall_text", ""))
-    add("Printer Doctor", avail["health"], f"{(health or {}).get('grade','')} · {health_score}/100" if avail["health"] else "—",
-        (health or {}).get("verdict", ""))
+    add("Printer Doctor", avail["health"], printer_status,
+        "What the printer reported about its own firmware and print history.")
     add("Cost Doctor", avail["cost"], f"{cur}{cost_v}" if cost_v is not None else "—",
         "True cost to make.")
     add("Pricing Doctor", avail["pricing"], (pricing or {}).get("verdict", ""), "Hobby / Marketplace / Premium tiers.")
@@ -211,27 +198,32 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
             "Studio does not verify object-to-object spacing yet — confirm in Snapmaker Orca.")
 
     # --- one-line verdict ---
-    bits = []
-    if studio_score is not None:
-        bits.append(f"Studio score {studio_score}/100")
+    risks_found = len(risks)
     if biggest_risk:
-        bits.append(f"top risk: {biggest_risk['text']}")
+        count = f"{risks_found} risk{'s' if risks_found != 1 else ''} found; " if risks_found else ""
+        verdict = f"{count}top risk: {biggest_risk['text']}."
     else:
-        bits.append("no major blockers found")
-    verdict = "; ".join(bits) + "." if bits else "Report ready."
+        verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
+    if not risks_found and spacing_unverified:
+        verdict = ("Studio's other checks found no risks, but object spacing was not verified. "
+                   "That is not a sign the print will succeed.")
 
     # --- Before vs After: "why not just use Orca?" ---
-    n_issues = len(risks)
+    n_issues = risks_found   # the same count as "Risks found"
     n_fixes = len(recommendations)
-    orca_line = ("Orca would slice this as-is" +
-                 (f" — no warning about the {n_issues} issue{'s' if n_issues != 1 else ''} below."
-                  if n_issues else ", and it'd be fine — but it can't tell you that in advance."))
     money_bit = (f", and it prices the print at {cur}{price_v} ({cur}{profit_v}/print profit)"
                  if (price_v is not None and profit_v is not None) else "")
-    studio_line = (f"Studio caught {n_issues} issue{'s' if n_issues != 1 else ''} and offered "
-                   f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}."
-                   if n_issues else
-                   f"Studio checked it and found no major blockers{money_bit}.")
+    if n_issues:
+        orca_line = f"Orca would slice this as-is, with no warning about the {n_issues} risk{'s' if n_issues != 1 else ''} Studio found."
+        studio_line = (f"Studio found {n_issues} risk{'s' if n_issues != 1 else ''} and offered "
+                       f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}.")
+    else:
+        orca_line = ("Only Snapmaker Orca's preview can show spacing between objects."
+                     if spacing_unverified else "Orca slices the file as you give it.")
+        studio_line = (("Studio's other checks found nothing in this file, but object spacing was not verified. "
+                        if spacing_unverified else "Studio's checks found nothing in this file. ")
+                       + "They do not cover slicer settings, filament condition, bed cleanliness or "
+                       "mid-print behavior. Verify in Snapmaker Orca before you print.")
     comparison = {
         "issues_found": n_issues,
         "fixes_offered": n_fixes,
@@ -244,15 +236,14 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "comparison": comparison,
-        "expected_improvement": expected_improvement,
-        "studio_score": studio_score,
-        "print_success_score": success,
+        "risks_found": risks_found,
+        "not_verified": not_verified,
         "cost": cost_v,
         "suggested_price": price_v,
         "margin_pct": margin_pct,
         "profit_per_print": profit_v,
         "currency": cur,
-        "printer_compatibility": compatibility,
+        "printer_status": printer_status,
         "risks": risks,
         "biggest_risk": biggest_risk,
         "recommendations": recommendations,

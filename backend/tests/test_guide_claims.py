@@ -63,7 +63,7 @@ ENGINE_FACTS = {
     "unknown-compatible": ("unknown-gap", "backend:post_slice._machine_match"),
     "sliced-for-u1": ("sliced-header", "backend:post_slice._machine_match"),
     "original-unchanged": ("copy-only", "test:backend/tests/test_guide_claims.py::test_original_unchanged_answer_uses_real_convert_path"),
-    "print-success": ("readiness-estimate", "backend:success_predict.predict"),
+    "print-success": ("risk-signals", "backend:success_predict.findings"),
 }
 
 
@@ -79,7 +79,7 @@ def check_answers(manifest, pages, tmp_path):
         "unknown-compatible": lambda: ("unknown-gap", "backend:post_slice._machine_match", {"does not guess", "no printer is connected"}),
         "sliced-for-u1": lambda: ("sliced-header", "backend:post_slice._machine_match", {"Studio reads the header", "not simulated"}),
         "original-unchanged": lambda: ("copy-only", "test:backend/tests/test_guide_claims.py::test_original_unchanged_answer_uses_real_convert_path", {"SnapmakerU1", "original file is not modified"}),
-        "print-success": lambda: ("readiness-estimate", "backend:success_predict.predict", {"takes points off for each risk signal", "not a probability of print success", "at least 75"}),
+        "print-success": lambda: ("risk-signals", "backend:success_predict.findings", {"lists each risk signal it found", "gives no percentage", "cannot know"}),
     }
     assert set(table) == set(ENGINE_FACTS)
     assert set(ENGINE_FACTS) | {"kept-orca"} == set(by_id)
@@ -98,7 +98,8 @@ def check_answers(manifest, pages, tmp_path):
     assert clamp[0]["kind"] == "engine"
     assert post_slice._machine_match({"printer_model": "Snapmaker U1"}, {})["confidence"] == post_slice.CONFIRMED
     assert post_slice._machine_match({"printer_model": "not a known printer"}, {})["confidence"] == post_slice.LIKELY
-    assert success_predict.predict(readiness={"ready": True})["likelihood"] == 100
+    clean = success_predict.findings(readiness={"ready": True})
+    assert clean["signals"] == [] and "object spacing" in clean["not_checked"] and clean["limitations"]
     src = tmp_path / "answer-source.3mf"
     shutil.copy(ROOT / "examples" / "demo_offplate_foreign.3mf", src)
     before = _sha(src)
@@ -259,19 +260,16 @@ def test_golden_answer_engine_assertion_table_has_exact_manifest_coverage(tmp_pa
     assert check_answers(_guide("answers"), {name: _guide(name) for name in ("path", "tasks", "problems")}, tmp_path)
 
 
-def test_print_readiness_is_a_risk_signal_score_not_a_measured_chance():
-    """The formula check cannot establish that the score predicts physical printer behavior, prose clarity, source fitness, honest dates, paraphrased overclaims, or screen-reader behavior."""
+def test_print_risk_signals_are_a_list_not_a_measured_chance():
+    """The behavior check cannot establish that the signals predict physical printer behavior, prose clarity, source fitness, honest dates, paraphrased overclaims, or screen-reader behavior."""
     from snapstudio_core import success_predict
-    baseline = success_predict.predict(readiness={"ready": True})
-    one_warning = success_predict.predict(readiness={"ready": False, "warnings": ["one"]})
-    two_warnings = success_predict.predict(readiness={"ready": False, "warnings": ["one", "two"]})
-    assert baseline["likelihood"] == 100
-    assert one_warning["likelihood"] == 100 - (20 + 5 * 1) == 75
-    assert two_warnings["likelihood"] == 100 - (20 + 5 * 2) == 70
-    assert one_warning["band"] == "likely" and two_warnings["band"] == "uncertain"
-    assert success_predict.predict(readiness={"ready": False, "warnings": []})["band"] == "likely"
-    assert success_predict._band(75) == "likely" and success_predict._band(74) == "uncertain"
-    assert "Likely to print" in success_predict._verdict(80, "likely")
+    flagged = success_predict.findings(readiness={"ready": False, "warnings": ["one", "two"]})
+    assert [s["id"] for s in flagged["signals"]] == ["design-validation"]
+    assert flagged["signals"][0]["details"] == ["one", "two"]
+    for out in (flagged, success_predict.findings(readiness={"ready": True})):
+        assert not {"likelihood", "band", "verdict", "factors"} & set(out)
+        assert out["checked"] and out["not_checked"] and out["limitations"]
+    assert any("cannot know" in x for x in success_predict.LIMITATIONS)
 
 
 def _run_guide_build(content, output):
@@ -304,17 +302,31 @@ def test_build_rejects_invalid_answers_and_source_refs():
         path_path = content / "path.json"
         path_data = json.loads(path_path.read_text(encoding="utf-8"))
         source_page_index = next(i for i, page in enumerate(path_data) if page.get("sources"))
-        for ref in [
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/DOES_NOT_EXIST.py",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/desktop/src/lib/fidelity.ts#DOES_NOT_EXIST",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/../backend/snapstudio_core/rules.py",
-            "/absolute/backend/snapstudio_core/rules.py",
-            "@does_not_exist",
+        # Refs are built from the guide's own release tag, so each negative case below reaches the check it is
+        # named for instead of failing early on the tag prefix. A valid ref under the same tag must build (control).
+        version = json.loads((content / "guide.json").read_text(encoding="utf-8"))["site"]["version"]
+        tag = f"https://github.com/DVOpenLabs/snapmaker-studio/blob/v{version}/"
+
+        def build_with(ref):
+            data = json.loads(json.dumps(path_data)); data[source_page_index]["sources"][0]["ref"] = ref
+            path_path.write_text(json.dumps(data), encoding="utf-8")
+            return _run_guide_build(content, output)
+
+        answers_path.write_text(json.dumps(original), encoding="utf-8")   # undo the answer mutations above
+        control = build_with(tag + "desktop/src/lib/fidelity.ts#FIDELITY_HEADINGS")
+        assert control.returncode == 0, control.stderr
+        for reason, ref, expected in [
+            ("missing file", tag + "backend/DOES_NOT_EXIST.py", "file not in the repository"),
+            ("missing fragment", tag + "desktop/src/lib/fidelity.ts#DOES_NOT_EXIST", "fragment not found in the file"),
+            ("parent traversal", tag + "../backend/snapstudio_core/rules.py", "parent-directory traversal"),
+            ("absolute path under the right tag", tag + "/absolute/backend/snapstudio_core/rules.py", "absolute path"),
+            ("moving branch, not a tag", "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py", "moving branch, not a release tag"),
+            ("bare absolute path", "/absolute/backend/snapstudio_core/rules.py", "not a URL"),
+            ("unknown @link", "@does_not_exist", "unknown link key"),
         ]:
-            bad_path = json.loads(json.dumps(path_data)); bad_path[source_page_index]["sources"][0]["ref"] = ref
-            path_path.write_text(json.dumps(bad_path), encoding="utf-8")
-            assert _run_guide_build(content, output).returncode != 0
+            res = build_with(ref)
+            assert res.returncode != 0, reason
+            assert f"source ref does not resolve to this release ({expected}): {ref}" in res.stderr, (reason, res.stderr)
         path_path.write_text(json.dumps(path_data), encoding="utf-8")
 
 

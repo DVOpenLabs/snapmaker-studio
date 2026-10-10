@@ -520,14 +520,14 @@ export interface ReportRisk {
 export interface ReportEvidence { doctor: string; status: string; detail: string; }
 export interface IntelligenceReport {
   available: boolean;
-  studio_score?: number | null;
-  print_success_score?: number | null;
+  risks_found?: number;
+  not_verified?: string[];
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;
   profit_per_print?: number | null;
   currency?: string;
-  printer_compatibility?: "Compatible" | "Check" | "Unknown";
+  printer_status?: string;
   risks?: ReportRisk[];
   biggest_risk?: ReportRisk | null;
   recommendations?: string[];
@@ -537,7 +537,6 @@ export interface IntelligenceReport {
   reason?: string;
   is_demo?: boolean;
   demo_name?: string;
-  expected_improvement?: { current: number; after_fixes: number; is_estimate: boolean; label: string } | null;
   comparison?: {
     issues_found: number; fixes_offered: number; prices_the_print: boolean;
     orca_line: string; studio_line: string;
@@ -650,16 +649,27 @@ export async function bedFit(path: string, host?: string | null): Promise<BedFit
   return r.json();
 }
 
-// Print Success Prediction: pre-print "will it print?" odds from existing signals.
-export interface SuccessPrediction {
+// Print risk signals: what Studio found worth settling before slicing, with what
+// was and was not checked. Deliberately no percentage, band or verdict (#92).
+export interface RiskSignal {
+  id: string;
+  kind: "file" | "engine" | "estimate" | "orca";
+  level: "warn" | "risk";
+  title: string;
+  meaning: string;
+  action: string;
+  details?: string[];
+}
+export interface PrintFindings {
   available: boolean;
-  likelihood?: number;
-  band?: "likely" | "uncertain" | "risky";
-  factors?: string[];
-  verdict?: string;
+  signals?: RiskSignal[];
+  checked?: string[];
+  not_checked?: string[];
+  limitations?: string[];
+  summary?: string;
   reason?: string;
 }
-export async function predictSuccess(path: string, host?: string | null): Promise<SuccessPrediction> {
+export async function printFindings(path: string, host?: string | null): Promise<PrintFindings> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/predict_success`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -686,12 +696,15 @@ export function printerFailureInsights(host: string, port = 7125): Promise<Failu
   return printerPost("/printer/failure_insights", { host, port });
 }
 
-// Printer Health Score: one 0–100 from the U1's own read-only firmware + history signals.
+// Printer health: what the U1's own read-only firmware state and print history show.
 export interface PrinterHealth {
   available: boolean;
   score?: number;
   grade?: "A" | "B" | "C" | "D" | "F";
+  /** One line per condition the printer reported (failure history is ONE line with merged evidence). */
   drivers?: string[];
+  /** The same list with stable condition ids; its length is the concern count the state chip and the report use. */
+  conditions?: { id: string; level: "warn" | "risk"; text: string }[];
   basis?: string;
   verdict?: string;
   reason?: string;

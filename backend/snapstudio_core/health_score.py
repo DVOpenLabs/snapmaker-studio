@@ -1,10 +1,11 @@
-"""Printer Health Score — one honest number for "is my U1 in good shape?"
+"""Printer health — what the U1's own signals say about its condition
 
 A U1 owner can already see telemetry (Fluidd), history (Moonraker), and Studio's
 failure patterns — but nothing rolls them into a single answer. This does: it
 folds the printer's OWN read-only signals (firmware/connectivity state + warnings
-+ failed components, and the print-history failure pattern) into a 0–100 score, a
-letter grade, and the plain-language drivers behind it.
++ failed components, and the print-history failure pattern) into a score, a letter
+grade and the plain-language drivers behind them. UIs show the drivers and the
+verdict, not the number (#92).
 
 Pure aggregation of data Studio already fetches read-only — no new printer calls,
 no control, no telemetry re-display. Honest by design: it scores only the signals
@@ -29,7 +30,7 @@ def _grade(score: int) -> str:
 
 
 def score(diagnostics=None, failures=None) -> dict:
-    """Roll the U1's read-only health signals into a 0–100 score.
+    """Roll the U1's read-only health signals into a score plus plain-language drivers.
 
     diagnostics: snapstudio_core.moonraker.diagnostics() output (or None).
     failures: snapstudio_core.failure_patterns.assess() output (or None).
@@ -40,39 +41,56 @@ def score(diagnostics=None, failures=None) -> dict:
         return {"schema_version": SCHEMA_VERSION, "available": False,
                 "reason": "no printer diagnostics or print history to score"}
 
-    # Each driver: (penalty_points, plain-language reason).
-    drivers: list[tuple[int, str]] = []
+    # One condition per thing the printer reported (never one per line of evidence): the failure rate and the
+    # failure streak describe the same failed jobs, so they are ONE condition with merged text.
+    # Each: (penalty_points, condition id, plain-language text).
+    conds: list[tuple] = []
 
     if have_fail:
+        parts: list[str] = []
+        penalty_f = 0
         rate = float(failures.get("failure_rate") or 0.0)
         if rate > 0:
             p = round(rate * 40)
             if p:
-                drivers.append((p, f"{round(rate * 100)}% of recent prints failed"))
+                penalty_f += p
+                parts.append(f"{failures.get('failed')} of the last {failures.get('total')} prints failed"
+                             if failures.get("failed") is not None and failures.get("total") is not None
+                             else "recent prints failed")
         streak = int(failures.get("recent_failure_streak") or 0)
         if streak >= 4:
-            drivers.append((25, f"{streak} prints failed in a row"))
+            penalty_f += 25
+            parts.append(f"{streak} prints failed in a row")
         elif streak >= 2:
-            drivers.append((15, f"{streak} prints failed in a row"))
+            penalty_f += 15
+            parts.append(f"{streak} prints failed in a row")
+        if parts:
+            # the level follows the failure-pattern result itself (80% failed / a long streak is a risk, not a warn)
+            conds.append((penalty_f, "printer-failure-history", "; ".join(parts),
+                          "risk" if failures.get("overall_level") == "risk" else "warn"))
 
     if have_diag:
         st = diagnostics.get("klippy_state")
         if st and st != "ready":
-            drivers.append((30, f"firmware not ready ({st})"))
+            conds.append((30, "firmware-not-ready", f"firmware not ready ({st})", "warn"))
         fc = diagnostics.get("failed_components") or []
         if fc:
-            drivers.append((min(40, 20 * len(fc)), f"{len(fc)} failed firmware component(s)"))
+            conds.append((min(40, 20 * len(fc)), "firmware-failed-component",
+                          f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}", "warn"))
         warns = diagnostics.get("warnings") or []
         if warns:
-            drivers.append((min(15, 5 * len(warns)), f"{len(warns)} firmware warning(s)"))
+            conds.append((min(15, 5 * len(warns)), "firmware-warning",
+                          f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}", "warn"))
 
-    penalty = sum(p for p, _ in drivers)
+    penalty = sum(c[0] for c in conds)
     value = max(0, min(100, 100 - penalty))
     grade = _grade(value)
 
     # Most impactful first; if nothing pulled it down, say so.
-    drivers.sort(key=lambda d: d[0], reverse=True)
-    driver_text = [t for _, t in drivers] or ["No problems found in firmware state or recent history."]
+    conds.sort(key=lambda c: c[0], reverse=True)
+    conditions = [{"id": cid, "level": level, "text": text} for _, cid, text, level in conds]
+    has_concerns = bool(conditions)
+    driver_text = [c["text"] for c in conditions] or ["No problems found in firmware state or recent history."]
 
     basis_parts = []
     if have_diag:
@@ -86,15 +104,18 @@ def score(diagnostics=None, failures=None) -> dict:
         "available": True,
         "score": value,
         "grade": grade,
-        "drivers": driver_text,
+        "drivers": driver_text,            # one line per condition
+        "conditions": conditions,          # the same list, with stable ids; its length is the concern count
         "basis": basis,
-        "verdict": _verdict(value, grade),
+        "verdict": _verdict(value, grade, has_concerns),
     }
 
 
-def _verdict(value: int, grade: str) -> str:
+def _verdict(value: int, grade: str, has_concerns: bool = False) -> str:
+    if has_concerns and grade in ("A", "B"):
+        return "A few things in the printer's own readings are worth a look; see the list below."
     if grade in ("A", "B"):
-        return f"Healthy ({value}/100) — good to print."
+        return "Nothing concerning in the printer's own readings."
     if grade == "C":
-        return f"Usable ({value}/100), but worth a check before a long print."
-    return f"Needs attention ({value}/100) — fix the issues below before the next print."
+        return "Worth a check before a long print."
+    return "The printer's own readings show concerns; see the list below."

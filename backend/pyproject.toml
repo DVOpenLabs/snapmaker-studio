@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "snapmaker-studio"
 version = "1.5.1"
-description = "Snapmaker Studio engine — a local-first workflow platform for modern 3D printing: understand, validate, and prepare designs print-ready (Bambu/Orca/STL today; Snapmaker U1 as the first printer target)."
+description = "Snapmaker Studio engine — a local-first workflow platform for modern 3D printing: understand, validate, and prepare U1 profile copies of designs (Bambu/Orca/STL today; Snapmaker U1 as the first printer target)."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "Snapmaker Studio contributors" }]
-keywords = ["3d-printing", "print-ready", "validation", "workflow", "local-first", "snapmaker", "u1", "3mf", "stl", "orca", "bambu"]
+keywords = ["3d-printing", "pre-print", "validation", "workflow", "local-first", "snapmaker", "u1", "3mf", "stl", "orca", "bambu"]
 dependencies = ["lxml>=6.1,<7", "click>=8.1,<9", "cryptography>=44,<51"]
 classifiers = [
     "License :: OSI Approved :: MIT License",

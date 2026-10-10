@@ -12,8 +12,8 @@ warm. Window at ~1280×860, dark theme (default).
 |---|---|---|---|
 | 0:00–0:06 | **Launch** the app | Branded splash → dark Dashboard, sidebar mark + "The Intelligence Layer" | "This is Snapmaker Studio — the intelligence layer for open 3D printing." |
 | 0:06–0:12 | Click **"See a 10-second demo"** | Demo badge appears; the Studio Intelligence Report renders inline | "One click — no printer, no file needed." |
-| 0:12–0:24 | Let the **Intelligence Report** sit | Studio Score (78), five metrics: will-it-print 72%, cost, sell-for, margin, printer | "One screen answers it: will it print, what it costs, what to sell it for, my profit." |
-| 0:24–0:32 | Point to **Expected Improvement + biggest risk** | "72% → 90% after fixes (estimate)"; red biggest-risk banner; next action | "It found the real risk — too big for the bed — and the exact fix: scale to 94%." |
+| 0:12–0:24 | Let the **Intelligence Report** sit | Metrics: risks found, material cost, printer | "One screen shows what's at risk, what it costs, what to sell it for, my profit." |
+| 0:24–0:32 | Point to **biggest risk + next action** | red biggest-risk banner; next action | "It found the real risk — too big for the bed — and the exact fix: scale to 94%." |
 | 0:32–0:42 | Expand **"See risks & Doctor findings"** → a **Community Fix** | Risk with "Community fix · High confidence" + sources (r/snapmaker…) | "And it brings the community's known fix in-app — no more hunting Facebook groups." |
 | 0:42–0:50 | Point to **Cost / Pricing / Profit** (headline + Doctors as evidence) | Cost $6.40 · Sell $11.84 · Margin 46% · Profit/print | "Cost, a fair selling price, and profit — nothing else in the U1 world does this." |
 | 0:50–0:60 | Click **"Why Studio?"** | Outcome table: Orca / Fluidd / Studio | "Orca slices, Fluidd monitors — Studio helps decide what to fix before you print. That's the gap we fill." |

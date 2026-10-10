@@ -22,7 +22,7 @@
   coverage is limited; the demo uses sample data so it never depends on hardware.
 - **Cost/Pricing/Profit defaults** — sensible estimates (filament price, power,
   machine wear, labour, markup tiers); user-tunable. Clearly labelled estimates.
-- **Expected Improvement** — a labelled heuristic estimate, not a guarantee.
+- **Expected Improvement** — removed in #92 (it was an uncalibrated percentage); the report now lists the risks found.
 - **Community Knowledge** — curated knowledge base (MVP). Phase-2 reviewed
   ingestion from Reddit/GitHub/forums is designed but **not built**.
 - **Advanced (power-user) Workspace** — full-featured but denser; not the novice path.
