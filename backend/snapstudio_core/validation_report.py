@@ -31,7 +31,24 @@ def _check(name, ok, detail):
     return {"name": name, "status": "pass" if ok else "warn", "detail": detail}
 
 
-def readiness_report(path: str) -> dict:
+def _preset_markers_line(prepare_mode: str | None) -> str:
+    """What the cleared preset markers mean for the user's setting values.
+
+    Only Preserve keeps the creator's values in effect. In Recommended Studio writes
+    its U1 starter settings, and Snapmaker Orca resets anything not declared as the
+    creator's to the U1 preset. A file alone does not say which mode made it, so
+    without a mode the line makes no promise about the values.
+    """
+    base = "Customized-preset markers cleared so Orca opens it clean"
+    if prepare_mode == "preserve":
+        return base + " — your setting values are kept"
+    if prepare_mode in ("recommended", "u1"):
+        return base + " — your settings were replaced by Studio's U1 starter settings"
+    return (base + " — setting values are kept only when prepared with Preserve creator "
+            "settings; Studio's U1 starter settings replace them")
+
+
+def readiness_report(path: str, prepare_mode: str | None = None) -> dict:
     info = project_info(path)
     diag = diagnose_path(path).to_dict()
     is_stl = diag.get("input_type") == "stl"
@@ -88,7 +105,7 @@ def readiness_report(path: str) -> dict:
             changes.append(f'Printer identity → Snapmaker U1 (was {cfg.get("printer_model")})')
         dss = cfg.get("different_settings_to_system")
         if (isinstance(dss, list) and any(str(x) for x in dss)) or (isinstance(dss, str) and dss):
-            changes.append("Customized-preset markers cleared so Orca opens it clean — your setting values are kept")
+            changes.append(_preset_markers_line(prepare_mode))
         if cfg.get("print_sequence") not in (None, "by layer"):
             at_risk.append('Print order changes from "by object" to "by layer" (avoids a collision warning; re-enable in Orca if you need by-object)')
         if not changes and verdict == READY:

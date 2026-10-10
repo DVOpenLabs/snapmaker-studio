@@ -39,9 +39,6 @@ export function PlacementCard({ path }: { path: string }) {
   // route still have something to say.
   if (failed) return null;
 
-  const verdict = placementVerdict(check);
-  const blocked = blockedReason(check);
-
   const runFix = async () => {
     setFixing(true);
     try {
@@ -57,6 +54,20 @@ export function PlacementCard({ path }: { path: string }) {
       setFixing(false);
     }
   };
+
+  return <PlacementView check={check} fix={fix} fixing={fixing} onFix={runFix} />;
+}
+
+/** What the card shows for a given check. Separate from the fetching so it can be rendered on its own. */
+export function PlacementView({ check, fix, fixing, onFix }: {
+  check: PlacementCheck | null;
+  fix: PlacementFix | null;
+  fixing: boolean;
+  onFix: () => void;
+}) {
+  const showToast = useToast((s) => s.show);
+  const verdict = placementVerdict(check);
+  const blocked = blockedReason(check);
 
   return (
     <Card>
@@ -96,7 +107,7 @@ export function PlacementCard({ path }: { path: string }) {
 
         {verdict.canFix && !fix?.ok && (
           <div className="space-y-1.5">
-            <Button size="sm" onClick={runFix} disabled={fixing}>
+            <Button size="sm" onClick={onFix} disabled={fixing}>
               {fixing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Move className="h-3.5 w-3.5" />}
               {fixing ? "Repositioning…" : "Move onto the plate (saves a copy)"}
             </Button>

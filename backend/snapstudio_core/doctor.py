@@ -18,6 +18,12 @@ REPAIRABLE = "REPAIRABLE"      # well-formed project, fixable with `repair`
 HIGH_RISK = "HIGH_RISK"        # not a usable project (broken / not a 3MF)
 CONVERTIBLE = "CONVERTIBLE"    # an STL - convert it with `repair`
 
+# Appended to the READY action of a project with more than one plate.
+MULTI_PLATE_READY_NOTE = (
+    " This project has several plates and Studio has not checked where they sit: "
+    "use Arrange all plates in Snapmaker Orca first."
+)
+
 
 @dataclass
 class Diagnosis:
@@ -109,6 +115,9 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     elif score == 100 and not compatibility_issues:
         verdict = READY
         action = "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice."
+        if fp.plate_count > 1:
+            # The profile is ready; where the plates sit is not something Studio checks.
+            action += MULTI_PLATE_READY_NOTE
     else:
         verdict = REPAIRABLE
         action = "Prepare a U1 profile copy, then review it in Snapmaker Orca before slicing."

@@ -145,3 +145,26 @@ describe("PrepareSettingsSummary explanations", () => {
     expect(html).not.toContain("available with the recommended U1 profile");
   });
 });
+
+describe("PrepareSettingsSummary in Recommended mode", () => {
+  const SUPPORTS = "Supports: the creator turned supports on. This mode does not keep them; Snapmaker Orca will open with supports off. Turn them on in Orca's Support tab or prepare with Preserve creator settings.";
+
+  it("states that the creator's supports are not kept, before handoff", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, supports_note: SUPPORTS }} mode="recommended" />).replace(/&#x27;/g, "'");
+    expect(html).toContain(SUPPORTS);
+  });
+
+  it("does not describe the written settings as kept", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, kept_count: 501 }} mode="recommended" />).replace(/&#x27;/g, "'");
+    expect(html).not.toContain("501 creator settings kept");
+    expect(html).not.toContain("kept from the original file");
+    expect(html).toContain("501 creator settings are written in the file");
+    expect(html).toContain("Studio's U1 starter settings replace the creator's print settings");
+  });
+
+  it("keeps the Preserve wording and shows no supports line when there is no note", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, kept_count: 501 }} mode="preserve" />);
+    expect(html).toContain("501 creator settings kept");
+    expect(html).not.toContain("Supports");
+  });
+});

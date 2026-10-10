@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Projects with more than one plate no longer show a green "every object is inside".** Studio
+  checks that each plate fits the U1 on its own, but it does not move objects between plates and
+  cannot check where the plates sit. The Object placement card now says so and points to Arrange all
+  plates in Snapmaker Orca; the printer bed check reports "unknown" instead of a pass, so Ready Now
+  does not count such a project as ready; and the Project Doctor's "ready" line carries the same note.
+- **The plate count now comes from the plates the project declares**, not from slice-cache files, so
+  a project with several plates is no longer counted as one.
+- **"Use Studio's U1 starter settings instead" says when it does not keep the creator's supports.**
+  When the original turned supports on, the Prepare summary now says, before you open the copy, that
+  Snapmaker Orca will open with supports off (and that painted support areas then do nothing). The
+  summary no longer describes the written settings as "kept" in that mode, and the Validation Center
+  only says your setting values are kept for a copy prepared with Preserve creator settings. What the
+  mode writes is unchanged.
+
+### Known limits (not changed)
+- For a project made for a printer with a larger bed, the objects keep the creator's positions, so
+  Snapmaker Orca can list an object as Outside even when its plate fits. Studio does not rearrange
+  plates automatically; use Arrange all plates in Orca.
+- The starter-settings mode puts the wipe tower at a fixed position and resets a multi-nozzle flush
+  table to zeros. Check the tower in Orca's preview and open Flushing volumes if you use them.
+
 ## [1.5.1] - 2026-10-09
 
 **Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**

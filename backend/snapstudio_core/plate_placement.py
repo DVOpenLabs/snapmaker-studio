@@ -234,6 +234,14 @@ MULTI_PLATE_REFUSAL = (
     "in Snapmaker Orca and use Arrange."
 )
 
+# What Studio can say about a multi-plate project when every plate fits on its own.
+# It is deliberately not "every object is inside": the plates sit on one grid that
+# Studio neither moves nor checks, and Snapmaker Orca can list an object as Outside.
+MULTI_PLATE_UNVERIFIED = (
+    "Each plate fits on its own, but Studio cannot check where the plates sit. "
+    "Open the project in Snapmaker Orca and use Arrange all plates before slicing."
+)
+
 
 def _plates_from_model_settings(tm: ThreeMF) -> list[dict]:
     """UI plate number -> the object ids on it, from the project's own records."""
@@ -378,9 +386,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     fixable = (not multi_plate) and bool(off_plate) and would_fit
 
     if multi_plate and not off_plate:
-        summary = (f"All {len(plate_fit)} plates fit {whose} printable area. Studio does "
-                   "not reposition multi-plate projects — open the project in Snapmaker "
-                   "Orca to arrange the plates.")
+        summary = MULTI_PLATE_UNVERIFIED
     elif multi_plate and oversized_plates:
         names = ", ".join(str(p["plate"]) for p in oversized_plates)
         summary = (f"Plate {names} does not fit {whose} printable area: "
@@ -411,6 +417,8 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
         "source_bed": source_bed,
         "source_printer": (traits.get("target_printer") or {}).get("value"),
         "plate_count": plate_count,
+        # False whenever positions across plates are not established by Studio.
+        "placement_established": not multi_plate,
         "item_count": len(reported),
         "items": reported,
         "off_plate": off_plate,

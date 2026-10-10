@@ -176,6 +176,43 @@ def _is_preserved_value_mapping(old, new) -> bool:
     return _strict_value_equal(new, expected)
 
 
+def _is_on(value) -> bool:
+    """Whether a project-settings switch such as `enable_support` is on."""
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return str(value).strip().lower() in ("1", "true")
+
+
+def _supports_note(tm: ThreeMF, before: dict, after: dict, prepare_mode: str) -> str | None:
+    """Say so when the creator's supports will not be in effect in Snapmaker Orca.
+
+    Orca resets every process value the project does not declare in
+    `different_settings_to_system` to the U1 preset, where supports are off.
+    Recommended blanks the source's declaration and re-declares only what Studio
+    itself changed, so a creator's `enable_support=1` stays in the file but is not
+    used. Computed from the source and the written config, never asserted; Preserve
+    keeps the declaration, so it has nothing to say.
+    """
+    from .preset_deviation import declared_process_keys
+
+    if prepare_mode == "preserve" or not _is_on(before.get("enable_support")):
+        return None
+    if "enable_support" in declared_process_keys(after) and _is_on(after.get("enable_support")):
+        return None
+    note = ("Supports: the creator turned supports on. This mode does not keep them; "
+            "Snapmaker Orca will open with supports off. Turn them on in Orca's Support tab "
+            "or prepare with Preserve creator settings.")
+    try:
+        painted = sum(tm.read_part(p).count(b"paint_supports")
+                      for p in tm.list_parts() if p.endswith(".model"))
+    except Exception:
+        painted = 0
+    if painted:
+        note += (" The painted support areas stay in the file but do nothing while "
+                 "supports are off.")
+    return note
+
+
 def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                       prepare_mode: str, profile_name: str = "snapmaker_u1",
                       recommended_after: dict | None = None) -> dict:
@@ -436,6 +473,9 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    supports_note = _supports_note(tm, before, after, prepare_mode)
+    if supports_note:
+        summary["supports_note"] = supports_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:
         # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
         summary["project_materials"] = {

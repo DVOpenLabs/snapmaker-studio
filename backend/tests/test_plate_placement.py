@@ -307,7 +307,9 @@ def test_multi_plate_projects_are_never_repositioned(tmp_path):
     }, printable_area=SOURCE_350)
     out = pp.assess(p)
     assert out["fixable"] is False
-    assert "does not reposition" in out["summary"]
+    # Reworded: the old text claimed the plates "fit" the printable area and only said Studio
+    # does not reposition them; it now says what Studio cannot check (see test_honest_claims).
+    assert "cannot check where the plates sit" in out["summary"]
     res = pp.prepare_placed_copy(p, out_dir=str(out_dir))
     assert res["ok"] is False
     assert not out_dir.exists() or list(out_dir.iterdir()) == []
@@ -318,7 +320,7 @@ def test_the_refusal_explains_why_rather_than_just_declining(tmp_path):
         1: [(1, 170, 170)], 2: [(2, 540, 170)],
     }, printable_area=SOURCE_350)
     summary = pp.assess(p)["summary"]
-    assert "not recorded in the file" in summary or "does not reposition" in summary
+    assert "cannot check where the plates sit" in summary and "Arrange all plates" in summary
 
 
 def test_a_plate_whose_contents_are_too_big_is_reported(tmp_path):
