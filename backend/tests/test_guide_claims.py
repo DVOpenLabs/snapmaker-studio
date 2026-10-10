@@ -302,17 +302,31 @@ def test_build_rejects_invalid_answers_and_source_refs():
         path_path = content / "path.json"
         path_data = json.loads(path_path.read_text(encoding="utf-8"))
         source_page_index = next(i for i, page in enumerate(path_data) if page.get("sources"))
-        for ref in [
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/backend/DOES_NOT_EXIST.py",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/desktop/src/lib/fidelity.ts#DOES_NOT_EXIST",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py",
-            "https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/../backend/snapstudio_core/rules.py",
-            "/absolute/backend/snapstudio_core/rules.py",
-            "@does_not_exist",
+        # Refs are built from the guide's own release tag, so each negative case below reaches the check it is
+        # named for instead of failing early on the tag prefix. A valid ref under the same tag must build (control).
+        version = json.loads((content / "guide.json").read_text(encoding="utf-8"))["site"]["version"]
+        tag = f"https://github.com/DVOpenLabs/snapmaker-studio/blob/v{version}/"
+
+        def build_with(ref):
+            data = json.loads(json.dumps(path_data)); data[source_page_index]["sources"][0]["ref"] = ref
+            path_path.write_text(json.dumps(data), encoding="utf-8")
+            return _run_guide_build(content, output)
+
+        answers_path.write_text(json.dumps(original), encoding="utf-8")   # undo the answer mutations above
+        control = build_with(tag + "desktop/src/lib/fidelity.ts#FIDELITY_HEADINGS")
+        assert control.returncode == 0, control.stderr
+        for reason, ref in [
+            ("missing file", tag + "backend/DOES_NOT_EXIST.py"),
+            ("missing fragment", tag + "desktop/src/lib/fidelity.ts#DOES_NOT_EXIST"),
+            ("parent traversal", tag + "../backend/snapstudio_core/rules.py"),
+            ("absolute path under the right tag", tag + "/absolute/backend/snapstudio_core/rules.py"),
+            ("moving branch, not a tag", "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py"),
+            ("bare absolute path", "/absolute/backend/snapstudio_core/rules.py"),
+            ("unknown @link", "@does_not_exist"),
         ]:
-            bad_path = json.loads(json.dumps(path_data)); bad_path[source_page_index]["sources"][0]["ref"] = ref
-            path_path.write_text(json.dumps(bad_path), encoding="utf-8")
-            assert _run_guide_build(content, output).returncode != 0
+            res = build_with(ref)
+            assert res.returncode != 0, reason
+            assert "source ref does not resolve to this release" in res.stderr and ref in res.stderr, (reason, res.stderr)
         path_path.write_text(json.dumps(path_data), encoding="utf-8")
 
 
