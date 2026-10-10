@@ -21,6 +21,13 @@ _MAX_GEOMETRY_BYTES = 80 * 1024 * 1024
 
 _VERT_RE = re.compile(rb'<vertex[^>]*\bx="(-?[\d.eE+]+)"[^>]*\by="(-?[\d.eE+]+)"[^>]*\bz="(-?[\d.eE+]+)"')
 _TRI_RE = re.compile(rb"<triangle ")
+_OBJECT_BLOCK_RE = re.compile(rb"<object\b[^>]*>.*?</object>", re.S)
+_ID_RE = re.compile(rb'\bid="([^"]*)"')
+
+
+def _object_id(block: bytes) -> str:
+    found = _ID_RE.search(block[:block.index(b">") + 1])
+    return found.group(1).decode("utf-8", "replace") if found else ""
 
 
 def _bbox_and_triangles(tm: ThreeMF):
@@ -36,12 +43,23 @@ def _bbox_and_triangles(tm: ThreeMF):
     lo = [float("inf")] * 3
     hi = [float("-inf")] * 3
     seen = False
+    # Meshes that are only ever non-printing volumes (modifiers, negative volumes, support helpers) are not
+    # part of the model's extents: the same role rule as the placed bounds and the sizes (see ``roles``).
+    from . import geometry
+
+    helpers = geometry.nonprinting_meshes(tm)
     for p in model_parts:
         raw = tm.read_part(p)
         # Each part's coordinates are in the unit its own header declares; the result is
         # millimetres. Millimetre parts (the default) are multiplied by exactly 1.0.
         scale = _units.mm_per_unit(raw)
-        for m in _VERT_RE.finditer(raw):
+        if any(part == p for part, _oid in helpers):
+            matches = (m for block in _OBJECT_BLOCK_RE.finditer(raw)
+                       if (p, _object_id(block.group(0))) not in helpers
+                       for m in _VERT_RE.finditer(block.group(0)))
+        else:
+            matches = _VERT_RE.finditer(raw)
+        for m in matches:
             seen = True
             for i in range(3):
                 v = float(m.group(i + 1)) * scale

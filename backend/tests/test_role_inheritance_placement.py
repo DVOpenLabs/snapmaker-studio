@@ -109,3 +109,47 @@ def test_a_child_cannot_print_again_beneath_a_non_printing_assembly(tmp_path, mo
     path = nested_assembly(tmp_path, records)
     assert bed_fit_check(path, monkeypatch)["result"] == "ok"
     assert pp.assess(path)["items"][0]["bounds_mm"]["max"][2] == 10.0
+
+
+# --- whole-model extents and the other size consumers share the rule -------------------------------------
+
+SEAM_WORDS = ["precise_seam_center", "precise_seam_left", "precise_seam_right",
+              "precise_seam_enforced", "precise_seam_blocked", "precise_seam_neutral"]
+
+
+@pytest.mark.parametrize("role", HELPER_ROLES + SEAM_WORDS)
+def test_every_consumer_of_the_extents_agrees_that_a_helper_volume_does_not_count(tmp_path, monkeypatch, role):
+    from snapstudio_core import geometry, layout
+    from snapstudio_core.intelligence import project_info
+    path = nested_assembly(tmp_path, on_assembly(role))
+    assert project_info(path)["dimensions_mm"] == {"x": 10.0, "y": 10.0, "z": 10.0}      # overall extents
+    assert [i["dimensions"]["z"] for i in geometry.build_item_dims(path)] == [10.0]       # placed items
+    assert layout.assess_layout(path)["status"] == "pass"                                  # plate-fit layout
+    check = bed_fit_check(path, monkeypatch)                                               # preflight
+    assert check["result"] == "ok" and check["confidence"] == "confirmed"
+    assert pp.over_height(ready_placement(path)) == []                                     # Ready Now
+    sc = scene.build_scene_dict(path, REV)                                                 # scene
+    assert next(n for n in sc["nodes"] if n["resource"]["object_id"] == "3")["printable"] is False
+
+
+def test_the_overall_extents_still_count_everything_when_no_role_says_otherwise(tmp_path):
+    from snapstudio_core.intelligence import project_info
+    path = nested_assembly(tmp_path, {"100": [("1", "normal_part")]})
+    assert project_info(path)["dimensions_mm"]["z"] == 300.0
+
+
+@pytest.mark.parametrize("word", SEAM_WORDS)
+def test_orcas_precise_seam_helpers_are_known_non_printing_roles(tmp_path, monkeypatch, word):
+    from snapstudio_core.assignments import MODIFIER, ROLE_UNKNOWN, role_of
+    assert role_of(word) == MODIFIER and role_of(word) != ROLE_UNKNOWN
+    path = nested_assembly(tmp_path, on_nested_record(word))
+    assert bed_fit_check(path, monkeypatch)["result"] == "ok"
+    sc = scene.build_scene_dict(path, REV)
+    assert "UNKNOWN_VOLUME_ROLE" not in [l["code"] for l in sc["limitations"]]
+
+
+def test_an_unrecognised_role_word_stays_conservative(tmp_path, monkeypatch):
+    path = nested_assembly(tmp_path, on_assembly("precise_seam_sideways"))
+    assert bed_fit_check(path, monkeypatch)["result"] == "attention"                       # counts: 300 mm tall
+    from snapstudio_core.intelligence import project_info
+    assert project_info(path)["dimensions_mm"]["z"] == 300.0
