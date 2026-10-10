@@ -46,8 +46,7 @@ def demo() -> dict:
             "findings": [{"level": "warn", "text": "5 colours but only 4 toolheads — 1 colour can't load at once."}],
             "fixes": ["Remap to 4 colours in Orca, or pause-and-swap mid-print."]},
         first_layer={"overall_level": "ok", "overall_text": "First layer looks solid.", "findings": []},
-        health={"available": True, "score": 88, "grade": "A", "drivers": [],
-                "verdict": "Healthy (88/100) — good to print."},
+        health={"available": True, "drivers": []},
         cost={"available": True, "true_cost": 6.40, "suggested_price": 11.84,
               "margin": 5.44, "margin_pct": 46.0, "currency": "$", "time_known": True,
               "basis": "printer slicer metadata"},
@@ -83,7 +82,6 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     # No headline score: nothing here is calibrated against print outcomes, and a
     # number (even the printer's own health figure) read as design readiness (#92).
-    health_score = health.get("score") if avail["health"] else None
 
     # --- money headline ---
     money = cost or {}
@@ -92,11 +90,15 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     margin_pct = (profit.get("margin_pct") if avail["profit"] else money.get("margin_pct")) if (avail["profit"] or avail["cost"]) else None
     profit_v = profit.get("profit_per_print") if avail["profit"] else (money.get("margin") if avail["cost"] else None)
 
-    # --- printer compatibility ---
-    if avail["health"]:
-        compatibility = "Compatible" if (health_score or 0) >= 60 else "Check"
+    # --- what Studio read from the printer (never "compatible": printer health says
+    # nothing about whether this file suits this printer) ---
+    concerns = [d for d in ((health or {}).get("drivers") or []) if "no problem" not in d.lower()] if avail["health"] else []
+    if not avail["health"]:
+        printer_status = "Not checked"
+    elif concerns:
+        printer_status = f"Answered, {len(concerns)} concern{'s' if len(concerns) != 1 else ''}"
     else:
-        compatibility = "Unknown"   # no printer connected; design-only signals
+        printer_status = "Answered, no concerns"
 
     # --- risks + recommendations from every doctor ---
     risks: list = []
@@ -110,6 +112,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                 risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
     if avail["predict"]:
         for sig in (predict.get("signals") or []):
+            if sig.get("id") == "printer-health":
+                continue   # the same drivers are already listed as Printer Doctor risks
             risks.append({"doctor": "Project Doctor",
                           "level": "risk" if sig.get("level") == "risk" else "warn",
                           "text": sig.get("title") or ""})
@@ -170,8 +174,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         (mm or {}).get("overall_text", ""))
     add("First Layer Doctor", avail["first_layer"], _lvl_status.get((first_layer or {}).get("overall_level"), "—"),
         (first_layer or {}).get("overall_text", ""))
-    add("Printer Doctor", avail["health"], f"{(health or {}).get('grade','')} · {health_score}/100" if avail["health"] else "—",
-        (health or {}).get("verdict", ""))
+    add("Printer Doctor", avail["health"], printer_status,
+        "What the printer reported about its own firmware and print history.")
     add("Cost Doctor", avail["cost"], f"{cur}{cost_v}" if cost_v is not None else "—",
         "True cost to make.")
     add("Pricing Doctor", avail["pricing"], (pricing or {}).get("verdict", ""), "Hobby / Marketplace / Premium tiers.")
@@ -190,17 +194,19 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
 
     # --- Before vs After: "why not just use Orca?" ---
-    n_issues = len(risks)
+    n_issues = risks_found   # the same count as "Risks found"
     n_fixes = len(recommendations)
-    orca_line = ("Orca would slice this as-is" +
-                 (f" — no warning about the {n_issues} issue{'s' if n_issues != 1 else ''} below."
-                  if n_issues else ", and it'd be fine — but it can't tell you that in advance."))
     money_bit = (f", and it prices the print at {cur}{price_v} ({cur}{profit_v}/print profit)"
                  if (price_v is not None and profit_v is not None) else "")
-    studio_line = (f"Studio caught {n_issues} issue{'s' if n_issues != 1 else ''} and offered "
-                   f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}."
-                   if n_issues else
-                   f"Studio checked it and found no major blockers{money_bit}.")
+    if n_issues:
+        orca_line = f"Orca would slice this as-is, with no warning about the {n_issues} risk{'s' if n_issues != 1 else ''} Studio found."
+        studio_line = (f"Studio found {n_issues} risk{'s' if n_issues != 1 else ''} and offered "
+                       f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}.")
+    else:
+        orca_line = "Orca slices the file as you give it."
+        studio_line = ("Studio's checks found nothing in this file. They do not cover slicer settings, "
+                       "filament condition, bed cleanliness or mid-print behavior. "
+                       "Verify in Snapmaker Orca before you print.")
     comparison = {
         "issues_found": n_issues,
         "fixes_offered": n_fixes,
@@ -219,7 +225,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         "margin_pct": margin_pct,
         "profit_per_print": profit_v,
         "currency": cur,
-        "printer_compatibility": compatibility,
+        "printer_status": printer_status,
         "risks": risks,
         "biggest_risk": biggest_risk,
         "recommendations": recommendations,

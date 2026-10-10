@@ -5,6 +5,7 @@ will it print, what it costs, what to sell it for, the profit, the biggest risk,
 and the next action. The Doctors become evidence behind one Studio Intelligence
 Score. Pure synthesis over already-computed dicts — no network here.
 """
+import json
 import re
 
 from snapstudio_core import intelligence_report as ir
@@ -38,7 +39,8 @@ def test_headline_from_printer_health_and_no_success_percentage():
     assert not _SCORE_KEYS & set(out)   # no number: not even the printer's own health figure
     assert out["schema_version"] == "report/2"
     assert not re.search(r"\d\s*(%|/\s*100)", out["verdict"])
-    assert out["printer_compatibility"] in ("Compatible", "Check", "Unknown")
+    assert out["printer_status"] == "Answered, no concerns"
+    assert "printer_compatibility" not in out
 
 
 def test_money_headline_from_cost_and_profit():
@@ -143,7 +145,7 @@ def test_headline_questions_present():
     out = ir.build(predict={"available": True, "signals": [{"id": "x", "level": "warn", "title": "x"}]},
                    health={"available": True, "score": 70, "grade": "C", "drivers": []})
     for k in ("risks_found", "cost", "suggested_price",
-              "margin_pct", "printer_compatibility", "risks", "biggest_risk",
+              "margin_pct", "printer_status", "risks", "biggest_risk",
               "recommendations", "next_action", "supporting", "verdict"):
         assert k in out
 
@@ -175,3 +177,51 @@ def test_clean_report_does_not_say_the_print_will_succeed():
     out = ir.build(first_layer={"overall_level": "ok", "findings": []})
     assert out["risks_found"] == 0
     assert "not a sign the print will succeed" in out["verdict"]
+
+
+def test_printer_line_states_what_was_read_never_compatible_and_has_no_health_number():
+    healthy = ir.build(
+        first_layer={"overall_level": "ok", "findings": []},
+        health={"available": True, "score": 100, "grade": "A", "drivers": ["No problems found."],
+                "verdict": "Healthy (100/100) \u2014 good to print."},
+    )
+    concerned = ir.build(
+        first_layer={"overall_level": "ok", "findings": []},
+        health={"available": True, "drivers": ["firmware warning", "2 of the last 10 prints failed"]},
+    )
+    silent = ir.build(first_layer={"overall_level": "ok", "findings": []})
+    assert healthy["printer_status"] == "Answered, no concerns"
+    assert concerned["printer_status"] == "Answered, 2 concerns"
+    assert silent["printer_status"] == "Not checked"
+    for out in (healthy, concerned, silent, ir.demo()):
+        blob = json.dumps(out).lower()
+        assert "compatible" not in out["printer_status"].lower()
+        assert not re.search(r"\d+\s*/\s*100|good to print|healthy \(|\"score\"|\"grade\"", blob)
+
+
+def test_comparison_uses_the_same_count_as_risks_found():
+    out = ir.build(
+        predict={"available": True, "signals": [{"id": "x", "level": "warn", "title": "One finding"}]},
+        first_layer={"overall_level": "ok", "findings": []},
+        spacing={"status": "unknown"},          # a notice, not a risk found
+    )
+    assert out["risks_found"] == 1
+    assert out["comparison"]["issues_found"] == 1
+    assert "1 risk" in out["comparison"]["studio_line"] and "2" not in out["comparison"]["studio_line"].split("offered")[0]
+
+
+def test_clean_comparison_says_what_was_checked_not_that_it_would_be_fine():
+    out = ir.build(first_layer={"overall_level": "ok", "findings": []})
+    blob = (out["comparison"]["orca_line"] + " " + out["comparison"]["studio_line"]).lower()
+    assert "no major blockers" not in blob and "it'd be fine" not in blob
+    assert "do not cover slicer settings" in blob and "verify in snapmaker orca" in blob
+
+
+def test_printer_health_concerns_are_not_counted_twice():
+    out = ir.build(
+        predict={"available": True, "signals": [
+            {"id": "printer-health", "level": "warn", "title": "The printer's own readings show concerns"}]},
+        health={"available": True, "drivers": ["1 firmware warning(s)"]},
+    )
+    assert out["risks_found"] == 1
+    assert [r["text"] for r in out["risks"]] == ["1 firmware warning(s)"]

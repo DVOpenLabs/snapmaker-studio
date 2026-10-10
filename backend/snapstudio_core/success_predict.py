@@ -23,7 +23,7 @@ SCHEMA_VERSION = "successpredict/2"
 
 # Things no signal here can tell you, whatever was checked.
 LIMITATIONS = [
-    "Studio checks only what it lists under \"Studio checked\". It cannot know your "
+    "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your "
     "slicer settings, how the filament has been stored, how clean or level the bed "
     "is, or how the printer behaves mid-print.",
     "Studio does not slice and does not verify spacing between objects. "
@@ -76,7 +76,7 @@ def findings(readiness=None, toolfit=None, first_layer=None, health=None,
         "colors against toolheads": toolfit_ok,
         "first-layer risk": first_layer_ok,
         "printer health": health_ok,
-        "this file's print history": bool(printer_checked or prior_failures),
+        "printer history for the same file name": bool(printer_checked or prior_failures),
     }
     if not any(have.values()):
         return {"schema_version": SCHEMA_VERSION, "available": False,
@@ -133,7 +133,7 @@ def findings(readiness=None, toolfit=None, first_layer=None, health=None,
                 "printer-health", "estimate", "warn",
                 "The printer's own readings show concerns",
                 "The printer's diagnostics or print history point to something worth looking at.",
-                "Open Printer Doctor and review these before a long print.",
+                "Open Printer Hub and review these before a long print.",
                 drivers[:5]))
 
     if prior_failures and prior_failures > 0:

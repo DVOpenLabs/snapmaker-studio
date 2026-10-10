@@ -40,8 +40,8 @@ def test_clean_design_says_what_was_checked_and_not_that_it_will_succeed():
 def test_no_printer_means_printer_signals_are_listed_as_not_checked():
     out = sp.findings(readiness={"ready": True, "warnings": []})
     assert "printer health" in out["not_checked"]
-    assert "this file's print history" in out["not_checked"]
-    assert sp.findings(readiness={"ready": True}, printer_checked=True)["checked"].count("this file's print history") == 1
+    assert "printer history for the same file name" in out["not_checked"]
+    assert sp.findings(readiness={"ready": True}, printer_checked=True)["checked"].count("printer history for the same file name") == 1
 
 
 def test_each_signal_says_what_it_means_and_what_to_do():
@@ -105,7 +105,7 @@ def test_unreachable_printer_is_not_reported_as_checked(monkeypatch, tmp_path):
     out = service.predict_success(str(cube), host="printer.invalid")
     assert "printer health" not in out.get("checked", [])
     assert "printer health" in out.get("not_checked", [])
-    assert "this file's print history" in out.get("not_checked", [])
+    assert "printer history for the same file name" in out.get("not_checked", [])
 
 
 def test_reachable_printer_counts_health_and_history_as_checked(monkeypatch, tmp_path):
@@ -113,7 +113,7 @@ def test_reachable_printer_counts_health_and_history_as_checked(monkeypatch, tmp
     cube = tmp_path / "c.stl"
     cube.write_bytes(b"\0" * 80 + (0).to_bytes(4, "little"))
     out = service.predict_success(str(cube), host="printer.invalid")
-    assert "printer health" in out["checked"] and "this file's print history" in out["checked"]
+    assert "printer health" in out["checked"] and "printer history for the same file name" in out["checked"]
 
 
 def test_unavailable_first_layer_or_validation_is_a_gap_not_a_clean_result():

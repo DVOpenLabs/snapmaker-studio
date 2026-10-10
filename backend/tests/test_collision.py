@@ -14,8 +14,12 @@ def test_multi_object_3mf_is_unknown():
 def test_single_object_3mf_passes():
     # one object can't collide with others
     assert assess_spacing(1, is_stl=False)["status"] == "pass"
-    assert assess_spacing(0, is_stl=False)["status"] == "pass"
-    assert assess_spacing(None, is_stl=False)["status"] == "pass"
+
+
+def test_unknown_object_count_is_not_assumed_single():
+    # None or 0 means Studio could not count the objects: spacing stays unknown.
+    assert assess_spacing(0, is_stl=False)["status"] == "unknown"
+    assert assess_spacing(None, is_stl=False)["status"] == "unknown"
 
 
 def test_stl_passes():
