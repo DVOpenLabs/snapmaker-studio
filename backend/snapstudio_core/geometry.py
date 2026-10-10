@@ -9,11 +9,13 @@ Guarded for size so an interactive call degrades to "too large to analyze" inste
 of stalling.
 """
 from __future__ import annotations
+import re
 from dataclasses import dataclass
 import copy
 import threading
 from pathlib import Path
 
+from . import roles as _roles
 from .container import ThreeMF
 from . import roles as _roles
 from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
@@ -108,6 +110,7 @@ def _compose(a, b):
 
 
 ROOT_MODEL = "3D/3dmodel.model"
+SETTINGS_PART = "Metadata/model_settings.config"
 
 
 #: What a malformed ``p:path`` becomes. It names no archive entry, so an item or component that carries
@@ -149,6 +152,72 @@ def build_items(root: bytes | str) -> list[dict]:
                     "part": normalize_part(it.get(f"{_3MF_PROD_NS}path")),
                     "attributes": dict(it.attrib)})
     return out
+
+
+_OBJECT_TAG = re.compile(rb"<object\b[^>]*>|</object>|<component\b[^>]*/>|<mesh\b")
+_ID_ATTR = re.compile(rb'\bid="([^"]*)"')
+_OBJECTID_ATTR = re.compile(rb'\bobjectid="([^"]*)"')
+_PATH_ATTR = re.compile(rb'\b(?:[A-Za-z_][\w.-]*:)?path="([^"]*)"')
+
+
+def nonprinting_meshes(tm: ThreeMF) -> set:
+    """``{(part, object id)}`` of mesh objects that are reached ONLY as non-printing volumes.
+
+    The same role rule as the footprint and the sizes (``roles``), for the callers that read meshes
+    straight from the archive (``intelligence``'s overall extents). A mesh reached by any printing path
+    still counts. Costs nothing when the project records no part role other than a normal part."""
+    from .assignments import PART, role_of
+
+    try:
+        settings = tm.read_part(SETTINGS_PART).decode("utf-8", "ignore") if tm.has_part(SETTINGS_PART) else ""
+        records = _roles.read_records(settings)
+        if not any(role_of(sub) != PART for subs in records.part_subtypes.values() for sub in subs.values()):
+            return set()
+        objects: dict = {}
+        for name in tm.list_parts():
+            if not name.endswith(".model"):
+                continue
+            current = None
+            table = objects.setdefault(name, {})
+            for m in _OBJECT_TAG.finditer(tm.read_part(name)):
+                token = m.group(0)
+                if token.startswith(b"<object"):
+                    found = _ID_ATTR.search(token)
+                    current = table.setdefault(found.group(1).decode("utf-8", "replace"), {"mesh": False, "comps": []}) \
+                        if found else None
+                elif token == b"</object>":
+                    current = None
+                elif token.startswith(b"<mesh"):
+                    if current is not None:
+                        current["mesh"] = True
+                elif current is not None:
+                    cid = _OBJECTID_ATTR.search(token)
+                    path = _PATH_ATTR.search(token)
+                    if cid:
+                        current["comps"].append((
+                            normalize_part(path.group(1).decode("utf-8", "replace")) if path else None,
+                            cid.group(1).decode("utf-8", "replace")))
+        printing: set = set()
+        helper: set = set()
+
+        def walk(part, oid, role, trail):
+            obj = objects.get(part, {}).get(oid)
+            if obj is None or (part, oid) in trail or len(trail) > 64:
+                return
+            if obj["mesh"]:
+                (printing if _roles.counts_toward_size(role) else helper).add((part, oid))
+            for cpart, cid in obj["comps"]:
+                child = role
+                if part == ROOT_MODEL:
+                    child = _roles.inherit(role, _roles.own_role(
+                        records.part_subtypes, records.metadata_objects, oid, cid, missing=None))
+                walk(cpart or part, cid, child, trail | {(part, oid)})
+
+        for item in build_items(tm.read_part(ROOT_MODEL)):
+            walk(item["part"] or ROOT_MODEL, item["object_id"], None, frozenset())
+        return helper - printing
+    except Exception:  # noqa: BLE001 - never make a size query fail; fall back to counting everything
+        return set()
 
 
 def build_item_dims(path: str) -> list[dict]:
@@ -311,7 +380,7 @@ def _measure_uncached(path: str):
 
         items = build_items(model_files[root_file])
         try:
-            settings_text = tm.read_part("Metadata/model_settings.config").decode("utf-8", "ignore")                 if tm.has_part("Metadata/model_settings.config") else ""
+            settings_text = tm.read_part(SETTINGS_PART).decode("utf-8", "ignore")                 if tm.has_part(SETTINGS_PART) else ""
             records = _roles.read_records(settings_text)
         except Exception:
             records = _roles.Records()
@@ -335,7 +404,7 @@ def _measure_uncached(path: str):
                 bad: list = []
                 collect(oid, part, it["part"] is not None, None, points, frozenset(), bad,
                         printing, None, records)
-                collected[key] = (points, bad)
+                collected[key] = (points, printing, bad)
                 # the SIZE of an object is the size of what prints, like its placed footprint
                 if printing and not bad:
                     lo, hi = box_of(printing)
@@ -343,7 +412,7 @@ def _measure_uncached(path: str):
                                   "dimensions": {"x": round(hi[0] - lo[0], 2),
                                                  "y": round(hi[1] - lo[1], 2),
                                                  "z": round(hi[2] - lo[2], 2)}}
-            points, bad = collected[key]
+            points, printing, bad = collected[key]
             if bad:
                 unresolved.append({"item_index": it["item_index"], "object_id": oid,
                                    "part": part, "reason": bad[0]})
@@ -351,10 +420,13 @@ def _measure_uncached(path: str):
             if not points:
                 continue
             xform = _units.scale_translation(_xform(it["transform"]), unit_scale[root_file])
-            placed_budget[0] += len(points)
+            # the placed bounds are those of what PRINTS; an object made only of helper volumes has nothing
+            # that prints, and keeps its full extent rather than vanishing from the checks
+            measured = printing or points
+            placed_budget[0] += len(measured)
             if placed_budget[0] > _MAX_VERTS:
                 raise _TooLarge()
-            lo, hi = box_of([_apply(v, xform) for v in points])
+            lo, hi = box_of([_apply(v, xform) for v in measured])
             # `item_index` is the build item's ordinal in the root model: one object used by two items is
             # two entries, and this tells them apart (an item with no geometry leaves a gap in the sequence).
             out.append({"object_id": oid,

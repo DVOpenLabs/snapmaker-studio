@@ -66,6 +66,16 @@ _ROLES = {
     "negative_part": NEGATIVE,
     "support_enforcer": SUPPORT_ENFORCER,
     "support_blocker": SUPPORT_BLOCKER,
+    # Orca's precise-seam helper volumes (written by Orca 2.4.2 and later). Like a modifier they steer the
+    # slicer and print nothing, so they are the modifier role. The strings are taken from Orca's own
+    # subtype list as reported to us; Snapmaker Orca 2.4.0 may not write them, and they are treated as
+    # known helper roles regardless. Any other word stays unknown (and so counts), see ``roles``.
+    "precise_seam_center": MODIFIER,
+    "precise_seam_left": MODIFIER,
+    "precise_seam_right": MODIFIER,
+    "precise_seam_enforced": MODIFIER,
+    "precise_seam_blocked": MODIFIER,
+    "precise_seam_neutral": MODIFIER,
 }
 
 #: Object-level keys that are the assignment itself or the object's identity,

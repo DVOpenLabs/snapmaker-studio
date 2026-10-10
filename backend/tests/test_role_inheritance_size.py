@@ -7,8 +7,9 @@ import pytest
 from snapstudio_api import service
 from snapstudio_core import geometry
 from snapstudio_core.intelligence import project_info
-from tests.test_role_inheritance_placement import (HELPER_ROLES, nested_assembly, on_assembly,
-                                                   on_nested_record)
+from tests.test_role_inheritance_placement import (HELPER_ROLES, REV, SEAM_WORDS, bed_fit_check,
+                                                   nested_assembly, on_assembly, on_nested_record,
+                                                   ready_placement)
 
 
 def fits_check(path):
@@ -16,7 +17,7 @@ def fits_check(path):
 
 
 @pytest.mark.parametrize("where", [on_assembly, on_nested_record], ids=["on_assembly", "on_nested_record"])
-@pytest.mark.parametrize("role", HELPER_ROLES)
+@pytest.mark.parametrize("role", HELPER_ROLES + SEAM_WORDS)
 def test_a_helper_role_on_an_assembly_keeps_the_size_to_what_prints(tmp_path, role, where):
     path = nested_assembly(tmp_path, where(role))
     [size] = geometry.object_sizes(path)
@@ -49,3 +50,19 @@ def test_a_child_cannot_print_again_beneath_a_non_printing_assembly(tmp_path):
     path = nested_assembly(tmp_path, records)
     assert geometry.object_sizes(path)[0]["dimensions"]["z"] == 10.0
     assert service.bed_fit(path)["overall_level"] == "ok"
+
+
+@pytest.mark.parametrize("role", ["modifier_part", "precise_seam_center"])
+def test_one_fixture_every_consumer_agrees(tmp_path, monkeypatch, role):
+    """The 10 mm printable part beside a 300 mm helper volume under a nested assembly: preflight, Ready Now,
+    the Bed-Fit API, the validation report, the overall extents and the scene say the same thing."""
+    from snapstudio_core import plate_placement as pp, scene
+    path = nested_assembly(tmp_path, on_assembly(role))
+    assert bed_fit_check(path, monkeypatch)["result"] == "ok"                                  # preflight
+    assert pp.over_height(ready_placement(path)) == []                                         # Ready Now
+    assert service.bed_fit(path)["overall_level"] == "ok"                                      # Bed-Fit API
+    assert fits_check(path)["status"] == "pass"                                                # validation report
+    assert project_info(path)["dimensions_mm"]["z"] == 10.0                                    # overall extents
+    sc = scene.build_scene_dict(path, REV)                                                     # scene
+    assert next(n for n in sc["nodes"] if n["id"] == "b0")["bounds_mm"]["max"][2] == 10.0
+    assert not any(f["kind"] in ("size", "placement") for f in sc["findings"])
