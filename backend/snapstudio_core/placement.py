@@ -366,6 +366,12 @@ def build_items(root: str) -> list[dict]:
     return geometry.build_items(root)
 
 
+def geometry_normalize(path: str) -> str:
+    from . import geometry
+
+    return geometry.normalize_part(path)
+
+
 def _components_of(block: str) -> list:
     """(part path or None, object id, transform text or None) for each component of an object."""
     out = []
@@ -375,7 +381,7 @@ def _components_of(block: str) -> list:
             continue
         transform = _ATTR_TRANSFORM.search(tag)
         path = _ATTR_PATH.search(tag)
-        out.append((path.group(1).lstrip("/") if path else None, mesh_id.group(1),
+        out.append((geometry_normalize(path.group(1)) if path else None, mesh_id.group(1),
                     transform.group(1) if transform else None))
     return out
 

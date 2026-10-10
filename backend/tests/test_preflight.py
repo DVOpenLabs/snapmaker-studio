@@ -28,9 +28,18 @@ def printer(**values):
     return base
 
 
-def placement(off=0, fixable=True, available=True):
-    return {"available": available, "fixable": fixable,
-            "off_plate": [{"object_id": str(i)} for i in range(off)]}
+def placement(off=0, fixable=True, available=True, **more):
+    out = {"available": available, "fixable": fixable,
+           "off_plate": [{"object_id": str(i)} for i in range(off)]}
+    out.update(more)
+    return out
+
+
+U1_PLATE = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
+
+
+def item(top):
+    return {"object_id": "1", "bounds_mm": {"min": [10, 10, 0], "max": [20, 20, top]}}
 
 
 def by_id(result, check_id):
@@ -225,12 +234,35 @@ def test_without_the_ordered_trait_falls_back_to_todays_set_comparison():
 
 # --- the bed ----------------------------------------------------------------
 
-def test_bed_uses_the_printers_real_dimensions_in_its_evidence():
-    out = pf.evaluate(traits(), printer(bed_mm={"x": 270, "y": 270, "z": 270}),
-                      placement=placement(off=0))
+def test_bed_evidence_names_the_printable_area_not_the_travel_figure():
+    out = pf.evaluate(traits(), printer(bed_mm={"x": 271, "y": 335, "z": 275}),
+                      placement=placement(off=0, bed=U1_PLATE, bed_height_mm=270.05, items=[item(20)]))
     check = by_id(out, "bed.fit")
-    assert check["result"] == pf.OK
-    assert "270" in check["evidence"]
+    assert check["result"] == pf.OK and check["confidence"] == pf.CONFIRMED
+    assert "270 × 270 mm printable area" in check["evidence"] and "335" not in check["evidence"]
+    assert "height limit" in check["evidence"]
+
+
+def test_a_tall_object_is_not_confirmed_to_fit():
+    out = pf.evaluate(traits(), printer(),
+                      placement=placement(off=0, bed=U1_PLATE, bed_height_mm=270.05, items=[item(300)]))
+    check = by_id(out, "bed.fit")
+    assert check["result"] == pf.ATTENTION and "300" in check["evidence"] and "height limit" in check["evidence"]
+
+
+def test_without_height_data_the_claim_is_narrowed_to_x_and_y():
+    out = pf.evaluate(traits(), printer(), placement=placement(off=0, bed=U1_PLATE))
+    check = by_id(out, "bed.fit")
+    assert check["result"] == pf.OK and check["confidence"] == pf.INFORMATIONAL
+    assert "X and Y only" in check["evidence"] and "height was not checked" in check["evidence"]
+
+
+def test_instances_that_could_not_be_judged_are_never_confirmed():
+    out = pf.evaluate(traits(), printer(),
+                      placement=placement(off=0, bed=U1_PLATE, bed_height_mm=270.05, items=[item(20)], not_judged=2))
+    check = by_id(out, "bed.fit")
+    assert check["result"] == pf.UNKNOWN and check["confidence"] != pf.CONFIRMED
+    assert "2 placed instances could not be judged" in check["evidence"]
 
 
 def test_objects_off_the_real_bed_need_attention_and_point_at_the_fix():

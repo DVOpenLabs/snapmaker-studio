@@ -55,6 +55,17 @@ def _u1_printable_area() -> list[str]:
     return template.get("printable_area") or []
 
 
+def u1_printable_height() -> float | None:
+    """The U1's printable height (mm) from Studio's own U1 profile template; None if it records none."""
+    try:
+        template = json.loads(
+            (files("snapstudio_core.data") / "templates" / "u1_base_project_settings.json")
+            .read_text("utf-8"))
+        return float(template.get("printable_height"))
+    except Exception:
+        return None
+
+
 def parse_printable_area(area) -> dict | None:
     """Turn a slicer's printable_area polygon into an axis-aligned rectangle.
 
@@ -151,8 +162,8 @@ def _centering_offset(cluster: dict, bed: dict) -> dict:
     high_x = bed["max_x"] - EDGE_MARGIN_MM - cluster["max_x"]
     low_y = bed["min_y"] + EDGE_MARGIN_MM - cluster["min_y"]
     high_y = bed["max_y"] - EDGE_MARGIN_MM - cluster["max_y"]
-    return {"x": round(_nearest_to_zero(low_x, high_x), 3),
-            "y": round(_nearest_to_zero(low_y, high_y), 3)}
+    return {"x": round(_nearest_to_zero(low_x, high_x), 6),
+            "y": round(_nearest_to_zero(low_y, high_y), 6)}
 
 
 def _nearest_to_zero(low: float, high: float) -> float:
@@ -427,7 +438,8 @@ def _plate_fit(grouped: dict[int, list[dict]], bed: dict,
     return out
 
 
-def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> dict:
+def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
+           height_mm: float | None = None) -> dict:
     """Where every object sits relative to the bed. Read-only, never raises.
 
     `bed` is the printer's real printable rectangle when one has been read from a
@@ -588,6 +600,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "bed": target,
+        "bed_height_mm": height_mm if height_mm is not None else (u1_printable_height() if not bed else None),
         "source_bed": source_bed,
         "source_printer": (traits.get("target_printer") or {}).get("value"),
         "plate_count": plate_count,
@@ -611,8 +624,9 @@ def _shift_transform(value: str, dx: float, dy: float) -> str | None:
     """Add (dx, dy) to a 3MF transform's translation. None if not a 3x4 matrix.
 
     3MF stores the matrix row-major with the translation as the final row, so
-    only entries 10 and 11 (1-indexed 12-value form) move. Everything else —
-    rotation, scale, shear — is copied through unchanged.
+    only entries 10 and 11 (1-indexed 12-value form) move. Every other token —
+    rotation, scale, shear, the Z translation — is copied through VERBATIM, not
+    re-formatted, so a rotation such as 0.7071067812 is not rounded.
     """
     parts = value.split()
     if len(parts) != 12:
@@ -621,9 +635,15 @@ def _shift_transform(value: str, dx: float, dy: float) -> str | None:
         nums = [float(p) for p in parts]
     except ValueError:
         return None
-    nums[9] += dx
-    nums[10] += dy
-    return " ".join(f"{n:.6g}" for n in nums)
+    parts[9] = _written(nums[9] + dx)
+    parts[10] = _written(nums[10] + dy)
+    return " ".join(parts)
+
+
+def _written(value: float) -> str:
+    """A translation to a micron, without trailing zeros."""
+    text = format(round(value, 6), ".6f").rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
 
 
 def _identity_shifted(dx: float, dy: float) -> str:
