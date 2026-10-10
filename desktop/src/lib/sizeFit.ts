@@ -25,24 +25,31 @@ type Dims = { x: number; y: number; z: number };
 const fitsBed = (d: Dims, bed: Bed) => d.x <= bed.x && d.y <= bed.y && d.z <= bed.z;
 const mm = (d: Dims) => `${d.x} × ${d.y} × ${d.z} mm`;
 
+export const UNMEASURED = "By size, Studio could not measure each object, so it cannot say whether they fit.";
+const SIZE_ONLY = "Size only: where it sits on the plate is a separate check.";
+
+/**
+ * `overall` is the combined extents of all the mesh data. It is only a signal that there IS geometry:
+ * it is never used to say an object fits or is too big, because for several separated objects or plates
+ * it is not any one object's size. No per-object sizes means "unknown".
+ */
 export function sizeRow(
   objects: ObjectSize[] | null | undefined,
   overall: Dims | null | undefined,
   bed: Bed,
   bedSource: string,
+  unmeasured = 0,
 ): SizeRow | null {
   const bedStr = `${bed.x} × ${bed.y} × ${bed.z} mm`;
   const sized = (objects ?? []).filter((o) => o.dimensions_mm);
   if (sized.length === 0) {
     if (!overall) return null;
-    return fitsBed(overall, bed)
-      ? { level: "ok", status: "Fits", detail: `By size, the overall extents ${mm(overall)} fit ${bedSource} ${bedStr} bed.` }
-      : {
-          level: "risk",
-          status: "Too big",
-          detail: `By size, the overall extents ${mm(overall)} are larger than ${bedSource} ${bedStr} bed — check each object on its own in Snapmaker Orca.`,
-        };
+    return { level: "warn", status: "Unknown", detail: UNMEASURED };
   }
+  const missing =
+    unmeasured > 0
+      ? ` ${unmeasured} build item${unmeasured === 1 ? "" : "s"} could not be measured, so Studio cannot say whether everything fits.`
+      : "";
   const tooBig = sized.filter((o) => !fitsBed(o.dimensions_mm, bed));
   const many = sized.length > 1;
   if (tooBig.length > 0) {
@@ -52,7 +59,7 @@ export function sizeRow(
     return {
       level: "risk",
       status: "Too big",
-      detail: `By size, ${who} is larger than ${bedSource} ${bedStr} bed — scale it down or split it.${more}`,
+      detail: `By size, ${who} is larger than ${bedSource} ${bedStr} bed — scale it down or split it.${more}${missing}`,
     };
   }
   const largest = sized.reduce((a, b) => (b.dimensions_mm.x * b.dimensions_mm.y > a.dimensions_mm.x * a.dimensions_mm.y ? b : a));
@@ -60,8 +67,8 @@ export function sizeRow(
     ? `each of the ${sized.length} objects fits ${bedSource} ${bedStr} bed (the largest is ${mm(largest.dimensions_mm)})`
     : `${mm(largest.dimensions_mm)} fits ${bedSource} ${bedStr} bed`;
   return {
-    level: "ok",
-    status: "Fits",
-    detail: `By size, ${subject}. Where it sits on the plate is checked separately, under Object placement.`,
+    level: missing ? "warn" : "ok",
+    status: missing ? "Check" : "Fits",
+    detail: `By size, ${subject}. ${SIZE_ONLY}${missing}`,
   };
 }

@@ -487,7 +487,7 @@ def diff(a: str, b: str) -> dict:
 def insights(path: str) -> dict:
     """Rich read-only Project Intelligence (geometry, materials, readiness)."""
     from snapstudio_core.intelligence import project_info
-    return project_info(path)
+    return project_info(path, placement_aware=True)
 
 
 def report(path: str) -> dict:
@@ -574,7 +574,10 @@ def prepare_placed(path: str, out_dir: str | None = None) -> dict:
             changes=[{"key": "object placement", "old": "off the U1 plate",
                       "new": change.get("detail"), "reason": change.get("kept")}
                      for change in (result.get("changes") or [])],
-            findings=[{"title": f"Object {item.get('object_id')} outside the plate",
+            findings=[{"title": (f"Object {item.get('object_id')}, instance "
+                                 f"{(item.get('instance_index') or 0) + 1} of {item['instance_count']} "
+                                 "outside the plate" if (item.get("instance_count") or 1) > 1
+                                 else f"Object {item.get('object_id')} outside the plate"),
                        "detail": item.get("edges") and f"past the {item['edges']} edge"}
                       for item in (before.get("off_plate") or [])],
             validated=not ((result.get("after") or {}).get("off_plate")))
@@ -2059,7 +2062,7 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     U1's real bed when reachable, else the known U1 bed. Read-only; works offline."""
     from snapstudio_core.intelligence import project_info
     from snapstudio_core import bed_fit as bf
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     dims = info.get("dimensions_mm")
     object_count = info.get("objects") or 1
     multi = (info.get("colors") or 0) > 1
@@ -2085,7 +2088,8 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
             path, bed=rect, bed_name=("your connected printer's" if rect else None))
     except Exception:
         placed = None
-    return bf.assess_objects(info.get("object_sizes_mm"), fallback_dims=dims, placed=placed,
+    return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,
+                             unmeasured=info.get("objects_unmeasured") or 0,
                              bed=bed, bed_known=bed_known, object_count=object_count,
                              multi_material=multi)
 

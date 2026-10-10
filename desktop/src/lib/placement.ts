@@ -31,6 +31,15 @@ export function placementVerdict(check: PlacementCheck | null): PlacementVerdict
     };
   }
   const repeated = check.items.some((entry) => (entry.instance_count ?? 1) > 1);
+  const unjudged = unjudgedCount(check);
+  if (check.off_plate.length === 0 && unjudged > 0) {
+    // Not "inside": something could not be judged at all.
+    return {
+      tone: "blocked",
+      headline: `${unjudged} placed ${unjudged === 1 ? "instance" : "instances"} could not be judged, so Studio cannot say whether everything is inside the U1's printable area.`,
+      canFix: false,
+    };
+  }
   if (check.off_plate.length === 0) {
     const many = (check.item_count ?? 0) > 1;
     return {
@@ -66,6 +75,11 @@ export function itemLabel(item: PlacementItem): string {
   return `Object ${item.object_id} · instance ${(item.instance_index ?? 0) + 1} of ${total}`;
 }
 
+/** Placed instances Studio could not judge. */
+export function unjudgedCount(check: PlacementCheck): number {
+  return check.not_judged ?? check.unresolved_objects?.length ?? 0;
+}
+
 /** How far off, and which way — as a sentence rather than four numbers. */
 export function overhangText(item: PlacementItem): string {
   const parts = (["left", "right", "front", "back"] as const)
@@ -78,10 +92,11 @@ export function overhangText(item: PlacementItem): string {
 
 /** Why Studio is refusing to move things, when it is. */
 export function blockedReason(check: PlacementCheck | null): string | null {
-  if (!check?.available || check.fixable || check.off_plate.length === 0) return null;
-  if (check.unresolved_objects?.length) {
-    return "Some objects are not listed on any plate, so Studio cannot tell where they belong.";
+  if (!check?.available) return null;
+  if (unjudgedCount(check) > 0) {
+    return "Some placed instances could not be found or are not listed on any plate, so Studio cannot tell whether they are on the plate.";
   }
+  if (check.fixable || check.off_plate.length === 0) return null;
   if (check.skipped_plates?.length) {
     return "At least one plate will not fit a U1 plate. Studio moves every plate or none.";
   }

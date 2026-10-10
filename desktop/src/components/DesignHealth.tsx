@@ -19,7 +19,8 @@ const STATUS_ICON: Record<Level, LucideIcon> = { ok: CheckCircle2, warn: AlertTr
 
 function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } | null,
                    bed?: { x: number; y: number; z: number } | null,
-                   mode: "simple" | "advanced" = "simple", objects?: ObjectSize[] | null): Row[] {
+                   mode: "simple" | "advanced" = "simple", objects?: ObjectSize[] | null,
+                   unmeasured = 0): Row[] {
   const rows: Row[] = [];
   const integ = mesh.integrity;
   const fitBed = bed ?? U1_BED;
@@ -70,7 +71,7 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
 
   // 5. Bed fit BY SIZE: each object against the real connected printer bed, else the U1 default.
   //    A size says nothing about position; placement is its own card.
-  const fit = sizeRow(objects, dims, fitBed, bedSource);
+  const fit = sizeRow(objects, dims, fitBed, bedSource, unmeasured);
   if (fit) {
     rows.push({ key: "bedfit", label: "Bed fit (by size)", icon: Ruler, level: fit.level,
       status: fit.status, detail: fit.detail });
@@ -80,16 +81,16 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
 
 /** Design Health — at-a-glance geometry verdicts with plain-language what/why/do.
  *  `mode` "advanced" appends the raw metric footer. */
-export function DesignHealth({ mesh, dims, objects, bed, mode = "simple" }: {
+export function DesignHealth({ mesh, dims, objects, unmeasured, bed, mode = "simple" }: {
   mesh?: MeshReport; dims?: { x: number; y: number; z: number } | null;
-  objects?: ObjectSize[] | null;
+  objects?: ObjectSize[] | null; unmeasured?: number;
   bed?: { x: number; y: number; z: number } | null; mode?: "simple" | "advanced";
 }) {
   if (!mesh) return null;
   if (!mesh.available) {
     return <p className="text-xs text-muted-foreground">Geometry analysis isn’t available for this file (it may be too large).</p>;
   }
-  const rows = buildRows(mesh, dims, bed, mode, objects);
+  const rows = buildRows(mesh, dims, bed, mode, objects, unmeasured);
   if (!rows.length) return null;
 
   return (

@@ -114,14 +114,14 @@ def _overhang(bounds: dict, bed: dict) -> dict:
 
 
 def _instance_list(rows: list[dict]) -> str:
-    """'object 1 instance 1 of 2, object 3' — which placed items a sentence is about."""
+    """'object 1, instance 1 of 2; object 3' — which placed items a sentence is about."""
     named = []
     for row in rows:
         text = f"object {row['object_id']}"
         if row.get("instance_count", 1) > 1:
-            text += f" instance {row['instance_index'] + 1} of {row['instance_count']}"
+            text += f", instance {row['instance_index'] + 1} of {row['instance_count']}"
         named.append(text)
-    return ", ".join(named)
+    return "; ".join(named)
 
 
 def _edges_text(over: dict) -> str:
@@ -187,7 +187,7 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     from . import placement
 
     try:
-        read = placement.read_objects(path)
+        read = placement.read_objects(path, keep_points=False)
     except Exception:
         return items
     # Keyed by build item, not by object id: one object can be used by several items, each
@@ -214,14 +214,15 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     return out
 
 
-def placed_instances(path: str, items: list[dict] | None = None) -> dict:
+def placed_instances(path: str, measured: tuple | None = None) -> dict:
     """Where each build item sits, with the plate it belongs to: PLACED bounds.
 
     This is the placed counterpart of a size. It answers "where is each instance" and
     "which plate is it on", never "is the object small enough" (that is a size, per
     object, from ``geometry.object_sizes``). Bounds are per instance in millimetres,
-    measured from the parts that print. ``items`` may carry ``geometry.build_item_dims``
-    output already read, to save reading the project twice. When the project has more than one plate the
+    measured from the parts that print. ``measured`` may carry ``geometry.measure_items`` output
+    already read. ``not_judged`` counts the build items that could not be found or placed on a plate;
+    they are not in ``instances`` and are never counted as fitting. When the project has more than one plate the
     plates sit on one shared grid whose spacing the file does not record, so no extent
     is combined across them: ``plate_extents`` gives each plate its own, and
     ``combined_extent_mm`` is None. Read-only, never raises.
@@ -234,16 +235,19 @@ def placed_instances(path: str, items: list[dict] | None = None) -> dict:
         return {"available": False, "basis": "placed_bounds", "instances": [],
                 "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
                 "reason": "Studio could not open this file as a 3MF project."}
-    items = _printable_only(path, geometry.build_item_dims(path) if items is None else items)
+    raw_items, geometry_unresolved = measured if measured is not None else geometry.measure_items(path)
+    items = _printable_only(path, raw_items)
     if not items:
         return {"available": False, "basis": "placed_bounds", "instances": [],
                 "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                "not_judged": len(geometry_unresolved),
                 "reason": "Studio could not read where the objects sit in this project."}
 
     plates = _plates_from_model_settings(tm)
     numbers = sorted({p["ui_number"] for p in plates if p.get("ui_number") is not None})
     plate_count = max(len(numbers), 1)
-    grouped, _unresolved = _group_items_by_plate(items, plates) if plates else ({}, items)
+    grouped, plate_unresolved = _group_items_by_plate(items, plates) if plates else ({}, [])
+    not_judged = len(geometry_unresolved) + (len(plate_unresolved) if plate_count > 1 else 0)
     plate_of = {i.get("item_index"): number for number, members in grouped.items() for i in members}
 
     totals: dict[str, int] = {}
@@ -276,7 +280,7 @@ def placed_instances(path: str, items: list[dict] | None = None) -> dict:
     return {"available": True, "basis": "placed_bounds", "instances": instances,
             "plate_count": plate_count, "plate_extents": plate_extents,
             "combined_extent_mm": extent(items) if plate_count <= 1 else None,
-            "reason": None}
+            "not_judged": not_judged, "reason": None}
 
 
 def _unavailable(reason: str) -> dict:
@@ -362,6 +366,9 @@ def _group_items_by_plate(items: list[dict], plates: list[dict]):
     totals: dict[str, int] = {}
     for item in items:
         totals[str(item["object_id"])] = totals.get(str(item["object_id"]), 0) + 1
+    parts_of: dict[str, set] = {}
+    for item in items:
+        parts_of.setdefault(str(item["object_id"]), set()).add(item.get("part"))
     seen: dict[str, int] = {}
     grouped: dict[int, list[dict]] = {}
     unresolved: list[dict] = []
@@ -370,7 +377,9 @@ def _group_items_by_plate(items: list[dict], plates: list[dict]):
         ordinal = seen.get(oid, 0)
         seen[oid] = ordinal + 1
         owners: set = set()
-        ambiguous = False
+        # plate records name a BARE object id: when build items in different parts share it, a
+        # record cannot prove which one it means
+        ambiguous = len(parts_of[oid]) > 1
         for plate in plates:
             members = plate.get("members")
             if members is None:      # a plate described by object ids alone
@@ -440,8 +449,8 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     traits = project_traits.extract(path)
     plate_count = (traits.get("plate_count") or {}).get("value") or 1
 
-    items = geometry.build_item_dims(path)
-    items = _printable_only(path, items)
+    measured, geometry_unresolved = geometry.measure_items(path)
+    items = _printable_only(path, measured)
     if not items:
         return _unavailable(
             "Studio could not read where the objects sit in this project, so it "
@@ -450,15 +459,20 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
     source_bed = _source_bed(tm)
 
     multi_plate = bool(plate_count and plate_count > 1)
-    unresolved: list[dict] = []
+    # Instances Studio cannot judge are listed, counted and never treated as harmless: a build item
+    # whose object is not where the file says it is, or that no plate record places.
+    unresolved: list[dict] = [dict(entry, reason="Studio could not find this item's object: "
+                                   + entry["reason"]) for entry in geometry_unresolved]
     grouped: dict[int, list[dict]] = {}
     plate_fit: list[dict] = []
     if multi_plate:
         plates = _plates_from_model_settings(tm)
         grouped, unresolved_items = _group_items_by_plate(items, plates)
-        unresolved = [{"object_id": i["object_id"], "item_index": i.get("item_index")}
-                      for i in unresolved_items]
+        unresolved += [{"object_id": i["object_id"], "item_index": i.get("item_index"),
+                        "reason": "no plate record places this instance"}
+                       for i in unresolved_items]
         plate_fit = _plate_fit(grouped, target, whose)
+    not_judged = len(unresolved)
 
     totals: dict[str, int] = {}
     for item in items:
@@ -511,45 +525,61 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
 
     # Studio never repositions a multi-plate project: the plate spacing is not in
     # the file, so any move would be a guess.
-    fixable = (not multi_plate) and bool(off_plate) and would_fit
+    # Nor is a move offered while some instance could not be judged: the move would carry it
+    # somewhere nobody has checked.
+    fixable = (not multi_plate) and bool(off_plate) and would_fit and not not_judged
 
     # A repeated object is one object at several places; the sentence counts the places, so the
     # instance that is off the plate is never averaged away by the one that is not.
     repeated = any(r["instance_count"] > 1 for r in reported)
+    k = len(off_plate)
     if repeated:
-        count_text = (f"{len(off_plate)} of {len(reported)} placed instance(s) "
-                      f"({_instance_list(off_plate)})")
+        count_text = f"{k} of {len(reported)} placed instances ({_instance_list(off_plate)})"
     else:
-        count_text = f"{len(off_plate)} object(s)"
+        count_text = f"{k} object" + ("" if k == 1 else "s")
+    fall = "falls" if k == 1 else "fall"
+    unjudged = ""
+    if not_judged:
+        unjudged = (f" {not_judged} placed instance{'s' if not_judged != 1 else ''} could not be "
+                    "judged, so Studio cannot say whether everything is on the plate.")
 
     if multi_plate and not off_plate:
-        summary = (f"All {len(plate_fit)} plates fit {whose} printable area. Studio does "
-                   "not reposition multi-plate projects — open the project in Snapmaker "
-                   "Orca to arrange the plates.")
+        if plate_fit:
+            summary = (f"None of the plates Studio could assign is too big for {whose} printable area."
+                       if not_judged else
+                       f"All {len(plate_fit)} plate{'s' if len(plate_fit) != 1 else ''} fit "
+                       f"{whose} printable area.")
+        else:
+            summary = ""
+        summary = (summary + unjudged + " Studio does not reposition multi-plate projects — open "
+                   "the project in Snapmaker Orca to arrange the plates.").strip()
     elif multi_plate and oversized_plates:
         names = ", ".join(str(p["plate"]) for p in oversized_plates)
         summary = (f"Plate {names} does not fit {whose} printable area: "
-                   f"{oversized_plates[0]['reason']}. Scale it down or split it. "
-                   + MULTI_PLATE_REFUSAL)
+                   f"{oversized_plates[0]['reason']}. Scale it down or split it."
+                   + unjudged + " " + MULTI_PLATE_REFUSAL)
     elif multi_plate:
-        summary = MULTI_PLATE_REFUSAL
+        summary = (MULTI_PLATE_REFUSAL + unjudged).strip()
     elif not off_plate:
-        summary = (f"Every placed instance sits inside {whose} printable area."
-                   if repeated else
-                   f"Every object sits inside {whose} printable area."
-                   if len(reported) > 1 else
-                   f"The object sits inside {whose} printable area.")
+        if not_judged:
+            summary = f"Every placed instance Studio could measure sits inside {whose} printable area.{unjudged}"
+        else:
+            summary = (f"Every placed instance sits inside {whose} printable area."
+                       if repeated else
+                       f"Every object sits inside {whose} printable area."
+                       if len(reported) > 1 else
+                       f"The object sits inside {whose} printable area.")
     elif too_wide:
-        summary = (f"{count_text} fall outside {whose} plate, and the "
+        summary = (f"{count_text} {fall} outside {whose} plate, and the "
                    "whole arrangement is wider than the plate — moving it cannot fix "
-                   "this. Scale it down or split it across plates.")
-    elif would_fit:
-        summary = (f"{count_text} fall outside {whose} plate, but the "
+                   "this. Scale it down or split it across plates." + unjudged)
+    elif would_fit and not not_judged:
+        summary = (f"{count_text} {fall} outside {whose} plate, but the "
                    "whole arrangement fits — moving it as one piece brings everything "
                    "back on, keeping the creator's layout, rotation and scale.")
     else:
-        summary = (f"{count_text} fall outside {whose} plate and one "
-                   "move will not fix it. Open it in Snapmaker Orca and use Arrange.")
+        summary = (f"{count_text} {fall} outside {whose} plate and one "
+                   "move will not fix it. Open it in Snapmaker Orca and use Arrange." + unjudged)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -566,6 +596,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
         "plate_fit": plate_fit,
         "oversized_plates": oversized_plates,
         "unresolved_objects": unresolved,
+        "not_judged": not_judged,
         "fixable": fixable,
         "summary": summary,
     }
@@ -651,6 +682,15 @@ def _unique_output(src: Path, out_dir: Path | None) -> Path:
     return out
 
 
+#: The numbers a build item carries are written to six significant digits, so two items moved by the
+#: same amount can differ by a few thousandths of a millimetre. Anything within this is "the same".
+MOVE_TOLERANCE_MM = 0.01
+
+
+def _without_transform(attributes: dict) -> dict:
+    return {key: value for key, value in attributes.items() if key != "transform"}
+
+
 def verify_only_placement_moved(source: str, moved: str) -> dict:
     """Prove the copy differs from the original in where the objects sit, and in
     nothing else.
@@ -661,7 +701,7 @@ def verify_only_placement_moved(source: str, moved: str) -> dict:
     """
     import zipfile
 
-    from . import multipart, painted_color, placement
+    from . import geometry, multipart, painted_color, placement
 
     checks: list[dict] = []
 
@@ -685,13 +725,19 @@ def verify_only_placement_moved(source: str, moved: str) -> dict:
     check("the root model's geometry and components are unchanged",
           strip(root_before) == strip(root_after))
 
-    # Per build item, in order: an object used by two items is two items to compare.
-    items_before = placement.build_items(root_before)
-    items_after = placement.build_items(root_after)
-    check("every object is still placed",
-          [i["object_id"] for i in items_before] == [i["object_id"] for i in items_after])
+    # Per build item, in order: an object used by two items is two items to compare. Everything
+    # about an item except where it sits (its object, its p:path, its printable flag, anything
+    # else it carries) must be unchanged, and its turn and scale with it.
+    items_before = geometry.build_items(root_before)
+    items_after = geometry.build_items(root_after)
+    same = len(items_before) == len(items_after) and all(
+        _without_transform(one["attributes"]) == _without_transform(two["attributes"])
+        for one, two in zip(items_before, items_after))
+    check("every build item is still there, unchanged apart from where it sits", same,
+          f"{len(items_before)} item(s) before, {len(items_after)} after")
 
-    deltas = set()
+    root_scale = _units.mm_per_unit(root_before)
+    deltas = []
     same_basis = len(items_before) == len(items_after)
     for before_item, after_item in zip(items_before, items_after):
         # an item with no transform is at the identity
@@ -705,12 +751,17 @@ def verify_only_placement_moved(source: str, moved: str) -> dict:
         if one[0] != two[0] or one[1] != two[1] or one[2] != two[2]:
             same_basis = False        # a rotation or a scale crept in
             break
-        deltas.add((round(two[3][0] - one[3][0], 4), round(two[3][1] - one[3][1], 4),
-                    round(two[3][2] - one[3][2], 4)))
+        deltas.append(tuple((two[3][axis] - one[3][axis]) * root_scale for axis in range(3)))
     check("nothing was rotated or rescaled", same_basis)
+    # What "moved" means: every item's translation changed by the SAME non-zero amount in X and Y
+    # (to within what the written numbers can carry) and not at all in Z. A copy that moved one
+    # instance, or none, is not a moved copy.
+    uniform = bool(deltas) and all(
+        all(abs(d[axis] - deltas[0][axis]) <= MOVE_TOLERANCE_MM for axis in range(3)) for d in deltas)
+    moved_xy = bool(deltas) and (abs(deltas[0][0]) > MOVE_TOLERANCE_MM or abs(deltas[0][1]) > MOVE_TOLERANCE_MM)
     check("every object moved by the same amount, in X and Y only",
-          len(deltas) == 1 and abs(next(iter(deltas))[2]) <= 1e-6 if deltas else False,
-          str(sorted(deltas)))
+          uniform and moved_xy and abs(deltas[0][2]) <= MOVE_TOLERANCE_MM,
+          str([tuple(round(v, 4) for v in d) for d in deltas]))
 
     structure = multipart.validate_archive(ThreeMF.open(moved))
     check("the moved copy still describes itself consistently",
@@ -722,7 +773,9 @@ def verify_only_placement_moved(source: str, moved: str) -> dict:
           one_paint.get("painted_triangle_count") == two_paint.get("painted_triangle_count")
           and one_paint.get("slots_referenced") == two_paint.get("slots_referenced"))
 
-    return {"passed": all(entry["pass"] for entry in checks), "checks": checks}
+    return {"passed": all(entry["pass"] for entry in checks), "checks": checks,
+            "delta_mm": ({"x": round(deltas[0][0], 4), "y": round(deltas[0][1], 4)}
+                         if deltas and uniform else None)}
 
 
 def prepare_placed_copy(path: str, out_dir: str | None = None,
@@ -787,6 +840,13 @@ def prepare_placed_copy(path: str, out_dir: str | None = None,
     # actually written — not against what the code intended to write.
     after = assess(str(out), bed=bed)
     proof = verify_only_placement_moved(str(src), str(out))
+    delta = proof.get("delta_mm")
+    if delta is not None:
+        # the copy must have moved by what was asked, not merely by something uniform
+        asked = abs(delta["x"] - offset["x"]) <= MOVE_TOLERANCE_MM and abs(delta["y"] - offset["y"]) <= MOVE_TOLERANCE_MM
+        proof["checks"].append({"check": "the move is the one that was asked for", "pass": asked,
+                                "detail": f"moved {delta}, asked {offset}"})
+        proof["passed"] = proof["passed"] and asked
     if not proof["passed"]:
         out.unlink(missing_ok=True)
         return {

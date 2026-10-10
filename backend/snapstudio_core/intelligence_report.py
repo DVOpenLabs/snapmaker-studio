@@ -119,7 +119,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     # --- risks + recommendations from every doctor ---
     risks: list = []
     recs: list = []
-    _push_findings(risks, recs, "Bed fit (size and placement)", bed_fit)
+    _push_findings(risks, recs, "Bed fit (size and placement)"
+                   if (bed_fit or {}).get("placement_checked") else "Bed fit", bed_fit)
     _push_findings(risks, recs, "Multi-Material Doctor", mm)
     _push_findings(risks, recs, "First Layer Doctor", first_layer)
     if avail["health"]:

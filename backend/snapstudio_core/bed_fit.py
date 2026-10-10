@@ -26,6 +26,12 @@ from __future__ import annotations
 
 SCHEMA_VERSION = "bedfit/1"
 
+#: The root model part: an object in any other part is named with it.
+ROOT_PART = "3D/3dmodel.model"
+
+#: What every size consumer says when per-object sizes are missing.
+UNMEASURED_TEXT = "By size, Studio could not measure each object, so it cannot say whether they fit."
+
 # A typical multi-material prime/wipe tower footprint side (mm) — the clearance the
 # model must leave on the plate or Orca pushes the tower out of bounds.
 PRIME_TOWER_MM = 55.0
@@ -126,17 +132,18 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         mx, my = bx - x, by - y
         if mx < PRIME_TOWER_MM or my < PRIME_TOWER_MM:
             bump("warn")
-            findings.append(_f("warn", f"Little room for the multi-material prime/wipe tower "
-                                       f"(~{PRIME_TOWER_MM:.0f} mm, depending on your Orca tower settings): "
-                                       f"only {mx:.0f}×{my:.0f} mm is free beside the model, so Orca may push "
-                                       f"the tower off the bed (out of bounds)."))
-            fixes.append("Shrink the model a little, or reduce/disable the prime tower in Orca.")
+            findings.append(_f("warn", f"By size, {who} leaves little room for the multi-material "
+                                       f"prime/wipe tower (~{PRIME_TOWER_MM:.0f} mm, depending on your "
+                                       f"Snapmaker Orca tower settings): the bed is only {mx:.0f}×{my:.0f} mm "
+                                       f"bigger than it, so the tower may not fit beside it. "
+                                       f"This is about size; where the tower lands depends on the arrangement."))
+            fixes.append("Shrink the model a little, or reduce/disable the prime tower in Snapmaker Orca.")
 
     # Multiple parts share the plate — the arrangement must fit, not just one part.
     if object_count and object_count > 1:
-        findings.append(_f("ok", f"{object_count} objects share the plate — the whole "
-                                 f"arrangement must fit. If Orca still says out of bounds, one object "
-                                 f"is off the plate; use Arrange to re-pack them."))
+        findings.append(_f("ok", f"The project has {object_count} objects. Whatever sits on one plate "
+                                 f"must fit that plate together; if Snapmaker Orca still says out of "
+                                 f"bounds, one object is off its plate and Arrange can re-pack them."))
 
     # Where the instances sit is a different fact from how big each object is.
     placed_level = _placed_findings(placed, findings, fixes)
@@ -151,14 +158,14 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         "warn" if (x > bx * EDGE_FRAC or y > by * EDGE_FRAC) else "ok")
     checked_placement = bool(placed and placed.get("available"))
     if size_level == "risk":
-        overall_text = "By size, it won't fit as-is — this is the out-of-bounds error, with the fix below."
+        overall_text = f"By size, {who} won't fit as-is — this is the out-of-bounds error, with the fix below."
     elif placed_level == "risk":
         overall_text = (f"By size, {who} is small enough for {source}'s bed, but the placement is a "
                         "problem — see the placement finding below.")
     elif size_level == "warn":
-        overall_text = "By size it fits, but the edges are tight — see below before slicing."
+        overall_text = "By size, it fits, but the edges are tight — see below before slicing."
     elif worst == "warn":
-        overall_text = "By size it fits, but there is a point to check — see below before slicing."
+        overall_text = "By size, it fits, but there is a point to check — see below before slicing."
     elif checked_placement:
         overall_text = f"By size, {who} fits {source}'s bed, and the placement check found nothing off the plate."
     else:
@@ -197,47 +204,56 @@ def _placed_findings(placed: dict | None, findings: list, fixes: list) -> str | 
             for plate in oversized:
                 findings.append(_f("risk", f"By placement, plate {plate['plate']}: {plate['reason']}. "
                                            "Scale it down or split it."))
-            fixes.append("Scale the oversized plate down or split it, then use Arrange in Orca.")
+            fixes.append("Scale the oversized plate down or split it, then use Arrange in Snapmaker Orca.")
             return "risk"
+        if placed.get("not_judged"):
+            findings.append(_f("warn", f"By placement: {placed.get('summary')}"))
+            return "warn"
         findings.append(_f("ok", f"By placement, each of the {plate_count} plates fits on its own. "
-                                 "Positions across plates are not checked; use Arrange in Orca."))
+                                 "Positions across plates are not checked; use Arrange in Snapmaker Orca."))
         return None
     if not placed.get("off_plate"):
+        if placed.get("not_judged"):
+            findings.append(_f("warn", f"By placement: {placed.get('summary')}"))
+            return "warn"
         findings.append(_f("ok", "By placement, every placed instance sits inside the plate."))
         return None
     findings.append(_f("risk", f"By placement: {placed.get('summary')}"))
     fixes.append("Move the arrangement onto the plate (Studio can save a corrected copy), "
-                 "or use Arrange in Orca." if placed.get("fixable") else
-                 "Use Arrange in Orca to bring every instance onto the plate.")
+                 "or use Arrange in Snapmaker Orca." if placed.get("fixable") else
+                 "Use Arrange in Snapmaker Orca to bring every instance onto the plate.")
     return "risk"
 
 
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
 
 
-def assess_objects(objects: list[dict] | None, fallback_dims=None, placed: dict | None = None,
+def assess_objects(objects: list[dict] | None, placed: dict | None = None, unmeasured: int = 0,
                    **kw) -> dict:
     """Size every object on its own, report the worst, and add the placement separately.
 
     ``objects`` is ``intelligence.project_info()["object_sizes_mm"]``. The combined extents of
     several objects are never used: a project of small, separated objects is not one big
-    object, and "scale to 40%" would shrink all of them for nothing. With no per-object sizes
-    (a file Studio could not measure per object) the overall extents are used and the text
-    says they are an overall figure, by size.
+    object, and "scale to 40%" would shrink all of them for nothing. When no object could be
+    measured the answer is UNKNOWN, not a fall-back to the overall extents. Every object is
+    checked (there is no cap); ``unmeasured`` says how many build items had no measurable
+    object, which keeps the result from claiming that everything fits.
     """
     objects = [o for o in (objects or []) if o.get("dimensions_mm")]
     if not objects:
-        out = assess(fallback_dims, placed=placed, subject="this model (overall extents)", **kw)
-        out["objects_checked"] = 0
-        return out
+        return {"schema_version": SCHEMA_VERSION, "available": False, "basis": "size",
+                "reason": UNMEASURED_TEXT}
     many = len(objects) > 1
 
     def label_of(entry):
-        return f"object {entry['object_id']}" if many and entry.get("object_id") is not None else None
+        if not many or entry.get("object_id") is None:
+            return None
+        where = entry.get("part")
+        return f"object {entry['object_id']}" + (f" in {where}" if where and where != ROOT_PART else "")
 
     # Size first, object by object and WITHOUT the placement, so a level here is purely about size.
     sized = []
-    for entry in objects[:64]:
+    for entry in objects:
         res = assess(entry["dimensions_mm"], subject=label_of(entry), **kw)
         if not res.get("available"):
             return res
@@ -248,6 +264,16 @@ def assess_objects(objects: list[dict] | None, fallback_dims=None, placed: dict 
     # Then the one result that is reported, with the placement added once.
     out = assess(worst_entry["dimensions_mm"], placed=placed, subject=label_of(worst_entry), **kw)
     out["objects_checked"] = len(sized)
+    out["objects_unmeasured"] = unmeasured
     out["objects_by_size"] = [{"object_id": e.get("object_id"), "level": r["overall_level"],
                                "dims_mm": r["dims_mm"]} for e, r in sized]
+    if unmeasured:
+        out["findings"].append(_f("warn", f"By size, {unmeasured} build item"
+                                          f"{'s' if unmeasured != 1 else ''} could not be measured, so "
+                                          "Studio cannot say whether everything fits."))
+        if out["overall_level"] != "risk":
+            out["overall_level"] = "warn"
+            out["overall_text"] = ("By size, it fits as far as Studio could measure, but "
+                                   f"{unmeasured} build item{'s' if unmeasured != 1 else ''} could not be "
+                                   "measured — see below before slicing.")
     return out

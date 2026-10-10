@@ -38,7 +38,8 @@ def test_object_size_ignores_where_the_item_puts_the_object(tmp_path):
     path = project(tmp_path, [box_object("1", 100, 20, 10)],
                    [("1", fx.tf(500, 40, 0)), ("1", "0 1 0 -1 0 0 0 0 1 50 50 0")])      # moved; and turned 90 degrees
     sizes = geometry.object_sizes(path)
-    assert sizes == [{"object_id": "1", "instance_count": 2, "dimensions": {"x": 100.0, "y": 20.0, "z": 10.0}}]
+    assert sizes == [{"object_id": "1", "part": "3D/3dmodel.model", "instance_count": 2,
+                      "dimensions": {"x": 100.0, "y": 20.0, "z": 10.0}}]
     placed = geometry.build_item_dims(path)
     assert placed[0]["dimensions"] == {"x": 100.0, "y": 20.0, "z": 10.0}
     assert placed[1]["dimensions"] == {"x": 20.0, "y": 100.0, "z": 10.0}                   # placed bounds follow the turn
@@ -47,15 +48,15 @@ def test_object_size_ignores_where_the_item_puts_the_object(tmp_path):
 def test_object_size_is_in_millimetres_for_an_inch_project(tmp_path):
     path = project(tmp_path, [box_object("1", 12, 1, 1)], [("1", fx.tf(0, 0, 0))], unit="inch")
     assert geometry.object_sizes(path)[0]["dimensions"] == {"x": 304.8, "y": 25.4, "z": 25.4}
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     assert info["object_sizes_mm"][0]["dimensions_mm"]["x"] == 304.8
 
 
 def test_project_info_keeps_size_and_placed_apart(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(500, 100, 0)), ("1", fx.tf(100, 100, 0))])
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     assert info["dimensions_basis"] == "overall_extents_by_size"
-    assert info["object_sizes_mm"] == [{"object_id": "1", "instance_count": 2,
+    assert info["object_sizes_mm"] == [{"object_id": "1", "part": "3D/3dmodel.model", "instance_count": 2,
                                         "dimensions_mm": {"x": 10.0, "y": 10.0, "z": 10.0}}]
     placed = info["placed"]
     assert placed["available"] and placed["basis"] == "placed_bounds" and placed["plate_count"] == 1
@@ -65,7 +66,7 @@ def test_project_info_keeps_size_and_placed_apart(tmp_path):
 
 def test_stl_has_a_size_and_no_position(tmp_path):
     path = str(fx.binary_stl(tmp_path / "c.stl", 20.0))
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     assert info["object_sizes_mm"][0]["dimensions_mm"] == {"x": 20.0, "y": 20.0, "z": 20.0}
     assert info["placed"]["available"] is False and info["placed"]["instances"] == []
 
@@ -109,7 +110,7 @@ def _separated(tmp_path):
 
 def test_separated_meshes_are_not_one_big_object(tmp_path):
     path = _separated(tmp_path)
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     assert info["dimensions_mm"]["x"] == 520.0                                  # the overall extents, as before
     assert [o["dimensions_mm"]["x"] for o in info["object_sizes_mm"]] == [20.0, 20.0]
     # the legacy overall figure would say "too big, scale to 52%"; the per-object check does not
@@ -123,7 +124,7 @@ def test_separated_meshes_are_not_one_big_object(tmp_path):
 
 def test_separated_report_check_is_by_size_per_object(tmp_path):
     check = next(c for c in service.report(_separated(tmp_path))["checks"] if c["name"] == "Fits the print bed")
-    assert check["status"] == "pass" and check["detail"].startswith("By size, object ")
+    assert check["status"] == "pass" and check["detail"].startswith("By size, the largest object (object ")
     assert "20.0 × 20.0 × 20.0 mm" in check["detail"] and "largest object" in check["detail"]
 
 
@@ -132,7 +133,7 @@ def test_report_names_the_object_that_is_too_big_by_size(tmp_path):
                    [("1", fx.tf(10, 10, 0)), ("2", fx.tf(10, 100, 0))])
     check = next(c for c in service.report(path)["checks"] if c["name"] == "Fits the print bed")
     assert check["status"] == "warn"
-    assert check["detail"].startswith("By size, object 2 300.0 × 20.0 × 20.0 mm is larger than the U1 bed")
+    assert check["detail"].startswith("By size, object 2 (300.0 × 20.0 × 20.0 mm) is larger than the U1 bed")
     result = service.bed_fit(path)
     assert result["overall_level"] == "risk" and "By size, object 2 is too big" in texts(result)
 
@@ -160,7 +161,7 @@ def _two_plates(tmp_path, second_x=-130.0, second_size=20):
 
 def test_a_multi_plate_project_has_no_combined_extent(tmp_path):
     path = _two_plates(tmp_path)
-    placed = project_info(path)["placed"]
+    placed = project_info(path, placement_aware=True)["placed"]
     assert placed["plate_count"] == 2 and placed["combined_extent_mm"] is None
     assert [(p["plate"], p["instances"]) for p in placed["plate_extents"]] == [(1, 1), (2, 1)]
     assert [i["plate"] for i in placed["instances"]] == [1, 2]
@@ -168,7 +169,7 @@ def test_a_multi_plate_project_has_no_combined_extent(tmp_path):
 
 def test_multi_plate_extents_do_not_become_scale_or_split_advice(tmp_path):
     path = _two_plates(tmp_path)
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     assert info["dimensions_mm"]["x"] > 400.0                                   # overall: 420 across both plates
     result = service.bed_fit(path)
     text = texts(result)
@@ -187,14 +188,14 @@ def test_a_plate_whose_own_contents_do_not_fit_is_named(tmp_path):
 
 def test_report_check_for_multi_plate_is_still_by_size_per_object(tmp_path):
     check = next(c for c in service.report(_two_plates(tmp_path))["checks"] if c["name"] == "Fits the print bed")
-    assert check["status"] == "pass" and check["detail"].startswith("By size, object ")
+    assert check["status"] == "pass" and check["detail"].startswith("By size, the largest object (object ")
 
 
 # --- the legacy figure is still there for readers that only want a size ---------------------------------
 
 def test_dimensions_mm_is_unchanged_for_a_single_object(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 30)], [("1", fx.tf(50, 60, 0))])
-    assert project_info(path)["dimensions_mm"] == {"x": 30.0, "y": 30.0, "z": 30.0}
+    assert project_info(path, placement_aware=True)["dimensions_mm"] == {"x": 30.0, "y": 30.0, "z": 30.0}
 
 
 @pytest.mark.parametrize("dims", [None, {"x": None, "y": 1, "z": 1}])

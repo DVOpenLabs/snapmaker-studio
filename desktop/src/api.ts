@@ -344,6 +344,8 @@ export interface Insights {
   dimensions_basis?: string;
   // Per-object size (mm), before any build item moves, turns or scales it.
   object_sizes_mm?: ObjectSize[];
+  // Build items whose object could not be found, so they have no size above.
+  objects_unmeasured?: number;
   // Where each instance sits and on which plate (placed bounds), kept apart from the sizes above.
   placed?: PlacedInstances;
   triangles: number | null;
@@ -1305,6 +1307,7 @@ export async function ecosystemAdvice(
 
 export interface ObjectSize {
   object_id: string | null;
+  part?: string;
   instance_count: number;
   dimensions_mm: { x: number; y: number; z: number };
 }
@@ -1350,7 +1353,9 @@ export interface PlacementCheck {
   items: PlacementItem[];
   off_plate: PlacementItem[];
   skipped_plates?: { plate: number; reason: string }[];
-  unresolved_objects?: { object_id: string }[];
+  unresolved_objects?: { object_id: string; item_index?: number; reason?: string }[];
+  // Placed instances Studio could not judge (not found, or on no plate record).
+  not_judged?: number;
   fixable: boolean;
   summary?: string;
 }

@@ -125,7 +125,7 @@ export default function LiveWorkspace() {
         <Card>
           <CardContent className="space-y-3 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Design Health</div>
-            <DesignHealth mesh={meshQ.data} dims={insQ.data?.dimensions_mm} objects={insQ.data?.object_sizes_mm} mode="advanced" />
+            <DesignHealth mesh={meshQ.data} dims={insQ.data?.dimensions_mm} objects={insQ.data?.object_sizes_mm} unmeasured={insQ.data?.objects_unmeasured} mode="advanced" />
           </CardContent>
         </Card>
       )}

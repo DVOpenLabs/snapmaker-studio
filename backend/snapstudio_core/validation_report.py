@@ -32,7 +32,7 @@ def _check(name, ok, detail):
 
 
 def readiness_report(path: str) -> dict:
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
     diag = diagnose_path(path).to_dict()
     is_stl = diag.get("input_type") == "stl"
     verdict = diag.get("verdict")
@@ -50,34 +50,43 @@ def readiness_report(path: str) -> dict:
         else "Review in Orca before slicing"))
     # SIZE, not position: each object against the bed on its own. Where the objects sit on the plate is
     # judged below under "Layout / plate fit", and the combined extents of several separated objects or
-    # plates are never read as one big object.
+    # plates are never read as one big object. No per-object size means UNKNOWN, not the overall extents.
     sized = [o for o in (info.get("object_sizes_mm") or []) if o.get("dimensions_mm")]
+    unmeasured = info.get("objects_unmeasured") or 0
     if sized:
         def _over(entry):
             d = entry["dimensions_mm"]
             return d["x"] > U1_BUILD[0] or d["y"] > U1_BUILD[1] or d["z"] > U1_BUILD[2]
         too_big = [o for o in sized if _over(o)]
-        shown = too_big[0] if too_big else max(
-            sized, key=lambda o: o["dimensions_mm"]["x"] * o["dimensions_mm"]["y"])
-        d = shown["dimensions_mm"]
-        many = len(sized) > 1 and shown.get("object_id") is not None
-        label = f'object {shown["object_id"]} ' if many else ""
-        fits = not too_big
-        checks.append(_check(
-            "Fits the print bed",
-            fits,
-            f'By size, {label}{d["x"]} × {d["y"]} × {d["z"]} mm '
-            + (("is the largest object and fits 270 × 270 × 270" if len(sized) > 1 else "fits 270 × 270 × 270")
-               if fits else
-               "is larger than the U1 bed — scale or split" + (
-                   f" ({len(too_big)} objects are)" if len(too_big) > 1 else ""))))
+        many = len(sized) > 1
+
+        def _name(entry):
+            return f'object {entry["object_id"]} ' if many and entry.get("object_id") is not None else ""
+
+        bed_text = f"{U1_BUILD[0]:.0f} × {U1_BUILD[1]:.0f} × {U1_BUILD[2]:.0f} mm bed"
+        if too_big:
+            d = too_big[0]["dimensions_mm"]
+            detail = (f'By size, {_name(too_big[0])}({d["x"]} × {d["y"]} × {d["z"]} mm) is larger than the U1 '
+                      "bed — scale it down or split it."
+                      if many else
+                      f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm is larger than the U1 bed — '
+                      "scale it down or split it.")
+            if len(too_big) > 1:
+                detail += f" {len(too_big)} objects are larger than the bed."
+        else:
+            largest = max(sized, key=lambda o: o["dimensions_mm"]["x"] * o["dimensions_mm"]["y"])
+            d = largest["dimensions_mm"]
+            detail = (f'By size, the largest object ({_name(largest).strip()}, {d["x"]} × {d["y"]} × '
+                      f'{d["z"]} mm) fits the U1\'s {bed_text}.'
+                      if many else
+                      f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm fits the U1\'s {bed_text}.')
+        if unmeasured:
+            detail += (f" {unmeasured} build item{'s' if unmeasured != 1 else ''} could not be measured, "
+                       "so Studio cannot say whether everything fits.")
+        checks.append(_check("Fits the print bed", not too_big and not unmeasured, detail))
     elif dims:
-        fits = dims["x"] <= U1_BUILD[0] and dims["y"] <= U1_BUILD[1] and dims["z"] <= U1_BUILD[2]
-        checks.append(_check(
-            "Fits the print bed",
-            fits,
-            f'By size, the overall extents {dims["x"]} × {dims["y"]} × {dims["z"]} mm '
-            + ("fit 270 × 270 × 270" if fits else "are larger than the U1 bed — check each object in Orca")))
+        from .bed_fit import UNMEASURED_TEXT
+        checks.append(_check("Fits the print bed", False, UNMEASURED_TEXT))
     if colors:
         colors_ok = colors <= U1_TOOLHEADS
         checks.append(_check(
