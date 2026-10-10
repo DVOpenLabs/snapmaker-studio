@@ -107,9 +107,16 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     _push_findings(risks, recs, "Multi-Material Doctor", mm)
     _push_findings(risks, recs, "First Layer Doctor", first_layer)
     if avail["health"]:
+        failure_history_counted = False
         for d in (health.get("drivers") or []):
-            if "no problem" not in d.lower():
-                risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
+            if "no problem" in d.lower():
+                continue
+            if "prints failed" in d:
+                # the failure-rate and failure-streak drivers describe the same failed jobs: count them once
+                if failure_history_counted:
+                    continue
+                failure_history_counted = True
+            risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
     if avail["predict"]:
         for sig in (predict.get("signals") or []):
             if sig.get("id") == "printer-health":

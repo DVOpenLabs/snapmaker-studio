@@ -46,15 +46,15 @@ export default function LiveWorkspace() {
   const meshQ = useQuery({ queryKey: ["mesh", file?.path], queryFn: () => apiMesh(file!.path), enabled: !!file && doctor.status === "done" });
   const insQ = useQuery({ queryKey: ["insights", file?.path], queryFn: () => apiInsights(file!.path), enabled: !!file && doctor.status === "done" });
   const toolFitQ = useQuery({ queryKey: ["toolhead-fit", file?.path, u1Host], queryFn: () => apiToolheadFit(file!.path, u1Host), enabled: !!file && doctor.status === "done", retry: false, staleTime: 30000 });
-  // Honest readiness report — the single source of truth for the score/headline (the raw
-  // doctor verdict/score only means profile compatibility).
+  // Honest readiness report — the single source of truth for the headline (the raw
+  // doctor verdict only means profile compatibility).
   const repQ = useQuery({ queryKey: ["report", file?.path], queryFn: () => apiReport(file!.path), enabled: !!file && doctor.status === "done" });
 
   // No file in session (e.g. hard refresh) — send the user back to start.
   if (!file) return <Navigate to="/" replace />;
 
   const d = doctor.data;
-  const rv = readinessView(repQ.data);   // honest readiness (score/headline authority)
+  const rv = readinessView(repQ.data);   // honest readiness (headline authority)
   const TypeIcon = file.ext === "stl" ? FileBox : Boxes;
   const converting = convert.status === "loading";
 
@@ -80,7 +80,7 @@ export default function LiveWorkspace() {
         </div>
       </div>
 
-      {/* Readiness verdict + score + issues — kept directly under the header CTA so the
+      {/* Readiness verdict + issues — kept directly under the header CTA so the
           decision data sits next to the "Prepare U1 copy" action it informs. */}
       {doctor.status === "done" && d && (
         <Card>

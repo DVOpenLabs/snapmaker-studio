@@ -12,6 +12,14 @@ const BANNED: [string, RegExp][] = [
 ];
 
 describe("no numeric readiness or will-it-print copy in the UI", () => {
+  it("scans the whole UI source tree (a rename cannot silently shrink it)", () => {
+    const names = Object.keys(sources);
+    expect(names.length).toBeGreaterThan(80);
+    for (const must of ["DesignInsights.tsx", "LiveWorkspace.tsx", "IntelligenceReport.tsx", "PrintRiskSignals.tsx", "Printers.tsx", "WhyStudio.tsx"]) {
+      expect(names.some((n) => n.endsWith("/" + must)), must).toBe(true);
+    }
+  });
+
   for (const [name, re] of BANNED) {
     it(`has no ${name}`, () => {
       const hits = Object.entries(sources).filter(([, text]) => re.test(text)).map(([path]) => path);

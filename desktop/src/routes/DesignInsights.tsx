@@ -130,7 +130,7 @@ export default function DesignInsights() {
   const issues = [...(d?.validation_issues ?? []), ...(d?.compatibility_issues ?? [])];
 
   // Honest headline: a green "ready" verdict must not survive real print-setup risks
-  // (e.g. more colours than toolheads). Demote the badge + stars to match the warnings below.
+  // (e.g. more colours than toolheads). Demote the badge to match the warnings below.
   const setupRisk = !!(mm?.available && mm.multi_material && mm.overall_level && mm.overall_level !== "ok")
     || !!(bed?.available && bed.overall_level && bed.overall_level !== "ok")
     || !!(rep && !rep.ready);

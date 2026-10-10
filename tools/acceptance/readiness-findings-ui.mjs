@@ -80,6 +80,15 @@ console.log(`UI: this checkout (${join(repo, "desktop")}) on ${UI}`);
 /* ---------- a fake printer (Moonraker look-alike) on this machine, started only for one scenario ---------- */
 const job = (filename, status) => ({ job_id: filename + status, filename, status, start_time: 1, end_time: 2, print_duration: 1, total_duration: 1, filament_used: 1, metadata: {} });
 const fakeJobs = [job("example-project.gcode", "error"), job("other-a.gcode", "completed"), job("other-b.gcode", "completed"), job("other-c.gcode", "completed"), job("other-d.gcode", "completed")];
+// Port 7125 is Moonraker's own; fail clearly (rather than test a real printer) if anything already listens on it.
+async function assertPort7125Free() {
+  const busy = await new Promise((resolve) => {
+    const c = net.connect(7125, "127.0.0.1");
+    c.once("connect", () => { c.destroy(); resolve(true); });
+    c.once("error", () => resolve(false));
+  });
+  if (busy) { console.error("Something already listens on 127.0.0.1:7125; refusing to run the fake-printer scenario."); process.exit(2); }
+}
 function startFakePrinter() {
   const srv = http.createServer((req, res) => {
     const url = req.url || "";
@@ -164,6 +173,7 @@ try {
     }
   }
   // A reachable (fake) printer, with the Intelligence Report's evidence expanded: no health number, grade, "good to print" or "Compatible".
+  await assertPort7125Free();
   const fake = await startFakePrinter();
   try {
     for (const theme of ["light", "dark"]) {

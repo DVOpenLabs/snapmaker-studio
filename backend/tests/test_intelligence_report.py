@@ -263,3 +263,14 @@ def test_health_verdict_has_no_number_or_good_to_print():
     for failures in (None, {"available": True, "failure_rate": 0.5, "failed": 5, "total": 10, "recent_failure_streak": 0}):
         v = health_score.score(diagnostics={"klippy_state": "ready", "warnings": [], "failed_components": []}, failures=failures)["verdict"]
         assert not re.search(r"[0-9]|good to print|healthy", v.lower()), v
+
+
+def test_failure_history_is_counted_once_across_rate_streak_and_file_signal():
+    out = ir.build(
+        predict={"available": True, "signals": [
+            {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 2 times before"}]},
+        health={"available": True, "drivers": ["3 of the last 10 prints failed", "3 prints failed in a row", "1 firmware warning"]},
+    )
+    texts = [r["text"] for r in out["risks"]]
+    assert texts == ["3 of the last 10 prints failed", "1 firmware warning"]
+    assert out["risks_found"] == 2
