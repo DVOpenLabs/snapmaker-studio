@@ -308,3 +308,27 @@ def test_next_action_goes_with_the_biggest_risk():
     assert out["biggest_risk"]["doctor"] == "Multi-Material Doctor" and out["biggest_risk"]["level"] == "risk"
     assert out["next_action"] == mm["fixes"][0]
     assert out["next_action"] != bed["fixes"][0]
+
+
+def test_health_verdict_never_says_nothing_concerning_while_listing_drivers():
+    ok = {"klippy_state": "ready", "warnings": [], "failed_components": []}
+    one_of_five = _hs.score(diagnostics=ok, failures={"available": True, "failure_rate": 0.2, "failed": 1, "total": 5, "recent_failure_streak": 0})
+    both = _hs.score(diagnostics={**ok, "warnings": ["w"]},
+                     failures={"available": True, "failure_rate": 0.2, "failed": 1, "total": 5, "recent_failure_streak": 0})
+    clean = _hs.score(diagnostics=ok)
+    assert one_of_five["grade"] in ("A", "B") and "1 of the last 5 prints failed" in one_of_five["drivers"]
+    for h in (one_of_five, both):
+        assert "nothing concerning" not in h["verdict"].lower() and "worth a look" in h["verdict"]
+    assert "nothing concerning" in clean["verdict"].lower()
+
+
+def test_printer_status_count_matches_the_deduped_risk_count():
+    health = _hs.score(
+        diagnostics={"klippy_state": "ready", "warnings": ["w"], "failed_components": []},
+        failures={"available": True, "failure_rate": 0.4, "failed": 4, "total": 10, "recent_failure_streak": 4},
+    )
+    assert len([d for d in health["drivers"] if "prints failed" in d]) == 2
+    out = ir.build(first_layer={"overall_level": "ok", "findings": []}, health=health)
+    printer_risks = [r for r in out["risks"] if r["doctor"] == "Printer Doctor"]
+    assert len(printer_risks) == 2
+    assert out["printer_status"] == "Answered, 2 concerns"

@@ -1,7 +1,7 @@
 {
   "browser": "Microsoft Edge (Chromium, headless)",
-  "passed": 30,
-  "total": 30,
+  "passed": 36,
+  "total": 36,
   "results": [
     {
       "name": "light: card lists signals with what to do",
@@ -142,6 +142,36 @@
       "name": "dark: expanded evidence shows the Printer line without a health number, grade, \"good to print\" or \"Compatible\"",
       "ok": true,
       "detail": ""
+    },
+    {
+      "name": "light: Printers page card is \"What the printer reported\" with what was read and no grade, score or /100",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
+    },
+    {
+      "name": "light: Printers page verdict does not say \"Nothing concerning\" while listing concerns",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "dark: Printers page card is \"What the printer reported\" with what was read and no grade, score or /100",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
+    },
+    {
+      "name": "dark: Printers page verdict does not say \"Nothing concerning\" while listing concerns",
+      "ok": true,
+      "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-only."
+    },
+    {
+      "name": "light: Not verified state shows \"Not verified\" and no \"Risks found 0\", biggest risk or \"Orca slices the file as you give it\"",
+      "ok": true,
+      "detail": "tudio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed. Powered by Studio Intelligence · yo"
+    },
+    {
+      "name": "dark: Not verified state shows \"Not verified\" and no \"Risks found 0\", biggest risk or \"Orca slices the file as you give it\"",
+      "ok": true,
+      "detail": "tudio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed. Powered by Studio Intelligence · yo"
     },
     {
       "name": "no engine request named a host other than this machine, or discovery",

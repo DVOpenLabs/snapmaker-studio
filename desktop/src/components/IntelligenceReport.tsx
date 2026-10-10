@@ -50,7 +50,9 @@ export function IntelligenceReport({ filePath, host, data, defaultOpen = false }
           {metric("Printer", r.printer_status ?? "Not checked")}
         </div>
         <p className="text-[11px] text-muted-foreground opacity-70">
-          Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing.
+          {(r.risks_found ?? 0) === 0 && (r.not_verified?.length ?? 0) > 0
+            ? "Advisory: Studio could not verify everything listed as not verified, and this is not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing."
+            : "Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing."}
         </p>
         {(r.not_verified?.length ?? 0) > 0 && (r.risks_found ?? 0) > 0 && (
           <p className="text-[11px] text-muted-foreground">Not verified by Studio: {r.not_verified!.join(", ")}. Check it in Snapmaker Orca.</p>

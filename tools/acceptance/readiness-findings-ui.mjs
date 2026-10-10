@@ -112,7 +112,7 @@ console.log(`browser: Edge ${browser.version()}`);
 const violations = [];
 const errors = [];
 
-async function visit(label, file, theme, { expand = false } = {}) {
+async function visit(label, file, theme, { expand = false, notVerified = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 2800 }, colorScheme: theme });
   await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
   await ctx.route(`${ENGINE}/**`, async (route) => {
@@ -121,6 +121,21 @@ async function visit(label, file, theme, { expand = false } = {}) {
     try { body = JSON.parse(route.request().postData() || "{}") ?? {}; } catch { /* not JSON */ }
     const otherHost = body.host !== undefined && String(body.host).trim() !== "" && String(body.host).trim() !== "127.0.0.1";
     if (/discover/i.test(url.pathname) || otherHost) { violations.push(`${route.request().method()} ${url.pathname}`); await route.abort(); return; }
+    if (notVerified && url.pathname === "/intelligence_report") {
+      // Stub ONE reply: the real report with its risks removed and object spacing marked "not verified". No real
+      // fixture is both free of findings and a multi-object 3MF, so this state cannot be reached with a real file here.
+      const real = await (await route.fetch({ timeout: 280000 })).json();
+      Object.assign(real, {
+        risks: [], biggest_risk: null, risks_found: 0, not_verified: ["object spacing"],
+        verdict: "Studio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed.",
+        next_action: "Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing.",
+        comparison: { issues_found: 0, fixes_offered: 0, prices_the_print: false,
+          orca_line: "Only Snapmaker Orca's preview can show spacing between objects.",
+          studio_line: "Studio's other checks found nothing in this file, but object spacing was not verified. They do not cover slicer settings, filament condition, bed cleanliness or mid-print behavior. Verify in Snapmaker Orca before you print." },
+      });
+      await route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": route.request().headers().origin ?? "*" }, body: JSON.stringify(real) });
+      return;
+    }
     await route.continue();
   });
   const page = await ctx.newPage();
@@ -132,7 +147,7 @@ async function visit(label, file, theme, { expand = false } = {}) {
   await heading.waitFor({ timeout: 150000 });
   // The Intelligence Report loads on its own request; wait for it so the page check covers it.
   await page.getByText("Studio Intelligence Report", { exact: false }).first().waitFor({ timeout: 240000 });
-  await page.getByText("Risks found", { exact: true }).waitFor({ timeout: 30000 });
+  await page.getByText(notVerified ? "Not verified" : "Risks found", { exact: true }).first().waitFor({ timeout: 30000 });
   const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
   await sleep(1000);
   const text = (await card.innerText()).replace(/\s+/g, " ");
@@ -146,6 +161,26 @@ async function visit(label, file, theme, { expand = false } = {}) {
   const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
   await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
   await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });   // taken after the report loaded
+  await ctx.close();
+  return { text, pageText };
+}
+
+async function visitPrinters(label, theme) {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 1500 }, colorScheme: theme });
+  await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto(`${UI}/printers?api=${handshake.port}:${handshake.token}`);
+  const heading = page.getByText("What the printer reported", { exact: true });
+  await heading.waitFor({ timeout: 120000 });
+  const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
+  await card.scrollIntoViewIfNeeded();
+  await sleep(500);
+  const text = (await card.innerText()).replace(/\s+/g, " ");
+  const aria = await page.locator("[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || ""));
+  const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
+  await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
+  await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });
   await ctx.close();
   return { text, pageText };
 }
@@ -186,7 +221,23 @@ try {
       check(`${theme}: expanded evidence shows the Printer line without a health number, grade, "good to print" or "Compatible"`,
         /Supporting Doctors/i.test(pt) && /Answered, \d+ concern/i.test(pt) && hits.length === 0, hits.join(" | ") || (/Answered, \d+ concern/i.test(pt) ? "" : "no 'Answered, N concern' line"));
     }
+    // The Printers page, with the fake printer answering: "What the printer reported", no grade or /100.
+    for (const theme of ["light", "dark"]) {
+      const { text: t, pageText: pt } = await visitPrinters("05-printers-what-the-printer-reported", theme);
+      const bad = [...pt.matchAll(/.{0,30}(\d+\s*\/\s*100|good to print|Healthy \(|Printer Health Score|Score|Grade).{0,30}/gi)].map((m) => m[0]);
+      check(`${theme}: Printers page card is "What the printer reported" with what was read and no grade, score or /100`,
+        /What the printer reported/.test(t) && /From firmware state/.test(t) && bad.length === 0, bad.join(" | ") || t.slice(0, 200));
+      check(`${theme}: Printers page verdict does not say "Nothing concerning" while listing concerns`,
+        !(/Nothing concerning/.test(t) && /(failed|warning)/.test(t)), t.slice(0, 260));
+    }
   } finally { fake.close(); }
+  // The "Not verified: Object spacing" state (one stubbed report reply, see visit()).
+  for (const theme of ["light", "dark"]) {
+    const { text: t, pageText: pt } = await visit("04-not-verified-object-spacing", clean, theme, { notVerified: true });
+    check(`${theme}: Not verified state shows "Not verified" and no "Risks found 0", biggest risk or "Orca slices the file as you give it"`,
+      /Not verified\s*Object spacing/i.test(pt) && !/Risks found/i.test(pt) && !/Biggest risk/i.test(pt) && !/Orca slices the file as you give it/.test(pt)
+      && !/a count of the risks Studio found/.test(pt), pt.match(/.{0,60}Not verified.{0,80}/i)?.[0] ?? "");
+  }
   check("no engine request named a host other than this machine, or discovery", violations.length === 0, violations.join("; "));
   check("no page errors", errors.length === 0, errors.join(" | ").slice(0, 300));
 } catch (e) {

@@ -82,4 +82,11 @@ describe("IntelligenceReport", () => {
     expect(html).not.toContain("Orca slices the file as you give it");
     expect(html).not.toContain("Biggest risk");
   });
+
+  it("does not call the Not verified state 'a count of the risks Studio found'", () => {
+    const html = render({ ...base, risks: [], biggest_risk: null, risks_found: 0, not_verified: ["object spacing"] });
+    expect(html).toContain("Not verified");
+    expect(html).not.toContain("a count of the risks Studio found");
+    expect(html).toContain("Verify in Snapmaker Orca");
+  });
 });

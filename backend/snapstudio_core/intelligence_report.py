@@ -95,7 +95,14 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     # --- what Studio read from the printer (never "compatible": printer health says
     # nothing about whether this file suits this printer) ---
-    concerns = [d for d in ((health or {}).get("drivers") or []) if "no problem" not in d.lower()] if avail["health"] else []
+    concerns = []
+    for d in ((health or {}).get("drivers") or []) if avail["health"] else []:
+        if "no problem" in d.lower():
+            continue
+        # failure rate and failure streak describe the same failed jobs: one concern, as in the risk list below
+        if "prints failed" in d and any("prints failed" in c for c in concerns):
+            continue
+        concerns.append(d)
     if not avail["health"]:
         printer_status = "Not checked"
     elif concerns:

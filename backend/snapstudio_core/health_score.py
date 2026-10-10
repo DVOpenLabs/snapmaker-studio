@@ -72,6 +72,7 @@ def score(diagnostics=None, failures=None) -> dict:
 
     # Most impactful first; if nothing pulled it down, say so.
     drivers.sort(key=lambda d: d[0], reverse=True)
+    has_concerns = bool(drivers)
     driver_text = [t for _, t in drivers] or ["No problems found in firmware state or recent history."]
 
     basis_parts = []
@@ -88,11 +89,13 @@ def score(diagnostics=None, failures=None) -> dict:
         "grade": grade,
         "drivers": driver_text,
         "basis": basis,
-        "verdict": _verdict(value, grade),
+        "verdict": _verdict(value, grade, has_concerns),
     }
 
 
-def _verdict(value: int, grade: str) -> str:
+def _verdict(value: int, grade: str, has_concerns: bool = False) -> str:
+    if has_concerns and grade in ("A", "B"):
+        return "A few things in the printer's own readings are worth a look; see the list below."
     if grade in ("A", "B"):
         return "Nothing concerning in the printer's own readings."
     if grade == "C":
