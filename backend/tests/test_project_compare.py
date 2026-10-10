@@ -311,3 +311,22 @@ def test_geometry_parts_that_cannot_be_read_are_unavailable_not_no_painting(tmp_
         raise OSError("unreadable")
     monkeypatch.setattr(tm, "read_part", boom)
     assert painted_color.read_container(tm)["available"] is False
+
+
+def test_one_geometry_part_unreadable_among_readable_ones_leaves_slots_unknown(env, tmp_path, monkeypatch):
+    path = tmp_path / "two.3mf"
+    src = _five_colour_project(tmp_path, name="one.3mf")
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(path, "w") as zout:
+        for info in zin.infolist():
+            zout.writestr(info, zin.read(info.filename))
+        zout.writestr("3D/Objects/second.model", '<?xml version="1.0"?><model/>')
+    real = pc.ThreeMF.read_part
+    def flaky(self, part):
+        if part.endswith("second.model"):
+            raise OSError("unreadable")
+        return real(self, part)
+    monkeypatch.setattr(pc.ThreeMF, "read_part", flaky)
+    from snapstudio_core import painted_color
+    assert painted_color.read_container(pc.ThreeMF.open(path))["available"] is False
+    out = service.project_materials(str(path))
+    assert out["usage_readable"] is False and out["slots"][4]["usage"]["verdict"] == "unknown"

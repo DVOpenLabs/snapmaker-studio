@@ -259,7 +259,7 @@ def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:
     2.08 and OrcaSlicer 2.4.2 projects carry it (also OrcaSlicer ones that name a U1), so it is not Bambu-only.
     Removing it makes the copy read like one Snapmaker Orca saved. OrcaSlicer-authored U1 files lose it too: nothing
     here shows Orca needs it, and the 'not confirmed in Snapmaker Orca' label stays on the change. A project without
-    the key is left exactly as it was. Any declaration of the key is withdrawn with it."""
+    the key is left exactly as it was, unless it still declares the key: any declaration of it is withdrawn too."""
     if "nozzle_volume_type" not in cfg:
         return
     old = cfg.pop("nozzle_volume_type")
