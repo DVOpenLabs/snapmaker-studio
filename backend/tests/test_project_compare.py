@@ -7,6 +7,7 @@ import pytest
 
 from snapstudio_api import service
 from snapstudio_core import project_compare as pc
+from snapstudio_core import project_materials as pm
 from tests.test_project_materials import MATTE, _cfg, env, profiles  # noqa: F401  (fixtures)
 
 MODEL_SETTINGS = """<?xml version="1.0"?><config>
@@ -211,3 +212,38 @@ def test_unicode_digits_are_not_numbers_here(tmp_path, capsys):
     project = _five_colour_project(tmp_path, name="s.3mf", wall_filament="\u0662")
     by3 = {s["slot"]: s["usage"] for s in pc.snapshot(project)["slots"]}
     assert "wall_filament" not in by3[2]["process_roles"]
+
+
+# --- the Project Materials card carries the usage verdicts (issue 39), read-only ---------------
+
+def test_project_materials_reports_usage_per_slot_and_the_toolhead_overflow(env, tmp_path):
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["toolheads"] == 4 and out["beyond_toolheads"] == 1 and out["usage_readable"] is True
+    verdicts = [s["usage"]["verdict"] for s in out["slots"]]
+    assert verdicts == ["referenced", "referenced", "referenced", "referenced", "no_reference_found"]
+    assert out["slots"][3]["usage"]["referenced_by"] == ["colour_changes"]
+    # existing shape is untouched: the new fields only add
+    assert {"slot", "material", "colour", "candidates", "current_preset"} <= set(out["slots"][0])
+
+
+def test_unreadable_object_list_keeps_an_unreferenced_slot_unknown(env, tmp_path):
+    path = _five_colour_project(tmp_path, model_settings="<config><object")        # not well-formed
+    out = service.project_materials(str(path))
+    assert out["usage_readable"] is False
+    assert out["slots"][4]["usage"]["verdict"] == "unknown"
+
+
+def test_no_usage_at_all_is_unknown_never_unused():
+    analysis = {"slots": [{"slot": 0}, {"slot": 1}]}
+    out = pm.attach_usage(analysis, None)
+    assert [s["usage"]["verdict"] for s in out["slots"]] == ["unknown", "unknown"]
+    assert out["beyond_toolheads"] == 0 and out["usage_readable"] is False
+
+
+def test_the_usage_answer_names_no_object_and_does_not_change_the_file(env, tmp_path):
+    path = _five_colour_project(tmp_path)
+    before = _sha(path)
+    out = service.project_materials(str(path))
+    assert _sha(path) == before
+    assert "Private" not in json.dumps(out["slots"][0]["usage"])
+    assert set(out["slots"][0]["usage"]) == {"verdict", "referenced_by"}

@@ -187,6 +187,8 @@ def keys_from_changes(*change_lists) -> set[str]:
         for entry in changes or ():
             if isinstance(entry, dict):
                 key = entry.get("key")
+                if entry.get("removed"):
+                    continue          # a key taken out of the project has nothing left to declare
                 if key and key != "different_settings_to_system":
                     out.add(str(key))
     return out

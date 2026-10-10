@@ -215,6 +215,27 @@ def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
             RAFT_EXPANSION_REASON, RAFT_EXPANSION_WHY)
 
 
+NOZZLE_VOLUME_TYPE_REASON = "removed: a genuine U1 project does not carry this Bambu nozzle setting"
+NOZZLE_VOLUME_TYPE_WHY = (
+    "Bambu Studio writes a nozzle volume type (for example Standard) for its own nozzles. "
+    "Projects authored for the U1 in Snapmaker Orca do not have this setting, and a copy that carried it "
+    "was reported to show a 'newer version, values replaced' notice naming it. That notice has not been "
+    "confirmed in Snapmaker Orca, so check the opened copy in Orca. The original file is not changed.")
+
+
+def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:
+    """Leave out `nozzle_volume_type`, which only Bambu-authored projects carry.
+
+    Snapmaker-authored U1 projects (measured on the committed Snapmaker Orca 2.3.5 fixture) have no such
+    key, so removing it makes the copy read like one. A project without it is left exactly as it was.
+    Whether Snapmaker Orca's notice goes away is not measured here."""
+    if "nozzle_volume_type" not in cfg:
+        return
+    old = cfg.pop("nozzle_volume_type")
+    _change(changes, "nozzle_volume_type", old, None, NOZZLE_VOLUME_TYPE_REASON, NOZZLE_VOLUME_TYPE_WHY)
+    changes[-1]["removed"] = True
+
+
 # --- entry points -----------------------------------------------------------
 
 def apply_compatibility(cfg: dict, filament_count: int = 0) -> list[dict]:
@@ -231,6 +252,7 @@ def apply_compatibility(cfg: dict, filament_count: int = 0) -> list[dict]:
     _fix_tree_support_with_adaptive_layers(cfg, changes)
     _fix_filament_array_validity(cfg, changes, filament_count)
     _fix_negative_raft_expansion(cfg, changes)
+    _drop_foreign_nozzle_volume_type(cfg, changes)
     return changes
 
 

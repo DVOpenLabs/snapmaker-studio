@@ -102,6 +102,16 @@ export interface MaterialSlot {
   selected: null;
   current_preset: { status: PresetStatus; reason: string } | null;
   suggestion: MaterialSuggestion | null;
+  /** Where the project references this slot. Absent from an older engine, which is shown as nothing, not as unused. */
+  usage?: SlotUsage;
+}
+
+export type UsageVerdict = "referenced" | "no_reference_found" | "unknown";
+
+export interface SlotUsage {
+  verdict: UsageVerdict;
+  /** Kinds of reference found (object_extruder, painted, colour_changes, ...); never object or part names. */
+  referenced_by: string[];
 }
 
 export interface GuardConflict {
@@ -133,6 +143,10 @@ export interface ProjectMaterialsAnalysis {
   provider?: { kind: string; available: boolean; error_code: string | null } | null;
   slots?: MaterialSlot[];
   guard?: MaterialGuard;
+  /** The U1's toolhead count, and how many of the project's materials are beyond it. Additive; absent from an older engine. */
+  toolheads?: number;
+  beyond_toolheads?: number;
+  usage_readable?: boolean;
 }
 
 export interface MaterialPreset {
@@ -212,6 +226,31 @@ export const SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does no
 /** The same, when the project names no filament preset for the slot: there is nothing that "will remain". */
 export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
   "Spool selected, but no Orca preset selected. The project names no filament preset for this slot, and Studio does not choose one for you.";
+
+/** Said after it when the preset that remains is another printer's (Bambu): picking a spool does not pick a preset. */
+export const SPOOL_FOREIGN_PRESET_HINT =
+  "That preset comes from another printer's profile set, and choosing a spool does not choose a preset. To use an installed Snapmaker preset for this slot, choose one under Orca preset.";
+
+/** Another printer's (Bambu) filament preset name, as opposed to an installed U1 preset. */
+export function isForeignPreset(name: string | null | undefined): boolean {
+  return !!name && /@BBL|^Bambu/i.test(name);
+}
+
+/** What Studio can say about whether the project uses a slot. Read-only: it never offers to remove or merge one. */
+export const USAGE_COPY: Record<UsageVerdict, string> = {
+  referenced: "Studio found where this colour is used in the project.",
+  no_reference_found:
+    "Studio found no object, part, colour change or setting that uses this colour. That does not prove it is unused, and Studio does not remove it.",
+  unknown: "Studio cannot tell whether this colour is used, because part of the project could not be read.",
+};
+
+/** The note for a project with more materials than the U1 has toolheads, or null when it does not. */
+export function beyondToolheadsNote(total: number, toolheads: number | undefined, beyond: number | undefined): string | null {
+  if (!beyond || beyond <= 0) return null;
+  const heads = toolheads ?? 4;
+  return `This project has ${total} materials, ${beyond} beyond the U1's ${heads} toolheads. ` +
+    "Studio does not remove or merge colours. Taking one out safely needs a check in Snapmaker Orca first.";
+}
 
 /** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */
 export function needsSpoolConfirmation(c: MaterialCandidate): string | null {

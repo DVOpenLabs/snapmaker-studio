@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { colorName } from "@/lib/plateRemapWizard";
 import {
   KEEP_OWN_NOTICE, MATCH_SOURCE_LABEL, STATUS_LABEL, amountText, blockedFacts, buildSelections, canRemember,
-  KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, choiceReduce, colourWord, emptyChoice, filterPresets, forgetRequest, forgetWording, stillSaved, holdsChoices, mappingRequests, materialText,
+  KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_FOREIGN_PRESET_HINT, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, USAGE_COPY, beyondToolheadsNote, isForeignPreset, choiceReduce, colourWord, emptyChoice, filterPresets, forgetRequest, forgetWording, stillSaved, holdsChoices, mappingRequests, materialText,
   presetSourceLabel, presetStatusFor, samePreset, savedScope, slotNumber, slotsCoveredBy, unconfirmedSlots,
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialInventory, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
@@ -211,6 +211,10 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadIn
         {slot.settings_id && <span className="text-xs text-muted-foreground">now “{slot.settings_id}”</span>}
       </div>
 
+      {slot.usage && (
+        <p className="text-[11px] text-muted-foreground" data-testid="slot-usage" data-verdict={slot.usage.verdict}>{USAGE_COPY[slot.usage.verdict]}</p>
+      )}
+
       {slot.candidates.length > 0 ? (
         <div className="space-y-1">
           {slot.close_call && (
@@ -288,7 +292,7 @@ export function SlotRow({ slot, choice, presets, providerLabel, dispatch, loadIn
         {spool && !choice.preset && !choice.keepOwn && (
           <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{slot.settings_id ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}` : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
+            <span>{slot.settings_id ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}${isForeignPreset(slot.settings_id) ? ` ${SPOOL_FOREIGN_PRESET_HINT}` : ""}` : SPOOL_WITHOUT_PRESET_NONE_EXISTING}{!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}</span>
           </p>
         )}
 
@@ -492,6 +496,11 @@ export function ProjectMaterialsView(p: ViewProps) {
           </p>
         )}
         {!analysis.provider && <p className="text-xs text-muted-foreground" data-testid="no-provider">{COPY.noProvider}</p>}
+        {beyondToolheadsNote((analysis.slots ?? []).length, analysis.toolheads, analysis.beyond_toolheads) && (
+          <p className="flex items-start gap-1.5 rounded-md bg-repairable/10 p-2 text-xs text-repairable" data-testid="beyond-toolheads">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{beyondToolheadsNote((analysis.slots ?? []).length, analysis.toolheads, analysis.beyond_toolheads)}
+          </p>
+        )}
         {(analysis.slots ?? []).map((slot) => (
           <SlotRow key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
             providerLabel={p.providerLabel} dispatch={p.dispatch} onForget={p.onForget} forgetDisabled={!!p.forget}

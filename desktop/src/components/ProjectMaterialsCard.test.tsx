@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversionResult } from "@/api";
 import { candidate, mapping, slot } from "@/lib/projectMaterials.fixtures";
 import {
-  KEEP_OWN_NOTICE, buildSelections, choiceReduce, type Choices, type MaterialPresetList, type ProjectMaterialsAnalysis,
+  KEEP_OWN_NOTICE, USAGE_COPY, buildSelections, choiceReduce, type Choices, type MaterialPresetList, type ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 import { useProvider } from "@/store/provider";
 
@@ -694,5 +694,43 @@ describe("a completed review cannot be used again", () => {
     await waitFor(() => expect(onPrepare).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("review")).toBeTruthy();
     expect(api.confirmMaterialMapping).not.toHaveBeenCalled();
+  });
+});
+
+describe("how the project uses each slot", () => {
+  const usage = (verdict: "referenced" | "no_reference_found" | "unknown") => ({ verdict, referenced_by: verdict === "referenced" ? ["object_extruder"] : [] });
+
+  it("says each verdict in words that keep unknown as unknown, and offers no way to remove or merge a colour", () => {
+    render(<Harness a={analysis({ slots: [slot({ slot: 0, usage: usage("referenced") }), slot({ slot: 1, usage: usage("no_reference_found") }),
+      slot({ slot: 2, usage: usage("unknown") })] })} />);
+    const notes = screen.getAllByTestId("slot-usage");
+    expect(notes.map((n) => n.getAttribute("data-verdict"))).toEqual(["referenced", "no_reference_found", "unknown"]);
+    expect(notes[0].textContent).toBe(USAGE_COPY.referenced);
+    expect(notes[1].textContent).toContain("does not prove it is unused");
+    expect(notes[2].textContent).toBe("Studio cannot tell whether this colour is used, because part of the project could not be read.");
+    expect(screen.queryByRole("button", { name: /remove|merge|delete|drop/i })).toBeNull();
+    for (const text of Object.values(USAGE_COPY)) expect(text.toLowerCase()).not.toMatch(/ready|safe|best|clean|guarantee|unused colour is/);
+  });
+
+  it("says nothing about usage when the engine did not send it, rather than calling the slot unused", () => {
+    render(<Harness a={analysis()} />);
+    expect(screen.queryByTestId("slot-usage")).toBeNull();
+    expect(screen.queryByTestId("beyond-toolheads")).toBeNull();
+  });
+
+  it("notes a project with more materials than the U1's 4 toolheads, and does not for 4", () => {
+    const five = [0, 1, 2, 3, 4].map((i) => slot({ slot: i, usage: usage("referenced") }));
+    const { unmount } = render(<Harness a={analysis({ slots: five, toolheads: 4, beyond_toolheads: 1 })} />);
+    const note = screen.getByTestId("beyond-toolheads").textContent ?? "";
+    expect(note).toContain("5 materials, 1 beyond the U1's 4 toolheads");
+    expect(note).toContain("does not remove or merge");
+    unmount();
+    render(<Harness a={analysis({ slots: five.slice(0, 4), toolheads: 4, beyond_toolheads: 0 })} />);
+    expect(screen.queryByTestId("beyond-toolheads")).toBeNull();
+  });
+
+  it("changes nothing that Prepare would send", () => {
+    render(<Harness a={analysis({ slots: [slot({ slot: 0, usage: usage("unknown") })], toolheads: 4, beyond_toolheads: 0 })} />);
+    expect(request()).toEqual([]);
   });
 });

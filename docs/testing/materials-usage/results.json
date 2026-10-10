@@ -1,0 +1,93 @@
+{
+  "browser": "Microsoft Edge (Chromium), headless",
+  "uiStartedByThisRun": true,
+  "passed": 17,
+  "failed": 0,
+  "results": [
+    {
+      "name": "dark: five colours read as referenced x4 and no reference found x1",
+      "ok": true,
+      "detail": "[\"referenced\",\"referenced\",\"referenced\",\"referenced\",\"no_reference_found\"]"
+    },
+    {
+      "name": "dark: the card says the project is beyond the U1's 4 toolheads",
+      "ok": true,
+      "detail": "This project has 5 materials, 1 beyond the U1's 4 toolheads. Studio does not remove or merge colours. Taking one out safely needs a check in Snapmaker Orca first."
+    },
+    {
+      "name": "dark: the no-reference note does not claim the colour is unused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: no remove or merge action is offered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: a Bambu preset with a spool chosen says how to choose a Snapmaker preset",
+      "ok": true,
+      "detail": "Spool selected, but no Orca preset selected. The project's existing filament preset will remain. Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it. That preset comes from another printer's profile set, and choosing a spool does not choose a preset. To use an installed Snapmaker preset for this slot, choose one under Orca preset."
+    },
+    {
+      "name": "dark: an unreadable object list leaves unreferenced colours unknown, never unused",
+      "ok": true,
+      "detail": "[\"unknown\",\"unknown\",\"unknown\",\"referenced\",\"unknown\"]"
+    },
+    {
+      "name": "dark: the unknown note says Studio cannot tell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: five colours read as referenced x4 and no reference found x1",
+      "ok": true,
+      "detail": "[\"referenced\",\"referenced\",\"referenced\",\"referenced\",\"no_reference_found\"]"
+    },
+    {
+      "name": "light: the card says the project is beyond the U1's 4 toolheads",
+      "ok": true,
+      "detail": "This project has 5 materials, 1 beyond the U1's 4 toolheads. Studio does not remove or merge colours. Taking one out safely needs a check in Snapmaker Orca first."
+    },
+    {
+      "name": "light: the no-reference note does not claim the colour is unused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: no remove or merge action is offered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: a Bambu preset with a spool chosen says how to choose a Snapmaker preset",
+      "ok": true,
+      "detail": "Spool selected, but no Orca preset selected. The project's existing filament preset will remain. Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it. That preset comes from another printer's profile set, and choosing a spool does not choose a preset. To use an installed Snapmaker preset for this slot, choose one under Orca preset."
+    },
+    {
+      "name": "light: an unreadable object list leaves unreferenced colours unknown, never unused",
+      "ok": true,
+      "detail": "[\"unknown\",\"unknown\",\"unknown\",\"referenced\",\"unknown\"]"
+    },
+    {
+      "name": "light: the unknown note says Studio cannot tell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no request named another provider, a printer, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the provider look-alike was read and never written",
+      "ok": true,
+      "detail": "GET /api/v1/spool?allow_archived=true"
+    },
+    {
+      "name": "no unexpected console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
