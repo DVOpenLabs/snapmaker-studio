@@ -45,7 +45,8 @@ class Fakes:
         return {"reachable": True, "host": host, "port": port, "toolhead_count": 4,
                 "bed_mm": {"x": 270, "y": 270, "z": 270}, "nozzle_diameters": [0.4] * 4,
                 "nozzle_confirmed_by": "printer", "print_state": self.state,
-                "klipper_objects": [], "loaded_filaments": None}
+                "klipper_objects": [], "loaded_filaments": None,
+                "identity": {"printer_id": "snapmaker_u1"}}
 
     def _provider(self, kind, url, slot_map=None, timeout=4.0, slot_base=None, key=None):
         self.provider_reads += 1
@@ -62,7 +63,7 @@ class Fakes:
         name = path.replace("\\", "/").rsplit("/", 1)[-1]
         return self.traits_by_name.get(name) or traits()
 
-    def _assess(self, path, bed=None, bed_name=None):
+    def _assess(self, path, bed=None, bed_name=None, height_mm=None):
         self.placements += 1
         return {"available": True, "off_plate": []}
 
@@ -207,7 +208,7 @@ def test_second_scan_hits_the_cache_and_an_edited_file_does_not(tmp_path, monkey
     assert fakes.printer_reads == 3
 
 
-def test_cache_is_keyed_by_bed_size(tmp_path, monkeypatch):
+def test_cache_is_keyed_by_the_printable_area(tmp_path, monkeypatch):
     fakes = Fakes(monkeypatch)
     add_project(tmp_path, "a.3mf")
     scan(provider_url=PROVIDER_URL)
@@ -215,7 +216,7 @@ def test_cache_is_keyed_by_bed_size(tmp_path, monkeypatch):
         "reachable": True, "host": host, "port": port, "toolhead_count": 4,
         "bed_mm": {"x": 350, "y": 350, "z": 350}, "nozzle_diameters": [0.4] * 4,
         "nozzle_confirmed_by": "printer", "print_state": "standby", "klipper_objects": [],
-        "loaded_filaments": None})
+        "loaded_filaments": None, "identity": {"printer_id": "voron_2_4_250"}})
     monkeypatch.setattr(service, "printer_facts", fakes._printer)
     scan(provider_url=PROVIDER_URL)
     assert fakes.placements == 2
@@ -422,7 +423,7 @@ def test_failed_placement_is_not_cached_as_done(tmp_path, monkeypatch):
         raise RuntimeError("transient")
 
     monkeypatch.setattr(plate_placement, "assess", boom)
-    bed = {"min_x": 0.0, "min_y": 0.0, "max_x": 270.0, "max_y": 270.0}
+    bed = {"key": ("test",), "bed": None, "name": None, "height": None}
     state1, _t, placement1 = service._ready_analysis(str(f), bed, need_placement=True)
     state2, _t, placement2 = service._ready_analysis(str(f), bed, need_placement=True)
     assert state1 == state2 == "ok"

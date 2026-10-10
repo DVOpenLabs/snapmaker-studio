@@ -106,11 +106,26 @@ def _compose(a, b):
 ROOT_MODEL = "3D/3dmodel.model"
 
 
+#: What a malformed ``p:path`` becomes. It names no archive entry, so an item or component that carries
+#: one is unresolved; it is never read as "no path" and so never quietly falls back to the root model.
+INVALID_PART = "<invalid p:path>"
+
+
 def normalize_part(path: str | None) -> str | None:
-    """A ``p:path`` as an archive entry name (leading slash removed); None when absent."""
-    if not path:
+    """A ``p:path`` as an archive entry name; None only when the attribute is absent.
+
+    Like the scene reader, a production-extension path must be an absolute package path: an empty,
+    relative, drive-lettered, scheme-carrying or ``..``-climbing value is ``INVALID_PART``.
+    """
+    if path is None:
         return None
-    return path.lstrip("/")
+    n = path.replace("\\", "/")
+    if not n.startswith("/") or any(ord(c) < 32 for c in n):
+        return INVALID_PART
+    segments = [s for s in n.split("/") if s not in ("", ".")]
+    if not segments or ".." in segments:
+        return INVALID_PART
+    return "/".join(segments)
 
 
 def build_items(root: bytes | str) -> list[dict]:
