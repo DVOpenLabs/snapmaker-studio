@@ -251,7 +251,7 @@ def _read_objects(path: str, keep_points: bool = True) -> dict:
     problem the plate does not have. Whether the target agrees is a question for
     the target, and it is recorded in the project's own documentation.
     """
-    from . import geometry, multipart
+    from . import geometry, multipart, roles
     from .container import ThreeMF
 
     # The same bounded reader and limits as the rest of the engine: a hostile or merely huge archive
@@ -292,6 +292,7 @@ def _read_objects(path: str, keep_points: bool = True) -> dict:
 
     polygon = polygon_of(project)
     parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
+    records = roles.read_records(settings_text)
 
     # One entry per BUILD ITEM, in document order. Keying by object id would keep only the last
     # transform of an object that several items use, and every instance would then be reported
@@ -311,7 +312,6 @@ def _read_objects(path: str, keep_points: bool = True) -> dict:
         seen_per_object[who] = instance_index + 1
         item = _units.scale_translation(parse_transform(transform_text), root_scale)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
-        roles = dict(parts_by_object.get(object_id, []))
         item_part = entry["part"] or ROOT_MODEL
         explicit = entry["part"] is not None
         top = parts.get(item_part, {}).get("components", {})
@@ -322,13 +322,16 @@ def _read_objects(path: str, keep_points: bool = True) -> dict:
             resolved = False     # a named part that does not hold the object: not the root's object
         entries = top.get(object_id) or [(None, part_id, None) for part_id in part_ids]
         leaves, ok = _leaves(entries, parts, item_part, explicit, root_scale if item_part == ROOT_MODEL
-                             else parts.get(item_part, {}).get("scale", 1.0))
+                             else parts.get(item_part, {}).get("scale", 1.0),
+                             owner=(item_part, object_id), records=records)
         resolved = resolved and ok
-        for leaf_part, mesh_id, component_transform in leaves:
+        for leaf_part, mesh_id, component_transform, role in leaves:
             points = parts[leaf_part]["meshes"][mesh_id]
             budget.take_moved(len(points))
             whole = compose(item, component_transform)
-            is_part = roles.get(mesh_id, "normal_part") == "normal_part"
+            # the one role rule (see ``roles``): a volume counts toward the footprint unless a
+            # non-printing role, its own or inherited from an assembly above it, says it does not print
+            is_part = roles.counts_toward_size(role)
             for point in points:
                 moved = apply(whole, point)
                 every.add(moved)
@@ -394,8 +397,12 @@ def _components_of(block: str) -> list:
 
 
 def _leaves(entries: list, parts: dict, part: str, explicit: bool, scale: float,
-            depth: int = 0, outer: tuple | None = None, seen: frozenset = frozenset()):
-    """``([(part, mesh id, transform in mm)], resolved)`` for every mesh an object reaches.
+            depth: int = 0, outer: tuple | None = None, seen: frozenset = frozenset(),
+            owner: tuple | None = None, records=None, role=None):
+    """``([(part, mesh id, transform in mm, role)], resolved)`` for every mesh an object reaches.
+
+    ``role`` is what the volume inherits from the assemblies above it combined with the part record
+    for it under ``owner`` (the (part, id) of the object whose components ``entries`` are): see ``roles``.
 
     A component may itself be an object made of components, with its own transform; the
     transforms compose down the path rather than being applied one after the other. A
@@ -419,13 +426,20 @@ def _leaves(entries: list, parts: dict, part: str, explicit: bool, scale: float,
                 continue            # absent (nothing to measure) or ambiguous (not guessed)
             here_part, holder = owners[0], parts[owners[0]]
         here = compose(outer, _units.scale_translation(parse_transform(text), scale))
+        child_role = role
+        if records is not None and owner is not None and owner[0] == ROOT_MODEL:
+            from . import roles as _roles
+
+            child_role = _roles.inherit(role, _roles.own_role(
+                records.part_subtypes, records.metadata_objects, owner[1], oid, missing=None))
         points = holder["meshes"][oid]
         if points:
-            found.append((here_part, oid, here))
+            found.append((here_part, oid, here, child_role))
         elif holder["components"].get(oid) and (here_part, oid) not in seen \
                 and depth < _MAX_COMPONENT_DEPTH:
             more, more_ok = _leaves(holder["components"][oid], parts, here_part, False,
-                                    holder["scale"], depth + 1, here, seen | {(here_part, oid)})
+                                    holder["scale"], depth + 1, here, seen | {(here_part, oid)},
+                                    owner=(here_part, oid), records=records, role=child_role)
             found.extend(more)
             ok = ok and more_ok
     return found, ok
