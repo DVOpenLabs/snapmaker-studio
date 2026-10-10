@@ -233,3 +233,24 @@ def test_optional_recommendations_never_repeat_what_the_preserve_copy_already_ha
     for key in ("exclude_object", "brim_type", "nozzle_volume_type"):
         if key in extra or key == "nozzle_volume_type":
             assert key not in offered, key
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+@pytest.mark.parametrize("declared", ["nozzle_volume_type;layer_height", ["nozzle_volume_type", "", "", "", "", "", ""]])
+def test_a_stale_declaration_of_a_key_the_source_lacks_is_withdrawn(tmp_path, mode, declared):
+    src = _with_settings(SNAPMAKER, tmp_path / "s.3mf", different_settings_to_system=declared)
+    assert "nozzle_volume_type" not in _settings(src)
+    cfg = _settings(_prepare(src, tmp_path / "out", mode).output_path)
+    assert "nozzle_volume_type" not in cfg
+    assert not any("nozzle_volume_type" in e for e in _declarations(cfg))
+
+
+@pytest.mark.parametrize("src", [BAMBU, SNAPMAKER, ORCASLICER])
+def test_the_preview_is_exactly_what_recommended_changes_in_the_preserve_copy(tmp_path, src):
+    preserve = _prepare(src, tmp_path / "a", "preserve")
+    applied = _settings(preserve.output_path)
+    full = _settings(_prepare(src, tmp_path / "b", "recommended").output_path)
+    from snapstudio_core.preserve import config_diff, display_value
+    preview = preserve.settings_summary["recommended_changes"]
+    assert {r["key"] for r in preview} == {d["key"] for d in config_diff(applied, full)}
+    assert all(r["old"] == display_value(applied.get(r["key"]), key=r["key"]) for r in preview)

@@ -221,7 +221,7 @@ NOZZLE_VOLUME_TYPE_WHY = (
     "write one (for example Standard). A copy that carried it was reported to show a 'newer version, values replaced' "
     "notice naming it. Whether leaving it out removes that notice has not been confirmed in Snapmaker Orca, so check "
     "the opened copy in Orca. The original file is not changed.")
-NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: the setting it named was left out of the copy"
+NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: Snapmaker Orca does not write this setting"
 
 
 def _withdraw_declaration(cfg: dict, key: str, changes: list) -> None:
@@ -240,7 +240,7 @@ def _withdraw_declaration(cfg: dict, key: str, changes: list) -> None:
         new = new if isinstance(old, list) else new[0]
         cfg["different_settings_to_system"] = new
         _change(changes, "different_settings_to_system", old, new, NOZZLE_VOLUME_TYPE_DECLARATION_REASON,
-                f"The project declared {key} as a deviation from its presets. With the setting left out of the copy "
+                f"The project declared {key} as a deviation from its presets. The copy does not carry that setting, so "
                 "there is nothing left to declare.")
 
 

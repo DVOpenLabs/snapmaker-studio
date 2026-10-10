@@ -138,7 +138,8 @@ def test_recommended_is_opt_in_and_print_sequence_contract(tmp_path):
     # change to the same value is already applied and is not offered again.
     applied, full = _prepared(preserve), _prepared(recommended)
     actual_delta = {x["key"] for x in config_diff(before, full)}
-    assert {x["key"] for x in preview} == {k for k in actual_delta if applied.get(k, "<absent>") != full.get(k, "<absent>")}
+    assert {x["key"] for x in preview} == {x["key"] for x in config_diff(applied, full)}
+    assert all(x["old"] == display_value(applied.get(x["key"]), key=x["key"]) for x in preview)
     assert {"nozzle_temperature", "different_settings_to_system", "print_sequence"} <= actual_delta
     # Recommended no longer stamps a legacy "Snapmaker PLA" identity over the filaments:
     # Orca replaced the carried print values from that preset. Identity changes only when

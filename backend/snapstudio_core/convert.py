@@ -226,13 +226,10 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
     if prepare_mode == "preserve" and recommended_after is not None:
         # This is the actual recommended pipeline's complete dry-run result,
         # not a hand-maintained subset of profile swaps.
-        # Optional means the Recommended result differs from the copy being made now. A setting both modes change to
-        # the same value (a compatibility repair, a removal, a declaration) is already applied, so it is not offered.
-        missing = object()
-        for item in config_diff(before, recommended_after):
+        # Optional means the Recommended result differs from the copy being made now: the diff is taken from the
+        # Preserve copy, so "old" is what that copy holds, and anything both modes set identically is not offered.
+        for item in config_diff(after, recommended_after):
             key = item["key"]
-            if after.get(key, missing) == recommended_after.get(key, missing):
-                continue
             recommended_changes.append({
                 "key": key, "old": display_value(item["old"], key=key),
                 "new": display_value(item["new"], key=key),
