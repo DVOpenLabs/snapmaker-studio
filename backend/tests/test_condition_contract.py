@@ -165,3 +165,76 @@ def test_desktop_printer_health_fixture_is_the_real_producer_output():
     if not FIXTURE.exists():
         FIXTURE.write_text(json.dumps(expected, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     assert json.loads(FIXTURE.read_text(encoding="utf-8")) == expected
+
+
+# --- additions: severity follows the failure pattern, standalone findings, one toolhead source, community fixes ---
+def test_failure_severity_follows_the_failure_pattern_and_keeps_the_streak():
+    statuses = ["error"] * 6 + ["completed"] * 2 + ["error"] * 2
+    assert fp.assess(_jobs(*statuses))["overall_level"] == "risk"       # 80% failed, 6 in a row
+    health = _health(statuses)
+    assert health["conditions"][0]["level"] == "risk"
+    predict = sp.findings(readiness={"ready": True}, health=health, prior_failures=1, printer_checked=True)
+    report = ir.build(predict=predict, health=health)
+    by_id = _agree(predict, report, health)
+    f = by_id["printer-failure-history"]
+    assert f["level"] == "risk" and "6 prints failed in a row" in f["text"] and "failed 1 time before" in f["text"]
+    assert report["biggest_risk"]["level"] == "risk"
+    # a mild history stays a warn
+    mild = _health(["error"] + ["completed"] * 4)
+    assert fp.assess(_jobs("error", *["completed"] * 4))["overall_level"] != "risk" and mild["conditions"][0]["level"] == "warn"
+
+
+def test_toolhead_signal_without_a_doctor_finding_is_its_own_finding_not_a_promoted_neighbor():
+    """mm_doctor sees 8 toolheads (no colors problem) + a metadata issue; an independent predictor sees 4."""
+    mm = mm_doctor.assess(5, heads=8, heads_known=True, metadata_issues=["filament array mismatch"])
+    assert [f.get("id") for f in mm["findings"] if f["level"] != "ok"] == ["filament-metadata"]
+    predict = sp.findings(readiness={"ready": True}, toolfit=tf.assess(5, 4, True))
+    report = ir.build(predict=predict, mm=mm)
+    by_id = _agree(predict, report)
+    assert set(by_id) == {"filament-metadata", "toolhead-fit"}
+    assert by_id["filament-metadata"]["level"] == "warn" and by_id["filament-metadata"]["action"].startswith("Run repair")
+    assert by_id["toolhead-fit"]["level"] == "risk" and by_id["toolhead-fit"]["action"].startswith("Remap")
+    assert report["biggest_risk"]["condition"] == "toolhead-fit"
+
+
+def test_service_doctors_share_one_toolhead_count_source(monkeypatch, tmp_path):
+    from snapstudio_api import service
+    from snapstudio_core import moonraker
+    calls = []
+    monkeypatch.setattr(moonraker, "capabilities", lambda h, p: (calls.append((h, p)) or {"toolhead_count": 8}))
+    assert service._toolhead_count("host", 7125) == (8, True)
+    assert service._toolhead_count(None) == (None, False)
+    monkeypatch.setattr(moonraker, "capabilities", lambda h, p: (_ for _ in ()).throw(OSError("down")))
+    assert service._toolhead_count("host", 7125) == (None, False)
+    import inspect
+    assert "moonraker.capabilities" not in inspect.getsource(service.mm_doctor)
+    assert "moonraker.capabilities" not in inspect.getsource(service.toolhead_fit)
+
+
+def test_bed_fit_finding_carries_its_own_action_so_next_is_never_look_into():
+    from snapstudio_core import bed_fit as bf
+    bed = bf.assess({"x": 268, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True, object_count=1, multi_material=False)
+    non_ok = [f for f in bed["findings"] if f["level"] != "ok"]
+    assert non_ok and all(f.get("action") for f in non_ok)
+    report = ir.build(bed_fit=bed)
+    assert report["biggest_risk"]["condition"] == "bed-near-full"
+    assert report["next_action"] == non_ok[0]["action"] and not report["next_action"].startswith("Look into")
+
+
+def test_community_fix_needs_a_full_symptom_phrase_and_never_attaches_to_failure_history():
+    for statuses, prior in ((["error"] + ["completed"] * 4, 1), (["error"] * 6 + ["completed"] * 2 + ["error"] * 2, 1)):
+        health = _health(statuses)
+        predict = sp.findings(readiness={"ready": True}, health=health, prior_failures=prior, printer_checked=True)
+        report = ir.build(predict=predict, health=health)
+        failure = next(r for r in report["risks"] if r["condition"] == "printer-failure-history")
+        assert "community" not in failure, failure["text"]
+    repeat_only = ir.build(predict=sp.findings(readiness={"ready": True}, prior_failures=1, printer_checked=True))
+    assert all("community" not in r for r in repeat_only["risks"])
+    # the positive case: a real colors-vs-toolheads risk still gets its entry
+    mm = mm_doctor.assess(5, heads=4, heads_known=True)
+    colors = ir.build(mm=mm, predict=sp.findings(readiness={"ready": True}, toolfit=tf.assess(5, 4, True)))
+    assert "More colours than toolheads" in colors["risks"][0]["community"]["success_pattern"]
+    # ...and so does a real out-of-bounds risk, while a number shared with a symptom ("5 colours") means nothing
+    from snapstudio_core import bed_fit as bf
+    big = ir.build(bed_fit=bf.assess({"x": 300, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True))
+    assert "Out of bounds" in big["risks"][0]["community"]["success_pattern"]

@@ -1,7 +1,7 @@
 {
   "browser": "Microsoft Edge (Chromium, headless)",
-  "passed": 44,
-  "total": 44,
+  "passed": 46,
+  "total": 46,
   "results": [
     {
       "name": "self-test: the printer-page check catches \"Score 85\"",
@@ -179,6 +179,11 @@
       "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
     },
     {
+      "name": "light: firmware warning + failed print (healthy:false, firmware ready): the chip reads \"See concerns\", not \"ready\"",
+      "ok": true,
+      "detail": " or tap Auto-detect my U1. Studio shows live"
+    },
+    {
       "name": "light: Printers page verdict does not say \"Nothing concerning\" while listing concerns",
       "ok": true,
       "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-only."
@@ -187,6 +192,11 @@
       "name": "dark: Printers page card is \"What the printer reported\" with what was read and no grade, score or /100",
       "ok": true,
       "detail": "What the printer reported A few things in the printer's own readings are worth a look; see the list below. 1 of the last 5 prints failed 1 firmware warning From firmware state + last 5 prints — read-o"
+    },
+    {
+      "name": "dark: firmware warning + failed print (healthy:false, firmware ready): the chip reads \"See concerns\", not \"ready\"",
+      "ok": true,
+      "detail": " or tap Auto-detect my U1. Studio shows live"
     },
     {
       "name": "dark: Printers page verdict does not say \"Nothing concerning\" while listing concerns",

@@ -2029,6 +2029,21 @@ def batch_pricing(paths: list[str], currency: str = "$", **factors) -> dict:
     return pricing.aggregate(priced)
 
 
+def _toolhead_count(host: str | None, port: int = 7125) -> tuple:
+    """The ONE place the toolhead count is read: (count, known) from the connected printer, or (None, False).
+    The Multi-Material Doctor and the Toolhead-Fit Doctor both use it, so they cannot disagree about the printer."""
+    if not host:
+        return None, False
+    from snapstudio_core import moonraker
+    try:
+        caps = moonraker.capabilities(host, port)   # can raise when unreachable
+        if caps.get("toolhead_count"):
+            return caps["toolhead_count"], True
+    except Exception:
+        pass
+    return None, False
+
+
 def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
     """Multi-Material Doctor: one verdict for a multicolour U1 print — colours vs
     toolheads, filament-settings consistency, painted-region mapping. Uses the
@@ -2038,16 +2053,7 @@ def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
     info = project_info(path)
     issues = info.get("issues") or []
     metadata_issues = [i for i in issues if "filament metadata inconsistent" in str(i)]
-    heads = None
-    heads_known = False
-    if host:
-        from snapstudio_core import moonraker
-        try:
-            caps = moonraker.capabilities(host, port)
-            if caps.get("toolhead_count"):
-                heads, heads_known = caps["toolhead_count"], True
-        except Exception:
-            pass
+    heads, heads_known = _toolhead_count(host, port)
     return mmd.assess(info.get("colors"), heads=heads, heads_known=heads_known,
                       painted=bool(info.get("painted")), metadata_issues=metadata_issues,
                       object_count=info.get("objects") or 1)
@@ -2323,17 +2329,7 @@ def toolhead_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     from snapstudio_core import toolhead_fit as tf
     info = project_info(path)
     colors = info.get("colors")
-    heads = None
-    known = False
-    if host:
-        from snapstudio_core import moonraker
-        try:
-            caps = moonraker.capabilities(host, port)   # can raise when unreachable
-            if caps.get("toolhead_count"):
-                heads = caps["toolhead_count"]
-                known = True
-        except Exception:
-            pass
+    heads, known = _toolhead_count(host, port)
     return tf.assess(colors, heads, known)
 
 

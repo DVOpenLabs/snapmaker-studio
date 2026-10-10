@@ -44,7 +44,7 @@ def score(diagnostics=None, failures=None) -> dict:
     # One condition per thing the printer reported (never one per line of evidence): the failure rate and the
     # failure streak describe the same failed jobs, so they are ONE condition with merged text.
     # Each: (penalty_points, condition id, plain-language text).
-    conds: list[tuple[int, str, str]] = []
+    conds: list[tuple] = []
 
     if have_fail:
         parts: list[str] = []
@@ -65,28 +65,30 @@ def score(diagnostics=None, failures=None) -> dict:
             penalty_f += 15
             parts.append(f"{streak} prints failed in a row")
         if parts:
-            conds.append((penalty_f, "printer-failure-history", "; ".join(parts)))
+            # the level follows the failure-pattern result itself (80% failed / a long streak is a risk, not a warn)
+            conds.append((penalty_f, "printer-failure-history", "; ".join(parts),
+                          "risk" if failures.get("overall_level") == "risk" else "warn"))
 
     if have_diag:
         st = diagnostics.get("klippy_state")
         if st and st != "ready":
-            conds.append((30, "firmware-not-ready", f"firmware not ready ({st})"))
+            conds.append((30, "firmware-not-ready", f"firmware not ready ({st})", "warn"))
         fc = diagnostics.get("failed_components") or []
         if fc:
             conds.append((min(40, 20 * len(fc)), "firmware-failed-component",
-                          f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}"))
+                          f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}", "warn"))
         warns = diagnostics.get("warnings") or []
         if warns:
             conds.append((min(15, 5 * len(warns)), "firmware-warning",
-                          f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}"))
+                          f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}", "warn"))
 
-    penalty = sum(p for p, _, _ in conds)
+    penalty = sum(c[0] for c in conds)
     value = max(0, min(100, 100 - penalty))
     grade = _grade(value)
 
     # Most impactful first; if nothing pulled it down, say so.
     conds.sort(key=lambda c: c[0], reverse=True)
-    conditions = [{"id": cid, "level": "warn", "text": text} for _, cid, text in conds]
+    conditions = [{"id": cid, "level": level, "text": text} for _, cid, text, level in conds]
     has_concerns = bool(conditions)
     driver_text = [c["text"] for c in conditions] or ["No problems found in firmware state or recent history."]
 

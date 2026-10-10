@@ -248,6 +248,8 @@ try {
       const bad = [...pt.matchAll(PRINTER_PAGE_BAD)].map((m) => m[0]);
       check(`${theme}: Printers page card is "What the printer reported" with what was read and no grade, score or /100`,
         /What the printer reported/.test(t) && /From firmware state/.test(t) && bad.length === 0, bad.join(" | ") || t.slice(0, 200));
+      check(`${theme}: firmware warning + failed print (healthy:false, firmware ready): the chip reads "See concerns", not "ready"`,
+        /See concerns/.test(pt) && !/ready.{0,3}live/i.test(pt), pt.match(/.{0,40}live/i)?.[0] ?? "");
       check(`${theme}: Printers page verdict does not say "Nothing concerning" while listing concerns`,
         !(/Nothing concerning/.test(t) && /(failed|warning)/.test(t)), t.slice(0, 260));
     }

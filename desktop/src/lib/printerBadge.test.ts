@@ -13,6 +13,11 @@ describe("printerBadge", () => {
   it("never says Healthy with concerns (ready firmware, no firmware warning, one failed print)", () => {
     expect(printerBadge({ diag: ready, concerns: 1 })).toEqual({ label: "See concerns", ok: false });
   });
+  it("reads See concerns, not 'ready', for the realistic firmware-warning shape (healthy:false, klippy ready)", () => {
+    const warned = { healthy: false, klippy_state: "ready" };   // diagnostics sets healthy=false whenever warnings exist
+    expect(printerBadge({ diag: warned, concerns: 1 })).toEqual({ label: "See concerns", ok: false });
+    expect(printerBadge({ diag: warned, concerns: 2 })?.label).toBe("See concerns");
+  });
   it("keeps the firmware state when it is not ready", () => {
     expect(printerBadge({ diag: { healthy: false, klippy_state: "shutdown" }, concerns: 0 })).toEqual({ label: "shutdown", ok: false });
     expect(printerBadge({ diag: { healthy: false, klippy_state: "shutdown" }, concerns: 2 })?.label).toBe("shutdown");

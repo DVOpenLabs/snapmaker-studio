@@ -18,6 +18,15 @@ SCHEMA_VERSION = "report/2"   # 2: no studio_score / print_success_score / expec
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
 
 
+def _community_entries(ck, risk) -> list:
+    """Community entries for one report risk: only a FULL symptom phrase found in the risk text counts (a shared word
+    or a shared number does not), and printer failure history never gets one. The global matcher is left as it is."""
+    if risk.get("condition") == C.PRINTER_FAILURE_HISTORY:
+        return []
+    text = (risk.get("text") or "").lower()
+    return [e for e in ck.match(text, limit=6) if any(sym in text for sym in e["symptoms"])]
+
+
 def demo() -> dict:
     """Demo Mode: a representative report for a typical multicolour U1 model —
     no file, no printer needed, deterministic, for Innovation Fund reviewers.
@@ -140,7 +149,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     try:
         from . import community_knowledge as ck
         for rk in risks:
-            hit = ck.match(rk["text"], limit=1)
+            hit = _community_entries(ck, rk)
             if hit:
                 e = hit[0]
                 rk["community"] = {

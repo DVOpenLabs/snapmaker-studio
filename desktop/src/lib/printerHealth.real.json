@@ -17,7 +17,7 @@
     "conditions": [
       {
         "id": "printer-failure-history",
-        "level": "warn",
+        "level": "risk",
         "text": "8 of the last 10 prints failed; 6 prints failed in a row"
       },
       {
