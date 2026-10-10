@@ -315,18 +315,18 @@ def test_build_rejects_invalid_answers_and_source_refs():
         answers_path.write_text(json.dumps(original), encoding="utf-8")   # undo the answer mutations above
         control = build_with(tag + "desktop/src/lib/fidelity.ts#FIDELITY_HEADINGS")
         assert control.returncode == 0, control.stderr
-        for reason, ref in [
-            ("missing file", tag + "backend/DOES_NOT_EXIST.py"),
-            ("missing fragment", tag + "desktop/src/lib/fidelity.ts#DOES_NOT_EXIST"),
-            ("parent traversal", tag + "../backend/snapstudio_core/rules.py"),
-            ("absolute path under the right tag", tag + "/absolute/backend/snapstudio_core/rules.py"),
-            ("moving branch, not a tag", "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py"),
-            ("bare absolute path", "/absolute/backend/snapstudio_core/rules.py"),
-            ("unknown @link", "@does_not_exist"),
+        for reason, ref, expected in [
+            ("missing file", tag + "backend/DOES_NOT_EXIST.py", "file not in the repository"),
+            ("missing fragment", tag + "desktop/src/lib/fidelity.ts#DOES_NOT_EXIST", "fragment not found in the file"),
+            ("parent traversal", tag + "../backend/snapstudio_core/rules.py", "parent-directory traversal"),
+            ("absolute path under the right tag", tag + "/absolute/backend/snapstudio_core/rules.py", "absolute path"),
+            ("moving branch, not a tag", "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/rules.py", "moving branch, not a release tag"),
+            ("bare absolute path", "/absolute/backend/snapstudio_core/rules.py", "not a URL"),
+            ("unknown @link", "@does_not_exist", "unknown link key"),
         ]:
             res = build_with(ref)
             assert res.returncode != 0, reason
-            assert "source ref does not resolve to this release" in res.stderr and ref in res.stderr, (reason, res.stderr)
+            assert f"source ref does not resolve to this release ({expected}): {ref}" in res.stderr, (reason, res.stderr)
         path_path.write_text(json.dumps(path_data), encoding="utf-8")
 
 

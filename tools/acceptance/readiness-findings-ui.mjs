@@ -90,7 +90,10 @@ function startFakePrinter() {
     if (url.startsWith("/server/history/totals")) return reply({ result: { job_totals: { total_jobs: 5 } } });
     res.writeHead(404); res.end("{}");
   });
-  return new Promise((resolve) => srv.listen(7125, "127.0.0.1", () => resolve(srv)));
+  return new Promise((resolve, reject) => {
+    srv.once("error", (e) => reject(new Error(`could not start the fake printer on 127.0.0.1:7125: ${e.message}`)));
+    srv.listen(7125, "127.0.0.1", () => resolve(srv));
+  });
 }
 
 const results = [];

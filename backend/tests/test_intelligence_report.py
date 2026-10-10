@@ -236,3 +236,23 @@ def test_unverified_spacing_is_never_reported_as_found_nothing():
     assert "found no risks. That" not in out["verdict"]
     assert out["next_action"].startswith("Look into:")
     assert "Address:" not in out["next_action"]
+
+
+def test_a_failed_print_is_counted_once_not_by_both_the_file_signal_and_the_health_driver():
+    out = ir.build(
+        predict={"available": True, "signals": [
+            {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 1 time before"}]},
+        health={"available": True, "drivers": ["1 of the last 5 prints failed"]},
+    )
+    assert out["risks_found"] == 1
+    # with no printer-wide failure driver the file-specific signal still counts
+    solo = ir.build(predict={"available": True, "signals": [
+        {"id": "repeat-failure", "level": "warn", "title": "A print with this file name failed 1 time before"}]})
+    assert solo["risks_found"] == 1
+
+
+def test_health_verdict_has_no_number_or_good_to_print():
+    from snapstudio_core import health_score
+    for failures in (None, {"available": True, "failure_rate": 0.5, "failed": 5, "total": 10, "recent_failure_streak": 0}):
+        v = health_score.score(diagnostics={"klippy_state": "ready", "warnings": [], "failed_components": []}, failures=failures)["verdict"]
+        assert not re.search(r"[0-9]|good to print|healthy", v.lower()), v

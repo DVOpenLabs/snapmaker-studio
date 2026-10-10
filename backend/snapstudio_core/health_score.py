@@ -94,7 +94,7 @@ def score(diagnostics=None, failures=None) -> dict:
 
 def _verdict(value: int, grade: str) -> str:
     if grade in ("A", "B"):
-        return f"Healthy ({value}/100) — good to print."
+        return "Nothing concerning in the printer's own readings."
     if grade == "C":
-        return f"Usable ({value}/100), but worth a check before a long print."
-    return f"Needs attention ({value}/100) — fix the issues below before the next print."
+        return "Worth a check before a long print."
+    return "The printer's own readings show concerns; see the list below."

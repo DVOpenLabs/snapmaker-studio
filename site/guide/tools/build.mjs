@@ -35,20 +35,24 @@ const repoPathExists = (ref) => {
   if (!ref || isAbsolute(ref) || ref.startsWith("/") || ref.includes("\\") || ref.split("/").includes("..")) return false;
   return existsSync(join(repoRoot, ref));
 };
-const resolveSourceRef = (ref) => {
-  if (ref.startsWith("@")) return Boolean(G.links[ref.slice(1)]);
-  if (ref.includes("/../") || ref.includes("\\..")) return false;
+// Returns null when the ref resolves, else the reason it does not (so a failure names its own cause).
+const sourceRefProblem = (ref) => {
+  if (ref.startsWith("@")) return G.links[ref.slice(1)] ? null : "unknown link key";
+  if (ref.includes("/../") || ref.includes("\\..")) return "parent-directory traversal";
   let url;
-  try { url = new URL(ref); } catch { return false; }
-  if (url.origin !== "https://github.com" || url.pathname.startsWith("/DVOpenLabs/snapmaker-studio/blob/main/")) return false;
+  try { url = new URL(ref); } catch { return "not a URL"; }
+  if (url.origin !== "https://github.com") return "not a github.com URL";
+  if (url.pathname.startsWith("/DVOpenLabs/snapmaker-studio/blob/main/")) return "moving branch, not a release tag";
   const prefix = `/DVOpenLabs/snapmaker-studio/blob/${releaseVersion}/`;
-  if (!url.pathname.startsWith(prefix)) return false;
+  if (!url.pathname.startsWith(prefix)) return `not pinned to tag ${releaseVersion}`;
   const path = url.pathname.slice(prefix.length);
-  if (!repoPathExists(path)) return false;
-  if (!url.hash) return true;
+  if (path.startsWith("/") || isAbsolute(path)) return "absolute path";
+  if (!repoPathExists(path)) return "file not in the repository";
+  if (!url.hash) return null;
   const text = readFileSync(join(repoRoot, path), "utf8");
-  return text.includes(url.hash.slice(1));
+  return text.includes(url.hash.slice(1)) ? null : "fragment not found in the file";
 };
+const resolveSourceRef = (ref) => sourceRefProblem(ref) === null;
 
 /* ---------- page registry ---------- */
 const pageId = {
@@ -77,7 +81,8 @@ const validatePageEvidence = (page, where) => {
   if (page.checked !== undefined && typeof page.checked !== "string") fail(`${where}: checked must be a version string or "unreleased"`);
   for (const source of page.sources || []) {
     if (!source.label || !source.ref || !SOURCE_KINDS.has(source.kind)) fail(`${where}: invalid source`);
-    if (!resolveSourceRef(source.ref)) fail(`${where}: source ref does not resolve to this release: ${source.ref}`);
+    const problem = sourceRefProblem(source.ref);
+    if (problem) fail(`${where}: source ref does not resolve to this release (${problem}): ${source.ref}`);
   }
 };
 for (const s of stages) {

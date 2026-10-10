@@ -2,11 +2,11 @@
 
 Every Doctor answers one question. A user shouldn't have to read seven cards to
 know where they stand. This synthesises them into a single screen's worth of
-answer: a Studio Intelligence Score, the money headline, the biggest risk, and
+answer: the risks found, the money headline, the biggest risk, and
 the one next action — with each Doctor's finding as supporting evidence.
 
 Pure synthesis over already-computed Doctor dicts (no network, no fabrication):
-it scores only what's present, surfaces real findings, and stays honest about
+it uses only what's present, surfaces real findings, and stays honest about
 what it can't yet see.
 """
 from __future__ import annotations
@@ -114,6 +114,9 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         for sig in (predict.get("signals") or []):
             if sig.get("id") == "printer-health":
                 continue   # the same drivers are already listed as Printer Doctor risks
+            if sig.get("id") == "repeat-failure" and any(
+                    "prints failed" in str(d) for d in ((health or {}).get("drivers") or [])):
+                continue   # the same failed jobs are already counted by the Printer Doctor's failure driver
             risks.append({"doctor": "Project Doctor",
                           "level": "risk" if sig.get("level") == "risk" else "warn",
                           "text": sig.get("title") or ""})
