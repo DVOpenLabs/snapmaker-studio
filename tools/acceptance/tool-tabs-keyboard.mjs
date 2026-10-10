@@ -28,6 +28,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveTimeout, startEngine, stopTree } from "./engine-startup.mjs";
 
 if (process.platform !== "win32") { console.error("This check is written for Windows (taskkill, npx.cmd)."); process.exit(2); }
 const here = dirname(fileURLToPath(import.meta.url));
@@ -42,23 +43,29 @@ let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
-  for (const c of children) { try { spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); } catch { /* gone */ } }
+  for (const c of children) stopTree(c.pid);
 }
 process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => { cleanup(); process.exit(130); });
 
 /* ---------- engine + UI ---------- */
 const work = mkdtempSync(join(tmpdir(), "tool-tabs-"));
-const backend = spawn(process.env.PYTHON || "py", ["-m", "snapstudio_api"], {
-  cwd: join(repo, "backend"), stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONUNBUFFERED: "1" },
-});
-children.push(backend);
-const handshake = await new Promise((resolve, reject) => {
-  let buf = "";
-  backend.stdout.on("data", (d) => { buf += d; const m = buf.match(/\{[^{}]*\}/); if (m) { try { resolve(JSON.parse(m[0])); } catch { /* keep reading */ } } });
-  setTimeout(() => reject(new Error("engine did not report its port")), 60000);
-});
+// Engine start is bounded and reports its own failure: a missing Python, an early exit (with a bounded stderr tail) or a
+// handshake timeout all stop here with a clear message and a nonzero exit; the child is stopped by its tracked PID.
+let handshake;
+try {
+  ({ handshake } = await startEngine({
+    command: process.env.PYTHON || "py", args: ["-m", "snapstudio_api"], repoRoot: repo,
+    cwd: join(repo, "backend"),
+    env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONUNBUFFERED: "1" },
+    timeoutMs: resolveTimeout(process.env.SNAPSTUDIO_ENGINE_TIMEOUT_MS),
+    onSpawn: (c) => children.push(c),
+  }));
+} catch (e) {
+  console.error(`Engine start failed: ${e?.message ?? e}`);
+  cleanup();
+  process.exit(2);
+}
 // Always this checkout's own UI: a dev server started here, from desktop/, on a port nothing else holds.
 const uiPort = await new Promise((resolve, reject) => {
   const probe = net.createServer();
@@ -69,7 +76,7 @@ const UI = `http://localhost:${uiPort}`;
 const ui = spawn("npx.cmd", ["vite", "--port", String(uiPort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true });
 children.push(ui);
 let uiReady = false;
-for (let i = 0; i < 80 && !uiReady; i++) { try { const r = await fetch(`${UI}/`); uiReady = r.ok; } catch { /* not yet */ } if (!uiReady) await sleep(500); }
+for (let i = 0; i < 80 && !uiReady; i++) { try { const r = await fetch(`${UI}/`, { signal: AbortSignal.timeout(2000) }); uiReady = r.ok; } catch { /* not yet */ } if (!uiReady) await sleep(500); }
 if (!uiReady) { console.error(`This checkout's UI did not come up on ${UI}.`); process.exit(2); }
 console.log(`UI: started a dev server from this checkout (${join(repo, "desktop")}) on ${UI}`);
 
