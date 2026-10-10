@@ -45,7 +45,8 @@ class Fakes:
         return {"reachable": True, "host": host, "port": port, "toolhead_count": 4,
                 "bed_mm": {"x": 270, "y": 270, "z": 270}, "nozzle_diameters": [0.4] * 4,
                 "nozzle_confirmed_by": "printer", "print_state": self.state,
-                "klipper_objects": [], "loaded_filaments": None}
+                "klipper_objects": [], "loaded_filaments": None,
+                "identity": {"printer_id": "snapmaker_u1"}}
 
     def _provider(self, kind, url, slot_map=None, timeout=4.0, slot_base=None, key=None):
         self.provider_reads += 1
@@ -62,7 +63,7 @@ class Fakes:
         name = path.replace("\\", "/").rsplit("/", 1)[-1]
         return self.traits_by_name.get(name) or traits()
 
-    def _assess(self, path, bed=None, bed_name=None):
+    def _assess(self, path, bed=None, bed_name=None, height_mm=None):
         self.placements += 1
         return {"available": True, "off_plate": []}
 
@@ -207,7 +208,7 @@ def test_second_scan_hits_the_cache_and_an_edited_file_does_not(tmp_path, monkey
     assert fakes.printer_reads == 3
 
 
-def test_cache_is_keyed_by_bed_size(tmp_path, monkeypatch):
+def test_cache_is_keyed_by_the_printable_area(tmp_path, monkeypatch):
     fakes = Fakes(monkeypatch)
     add_project(tmp_path, "a.3mf")
     scan(provider_url=PROVIDER_URL)
@@ -215,7 +216,7 @@ def test_cache_is_keyed_by_bed_size(tmp_path, monkeypatch):
         "reachable": True, "host": host, "port": port, "toolhead_count": 4,
         "bed_mm": {"x": 350, "y": 350, "z": 350}, "nozzle_diameters": [0.4] * 4,
         "nozzle_confirmed_by": "printer", "print_state": "standby", "klipper_objects": [],
-        "loaded_filaments": None})
+        "loaded_filaments": None, "identity": {"printer_id": "voron_2_4_250"}})
     monkeypatch.setattr(service, "printer_facts", fakes._printer)
     scan(provider_url=PROVIDER_URL)
     assert fakes.placements == 2
@@ -422,9 +423,81 @@ def test_failed_placement_is_not_cached_as_done(tmp_path, monkeypatch):
         raise RuntimeError("transient")
 
     monkeypatch.setattr(plate_placement, "assess", boom)
-    bed = {"min_x": 0.0, "min_y": 0.0, "max_x": 270.0, "max_y": 270.0}
+    bed = {"key": ("test",), "bed": None, "name": None, "height": None}
     state1, _t, placement1 = service._ready_analysis(str(f), bed, need_placement=True)
     state2, _t, placement2 = service._ready_analysis(str(f), bed, need_placement=True)
     assert state1 == state2 == "ok"
     assert placement1 is None and placement2 is None
     assert calls["n"] == 2
+
+
+def test_a_same_size_replacement_with_the_same_timestamp_is_not_served_stale(tmp_path, monkeypatch):
+    import os
+    from snapstudio_api import service
+    from snapstudio_core import plate_placement
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    before = os.stat(path)
+    service._READY_CACHE.clear()
+    seen = []
+
+    def spy(p, *a, **k):
+        seen.append(p)
+        return {"available": True, "off_plate": [], "items": [], "tag": len(seen)}
+
+    monkeypatch.setattr(plate_placement, "assess", spy)
+    from snapstudio_core import project_traits
+    monkeypatch.setattr(project_traits, "extract", lambda p: {"readable": True})
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    _s, _t, first = service._ready_analysis(str(path), target, need_placement=True)
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))]))
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert os.stat(path).st_size == before.st_size and os.stat(path).st_mtime_ns == before.st_mtime_ns
+    _s, _t, second = service._ready_analysis(str(path), target, need_placement=True)
+    assert first["tag"] == 1 and second["tag"] == 2          # analysed again, not served from the cache
+
+
+def test_a_file_replaced_while_it_is_being_read_is_read_again_never_mixed(tmp_path, monkeypatch):
+    import os
+    from snapstudio_api import service
+    from snapstudio_core import plate_placement, project_traits
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    service._READY_CACHE.clear()
+    reads = []
+
+    def extract(p):
+        reads.append(1)
+        if len(reads) == 1:                     # the file is replaced after Studio looked at version A
+            fx.three_mf(path, fx.model_xml([fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))]))
+            return {"readable": True, "tag": "A"}
+        return {"readable": True, "tag": "B"}
+
+    monkeypatch.setattr(project_traits, "extract", extract)
+    monkeypatch.setattr(plate_placement, "assess", lambda p, *a, **k: {"available": True, "off_plate": [], "items": []})
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    state, traits, _placement = service._ready_analysis(str(path), target, need_placement=True)
+    assert state == "ok" and traits["tag"] == "B" and len(reads) == 2
+    assert len(service._READY_CACHE) == 1                # only the consistent B read was cached
+
+
+def test_a_file_that_never_holds_still_is_unreadable_and_not_cached(tmp_path, monkeypatch):
+    from snapstudio_api import service
+    from snapstudio_core import project_traits
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    service._READY_CACHE.clear()
+    count = {"n": 0}
+
+    def extract(p):
+        count["n"] += 1
+        fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10 + count["n"])], [("1", fx.tf(100, 100, 0))]))
+        return {"readable": True}
+
+    monkeypatch.setattr(project_traits, "extract", extract)
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    assert service._ready_analysis(str(path), target, need_placement=False) == ("unreadable", None, None)
+    assert count["n"] == service._READY_ATTEMPTS and len(service._READY_CACHE) == 0

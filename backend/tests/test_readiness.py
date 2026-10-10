@@ -418,3 +418,19 @@ def test_colour_note_does_not_hide_a_possible_shortage():
     assert r["colour_notes"]
     assert any("short" in u.lower() for u in r["unknowns"])
     assert r["top_reason"] != rd.COLOUR_NOTE
+
+
+def test_unjudged_instances_never_reach_ready_now():
+    placement = {"available": True, "off_plate": [], "not_judged": 1,
+                 "bed": {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0},
+                 "bed_height_mm": 270.05, "items": []}
+    r = classify(traits(), printer([spool()]), placement=placement)
+    assert r["bucket"] == rd.CANT_DETERMINE and r["bucket"] != rd.READY_NOW
+
+
+def test_a_tall_object_does_not_reach_ready_now():
+    placement = {"available": True, "off_plate": [], "bed_height_mm": 270.05,
+                 "bed": {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0},
+                 "items": [{"object_id": "1", "bounds_mm": {"min": [10, 10, 0], "max": [20, 20, 300]}}]}
+    r = classify(traits(), printer([spool()]), placement=placement)
+    assert r["bucket"] != rd.READY_NOW

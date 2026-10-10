@@ -57,9 +57,11 @@ def test_a_printer_reporting_fewer_tools_than_the_profile_is_believed():
 def test_a_much_bigger_bed_is_used_as_reported():
     project = {"filament_count": {"value": 1, "confidence": "confirmed", "evidence": "t"}}
     big = facts(bed_mm={"x": 1000.0, "y": 1000.0, "z": 1000.0})
-    out = pf.evaluate(project, big, placement={"available": True, "off_plate": []})
+    out = pf.evaluate(project, big, placement={
+        "available": True, "off_plate": [], "bed_height_mm": 1000.0,
+        "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": 1000.0, "max_y": 1000.0}, "items": []})
     bed = next(c for c in out["checks"] if c["id"] == "bed.fit")
-    assert bed["result"] == pf.OK and "1000.0" in bed["evidence"]
+    assert bed["result"] == pf.OK and "1000 × 1000 mm printable area" in bed["evidence"]
 
 
 def test_a_zero_tool_printer_does_not_divide_by_it():

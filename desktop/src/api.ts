@@ -1299,6 +1299,10 @@ export async function ecosystemAdvice(
 
 export interface PlacementItem {
   object_id: string;
+  // One object can be used by several build items; these tell the instances apart.
+  item_index?: number;
+  instance_index?: number;
+  instance_count?: number;
   dimensions: { x: number; y: number; z: number };
   position: { x: number; y: number };
   off_plate: boolean;
@@ -1316,7 +1320,9 @@ export interface PlacementCheck {
   items: PlacementItem[];
   off_plate: PlacementItem[];
   skipped_plates?: { plate: number; reason: string }[];
-  unresolved_objects?: { object_id: string }[];
+  unresolved_objects?: { object_id: string; item_index?: number; reason?: string }[];
+  // Placed instances Studio could not judge (not found, or on no plate record).
+  not_judged?: number;
   fixable: boolean;
   summary?: string;
 }
