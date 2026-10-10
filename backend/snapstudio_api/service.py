@@ -2082,10 +2082,10 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     placed = None
     try:
         from snapstudio_core import plate_placement
-        rect = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(bed["x"]), "max_y": float(bed["y"])}
-                if bed_known and bed else None)
-        placed = plate_placement.assess(
-            path, bed=rect, bed_name=("your connected printer's" if rect else None))
+        # The printable area of the machine Studio prepares for (its profile polygon and edge margin).
+        # A connected printer's reported bed is axis TRAVEL (about 271 x 335 on a U1, anchored at 0,0),
+        # not a printable rectangle, so it is never used as one here.
+        placed = plate_placement.assess(path)
     except Exception:
         placed = None
     return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,

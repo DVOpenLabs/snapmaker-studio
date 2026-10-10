@@ -174,21 +174,45 @@ _CACHE: dict = {}
 _CACHE_SLOTS = 4
 
 
-def _identity(path: str):
+def stat_identity(path: str):
+    """``(resolved path, mtime, size)`` or None."""
     try:
-        st = Path(path).stat()
+        resolved = Path(path).resolve()
+        st = resolved.stat()
     except OSError:
         return None
-    return (str(Path(path).resolve()), st.st_mtime_ns, st.st_size)
+    return (str(resolved), st.st_mtime_ns, st.st_size)
+
+
+def file_identity(path: str):
+    """What a remembered measurement is keyed by: the stat identity PLUS a fingerprint of the content.
+
+    A replacement of the same size that kept its timestamp (a copy that preserves times, a build that
+    rewrites in place) still changes the fingerprint, so a stale measurement is never served."""
+    import hashlib
+
+    base = stat_identity(path)
+    if base is None:
+        return None
+    digest = hashlib.blake2b(digest_size=16)
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return base + (digest.hexdigest(),)
 
 
 def _measure(path: str):
-    key = _identity(path)
+    key = file_identity(path)
     if key is not None and key in _CACHE:
         items, unresolved, sizes = _CACHE[key]
         return copy.deepcopy((items, unresolved, sizes))
     result = _measure_uncached(path)
-    if key is not None:
+    # only remember it if the file is still the one that was read: a change during the measurement
+    # would otherwise be filed under the identity of the old content
+    if key is not None and stat_identity(path) == key[:3]:
         while len(_CACHE) >= _CACHE_SLOTS:
             _CACHE.pop(next(iter(_CACHE)))
         _CACHE[key] = copy.deepcopy(result)

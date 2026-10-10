@@ -122,9 +122,9 @@ def test_a_project_is_measured_once_across_the_consumers(tmp_path, monkeypatch):
         calls["measure"] += 1
         return real_measure(p)
 
-    def counting_read(p):
+    def counting_read(p, *args, **kw):
         calls["read"] += 1
-        return real_read(p)
+        return real_read(p, *args, **kw)
 
     monkeypatch.setattr(geometry, "_measure_uncached", counting_measure)
     monkeypatch.setattr(placement, "_read_objects", counting_read)
@@ -165,3 +165,63 @@ def test_project_info_keeps_its_old_cost_unless_asked_for_placement_data(tmp_pat
     info = project_info(path)
     assert info["object_sizes_mm"] is None and info["placed"] is None and info["objects_unmeasured"] is None
     assert info["dimensions_mm"] == {"x": 10.0, "y": 10.0, "z": 10.0}
+
+
+# --- review round 2 --------------------------------------------------------------------------------------
+
+def test_a_connected_printers_travel_extents_are_not_a_printable_rectangle(tmp_path, monkeypatch):
+    from snapstudio_core import moonraker
+    # a real U1 reports ~271 x 335 of axis TRAVEL; its printable area is 270 x 270 from about (0.5, 1)
+    monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {"bed_mm": {"x": 271, "y": 335, "z": 275}})
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 300, 0))], name="travel.3mf")
+    result = service.bed_fit(path, host="u1.invalid")
+    assert result["bed_known"] is True                                    # the size check still uses the report
+    assert result["overall_level"] == "risk"
+    assert any(f["text"].startswith("By placement") and f["level"] == "risk" for f in result["findings"])
+    assert "outside" in texts(result)
+    inside = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))], name="inside.3mf")
+    assert service.bed_fit(inside, host="u1.invalid")["overall_level"] == "ok"
+
+
+def test_every_failing_object_is_reported_with_its_own_fix(tmp_path):
+    path = project(tmp_path, [box_object("1", 280, 280, 10), box_object("2", 10, 10, 1000)],
+                   [("1", fx.tf(0, 0, 0)), ("2", fx.tf(0, 0, 0))])
+    result = service.bed_fit(path)
+    assert result["overall_level"] == "risk"
+    body = " ".join(f["text"] for f in result["findings"])
+    assert "object 1 is too big" in body and "object 2 is taller than" in body
+    assert any(fx_.startswith("object 1: Scale to") for fx_ in result["fixes"])
+    assert any(fx_.startswith("object 2: Scale to") for fx_ in result["fixes"])
+    assert "2 objects won't fit as-is" in result["overall_text"]
+    by_object = {o["object_id"]: o for o in result["objects_by_size"]}
+    assert by_object["1"]["level"] == "risk" and by_object["1"]["fixes"] and by_object["1"]["findings"]
+    assert by_object["2"]["level"] == "risk" and by_object["2"]["fixes"] and by_object["2"]["findings"]
+
+
+def test_a_same_size_replacement_that_keeps_its_timestamp_is_not_served_stale(tmp_path):
+    import os
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))], name="swap.3mf")
+    before = os.stat(path)
+    assert geometry.object_sizes(path)[0]["dimensions"]["x"] == 10.0
+    project(tmp_path, [fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))], name="swap.3mf")
+    assert os.stat(path).st_size == before.st_size
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))            # same size, same timestamp
+    assert os.stat(path).st_mtime_ns == before.st_mtime_ns
+    assert geometry.object_sizes(path)[0]["dimensions"]["x"] == 30.0
+    settings = fx.model_settings_xml({"1": [("1", "normal_part")]}, [(1, [("1", 0)])])
+    fx.three_mf(tmp_path / "fp.3mf", fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]), {SETTINGS: settings})
+    fp = str(tmp_path / "fp.3mf")
+    stat = os.stat(fp)
+    assert placement.read_objects(fp, keep_points=False)["objects"][0]["footprint"]["width"] == 10.0
+    fx.three_mf(tmp_path / "fp.3mf", fx.model_xml([fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))]), {SETTINGS: settings})
+    os.utime(fp, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert placement.read_objects(fp, keep_points=False)["objects"][0]["footprint"]["width"] == 30.0
+
+
+def test_placed_instances_number_uses_of_the_same_object(tmp_path):
+    a, b = "3D/Objects/a.model", "3D/Objects/b.model"
+    extra = {a: fx.sub_model_xml([fx.cube_object("1", 10)]), b: fx.sub_model_xml([fx.cube_object("1", 50)])}
+    path = str(fx.three_mf(tmp_path / "ids.3mf", fx.model_xml(
+        [], [("1", fx.tf(10, 10, 0), "/" + a), ("1", fx.tf(100, 10, 0), "/" + b)]), extra))
+    instances = pp.placed_instances(path)["instances"]
+    assert [(i["instance_index"], i["instance_count"]) for i in instances] == [(0, 1), (0, 1)]

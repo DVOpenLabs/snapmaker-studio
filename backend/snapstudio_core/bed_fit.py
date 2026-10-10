@@ -261,12 +261,31 @@ def assess_objects(objects: list[dict] | None, placed: dict | None = None, unmea
     worst_entry, _ = max(
         sized, key=lambda pair: (_ORDER[pair[1]["overall_level"]],
                                  pair[0]["dimensions_mm"]["x"] * pair[0]["dimensions_mm"]["y"]))
-    # Then the one result that is reported, with the placement added once.
+    # Then the worst object's result, with the placement added once ...
     out = assess(worst_entry["dimensions_mm"], placed=placed, subject=label_of(worst_entry), **kw)
+    # ... and EVERY other object that is not fine reported too, each fix naming its object: scaling
+    # one object to fit says nothing about another that is too tall.
+    failing = [(e, r) for e, r in sized if r["overall_level"] != "ok"]
+    if many:
+        worst_res = next(r for e, r in sized if e is worst_entry)
+        placement_fixes = out["fixes"][len(worst_res["fixes"]):]     # size fixes come first
+        out["fixes"] = [f"{label_of(e)}: {fix}" for e, r in failing for fix in r["fixes"]] + placement_fixes
+        for entry, res in failing:
+            if entry is worst_entry:
+                continue
+            out["findings"] += [f for f in res["findings"] if f["level"] != "ok"]
+            if _ORDER[res["overall_level"]] > _ORDER[out["overall_level"]]:
+                out["overall_level"] = res["overall_level"]
+        risky = [e for e, r in sized if r["overall_level"] == "risk"]
+        if len(risky) > 1:
+            out["overall_text"] = (f"By size, {len(risky)} objects won't fit as-is — this is the "
+                                   "out-of-bounds error, with a fix for each below.")
     out["objects_checked"] = len(sized)
     out["objects_unmeasured"] = unmeasured
-    out["objects_by_size"] = [{"object_id": e.get("object_id"), "level": r["overall_level"],
-                               "dims_mm": r["dims_mm"]} for e, r in sized]
+    out["objects_by_size"] = [{"object_id": e.get("object_id"), "part": e.get("part"),
+                               "level": r["overall_level"], "dims_mm": r["dims_mm"],
+                               "findings": [f["text"] for f in r["findings"] if f["level"] != "ok"],
+                               "fixes": list(r["fixes"])} for e, r in sized]
     if unmeasured:
         out["findings"].append(_f("warn", f"By size, {unmeasured} build item"
                                           f"{'s' if unmeasured != 1 else ''} could not be measured, so "
