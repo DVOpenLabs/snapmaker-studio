@@ -1,10 +1,11 @@
-"""Printer Health Score — one honest number for "is my U1 in good shape?"
+"""Printer health — what the U1's own signals say about its condition
 
 A U1 owner can already see telemetry (Fluidd), history (Moonraker), and Studio's
 failure patterns — but nothing rolls them into a single answer. This does: it
 folds the printer's OWN read-only signals (firmware/connectivity state + warnings
-+ failed components, and the print-history failure pattern) into a 0–100 score, a
-letter grade, and the plain-language drivers behind it.
++ failed components, and the print-history failure pattern) into a score, a letter
+grade and the plain-language drivers behind them. UIs show the drivers and the
+verdict, not the number (#92).
 
 Pure aggregation of data Studio already fetches read-only — no new printer calls,
 no control, no telemetry re-display. Honest by design: it scores only the signals
@@ -29,7 +30,7 @@ def _grade(score: int) -> str:
 
 
 def score(diagnostics=None, failures=None) -> dict:
-    """Roll the U1's read-only health signals into a 0–100 score.
+    """Roll the U1's read-only health signals into a score plus plain-language drivers.
 
     diagnostics: snapstudio_core.moonraker.diagnostics() output (or None).
     failures: snapstudio_core.failure_patterns.assess() output (or None).

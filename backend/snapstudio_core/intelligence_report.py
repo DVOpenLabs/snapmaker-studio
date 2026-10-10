@@ -20,11 +20,14 @@ def _push_findings(risks, recs, doctor, doc):
     """Collect a doctor's non-ok findings as risks and its fixes as recommendations."""
     if not doc or not doc.get("available", True):
         return
-    for f in (doc.get("findings") or []):
+    non_ok = [f for f in (doc.get("findings") or []) if f.get("level") in ("warn", "risk")]
+    for f in non_ok:
         if f.get("level") in ("warn", "risk"):
             risk = {"doctor": doctor, "level": f["level"], "text": f["text"]}
-            if (doc.get("fixes") or []):
-                risk["action"] = doc["fixes"][0]   # what to do about THIS doctor's findings
+            # A Doctor's fixes belong to a finding only when it has exactly one; otherwise the
+            # action is attached later by the condition that matches (see the signal merge).
+            if len(non_ok) == 1 and (doc.get("fixes") or []):
+                risk["action"] = doc["fixes"][0]
             risks.append(risk)
     for fx in (doc.get("fixes") or []):
         recs.append(fx)
@@ -122,13 +125,25 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     # One condition, one risk. Failure history reaches us three ways (failure-rate driver, failure-streak
     # driver, exact-file repeat signal); keep the strongest evidence, which is the exact-file signal.
-    failure_done = False
+    failure_drivers = [d for d in drivers if "prints failed" in d]
     for d in drivers:
         if "prints failed" in d:
-            if repeat is not None or failure_done:
-                continue
-            failure_done = True
+            continue
         risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
+    if failure_drivers or repeat is not None:
+        # One failure risk, naming every piece of evidence: the exact-file repeat (if any) and the printer-wide rate.
+        printer_wide = next((d for d in failure_drivers if "of the last" in d), failure_drivers[0] if failure_drivers else None)
+        if repeat is not None:
+            text = repeat.get("title") or "A print with this file name failed before"
+            if printer_wide:
+                text += f"; {printer_wide}"
+            level = "risk" if repeat.get("level") == "risk" else "warn"
+            risk = {"doctor": "Project Doctor", "level": level, "text": text}
+            if repeat.get("action"):
+                risk["action"] = repeat["action"]
+        else:
+            risk = {"doctor": "Printer Doctor", "level": "warn", "text": printer_wide}
+        risks.append(risk)
 
     def _level(sg):
         return "risk" if sg.get("level") == "risk" else "warn"
@@ -148,12 +163,16 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                 r["level"] = _level(sg)
                 if sg.get("action"):
                     r["action"] = sg["action"]   # the step for THIS condition, not the Doctor's first fix
+            elif sg.get("action") and not r.get("action"):
+                r["action"] = sg["action"]       # e.g. first-layer findings carry no fixes of their own
         return True
 
     for sg in signals:
         sid = sg.get("id")
         if sid == "printer-health":
             continue   # the same drivers are already listed as Printer Doctor risks
+        if sid == "repeat-failure":
+            continue   # merged with the printer-wide failure evidence above
         if sid == "toolhead-fit" and _merge_into_doctor("Multi-Material Doctor", sg, lambda r: "toolhead" in r["text"].lower()):
             continue   # the Multi-Material Doctor reports this same colors-vs-toolheads condition
         if sid == "first-layer" and _merge_into_doctor("First Layer Doctor", sg):

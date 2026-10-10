@@ -2297,8 +2297,7 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
 
 def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
     """Printer Health Score: fold the U1's OWN read-only signals — firmware/
-    connectivity diagnostics + print-history failure patterns — into one 0–100
-    score, a grade, and plain-language drivers. Read-only; never raises."""
+    connectivity diagnostics + print-history failure patterns — into a grade and plain-language drivers (the number is not shown to users). Read-only; never raises."""
     from snapstudio_core import moonraker, failure_patterns as fp, health_score as hs
     diag = None
     fail = None

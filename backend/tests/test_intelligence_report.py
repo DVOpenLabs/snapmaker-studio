@@ -344,7 +344,7 @@ def test_merge_raises_only_the_matching_finding_not_the_whole_doctor():
     levels = {("toolheads" in r["text"]): r["level"] for r in out["risks"]}
     assert levels == {True: "risk", False: "warn"}
     assert out["risks_found"] == 2
-    assert "toolheads" in out["biggest_risk"]["text"] and out["next_action"] == mm["fixes"][0]   # already a risk: the Doctor's own fix stands
+    assert "toolheads" in out["biggest_risk"]["text"] and "Remap" in out["next_action"]   # the colors condition's own step, not the filament-settings one
 
 
 def test_stronger_signal_raises_only_the_toolhead_finding_when_the_doctor_rated_it_lower():
@@ -357,3 +357,51 @@ def test_stronger_signal_raises_only_the_toolhead_finding_when_the_doctor_rated_
     assert by_text == {"Filament settings are inconsistent": "warn", "Uses 5 colors on 4 toolheads": "risk"}
     assert out["biggest_risk"]["text"] == "Uses 5 colors on 4 toolheads"
     assert out["next_action"] == predict["signals"][0]["action"] and "Remap" in out["next_action"]   # not the filament-arrays fix
+
+
+from snapstudio_core import first_layer as _fl
+
+
+def test_first_layer_small_base_and_bed_variance_biggest_risk_is_the_bed_with_a_concrete_next_step():
+    """Real first_layer.assess output: small base (warn) + 0.3 mm bed range (risk). The warns stay warns."""
+    fl = _fl.assess({"base_area_mm2": 80, "min_dim_mm": 8, "width_x_mm": 10, "width_y_mm": 8}, {"height_mm": 20},
+                    {"available": True, "range_mm": 0.3, "center_range_mm": 0.3, "corner_spread_mm": 0.1})
+    fl["available"] = True
+    assert fl["overall_level"] == "risk"
+    predict = _sp.findings(readiness={"ready": True}, first_layer=fl)
+    out = ir.build(predict=predict, first_layer=fl)
+    assert "bed varies" in out["biggest_risk"]["text"].lower() and out["biggest_risk"]["level"] == "risk"
+    warns = [r for r in out["risks"] if r["level"] == "warn"]
+    assert warns and all("bed varies" not in r["text"].lower() for r in warns)
+    assert not out["next_action"].startswith("Look into:") and "Small base" not in out["next_action"]
+    assert "brim" in out["next_action"].lower() or "first layer" in out["next_action"].lower()
+    assert out["risks_found"] == len(fl["findings"])      # one risk per Doctor finding, none duplicated by the predictor
+
+
+def test_five_colors_with_a_metadata_issue_keeps_the_metadata_finding_a_warn_with_no_borrowed_action():
+    mm = _mm.assess(5, heads=4, heads_known=True, metadata_issues=["filament array mismatch"])
+    out = ir.build(predict=_sp.findings(readiness={"ready": True}, toolfit=_tf.assess(5, 4, True)), mm=mm)
+    meta = next(r for r in out["risks"] if "inconsistent" in r["text"])
+    assert meta["level"] == "warn" and "action" not in meta          # fixes[0] belongs to the colors finding, not this one
+    assert out["biggest_risk"]["level"] == "risk" and "toolheads" in out["biggest_risk"]["text"]
+
+
+def test_failure_risk_names_the_file_repeat_and_the_printer_wide_rate_and_counts_once():
+    """Printer 8 of last 10 failed, streak 6, this file failed once: one risk, both facts, count matches the status."""
+    health = _hs.score(
+        diagnostics={"klippy_state": "ready", "warnings": [], "failed_components": []},
+        failures={"available": True, "failure_rate": 0.8, "failed": 8, "total": 10, "recent_failure_streak": 6},
+    )
+    predict = _sp.findings(readiness={"ready": True}, prior_failures=1, health=health, printer_checked=True)
+    assert next(sg for sg in predict["signals"] if sg["id"] == "repeat-failure")["level"] == "warn"
+    out = ir.build(predict=predict, health=health)
+    failure = [r for r in out["risks"] if "failed" in r["text"]]
+    assert len(failure) == 1 and out["risks_found"] == 1
+    assert "failed 1 time before" in failure[0]["text"] and "8 of the last 10" in failure[0]["text"]
+    assert out["printer_status"] == "Answered, 1 concern"      # the same deduped count as the risk list
+
+
+def test_repeat_signal_alone_counts_one_risk_and_exact_file_risk_level_survives():
+    predict = _sp.findings(readiness={"ready": True}, prior_failures=2, printer_checked=True)
+    out = ir.build(predict=predict)
+    assert out["risks_found"] == 1 and out["risks"][0]["level"] == "risk"
