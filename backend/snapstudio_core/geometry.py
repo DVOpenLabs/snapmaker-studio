@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from .container import ThreeMF
+from . import roles as _roles
 from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
 from . import units as _units
@@ -273,7 +274,7 @@ def _measure_uncached(path: str):
         budget = [0]
         placed_budget = [0]
 
-        def collect(objid, part, explicit, xform, acc, seen, bad, printing=None, roles=None):
+        def collect(objid, part, explicit, xform, acc, seen, bad, printing=None, role=None, records=None):
             f = find_obj(objid, part, explicit)
             if f is None:
                 bad.append(f"object {objid} is not in {part}")
@@ -283,9 +284,10 @@ def _measure_uncached(path: str):
                 return
             seen = seen | {key}
             verts, comps = parsed[f][objid]
-            # a mesh whose volume role is a modifier, negative volume or support blocker is an
-            # instruction to the slicer, not something that prints: it is in `acc` but not `printing`
-            prints = roles is None or roles.get(objid, "normal_part") == "normal_part"
+            # a volume whose role (its own, or inherited from an assembly above it) is a modifier, negative
+            # volume or support helper is an instruction to the slicer, not something that prints: it is in
+            # `acc` but not `printing`. One rule for this everywhere: see ``roles``.
+            prints = _roles.counts_toward_size(role)
             for v in verts:
                 moved = _apply(v, xform)
                 acc.append(moved)
@@ -295,8 +297,13 @@ def _measure_uncached(path: str):
                 if budget[0] > _MAX_VERTS:
                     raise _TooLarge()
             for cid, cpart, ctf in comps:
+                child_role = role
+                if records is not None and f == root_file:
+                    # part records are matched against root-model objects; a missing record is a normal part
+                    child_role = _roles.inherit(role, _roles.own_role(
+                        records.part_subtypes, records.metadata_objects, objid, cid, missing=None))
                 collect(cid, cpart or f, cpart is not None, _compose(xform, ctf), acc, seen, bad,
-                        printing, roles)
+                        printing, child_role, records)
 
         def box_of(points):
             xs = [p[0] for p in points]; ys = [p[1] for p in points]; zs = [p[2] for p in points]
@@ -304,12 +311,10 @@ def _measure_uncached(path: str):
 
         items = build_items(model_files[root_file])
         try:
-            from . import multipart
-
             settings_text = tm.read_part("Metadata/model_settings.config").decode("utf-8", "ignore")                 if tm.has_part("Metadata/model_settings.config") else ""
-            parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
+            records = _roles.read_records(settings_text)
         except Exception:
-            parts_by_object = {}
+            records = _roles.Records()
         uses: dict[tuple, int] = {}
         for it in items:
             part = it["part"] or root_file
@@ -329,7 +334,7 @@ def _measure_uncached(path: str):
                 printing: list = []
                 bad: list = []
                 collect(oid, part, it["part"] is not None, None, points, frozenset(), bad,
-                        printing, dict(parts_by_object.get(oid, [])))
+                        printing, None, records)
                 collected[key] = (points, bad)
                 # the SIZE of an object is the size of what prints, like its placed footprint
                 if printing and not bad:

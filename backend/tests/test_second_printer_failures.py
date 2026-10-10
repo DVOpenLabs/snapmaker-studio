@@ -57,7 +57,7 @@ def test_a_printer_reporting_fewer_tools_than_the_profile_is_believed():
 def test_a_much_bigger_printable_area_is_used_when_the_printer_is_identified(tmp_path, monkeypatch):
     from snapstudio_api import service
     from tests import scene_fixtures as fx
-    big_profile = {"printer_id": "bigmachine", "build_volume_mm": {"x": 1000.0, "y": 1000.0, "z": 1000.0}}
+    big_profile = {"printer_id": "bigmachine", "display_name": "Big Machine", "build_volume_mm": {"x": 1000.0, "y": 1000.0, "z": 1000.0}}
     real_load = printer_profiles.load
     monkeypatch.setattr(printer_profiles, "load",
                         lambda pid: big_profile if pid == "bigmachine" else real_load(pid))
@@ -70,6 +70,8 @@ def test_a_much_bigger_printable_area_is_used_when_the_printer_is_identified(tmp
     out = pf.evaluate(project, facts(bed_mm={"x": 1000.0, "y": 1000.0, "z": 1000.0}), placement=placement)
     bed = next(c for c in out["checks"] if c["id"] == "bed.fit")
     assert bed["result"] == pf.OK and "1000 × 1000 mm printable area" in bed["evidence"]
+    # the printer's name comes from the producer path (target -> assess), not from a hand-built bed_name
+    assert "Big Machine" in bed["source"] and "U1" not in bed["source"]
     # and through the Bed-Fit API: identified by what it reports, judged against its recorded volume
     from snapstudio_core import moonraker
     monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {
