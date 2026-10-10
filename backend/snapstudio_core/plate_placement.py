@@ -55,6 +55,24 @@ def _u1_printable_area() -> list[str]:
     return template.get("printable_area") or []
 
 
+def over_height(placement: dict | None) -> list[dict]:
+    """The placed instances whose top is above the printable height, from a ``assess`` result.
+
+    The one rule for "too tall": preflight and the bed-fit check both use it, so neither can read
+    a tall instance as fine because it only looked sideways. Empty when the height is not known."""
+    if not placement or not placement.get("available"):
+        return []
+    limit = placement.get("bed_height_mm")
+    if not limit:
+        return []
+    out = []
+    for row in placement.get("items") or []:
+        top = ((row.get("bounds_mm") or {}).get("max") or [None, None, None])[2]
+        if top is not None and top > limit + 1e-6:
+            out.append(row)
+    return out
+
+
 def u1_printable_height() -> float | None:
     """The U1's printable height (mm) from Studio's own U1 profile template; None if it records none."""
     try:
@@ -217,10 +235,13 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
             continue
         low, high = item["bounds"]["min"], item["bounds"]["max"]
         entry = dict(item)
-        entry["bounds"] = {"min": (box["min_x"], box["min_y"], low[2]),
-                           "max": (box["max_x"], box["max_y"], high[2])}
-        entry["dimensions"] = dict(item["dimensions"],
-                                   x=round(box["width"], 3), y=round(box["depth"], 3))
+        # X, Y AND Z come from the parts that print: a tall modifier, negative volume or support
+        # blocker is an instruction to the slicer, not height the print has.
+        z_low, z_high = box.get("min_z", low[2]), box.get("max_z", high[2])
+        entry["bounds"] = {"min": (box["min_x"], box["min_y"], z_low),
+                           "max": (box["max_x"], box["max_y"], z_high)}
+        entry["dimensions"] = dict(item["dimensions"], x=round(box["width"], 3),
+                                   y=round(box["depth"], 3), z=round(z_high - z_low, 3))
         out.append(entry)
     return out
 

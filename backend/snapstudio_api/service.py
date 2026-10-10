@@ -2622,13 +2622,18 @@ def _ready_analysis(path: str, target: dict | None,
     is only done when asked for: `need_placement=False` returns the cheap traits and
     leaves placement None, and a later `True` call fills it in on the same cache entry.
     """
-    from snapstudio_core import plate_placement, project_traits
+    from snapstudio_core import fileid, plate_placement, project_traits
 
     try:
         st = os.stat(path)
     except OSError:
         return "missing", None, None
-    key = (path, st.st_mtime_ns, st.st_size, target["key"] if target else None)
+    # the content fingerprint is part of the key: a same-size replacement that kept its timestamp
+    # must not be served a placement computed for the old content
+    identity = fileid.file_identity(path)
+    if identity is None:
+        return "missing", None, None
+    key = (identity, target["key"] if target else None)
     with _ready_cache_lock:
         hit = _READY_CACHE.get(key)
     if hit is None:

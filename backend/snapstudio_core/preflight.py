@@ -371,9 +371,11 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
             source="project geometry vs the printer's printable area")
     off = placement.get("off_plate") or []
     height = placement.get("bed_height_mm")     # the printable height, when it is known
+    from .plate_placement import over_height
+
     tops = [(item.get("bounds_mm") or {}).get("max") for item in placement.get("items") or []]
     tops = [t[2] for t in tops if t and len(t) > 2]
-    tall = [t for t in tops if height and t > height + 1e-6]
+    tall = [row["bounds_mm"]["max"][2] for row in over_height(placement)]
     if not off and placement.get("not_judged"):
         n = placement["not_judged"]
         return _check(

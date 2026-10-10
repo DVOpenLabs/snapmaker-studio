@@ -452,12 +452,15 @@ class _Extent:
 
     def __init__(self, keep: bool) -> None:
         self.keep, self.points = keep, []
-        self.lo_x = self.lo_y = float("inf")
-        self.hi_x = self.hi_y = float("-inf")
+        self.lo_x = self.lo_y = self.lo_z = float("inf")
+        self.hi_x = self.hi_y = self.hi_z = float("-inf")
         self.n = 0
 
     def add(self, point: tuple) -> None:
         x, y = point[0], point[1]
+        z = point[2] if len(point) > 2 else 0.0
+        if z < self.lo_z: self.lo_z = z
+        if z > self.hi_z: self.hi_z = z
         if x < self.lo_x: self.lo_x = x
         if x > self.hi_x: self.hi_x = x
         if y < self.lo_y: self.lo_y = y
@@ -473,7 +476,8 @@ class _Extent:
         if not self.n:
             return None
         return {"min_x": self.lo_x, "min_y": self.lo_y, "max_x": self.hi_x, "max_y": self.hi_y,
-                "width": self.hi_x - self.lo_x, "depth": self.hi_y - self.lo_y}
+                "width": self.hi_x - self.lo_x, "depth": self.hi_y - self.lo_y,
+                "min_z": self.lo_z, "max_z": self.hi_z}
 
 
 def _footprint(points: list[tuple]) -> dict | None:
