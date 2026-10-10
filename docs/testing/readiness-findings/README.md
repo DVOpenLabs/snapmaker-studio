@@ -6,7 +6,7 @@ Real Studio engine and this branch's own web UI, driven in **Microsoft Edge (Chr
 is reachable: the only printer address used is this machine's own, where nothing listens, and any engine request naming another host
 or discovery is aborted and fails the run.
 
-**Result: 30/30 checks passed**, in light and dark, including a scan of the whole page after the Intelligence Report has loaded (no score, "/ 100", percentage, readiness rating or success verdict; the only percentages left are measured geometry and the pricing margin, and the Project Doctor step heading "Print-Readiness" has no score) (`results.json`).
+**Result: see `results.json`**, in light and dark, including a scan of the whole page (visible text and every accessible name) after the Intelligence Report has loaded: no score, "/ 100", percentage, star rating ("X of 5"), "Score" or "rating" label, readiness rating, "will it print" or success verdict. The only percentages allowed are measured geometry ("N% of surfaces", "steep overhangs") and the pricing margin (`results.json`).
 
 | Screenshot | What it shows |
 |---|---|

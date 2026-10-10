@@ -156,7 +156,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     # --- the one next action ---
     if biggest_risk:
-        next_action = recommendations[0] if recommendations else f"Address: {biggest_risk['text']}"
+        next_action = recommendations[0] if recommendations else f"Look into: {biggest_risk['text']}"
     else:
         next_action = "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing."
 
@@ -192,6 +192,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         verdict = f"{count}top risk: {biggest_risk['text']}."
     else:
         verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
+    spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
+    if not risks_found and spacing_unverified:
+        verdict = ("Studio's other checks found no risks, but object spacing was not verified. "
+                   "That is not a sign the print will succeed.")
 
     # --- Before vs After: "why not just use Orca?" ---
     n_issues = risks_found   # the same count as "Risks found"
@@ -204,9 +208,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                        f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}.")
     else:
         orca_line = "Orca slices the file as you give it."
-        studio_line = ("Studio's checks found nothing in this file. They do not cover slicer settings, "
-                       "filament condition, bed cleanliness or mid-print behavior. "
-                       "Verify in Snapmaker Orca before you print.")
+        studio_line = (("Studio's other checks found nothing in this file, but object spacing was not verified. "
+                        if spacing_unverified else "Studio's checks found nothing in this file. ")
+                       + "They do not cover slicer settings, filament condition, bed cleanliness or "
+                       "mid-print behavior. Verify in Snapmaker Orca before you print.")
     comparison = {
         "issues_found": n_issues,
         "fixes_offered": n_fixes,

@@ -170,7 +170,7 @@ def test_spacing_notice_is_not_counted_as_a_risk_found():
     )
     assert out["risks_found"] == 0
     assert any(r["doctor"] == "Object spacing" for r in out["risks"])
-    assert "not a sign the print will succeed" not in out["verdict"] or out["biggest_risk"] is None
+    assert "object spacing was not verified" in out["verdict"]
 
 
 def test_clean_report_does_not_say_the_print_will_succeed():
@@ -221,7 +221,18 @@ def test_printer_health_concerns_are_not_counted_twice():
     out = ir.build(
         predict={"available": True, "signals": [
             {"id": "printer-health", "level": "warn", "title": "The printer's own readings show concerns"}]},
-        health={"available": True, "drivers": ["1 firmware warning(s)"]},
+        health={"available": True, "drivers": ["1 firmware warning"]},
     )
     assert out["risks_found"] == 1
-    assert [r["text"] for r in out["risks"]] == ["1 firmware warning(s)"]
+    assert [r["text"] for r in out["risks"]] == ["1 firmware warning"]
+
+
+def test_unverified_spacing_is_never_reported_as_found_nothing():
+    out = ir.build(first_layer={"overall_level": "ok", "findings": []}, spacing={"status": "unknown"})
+    assert out["risks_found"] == 0 and out["biggest_risk"]["doctor"] == "Object spacing"
+    for text in (out["verdict"], out["comparison"]["studio_line"]):
+        assert "object spacing was not verified" in text
+        assert "found nothing in this file." not in text
+    assert "found no risks. That" not in out["verdict"]
+    assert out["next_action"].startswith("Look into:")
+    assert "Address:" not in out["next_action"]

@@ -17,7 +17,7 @@ from snapstudio_core.errors import SnapStudioError
 def cli():
     """Snapmaker Studio engine — a local-first workflow for modern 3D printing.
 
-    Understand a design, check whether it will print, and get it print-ready.
+    Understand a design, see what is at risk, and prepare it for the U1.
     Bambu/Orca/STL today; Snapmaker U1 is the first printer target.
     """
 
@@ -116,7 +116,7 @@ def doctor(path, as_json):
         n_compat = len(d.compatibility_issues or [])
         click.echo(f"Diagnosis: {Path(path).name}\n")
         click.echo(f"  Verdict : {d.verdict}")
-        click.echo(f"  Issues  : {n_struct} file-structure, {n_compat} U1-compatibility\n")
+        click.echo(f"  Issues  : {n_struct} in the file's structure, {n_compat} for U1 compatibility\n")
         click.echo(f"  Project type           : {_PROJECT_TYPE.get(d.family, d.family)}")
         if d.input_type == "3mf":
             click.echo(f"  Snapmaker U1 compatible : {'yes' if d.is_u1 else 'no'}")

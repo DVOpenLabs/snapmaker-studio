@@ -601,7 +601,7 @@ u1convert validate model_U1.3mf                        # check integrity
 $ u1convert doctor model.3mf
 
   Verdict : REPAIRABLE
-  Issues  : 0 file-structure, 1 U1-compatibility
+  Issues  : 0 in the file's structure, 1 for U1 compatibility
   Project type            : Bambu/Orca project
   Snapmaker U1 compatible : yes
   Notes        :

@@ -61,10 +61,10 @@ def score(diagnostics=None, failures=None) -> dict:
             drivers.append((30, f"firmware not ready ({st})"))
         fc = diagnostics.get("failed_components") or []
         if fc:
-            drivers.append((min(40, 20 * len(fc)), f"{len(fc)} failed firmware component(s)"))
+            drivers.append((min(40, 20 * len(fc)), f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}"))
         warns = diagnostics.get("warnings") or []
         if warns:
-            drivers.append((min(15, 5 * len(warns)), f"{len(warns)} firmware warning(s)"))
+            drivers.append((min(15, 5 * len(warns)), f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}"))
 
     penalty = sum(p for p, _ in drivers)
     value = max(0, min(100, 100 - penalty))

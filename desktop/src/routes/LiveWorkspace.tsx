@@ -86,10 +86,6 @@ export default function LiveWorkspace() {
         <Card>
           <CardContent className="space-y-4 p-6">
             <div className="flex items-center gap-5">
-              <div className={cn("flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 text-2xl font-bold",
-                rv.tone === "ready" ? "border-ready/40 text-ready" : "border-repairable/40 text-repairable")}>
-                {rv.scoreCap ?? d.score ?? "—"}
-              </div>
               <div className="space-y-1.5">
                 <StatusBadge verdict={d.verdict as Verdict} />
                 <p className="text-sm font-medium">{rv.headline}</p>
@@ -330,7 +326,6 @@ export default function LiveWorkspace() {
                   <>
                     <div className="flex justify-between"><dt>U1 compatible</dt><dd className="text-foreground">{d.is_compatible ? "yes" : "no"}</dd></div>
                     {d.filament_count != null && <div className="flex justify-between"><dt>Filaments</dt><dd className="text-foreground">{d.filament_count}</dd></div>}
-                    {d.score != null && <div className="flex justify-between"><dt>Score</dt><dd className="text-foreground">{d.score}</dd></div>}
                   </>
                 )}
               </dl>

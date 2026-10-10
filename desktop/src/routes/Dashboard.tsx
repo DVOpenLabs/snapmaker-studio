@@ -175,7 +175,7 @@ export default function Dashboard() {
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-[18px] w-[18px]" /></span>
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Understand &amp; check</p>
-                  <p className="text-xs text-muted-foreground">Size, colors, geometry health and a plain-language print-readiness score — before you waste filament.</p>
+                  <p className="text-xs text-muted-foreground">Size, colors, geometry health and a plain-language list of risks — before you waste filament.</p>
                 </div>
               </div>
               <div className="flex gap-3">

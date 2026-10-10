@@ -129,7 +129,9 @@ async function visit(label, file, theme, { expand = false } = {}) {
     await page.getByText("Supporting Doctors", { exact: true }).waitFor({ timeout: 10000 });
     await sleep(500);
   }
-  const pageText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+  // Visible text plus every accessible name, so a star rating ("3.5 of 5") or a "Score" label cannot hide in an aria-label.
+  const aria = await page.locator("[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || ""));
+  const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
   await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
   await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });   // taken after the report loaded
   await ctx.close();
@@ -148,12 +150,12 @@ try {
     check(`${theme}: with no signals it says what was covered and not that the print will succeed`, /did not flag anything/.test(c) && /not a sign the print will succeed/.test(c) && /Studio did not check:/.test(c), c.slice(0, 200));
     check(`${theme}: the nothing-flagged result also has no percentage or verdict`, !/\d\s*%/.test(c) && !/Likely to print|Risky|Few risks|readiness|will print/i.test(c));
     // Whole page, after the Intelligence Report has loaded: no score hero, "/ 100", percentage, readiness rating or success verdict.
-    // Allowed on the page: measured geometry ("16.7% of surfaces", "steep overhangs"), the pricing margin, and the Project Doctor's own
-    // step heading "Print-Readiness" (a verdict with stars, not a score). Everything else must not match.
-    const allowed = /\d+(\.\d+)?\s*%\s*(of surfaces|margin|steep overhangs)|Print-Readiness/gi;
+    // Allowed on the page: measured geometry ("16.7% of surfaces", "steep overhangs"), and the pricing margin;
+    // nothing else. No star rating ("X of 5"), "Score", "rating" or "will it print" may appear.
+    const allowed = /\d+(\.\d+)?\s*%\s*(of surfaces|margin|steep overhangs)/gi;
     for (const [name, raw] of [["flagged project", tp], ["nothing flagged", cp]]) {
       const pt = raw.replace(allowed, " ");
-      const bad = [...pt.matchAll(/.{0,40}(\d\s*%|\/\s*100\b|Likely to print|Risky|Few risks|Some risks|Several risks|Readiness|Studio score|expected print success).{0,30}/gi)].map((m) => m[0]);
+      const bad = [...pt.matchAll(/.{0,40}(\d\s*%|\/\s*100\b|Likely to print|Risky|Few risks|Some risks|Several risks|Readiness|\d(?:\.\d)? of 5|\bScore\b|rating|will it print|Studio score|expected print success).{0,30}/gi)].map((m) => m[0]);
       check(`${theme}: whole page (${name}) has no score, percentage, readiness rating or success verdict`, bad.length === 0, bad.join(" | "));
       check(`${theme}: whole page (${name}) shows the Intelligence Report's "Risks found" count`, /Risks found\s*\d+/i.test(pt));
     }
@@ -165,7 +167,7 @@ try {
       const { text: t, pageText: pt } = await visit("03-printer-answered-evidence", flagged, theme, { expand: true });
       check(`${theme}: with a reachable printer, the card counts printer history as checked`, /Studio checked:.*printer history for the same file name/.test(t) && /Studio checked:.*printer health/.test(t), t.slice(0, 260));
       check(`${theme}: with a reachable printer, a failed print with the same file name is a signal`, /failed 1 time before/.test(t));
-      const body = pt.replace(/Print-Readiness/g, "");
+      const body = pt;
       const hits = [...body.matchAll(/.{0,40}(\d+\s*\/\s*100|good to print|Healthy \(|\bCompatible\b|Studio score|Readiness|Likely to print).{0,30}/gi)].map((m) => m[0]);
       check(`${theme}: expanded evidence shows the Printer line without a health number, grade, "good to print" or "Compatible"`,
         /Supporting Doctors/i.test(pt) && /Answered, \d+ concern/i.test(pt) && hits.length === 0, hits.join(" | ") || (/Answered, \d+ concern/i.test(pt) ? "" : "no 'Answered, N concern' line"));
