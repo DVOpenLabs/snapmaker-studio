@@ -33,8 +33,10 @@ def test_unknown_spacing_blocks_no_blockers_verdict():
     cost = {"available": True, "true_cost": 1.0, "currency": "$"}
     clean = ir.build(cost=cost, spacing={"status": "unknown"})
     assert "no major blockers" not in clean["verdict"]
-    assert any("spacing" in r["text"].lower() or "collision" in r["text"].lower()
-               for r in clean["risks"])
+    # spacing is a limitation ("not verified"), not a counted risk or the biggest risk
+    assert clean["not_verified"] == ["object spacing"]
+    assert clean["risks_found"] == 0 and clean["biggest_risk"] is None
+    assert "spacing" in clean["verdict"].lower()
 
 
 def test_pass_spacing_does_not_inject_risk():

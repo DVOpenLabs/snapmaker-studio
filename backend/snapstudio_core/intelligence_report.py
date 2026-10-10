@@ -125,12 +125,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                       "text": "Priced below cost — not profitable as-is."})
         recs.append("Raise the price or cut cost before selling.")
 
-    # Object spacing / collisions not verified by Studio yet — a real blocker that
-    # must keep the report from saying "no major blockers found".
-    if spacing and spacing.get("status") == "unknown":
-        risks.append({"doctor": "Object spacing", "level": "warn",
-                      "text": "Object spacing / collisions not verified by Studio — "
-                              "check for too-close / collision warnings in Snapmaker Orca before slicing."})
+    # Object spacing / collisions are not verified by Studio. That is a limitation, not a
+    # finding: it is listed as "not verified" and keeps the report from saying "found nothing".
+    spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
+    not_verified = ["object spacing"] if spacing_unverified else []
 
     # dedup, severity-sort
     seen = set()
@@ -161,7 +159,9 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     if biggest_risk:
         next_action = recommendations[0] if recommendations else f"Look into: {biggest_risk['text']}"
     else:
-        next_action = "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing."
+        next_action = ("Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing."
+                       if spacing_unverified else
+                       "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing.")
 
     # --- supporting evidence (each Doctor's one-line status) ---
     supporting = []
@@ -189,13 +189,12 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
             "Studio does not verify object-to-object spacing yet — confirm in Snapmaker Orca.")
 
     # --- one-line verdict ---
-    risks_found = len([r for r in risks if r["doctor"] != "Object spacing"])
+    risks_found = len(risks)
     if biggest_risk:
         count = f"{risks_found} risk{'s' if risks_found != 1 else ''} found; " if risks_found else ""
         verdict = f"{count}top risk: {biggest_risk['text']}."
     else:
         verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
-    spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
     if not risks_found and spacing_unverified:
         verdict = ("Studio's other checks found no risks, but object spacing was not verified. "
                    "That is not a sign the print will succeed.")
@@ -210,7 +209,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         studio_line = (f"Studio found {n_issues} risk{'s' if n_issues != 1 else ''} and offered "
                        f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}.")
     else:
-        orca_line = "Orca slices the file as you give it."
+        orca_line = ("Only Snapmaker Orca's preview can show spacing between objects."
+                     if spacing_unverified else "Orca slices the file as you give it.")
         studio_line = (("Studio's other checks found nothing in this file, but object spacing was not verified. "
                         if spacing_unverified else "Studio's checks found nothing in this file. ")
                        + "They do not cover slicer settings, filament condition, bed cleanliness or "
@@ -228,6 +228,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         "available": True,
         "comparison": comparison,
         "risks_found": risks_found,
+        "not_verified": not_verified,
         "cost": cost_v,
         "suggested_price": price_v,
         "margin_pct": margin_pct,

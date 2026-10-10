@@ -318,15 +318,7 @@ export default function Printers() {
       {connected && health.data?.available && health.data.score != null && (
         <Card>
           <CardContent className="space-y-3 p-5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Printer Health Score</span>
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold ${
-                health.data.grade === "A" || health.data.grade === "B" ? "bg-ready/10 text-ready"
-                  : health.data.grade === "C" ? "bg-repairable/10 text-repairable" : "bg-risk/10 text-risk"}`}>
-                <span className="text-lg leading-none">{health.data.grade}</span>
-                <span className="tabular-nums">{health.data.score}/100</span>
-              </span>
-            </div>
+            <span className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> What the printer reported</span>
             {health.data.verdict && <p className="text-sm text-muted-foreground">{health.data.verdict}</p>}
             {health.data.drivers && health.data.drivers.length > 0 && (
               <ul className="space-y-1 text-xs text-muted-foreground">

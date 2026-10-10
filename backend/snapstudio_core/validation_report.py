@@ -1,6 +1,6 @@
-"""Validation Center — a readiness + preservation report for a design, read-only.
+"""Validation Center — a checks + preservation report for a design, read-only.
 
-Answers, in plain terms: will it print on the U1, what will be preserved, what
+Answers, in plain terms: what Studio checked for the U1, what will be preserved, what
 will change, and what (if anything) is at risk — derived from the Doctor
 diagnosis, the project settings, and real geometry. No mutation, no fake data.
 

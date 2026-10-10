@@ -525,7 +525,7 @@ is the first printer target; the workflow is built to grow across ecosystems.
   sliced gcode, and start — start/cancel/emergency-stop each require an explicit
   confirmation. Studio never auto-starts a print and uploads sliced gcode only (it
   does not slice).
-- **Design Library** — everything you open is checked, scored, and kept with its full
+- **Design Library** — everything you open is checked, and kept with its full
   history, so you always know what's ready.
 - **Engine + CLI** — the same workflow as a pure-Python engine and `u1convert` CLI for
   scripting and automation.

@@ -449,7 +449,7 @@ function homeHtml() {
   return `<article class="page home" id="home" data-page="home" data-type="home" aria-labelledby="home-h">
   <header class="home-head">
     <p class="eyebrow">Snapmaker Studio · guide for v${esc(G.site.version)}</p>
-    <h2 class="ptitle" id="home-h" tabindex="-1">Get your project ready to print</h2>
+    <h2 class="ptitle" id="home-h" tabindex="-1">Check your project before you slice</h2>
     <p class="lead">Check a downloaded model, prepare a U1 copy, and understand what to review before printing.</p>
   </header>
   <section class="doors" aria-label="Where to start">

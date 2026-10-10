@@ -1,16 +1,8 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 
-// #92: no star rating, number or "will it print" promise may stand in for a readiness score.
-const sources = import.meta.glob([
-  "../routes/DesignInsights.tsx",
-  "../routes/LiveWorkspace.tsx",
-  "../routes/Dashboard.tsx",
-  "../routes/WhyStudio.tsx",
-  "../components/FirstPrintCard.tsx",
-  "../components/IntelligenceReport.tsx",
-  "../components/PrintRiskSignals.tsx",
-], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+// #92 (every non-test file under desktop/src): no star rating, number or "will it print" promise may stand in for a readiness score.
+const sources = import.meta.glob(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}", "!../**/*.d.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 const BANNED: [string, RegExp][] = [
   ["star rating", /\bStars?\b|StarHalf|readinessStars|of 5`/],

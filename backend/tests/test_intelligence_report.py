@@ -169,7 +169,8 @@ def test_spacing_notice_is_not_counted_as_a_risk_found():
         spacing={"status": "unknown"},
     )
     assert out["risks_found"] == 0
-    assert any(r["doctor"] == "Object spacing" for r in out["risks"])
+    assert out["risks"] == [] and out["biggest_risk"] is None   # a limitation, not a finding
+    assert out["not_verified"] == ["object spacing"]
     assert "object spacing was not verified" in out["verdict"]
 
 
@@ -229,13 +230,19 @@ def test_printer_health_concerns_are_not_counted_twice():
 
 def test_unverified_spacing_is_never_reported_as_found_nothing():
     out = ir.build(first_layer={"overall_level": "ok", "findings": []}, spacing={"status": "unknown"})
-    assert out["risks_found"] == 0 and out["biggest_risk"]["doctor"] == "Object spacing"
+    assert out["risks_found"] == 0 and out["biggest_risk"] is None
+    assert out["not_verified"] == ["object spacing"]
+    assert "Orca slices the file as you give it" not in out["comparison"]["orca_line"]
+    assert "spacing" in out["next_action"].lower() and "Snapmaker Orca" in out["next_action"]
     for text in (out["verdict"], out["comparison"]["studio_line"]):
         assert "object spacing was not verified" in text
         assert "found nothing in this file." not in text
     assert "found no risks. That" not in out["verdict"]
-    assert out["next_action"].startswith("Look into:")
-    assert "Address:" not in out["next_action"]
+    with_risk = ir.build(
+        predict={"available": True, "signals": [{"id": "x", "level": "warn", "title": "One finding"}]},
+        spacing={"status": "unknown"})
+    assert with_risk["risks_found"] == 1 and with_risk["not_verified"] == ["object spacing"]
+    assert with_risk["next_action"].startswith("Look into:") and "Address:" not in with_risk["next_action"]
 
 
 def test_a_failed_print_is_counted_once_not_by_both_the_file_signal_and_the_health_driver():

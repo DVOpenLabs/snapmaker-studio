@@ -43,13 +43,18 @@ export function IntelligenceReport({ filePath, host, data, defaultOpen = false }
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {metric("Risks found", String(r.risks_found ?? 0), (r.risks_found ?? 0) > 0 ? "--doctor-cost" : undefined)}
+          {(r.risks_found ?? 0) === 0 && (r.not_verified?.length ?? 0) > 0
+            ? metric("Not verified", r.not_verified!.join(", ").replace(/^./, (c) => c.toUpperCase()), "--doctor-cost")
+            : metric("Risks found", String(r.risks_found ?? 0), (r.risks_found ?? 0) > 0 ? "--doctor-cost" : undefined)}
           {metric("Material cost", r.cost != null ? `${cur}${r.cost}` : "—", "--doctor-cost")}
           {metric("Printer", r.printer_status ?? "Not checked")}
         </div>
         <p className="text-[11px] text-muted-foreground opacity-70">
           Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing.
         </p>
+        {(r.not_verified?.length ?? 0) > 0 && (r.risks_found ?? 0) > 0 && (
+          <p className="text-[11px] text-muted-foreground">Not verified by Studio: {r.not_verified!.join(", ")}. Check it in Snapmaker Orca.</p>
+        )}
 
         {/* Pricing is a secondary, opt-in estimate — not the headline on a readiness screen. */}
         {(r.suggested_price != null || r.margin_pct != null) && (

@@ -521,6 +521,7 @@ export interface ReportEvidence { doctor: string; status: string; detail: string
 export interface IntelligenceReport {
   available: boolean;
   risks_found?: number;
+  not_verified?: string[];
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;

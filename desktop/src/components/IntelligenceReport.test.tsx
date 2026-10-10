@@ -66,4 +66,20 @@ describe("IntelligenceReport", () => {
     expect(html).toContain("Studio found 1 risk");
     expect(html).not.toMatch(/2 issues|no major blockers|it&#x27;d be fine/);
   });
+
+  it("shows 'Not verified: object spacing' instead of 'Risks found 0' or a found-nothing claim", () => {
+    const html = render({
+      ...base, risks: [], biggest_risk: null, risks_found: 0, not_verified: ["object spacing"],
+      verdict: "Studio's other checks found no risks, but object spacing was not verified. That is not a sign the print will succeed.",
+      next_action: "Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing.",
+      comparison: { issues_found: 0, fixes_offered: 0, prices_the_print: false,
+        orca_line: "Only Snapmaker Orca's preview can show spacing between objects.",
+        studio_line: "Studio's other checks found nothing in this file, but object spacing was not verified." },
+    });
+    expect(html).toContain("Not verified");
+    expect(html).toContain("Object spacing");
+    expect(html).not.toMatch(/Risks found/i);
+    expect(html).not.toContain("Orca slices the file as you give it");
+    expect(html).not.toContain("Biggest risk");
+  });
 });

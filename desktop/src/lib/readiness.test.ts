@@ -23,7 +23,6 @@ describe("readinessView — single source of truth", () => {
     expect(v.ready).toBe(false);
     expect(v.tone).toBe("risk");
     expect(v.headline).not.toMatch(/u1-ready|ready to slice/i);
-    expect(v.scoreCap).toBeLessThanOrEqual(70);
     expect(v.nextActions.join(" ")).toMatch(/colour|remap/i);
   });
 
