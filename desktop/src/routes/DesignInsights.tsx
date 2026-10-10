@@ -70,7 +70,7 @@ export default function DesignInsights() {
 
   const d = doctor.data;
   const TypeIcon = file.name.toLowerCase().endsWith(".stl") ? FileBox : Boxes;
-  const status = d ? verdictStatus(d.verdict) : null;
+  const status = d ? verdictStatus(d.verdict, d.prepare_blocked) : null;
   // Rich Project Intelligence (real geometry + materials), fetched read-only.
   const { data: ins } = useQuery({
     queryKey: ["insights", file.path],

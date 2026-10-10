@@ -347,6 +347,8 @@ export interface Insights {
   verdict: string | null;
   readiness_score: number | null;
   is_compatible: boolean;
+  /** True when Studio can read the file but would refuse to prepare a copy of it. */
+  prepare_blocked?: boolean;
   objects: number | null;
   plates: number | null;
   colors: number | null;

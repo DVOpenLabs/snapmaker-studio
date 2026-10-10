@@ -109,17 +109,12 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     score = max(0, min(100, score))
     # The same structure gate Prepare runs, applied to the source: a file Prepare
     # would refuse must not be sent to Prepare.
-    from .convert import structure_problems
-    from .errors import plain_refusal
-    structure: list[str] = []
-    if tm.has_part(SETTINGS):        # a geometry-only 3MF is wrapped, not repaired
-        try:
-            structure = structure_problems(tm)
-        except Exception:  # noqa: BLE001 — a doctor never fails on an unreadable corner
-            structure = []
+    from . import eligibility
+    verdict_eligibility = eligibility.assess(tm, readable=res.structural_ok)
+    structure = verdict_eligibility.problems
     if structure:
         # One plain sentence for people; the raw wording stays in `structure_problems`.
-        validation_issues.append(plain_refusal(structure, prepared_note=False))
+        validation_issues.append(verdict_eligibility.summary)
     painted = sum(fp.painted_triangles.values()) > 0
 
     if not res.structural_ok:

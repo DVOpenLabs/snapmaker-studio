@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format is based on
   files is no longer reported as not validated because the plate count appeared to drop; plates
   are now counted from the project's plate list. The fidelity audit also reports infill density
   and support settings that were kept unchanged as kept, not as "not carried".
+- A project Studio can read but would refuse to prepare is now reported the same way everywhere:
+  the Doctor, Model Connect (it is still added to your library), the Validation Center, Ready Now,
+  the Compatibility check and the command line all say it needs a look in Snapmaker Orca instead of
+  calling it ready or sending it to Prepare, and `u1convert repair` refuses it with the same reason.
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.

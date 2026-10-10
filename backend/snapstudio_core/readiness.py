@@ -279,6 +279,16 @@ def classify_project(project: dict, traits: dict | None, printer: dict | None,
             action = "Open it in your slicer to check it, or re-export it."
         return cant(why, action, unknowns=[f"The project file is {file_state}."])
 
+    # Readable is not preparable: a project Studio would refuse to prepare is never "ready",
+    # and never told to "prepare a U1 copy first" - that would send it into a refusal.
+    if pf._trait(traits or {}, "prepare_blocked") is True:
+        return _result(project, NEEDS_ATTENTION,
+                       "Studio cannot prepare a U1 copy of this project yet.",
+                       "Open it in Snapmaker Orca to review it.",
+                       CONFIRMED,
+                       evidence=["It carries settings or structure Studio has not verified "
+                                 "Snapmaker Orca reads."])
+
     if pf._trait(traits or {}, "foreign_printer") is True:
         target = pf._trait(traits, "target_printer")
         return _result(project, NEEDS_PREPARATION,

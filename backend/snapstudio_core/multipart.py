@@ -453,6 +453,10 @@ def _parts_by_object(settings_xml: str) -> dict:
 NIL_UNREADABLE = NON_NULLABLE_VECTORS
 
 
+_OBJECT_TAG = re.compile(r'<object id="(\d+)"')
+_TYPE_ATTR = re.compile(r'type="([^"]*)"')
+
+
 def _object_label(body: str) -> str:
     name = re.search(r'<metadata key="name" value="([^"]*)"', body)
     shown = _html.unescape(name.group(1))[:60].replace('"', "'") if name else ""
@@ -509,15 +513,30 @@ def validate_archive(tm) -> dict:
         if path not in rels:
             problems.append(f"{path} holds geometry but is not declared in the relationships")
         body = read(name)
-        found = re.findall(r'<object id="(\d+)"', body)
-        mesh_ids.extend(found)
-        for object_id, kind in re.findall(r'<object id="(\d+)"[^>]*type="([^"]*)"', body):
-            mesh_types[object_id] = kind
-        # One pass over the file. (A search per object restarted from the top of a
-        # many-megabyte model each time, which made the Doctor several times slower.)
-        for block in re.finditer(r'<object id="(\d+)".*?</object>', body, re.S):
-            if "<triangle" not in block.group(0):
-                problems.append(f"object {block.group(1)} in {path} carries no geometry")
+        # One linear pass with str.find: regexes over a many-megabyte mesh (a lazy `.*?`, or
+        # a search per object from the top of the file) made the Doctor several times slower.
+        pos = 0
+        while True:
+            start = body.find('<object id="', pos)
+            if start < 0:
+                break
+            tag_end = body.find(">", start)
+            if tag_end < 0:
+                break
+            tag = _OBJECT_TAG.match(body, start, tag_end)
+            pos = tag_end
+            if not tag:
+                continue
+            object_id = tag.group(1)
+            mesh_ids.append(object_id)
+            kind = _TYPE_ATTR.search(body, start, tag_end)
+            if kind:
+                mesh_types[object_id] = kind.group(1)
+            end = body.find("</object>", tag_end)
+            if end >= 0:
+                if body.find("<triangle", tag_end, end) < 0:
+                    problems.append(f"object {object_id} in {path} carries no geometry")
+                pos = end
 
     missing = [c for c in components if c not in mesh_ids]
     if missing:

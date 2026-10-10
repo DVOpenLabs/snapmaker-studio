@@ -192,7 +192,7 @@ def _bambu(text: str) -> list[dict]:
         entry = {"object_id": found.group(1) if found else str(position + 1),
                  "index": position, "name": None, "slot": None,
                  "source": DEFAULT, "volume_slots": [], "volumes": [],
-                 "instances": None, "overrides": {}}
+                 "instances": None, "overrides": {}, "dialect": DIALECT_BAMBU}
         for key, value in _BAMBU_META.findall(chunk.split("<part", 1)[0]):
             if key == "extruder":
                 # Snapmaker Orca writes `extruder="0"` for an object nobody has

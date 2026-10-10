@@ -331,12 +331,9 @@ def structure_problems(tm) -> list[str]:
     Shared by Prepare (which raises on a non-empty list) and by the Doctor (which
     must not recommend a Prepare the same engine would refuse). Read-only.
     """
-    from . import multipart
+    from . import eligibility
 
-    result = multipart.validate_archive(tm)
-    if result.get("ok", True):
-        return []
-    return list(result.get("problems") or ["the structure is unsound"])
+    return eligibility.structure_problems(tm)
 
 
 def check_structure(tm) -> None:

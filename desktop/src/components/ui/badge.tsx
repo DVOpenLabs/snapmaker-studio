@@ -28,15 +28,18 @@ export function Badge({ className, ...props }: React.HTMLAttributes<HTMLSpanElem
   );
 }
 
-export function StatusBadge({ verdict, className }: { verdict: Verdict; className?: string }) {
+export function StatusBadge({ verdict, className, prepareBlocked }: { verdict: Verdict; className?: string; prepareBlocked?: boolean | null }) {
+  // A readable file Studio would refuse to prepare is not "Fixable"/"Profile compatible".
+  const blocked = !!prepareBlocked && verdict !== "HIGH_RISK";
+  const label = blocked ? "Review in Orca first" : VERDICT_LABEL[verdict];
   return (
     <span
-      className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold", VERDICT_STYLES[verdict], className)}
+      className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold", blocked ? VERDICT_STYLES.HIGH_RISK : VERDICT_STYLES[verdict], className)}
       title={verdict}
-      aria-label={`Status: ${VERDICT_LABEL[verdict]}`}
+      aria-label={`Status: ${label}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {VERDICT_LABEL[verdict]}
+      {label}
     </span>
   );
 }

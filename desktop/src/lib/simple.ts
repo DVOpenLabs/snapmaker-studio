@@ -25,7 +25,9 @@ export function familyLabel(family: string | null | undefined): string {
 }
 
 /** Verdict → friendly status (no READY/REPAIRABLE jargon). */
-export function verdictStatus(verdict: string | null | undefined): { icon: string; label: string; tone: Tone } {
+export function verdictStatus(verdict: string | null | undefined, prepareBlocked?: boolean | null): { icon: string; label: string; tone: Tone } {
+  // Readable but not preparable: Studio will refuse to prepare it, so it is neither "fixable" nor "compatible".
+  if (prepareBlocked && (verdict || "").toUpperCase() !== "HIGH_RISK") return { icon: "⚠️", label: "Review in Orca first", tone: "risk" };
   switch ((verdict || "").toUpperCase()) {
     case "READY": return { icon: "✅", label: "U1 compatible", tone: "ready" };
     case "REPAIRABLE": return { icon: "🛠", label: "Needs a fix first", tone: "repairable" };

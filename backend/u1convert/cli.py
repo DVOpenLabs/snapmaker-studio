@@ -12,6 +12,7 @@ from snapstudio_core.doctor import diagnose_path as do_diagnose_path
 from snapstudio_core.diff import diff_projects as do_diff
 from snapstudio_core.report import write_fix_report
 from snapstudio_core.errors import SnapStudioError
+from snapstudio_core.convert import check_structure
 
 @click.group()
 def cli():
@@ -52,6 +53,8 @@ def _run_repair(path, mode, remap, out, dry_run, opt_profile=None):
     src_fp = compute_fingerprint(tm)
     outcome = do_repair(tm, mode=mode, remap=parse_remap(remap), dry_run=dry_run,
                         opt_profile=opt_profile)
+    # The same gate Prepare and `doctor` use: a copy Studio cannot vouch for is not written.
+    check_structure(tm)
     if dry_run:
         click.echo("DRY RUN - no files written")
         click.echo(str(outcome.report)); return

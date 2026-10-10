@@ -32,6 +32,7 @@ import re
 
 from .container import ThreeMF
 from .errors import UnsafeArchive
+from . import eligibility as _eligibility
 
 SCHEMA_VERSION = "traits/1"
 
@@ -81,7 +82,7 @@ _KNOWN_EXTENSIONS = {
 # file is unreadable.
 TRAIT_KEYS = (
     "format", "origin_family", "origin_application", "target_printer",
-    "is_u1_project", "foreign_printer", "is_sliced", "plate_count",
+    "is_u1_project", "foreign_printer", "prepare_blocked", "is_sliced", "plate_count",
     "object_count", "filament_count", "has_painted_color", "has_texture",
     "has_custom_per_layer_gcode", "has_support_enforcers", "unit", "non_mm_unit",
     "nozzle_diameters", "nozzle_diameters_by_toolhead", "mixed_nozzle_sizes", "required_extensions",
@@ -196,6 +197,7 @@ def _stl_traits() -> dict:
         "target_printer": _tier(None, UNKNOWN, "an STL has no printer profile"),
         "is_u1_project": _tier(False, CONFIRMED, "an STL is not a slicer project"),
         "foreign_printer": _tier(False, CONFIRMED, "an STL targets no printer"),
+        "prepare_blocked": _tier(False, CONFIRMED, "an STL is wrapped into a fresh project"),
         "is_sliced": _tier(False, CONFIRMED, "an STL contains no toolpaths"),
         "plate_count": _tier(1, INFORMATIONAL, "a bare mesh is treated as one plate"),
         "object_count": _tier(1, LIKELY, "one mesh per STL file"),
@@ -490,6 +492,9 @@ def extract(path: str) -> dict:
                                f"printer_model = {printer_model}" if printer_model else None),
         "foreign_printer": _tier(foreign, CONFIRMED if printer_model else UNKNOWN,
                                  f"printer_model = {printer_model}" if printer_model else None),
+        # The same eligibility record Prepare and the Doctor read.
+        "prepare_blocked": _tier(not _eligibility.assess(tm).preparable, CONFIRMED,
+                                 "Prepare's structure gate applied to this project"),
         "is_sliced": _tier(is_sliced, CONFIRMED,
                            f"{len(plate_gcode)} plate g-code part(s)" if is_sliced
                            else "no plate g-code parts in the archive"),
