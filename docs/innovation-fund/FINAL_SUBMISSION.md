@@ -72,7 +72,7 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the v1.3.1 release-candidate build (the same application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
+Verified against the v1.5.1 release-candidate build (the same application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 
 | What | Result |

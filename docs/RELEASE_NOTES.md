@@ -5,7 +5,7 @@
 
 A small release on top of v1.5.0. It makes Project Materials easier to use with a real spool inventory,
 says why Studio changed a setting, and makes two screens work properly from the keyboard and with a
-screen reader. Your original files are still never modified, and Studio still does not slice or start prints.
+screen reader. Your original files are still never modified, Studio still does not slice, and it never starts a print without your confirmation.
 
 ## Project Materials
 
@@ -47,7 +47,7 @@ screen reader. Your original files are still never modified, and Studio still do
 ## Not in this release
 
 - No change to what Studio writes into a prepared copy beyond the explanations above.
-- No new printer actions. Studio does not start prints; anything sent to your printer is something you confirm.
+- No new printer actions. Studio does not start a print without your confirmation; anything sent to your printer is something you confirm.
 
 ## Verify your download
 
