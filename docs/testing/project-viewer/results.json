@@ -1,11 +1,11 @@
 {
   "schema": "project-viewer-results/2",
-  "commit": "1836fd0dfdcc747b2f5281b5b048c0a44f7354e2",
+  "commit": "24d44fa84fb68783533dd7f6e3518ef0f86140eb",
   "dirtyOutsideEvidenceFolder": false,
-  "collectedAt": "2026-10-09T20:08:45.127Z",
+  "collectedAt": "2026-10-10T02:08:26.133Z",
   "machine": {
     "os": "win32",
-    "browser": "154.0.4258.62",
+    "browser": "155.0.4283.45",
     "webglHardware": true
   },
   "checks": {
@@ -14,8 +14,8 @@
     },
     "vitest": {
       "files": 78,
-      "tests": 937,
-      "passed": 937,
+      "tests": 938,
+      "passed": 938,
       "failed": 0
     },
     "build": {
@@ -28,8 +28,8 @@
       "gzip9": 190530
     },
     "lazyViewerChunk": {
-      "bytes": 908016,
-      "gzip9": 251765
+      "bytes": 908008,
+      "gzip9": 251759
     },
     "baseline": {
       "ref": "58d193a",
@@ -47,7 +47,7 @@
         "y": 248
       },
       "events": {
-        "camera": 187,
+        "camera": 189,
         "pick": 4
       },
       "objectCentersBefore": {
@@ -77,7 +77,7 @@
       "objectsDidNotMove": true,
       "imagesIdentical": false,
       "bytesA": 169471,
-      "bytesB": 169199
+      "bytesB": 169240
     },
     "control": {
       "hit": {
@@ -109,15 +109,15 @@
           10
         ],
         "b0": [
-          193.054,
-          87.706,
+          193.507,
+          87.632,
           10
         ]
       },
       "objectsDidNotMove": false,
       "imagesIdentical": false,
       "bytesA": 169471,
-      "bytesB": 169573
+      "bytesB": 169865
     },
     "errors": []
   },
@@ -172,7 +172,7 @@
     "stuckPageErrors": null,
     "mountsAndUnmounts": 75,
     "ofWhichShownBeforeUnmount": 50,
-    "secondsForAllCycles": 26.976,
+    "secondsForAllCycles": 25.336,
     "panelStillWorks": true,
     "clickOnModelSelectsRow": {
       "x": 502,
@@ -183,43 +183,43 @@
   },
   "memory": {
     "app": {
-      "panelShownJsHeapBytes": 17648884,
-      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39218792
+      "panelShownJsHeapBytes": 17728272,
+      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39055020
     },
     "perViewerCreateDispose": [
       {
         "mode": "raw-empty",
         "cycles": 40,
-        "bytesPerCycle": 108187
+        "bytesPerCycle": 108111
       },
       {
         "mode": "raw-plate",
         "cycles": 40,
-        "bytesPerCycle": 115943
+        "bytesPerCycle": 115883
       },
       {
         "mode": "facade",
         "cycles": 40,
-        "bytesPerCycle": 120971
+        "bytesPerCycle": 120743
       }
     ],
     "perAppMount": [
       {
         "noWebgl": false,
         "cycles": 40,
-        "bytesPerCycle": 262658
+        "bytesPerCycle": 262354
       },
       {
         "noWebgl": true,
         "cycles": 40,
-        "bytesPerCycle": 10852
+        "bytesPerCycle": 11456
       }
     ]
   },
   "largeScene": {
-    "secondsUntilViewerWorking": 7.199,
-    "jsHeapBeforeBytes": 10428760,
-    "jsHeapAfterBytes": 20168256,
+    "secondsUntilViewerWorking": 4.363,
+    "jsHeapBeforeBytes": 10451416,
+    "jsHeapAfterBytes": 20191992,
     "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
     "errors": []
   },
@@ -230,8 +230,8 @@
         "observed": [
           "session -> 200",
           "start seq=1 -> 200 queued",
-          "status e4e8da -> 200 succeeded",
-          "result e4e8da -> 200"
+          "status c4410e -> 200 succeeded",
+          "result c4410e -> 200"
         ]
       },
       "cancelRoundTrip": {
@@ -247,12 +247,12 @@
           "start seq=3 -> no answer",
           "cancel seq=3 -> 200 cancelled",
           "start seq=4 -> 200 queued",
-          "status e443a0 -> 200 succeeded",
-          "result e443a0 -> 200",
+          "status a9929d -> 200 succeeded",
+          "result a9929d -> 200",
           "start seq=3 -> 409 CANCELLED_BEFORE_START",
           "start seq=1 -> 409 CANCELLED_BEFORE_START",
           "start seq=4 -> 200 succeeded",
-          "status e443a0 -> 200"
+          "status a9929d -> 200"
         ]
       },
       "sessionExpiredAfterFreshEngine": {
@@ -261,13 +261,24 @@
           "start seq=5 -> 409 SESSION_EXPIRED",
           "session -> 200",
           "start seq=1 -> 200 queued",
-          "status 1dce3a -> 200 succeeded",
-          "result 1dce3a -> 200"
+          "status c7a26b -> 200 succeeded",
+          "result c7a26b -> 200"
+        ]
+      },
+      "abandonedAfterExpiry": {
+        "passed": true,
+        "observed": [
+          "start seq=3 -> 409 SESSION_EXPIRED",
+          "start seq=3 -> 409 SESSION_EXPIRED",
+          "cancel seq=3 -> 409 SESSION_EXPIRED",
+          "status anythi -> 404"
         ]
       },
       "sessionLimit": {
         "passed": true,
-        "observed": null
+        "observed": [
+          "session -> 503"
+        ]
       }
     },
     "failures": [],
