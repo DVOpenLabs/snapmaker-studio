@@ -1,0 +1,13 @@
+# Release-candidate manifest
+source_commit: 1836fd0dfdcc747b2f5281b5b048c0a44f7354e2
+source_ref: refs/heads/feat/project-viewer
+run_id: 37984182445
+run_url: https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37984182445
+
+windows_installer: Snapmaker.Studio_1.5.0_x64-setup.exe
+windows_size: 22275620
+windows_sha256: d156352a226fb3f38a1a84235f1af2415c60963030130592dc2924ec540abd19
+
+linux_deb: snapmaker-studio_1.5.0_amd64_1836fd0dfdcc.deb
+linux_size: 26266178
+linux_sha256: 58395690f2bdf24629e3f42eb0a002dbb61631b4f5c04b95be7d9e30460fe129

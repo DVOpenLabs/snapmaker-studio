@@ -1,0 +1,7 @@
+      4 libEGL debug: EGL user error 0x3001 (EGL_NOT_INITIALIZED) in eglInitialize: DRI2: failed to load driver
+      2 libEGL warning: failed to get driver name for fd -1
+      1 libEGL warning: egl: failed to create dri2 screen
+      1 libEGL warning: MESA-LOADER: failed to retrieve device information
+      1 libEGL debug: MESA-LOADER: failed to fstat fd
+      1 libEGL debug: EGL user error 0x3003 (EGL_BAD_ALLOC) in eglInitialize: DRI2: failed to get driver name
+      1 MESA: error: ZINK: failed to choose pdev

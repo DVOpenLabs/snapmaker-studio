@@ -1,0 +1,186 @@
+{
+  "info": {
+    "userAgent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+    "webgl": {
+      "vendor": "Apple Inc.",
+      "webgl2": true,
+      "webgl": true,
+      "renderer": "Apple GPU",
+      "version": "WebGL 2.0"
+    },
+    "softwareRenderer": false,
+    "headingText": "3D view of this project",
+    "canvas": {
+      "x": 485,
+      "ch": 405,
+      "w": 540,
+      "cw": 540,
+      "y": 226,
+      "h": 404.5
+    },
+    "canvasReadback": {
+      "nonBlack": 0,
+      "pixels": 218700
+    },
+    "cameraButtons": [
+      {
+        "disabled": false,
+        "text": "Corner view"
+      },
+      {
+        "disabled": false,
+        "text": "Top"
+      },
+      {
+        "disabled": false,
+        "text": "Front"
+      },
+      {
+        "disabled": false,
+        "text": "Back"
+      },
+      {
+        "disabled": false,
+        "text": "Left"
+      },
+      {
+        "disabled": false,
+        "text": "Right"
+      },
+      {
+        "disabled": false,
+        "text": "Whole bed"
+      },
+      {
+        "disabled": false,
+        "text": "Zoom to objects"
+      },
+      {
+        "disabled": false,
+        "text": "Slope view"
+      }
+    ],
+    "inputPhases": {
+      "drags": {
+        "actions": 19,
+        "pictureChanged": true,
+        "scroll": {
+          "window": 0
+        },
+        "listUnchanged": true
+      },
+      "wheel": {
+        "actions": 8,
+        "pictureChanged": true,
+        "scroll": {
+          "window": 0,
+          "MAIN.flex-1 overflow-y-auto": 170
+        },
+        "listUnchanged": true
+      },
+      "keys": {
+        "actions": 21,
+        "pictureChanged": true,
+        "scroll": {
+          "window": 0
+        },
+        "listUnchanged": true
+      }
+    },
+    "inputActionsSent": 48,
+    "listBeforeInput": [
+      "Object 1Part, Plate unknown"
+    ],
+    "pressedBeforeInput": [
+      "true"
+    ],
+    "pressedAfterInput": [
+      "false"
+    ],
+    "resourceHosts": [
+      "127.0.0.1:39223"
+    ]
+  },
+  "results": [
+    {
+      "name": "the page is a real WebKitGTK web view",
+      "ok": true,
+      "detail": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+    },
+    {
+      "name": "WebGL2 context can be created in this WebKitGTK",
+      "ok": true,
+      "detail": "{\"vendor\":\"Apple Inc.\",\"webgl2\":true,\"webgl\":true,\"renderer\":\"Apple GPU\",\"version\":\"WebGL 2.0\"}"
+    },
+    {
+      "name": "the '3D view of this project' panel appears",
+      "ok": true,
+      "detail": "3D view of this project"
+    },
+    {
+      "name": "a canvas with a real size is drawn",
+      "ok": true,
+      "detail": "{\"x\":485,\"ch\":405,\"w\":540,\"cw\":540,\"y\":226,\"h\":404.5}"
+    },
+    {
+      "name": "no graphics-failure alert shows",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "the object list has rows",
+      "ok": true,
+      "detail": "[\"Object 1Part, Plate unknown\"]"
+    },
+    {
+      "name": "camera buttons exist and are enabled",
+      "ok": true,
+      "detail": "[{\"disabled\":false,\"text\":\"Corner view\"},{\"disabled\":false,\"text\":\"Top\"},{\"disabled\":false,\"text\":\"Front\"},{\"disabled\":false,\"text\":\"Back\"},{\"disabled\":false,\"text\":\"Left\"},{\"disabled\":false,\"text\":\"Right\"},{\"disabled\":false,\"text\":\"Whole bed\"},{\"disabled\":false,\"text\":\"Zoom to objects\"},{\"disabled\":false,\"text\":\"Slope view\"}]"
+    },
+    {
+      "name": "pressing a camera button leaves no alert and the canvas stays",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "selecting an object marks its row (aria-pressed)",
+      "ok": true,
+      "detail": "[\"true\"]"
+    },
+    {
+      "name": "drags with and without modifiers, wheel and key presses leave the object list unchanged",
+      "ok": true,
+      "detail": "48 input actions; rows 1 -> 1"
+    },
+    {
+      "name": "the input reached the viewer: the picture changed after the drags, so 'unchanged' is not vacuous",
+      "ok": true,
+      "detail": "{\"drags\":{\"actions\":19,\"pictureChanged\":true,\"scroll\":{\"window\":0},\"listUnchanged\":true},\"wheel\":{\"actions\":8,\"pictureChanged\":true,\"scroll\":{\"window\":0,\"MAIN.flex-1 overflow-y-auto\":170},\"listUnchanged\":true},\"keys\":{\"actions\":21,\"pictureChanged\":true,\"scroll\":{\"window\":0},\"listUnchanged\":true}}"
+    },
+    {
+      "name": "after the input run: no alert, canvas still present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the page requested nothing from a non-loopback host",
+      "ok": true,
+      "detail": "{\"hostsSeen\":[\"127.0.0.1:39223\"],\"nonLoopback\":[]}"
+    },
+    {
+      "name": "leaving the page removes the viewer and its canvas",
+      "ok": true,
+      "detail": "{\"scene\":false,\"canvases\":0,\"path\":\"/help\"}"
+    },
+    {
+      "name": "the project file's sha256 is unchanged",
+      "ok": true,
+      "detail": "7d0daae0c663a569… -> 7d0daae0c663a569…"
+    }
+  ],
+  "projectSha256": {
+    "before": "7d0daae0c663a56919e79cf30f24c16b9cfcc163f311c7cf4d804d0d5d88f665",
+    "after": "7d0daae0c663a56919e79cf30f24c16b9cfcc163f311c7cf4d804d0d5d88f665"
+  },
+  "driverLog": "libEGL warning: failed to get driver name for fd -1\n\nlibEGL warning: MESA-LOADER: failed to retrieve device information\n\nlibEGL warning: failed to get driver name for fd -1\n\nMESA: error: ZINK: failed to choose pdev\nlibEGL warning: egl: failed to create dri2 screen\n\n** (process:22774): WARNING **: 16:21:42.483: Can't connect to a11y bus: Exhausted all available authentication mechanisms (tried: EXTERNAL) (available: EXTERNAL)\n"
+}

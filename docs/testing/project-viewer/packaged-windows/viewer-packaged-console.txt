@@ -1,0 +1,10 @@
+PASS  The packaged app shows the 3D view panel for the project opened on the command line  - launch file reported: true
+PASS  A canvas with a real size is drawn and no graphics-failure alert is shown  - {"canvases":1,"size":[714,535],"alerts":[]}
+PASS  The object list and the camera buttons are present  - {"objects":1,"cameras":9}
+PASS  Selecting an object marks its row
+PASS  Every camera view button can be pressed
+PASS  Mouse drags (all buttons, with modifiers), wheel and keys change nothing in the object list  - 1 objects
+PASS  Leaving the page removes the canvas  - 0 canvas(es) left
+PASS  Nothing left the machine (no non-loopback request)  - []
+PASS  No CSP violation or graphics-context problem was logged
+PASS  The project file bytes are unchanged
