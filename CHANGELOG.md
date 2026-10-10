@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **More Bambu Studio projects now prepare.** Studio keeps six more per-object settings that
+  Snapmaker Orca 2.4.0 reads in the same words: infill pattern, skeleton and skin infill
+  density, top and bottom shell layers, and brim type (`no_brim`, `outer_only`, `inner_only`,
+  `outer_and_inner`, `brim_ears`; the creator's automatic brim is still not carried). Every value
+  is checked first, and anything else is still refused rather than guessed.
+- A project that uses the same part more than once in one object (for example two copies of one
+  piece in an assembly) is no longer refused as corrupt. A real mismatch between the parts and
+  the object is still refused.
+- The Doctor no longer recommends "Prepare a U1 profile copy" for a file Prepare would refuse; it
+  now says Studio cannot prepare it yet and points to reviewing the original in Snapmaker Orca.
+- When Prepare refuses a file, the message now says in plain language which settings or structure
+  and on which object, and what to do next. The raw technical wording is kept in a collapsed
+  "Technical details" area.
+- A project with blank (`nil`) per-part values (for example speeds) that Snapmaker Orca 2.4.0 cannot read, which
+  stops Orca loading the whole file, is now named in plain language by the Doctor and by Prepare
+  instead of being passed on.
+- A prepared copy of a multi-plate project that carried the authoring slicer's per-plate cache
+  files is no longer reported as not validated because the plate count appeared to drop; plates
+  are now counted from the project's plate list. The fidelity audit also reports infill density
+  and support settings that were kept unchanged as kept, not as "not carried".
+- A project Studio can read but would refuse to prepare is now reported the same way everywhere:
+  the Doctor, Model Connect (it is still added to your library), the Validation Center, Ready Now,
+  the Compatibility check and the command line all say it needs a look in Snapmaker Orca instead of
+  calling it ready or sending it to Prepare, and `u1convert repair` refuses it with the same reason.
+- Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
+  was never modified; the extra copy was only a leftover. The command-line `repair` and
+  `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
+
 ## [1.5.0] - 2026-10-06
 
 **Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**

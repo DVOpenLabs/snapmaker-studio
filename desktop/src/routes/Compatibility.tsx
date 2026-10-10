@@ -11,6 +11,7 @@ import { open3mfDialog, compatibilityCheck, convert, type CompatibilityResult, t
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
+import { PrepareRefusal } from "@/components/PrepareRefusal";
 import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
 import type { MaterialSelection } from "@/lib/projectMaterials";
 import { Copy, Stethoscope } from "lucide-react";
@@ -110,7 +111,7 @@ export default function Compatibility() {
           finish without anything on screen. The compatibility findings below stay conditional. */}
       {path && (prep || prepM.isError) && (
         <div className="space-y-3" data-testid="prepare-outcome">
-      {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
+      {prepM.isError && <PrepareRefusal error={prepM.error} />}
 
       {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
       {prep && !prep.blocked && !prep.output_path && (

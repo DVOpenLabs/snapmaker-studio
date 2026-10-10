@@ -57,7 +57,12 @@ processes** on graceful close, crash, or force-kill.
   `to_dict()` JSON-ready.
 - **`convert` (Transform)** — orchestrates: STL -> wrap; geometry-only/foreign
   3MF (no `project_settings`) -> geometry wrap; Bambu/Orca 3MF -> repair. Writes
-  `<stem>_SnapmakerU1.3mf` beside the source; **never overwrites the original**.
+  `<stem>_SnapmakerU1.3mf` beside the source; **never overwrites the original**
+  and writes no `.orig.3mf` backup for the desktop or API (the output is a new
+  file). Only the CLI `repair` / `optimize` commands keep a `<stem>.orig.3mf`
+  snapshot, as their in-place contract. `structure_problems()` is the one gate
+  both Prepare (`check_structure`) and the Doctor use, so the Doctor does not
+  recommend a Prepare the engine would refuse.
 - **`repair`** — clamp rules -> profile swap -> conform filament arrays ->
   **`u1_identity`** normalize -> scrub foreign tokens -> blank slice_info version.
 - **`u1_identity`** — the authoritative U1 identity layer: preset ids, version,

@@ -34,6 +34,12 @@ class Diagnosis:
     validation_issues: list = field(default_factory=list)
     compatibility_issues: list = field(default_factory=list)
     recommended_action: str = ""
+    #: True when Prepare would refuse this readable file (settings or structure Studio has
+    #: not verified Snapmaker Orca reads). It is NOT an "unreadable" signal: the verdict stays
+    #: whatever the file's own state is, and HIGH_RISK keeps meaning "not a usable project".
+    prepare_blocked: bool = False
+    #: The raw engine wording behind `prepare_blocked`, for a collapsed technical area.
+    structure_problems: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -101,11 +107,28 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
         score -= 15
 
     score = max(0, min(100, score))
+    # The same structure gate Prepare runs, applied to the source: a file Prepare
+    # would refuse must not be sent to Prepare.
+    from . import eligibility
+    verdict_eligibility = eligibility.assess(tm, readable=res.structural_ok)
+    structure = verdict_eligibility.problems
+    if structure:
+        # One plain sentence for people; the raw wording stays in `structure_problems`.
+        validation_issues.append(verdict_eligibility.summary)
     painted = sum(fp.painted_triangles.values()) > 0
 
     if not res.structural_ok:
         verdict = HIGH_RISK
         action = "This file is not a usable U1 project (missing required parts); repair may not recover it."
+    elif structure:
+        # Checked BEFORE the score-based READY: a genuine U1 project that Prepare would
+        # refuse must not be told "open it and slice". The file is readable, so the
+        # verdict is not HIGH_RISK (that means unusable); `prepare_blocked` carries it.
+        verdict = REPAIRABLE
+        action = ("Studio has not verified this file: it carries settings or structure "
+                  "Studio cannot confirm Snapmaker Orca reads, so it will not prepare a copy "
+                  "and does not call it ready. Your original is not changed. Open it in "
+                  "Snapmaker Orca to review it.")
     elif score == 100 and not compatibility_issues:
         verdict = READY
         action = "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice."
@@ -119,6 +142,7 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
         filament_count=fp.filament_count, painted=painted, input_type="3mf",
         validation_issues=validation_issues, compatibility_issues=compatibility_issues,
         recommended_action=action,
+        prepare_blocked=bool(structure), structure_problems=list(structure),
     )
 
 

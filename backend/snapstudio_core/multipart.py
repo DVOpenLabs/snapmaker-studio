@@ -41,9 +41,11 @@ copied verbatim.
 """
 from __future__ import annotations
 
+import html as _html
 import re
 
 from . import overrides as object_overrides
+from .orca_nonnullable import NON_NULLABLE_VECTORS
 
 SCHEMA_VERSION = "multipart/1"
 
@@ -447,6 +449,20 @@ def _parts_by_object(settings_xml: str) -> dict:
     return out
 
 
+#: Every option Orca 2.4.0 declares as a non-nullable vector; see that module.
+NIL_UNREADABLE = NON_NULLABLE_VECTORS
+
+
+_OBJECT_TAG = re.compile(r'<object id="(\d+)"')
+_TYPE_ATTR = re.compile(r'type="([^"]*)"')
+
+
+def _object_label(body: str) -> str:
+    name = re.search(r'<metadata key="name" value="([^"]*)"', body)
+    shown = _html.unescape(name.group(1))[:60].replace('"', "'") if name else ""
+    return f' ("{shown}")' if shown else ""
+
+
 def _settings_objects(settings_xml: str) -> dict:
     """Each settings object's own metadata, above its parts."""
     return {object_id: body.split("<part", 1)[0]
@@ -497,14 +513,30 @@ def validate_archive(tm) -> dict:
         if path not in rels:
             problems.append(f"{path} holds geometry but is not declared in the relationships")
         body = read(name)
-        found = re.findall(r'<object id="(\d+)"', body)
-        mesh_ids.extend(found)
-        for object_id, kind in re.findall(r'<object id="(\d+)"[^>]*type="([^"]*)"', body):
-            mesh_types[object_id] = kind
-        for object_id in found:
-            block = re.search(rf'<object id="{object_id}".*?</object>', body, re.S)
-            if block and "<triangle" not in block.group(0):
-                problems.append(f"object {object_id} in {path} carries no geometry")
+        # One linear pass with str.find: regexes over a many-megabyte mesh (a lazy `.*?`, or
+        # a search per object from the top of the file) made the Doctor several times slower.
+        pos = 0
+        while True:
+            start = body.find('<object id="', pos)
+            if start < 0:
+                break
+            tag_end = body.find(">", start)
+            if tag_end < 0:
+                break
+            tag = _OBJECT_TAG.match(body, start, tag_end)
+            pos = tag_end
+            if not tag:
+                continue
+            object_id = tag.group(1)
+            mesh_ids.append(object_id)
+            kind = _TYPE_ATTR.search(body, start, tag_end)
+            if kind:
+                mesh_types[object_id] = kind.group(1)
+            end = body.find("</object>", tag_end)
+            if end >= 0:
+                if body.find("<triangle", tag_end, end) < 0:
+                    problems.append(f"object {object_id} in {path} carries no geometry")
+                pos = end
 
     missing = [c for c in components if c not in mesh_ids]
     if missing:
@@ -556,11 +588,10 @@ def validate_archive(tm) -> dict:
             problems.append(
                 f"object {object_id}: part ids {sorted(own_parts)} do not match its "
                 f"component ids {sorted(own_components)}")
-        if len(set(own_parts)) != len(own_parts):
-            problems.append(f"object {object_id} uses a part id twice")
-        if len(set(own_components)) != len(own_components):
-            problems.append(
-                f"object {object_id} references the same mesh twice in its components")
+        # A repeated part id or a mesh referenced by two components is legitimate:
+        # 3MF Core allows a component to be instanced more than once and Bambu
+        # Studio writes exactly that. The count and the multiset above are the
+        # whole rule; uniqueness is not.
 
     # Two objects referencing one mesh is **not** a fault: a genuine Snapmaker Orca
     # project in the fixtures holds eight objects that all build from the same two
@@ -584,8 +615,26 @@ def validate_archive(tm) -> dict:
         stated = {key: value for key, value in
                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', body)
                   if key not in ("name", "extruder")}
+        label = _object_label(body)
         for fault in object_overrides.validate_emitted(stated):
-            problems.append(f"object {object_id}: {fault}")
+            problems.append(f"object {object_id}{label}: {fault}")
+
+    # Part-level values Snapmaker Orca 2.4.0 cannot read. Bambu Studio writes `nil`
+    # ("not overridden") into per-part speed lists; in Orca 2.4.0 these options are
+    # not nullable (PrintConfig.cpp: coFloats / coFloatsOrPercents, added with plain
+    # `add`; the only nullable options are the `filament_*` retraction ones), and
+    # Config.hpp throws "Deserializing nil into a non-nullable object", so the whole
+    # project fails to load. Refused with the part named, never silently edited.
+    for object_id, body in _SETTINGS_OBJECT.findall(settings):
+        label = _object_label(body)
+        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*>(.*?)</part>', body, re.S):
+            bad = [key for key, value in
+                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', part_body)
+                   if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
+            if bad:
+                problems.append(
+                    f"part {part_id} of object {object_id}{label}: has values "
+                    f"Snapmaker Orca 2.4.0 cannot read (nil in {', '.join(sorted(bad))})")
 
     for matrix in re.findall(r'key="matrix" value="([^"]*)"', settings):
         values = matrix.split()

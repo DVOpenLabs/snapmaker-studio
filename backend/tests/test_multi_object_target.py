@@ -317,8 +317,7 @@ def test_removing_one_object_is_caught(prepared, tmp_path):
 def test_duplicating_one_objects_parts_is_caught(prepared, tmp_path):
     broken = damage(prepared, tmp_path, SETTINGS, lambda t: t.replace(
         '<part id="3"', '<part id="3" subtype="normal_part"></part><part id="3"', 1))
-    assert any("uses a part id twice" in p or "component ids" in p
-               for p in problems(broken))
+    assert any("part(s) and has" in p for p in problems(broken))
 
 
 def test_swapping_two_objects_assignments_is_caught(prepared, tmp_path):
@@ -384,5 +383,5 @@ def test_prepare_still_refuses_output_it_cannot_vouch_for(monkeypatch, tmp_path)
     out_dir = tmp_path / "out"
     with pytest.raises(UnsoundOutput) as caught:
         convert_to_u1(str(SOURCE), out_dir=str(out_dir))
-    assert "component ids" in str(caught.value)
+    assert "component ids" in caught.value.details
     assert not list(out_dir.glob("*.3mf"))

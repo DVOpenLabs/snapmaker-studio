@@ -131,6 +131,21 @@ def check(path: str) -> dict:
                 f"printer_model={model or '(none)'}; printer_settings_id={settings_id or '(none)'}",
             ))
 
+    # B2. the same eligibility record Prepare and the Doctor use: a readable project Studio
+    # would refuse to prepare is never reported as clean.
+    from . import eligibility
+    eligible = eligibility.assess(tm, readable=tm.has_part("3D/3dmodel.model"))
+    if eligible.readable and not eligible.preparable:
+        findings.append(_finding(
+            "prepare.blocked", "warning",
+            "Studio cannot prepare a U1 copy of this project yet",
+            eligible.summary,
+            "Metadata/model_settings.config",
+            "Open the original in Snapmaker Orca to review it, or remove the unverified "
+            "settings in the slicer that made it and export it again.",
+            f"{len(eligible.problems)} item(s) Studio has not verified Snapmaker Orca reads",
+        ))
+
     # C. relative extrusion without a G92 E0 layer reset
     if _truthy(cfg, "use_relative_e_distances"):
         layer_gcode = (_text(cfg, "layer_change_gcode") + "\n"

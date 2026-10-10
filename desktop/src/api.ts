@@ -180,6 +180,17 @@ export interface ConversionResult {
   blocked?: boolean;
 }
 
+/** A deliberate refusal (HTTP 422): `message` is the plain sentence for the person; `details` is the engine's raw
+ *  technical wording, kept for a collapsible secondary area and never shown as the main message. */
+export class PrepareRefusalError extends Error {
+  details?: string;
+  constructor(message: string, details?: string) {
+    super(message);
+    this.name = "PrepareRefusalError";
+    this.details = details;
+  }
+}
+
 export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false,
                               materials?: MaterialSelection[]): Promise<ConversionResult> {
   const { port, token } = await apiInfo();
@@ -194,14 +205,16 @@ export async function convert(path: string, outDir?: string, prepareMode: Prepar
   });
   if (!r.ok) {
     let msg = `convert failed (${r.status})`;
+    let details: string | undefined;
     try {
       const e = await r.json();
       if (e?.error) msg = e.error;
       // v1.3.1 (#67): a genuine engine fault names its class, so a report can say what failed; a deliberate refusal
       // already carries its own readable message.
       if (e?.kind && !e?.refusal) msg = `${msg} (${e.kind})`;
+      if (e?.refusal && typeof e?.details === "string" && e.details) details = e.details;
     } catch { /* ignore */ }
-    throw new Error(msg);
+    throw details ? new PrepareRefusalError(msg, details) : new Error(msg);
   }
   return r.json();
 }
@@ -334,6 +347,8 @@ export interface Insights {
   verdict: string | null;
   readiness_score: number | null;
   is_compatible: boolean;
+  /** True when Studio can read the file but would refuse to prepare a copy of it. */
+  prepare_blocked?: boolean;
   objects: number | null;
   plates: number | null;
   colors: number | null;

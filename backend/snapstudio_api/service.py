@@ -2477,7 +2477,9 @@ def register_downloaded_model(path: str, site: str, page_url: str | None = None)
             "sha256": digest.hexdigest(), "size_bytes": total,
             "source_family": result.get("family"), "verdict": verdict,
             "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
-            "ready_hint": "check" if verdict == "READY" else "prepare"}
+            "prepare_blocked": bool(result.get("prepare_blocked")),
+            "ready_hint": ("review" if result.get("prepare_blocked")
+                           else "check" if verdict == "READY" else "prepare")}
 
 
 def record_conversion(path: str, result: dict) -> None:

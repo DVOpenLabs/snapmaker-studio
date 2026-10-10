@@ -29,6 +29,13 @@ CONFIG = "Metadata/model_settings.config"
 # The shape in the reporter's screenshot, and the shape in the current model file.
 SUPPORT_SHAPE = {"support_type": "tree(auto)", "support_style": "default"}
 WALL_SHAPE = {"wall_generator": "arachne", "wall_loops": "3"}
+# Value shapes seen in real Bambu Studio projects that used to be refused whole.
+INFILL_SHAPE = {"sparse_infill_pattern": "gyroid", "skeleton_infill_density": "30%",
+                "skin_infill_density": "30%"}
+SHELL_SHAPE = {"top_shell_layers": "0", "bottom_shell_layers": "0",
+               "skeleton_infill_density": "12%", "skin_infill_density": "12%"}
+BRIM_SHAPES = [{"brim_type": v} for v in
+               ("no_brim", "outer_only", "inner_only", "outer_and_inner", "brim_ears")]
 
 
 def _inject(tmp_path, extra: dict, name="p1s-object-settings.3mf") -> str:
@@ -72,7 +79,10 @@ def _object_keys(path: str) -> list[set]:
     return rows
 
 
-@pytest.mark.parametrize("shape", [SUPPORT_SHAPE, WALL_SHAPE, {**SUPPORT_SHAPE, **WALL_SHAPE}])
+@pytest.mark.parametrize("shape", [SUPPORT_SHAPE, WALL_SHAPE, {**SUPPORT_SHAPE, **WALL_SHAPE},
+                                   INFILL_SHAPE, SHELL_SHAPE, *BRIM_SHAPES,
+                                   {**INFILL_SHAPE, **SUPPORT_SHAPE, "wall_loops": "3",
+                                    "enable_support": "1", "sparse_infill_density": "30%"}])
 def test_native_object_settings_prepare_and_are_kept(tmp_path, shape):
     src = _inject(tmp_path, shape)
     before = _sha(src)
@@ -93,13 +103,14 @@ def test_native_object_settings_prepare_and_are_kept(tmp_path, shape):
 
 
 def test_an_unrelated_unproven_setting_is_still_refused(tmp_path):
-    src = _inject(tmp_path, {**SUPPORT_SHAPE, "sparse_infill_pattern": "gyroid"})
+    src = _inject(tmp_path, {**SUPPORT_SHAPE, "ironing_type": "top surface"})
     out_dir = tmp_path / "out"
     out_dir.mkdir()
     with pytest.raises(UnsoundOutput) as ei:
         conv.convert_to_u1(src, str(out_dir))
-    assert "sparse_infill_pattern is not a setting Studio has proved" in str(ei.value)
-    assert "support_type is not a setting" not in str(ei.value)   # the proven ones are not blamed
+    assert "ironing_type is not a setting Studio has proved" in ei.value.details
+    assert "ironing_type" in str(ei.value) and "support_type" not in str(ei.value)
+    assert "support_type is not a setting" not in ei.value.details   # the proven ones are not blamed
     assert not list(out_dir.iterdir())                            # nothing was saved
 
 
@@ -113,6 +124,19 @@ def test_an_unrelated_unproven_setting_is_still_refused(tmp_path):
     ("wall_loops", "1001"),
     ("wall_loops", "٣"),       # Arabic-Indic digit: Orca deletes the object on it
     ("wall_loops", "03"),
+    ("sparse_infill_pattern", "zig-zag"),      # legacy spelling, not an Orca 2.4.0 value
+    ("sparse_infill_pattern", "Gyroid"),
+    ("sparse_infill_pattern", ""),
+    ("brim_type", "Outer_Only"),
+    ("brim_type", ""),
+    ("brim_type", "auto_brim"),
+    ("brim_type", "painted"),
+    ("top_shell_layers", "-1"), ("top_shell_layers", "1001"), ("top_shell_layers", "٣"),
+    ("top_shell_layers", "03"), ("top_shell_layers", "3.5"),
+    ("bottom_shell_layers", "-1"), ("bottom_shell_layers", "1001"),
+    ("bottom_shell_layers", "٣"), ("bottom_shell_layers", "03"),
+    *[(k, v) for k in ("skeleton_infill_density", "skin_infill_density")
+      for v in ("101%", "-1%", "12.5.5%", "٣٠%", "30", "1e1%", "+30%", "030%", "", "%", " 30%")],
 ])
 def test_a_value_orca_cannot_read_is_refused(key, value):
     faults = overrides.validate_emitted({key: value})
@@ -123,13 +147,28 @@ def test_a_value_orca_cannot_read_is_refused(key, value):
     ("support_type", "normal(auto)"), ("support_type", "tree(manual)"),
     ("support_style", "tree_hybrid"), ("support_style", "organic"),
     ("wall_generator", "classic"), ("wall_loops", "0"), ("wall_loops", "1000"),
+    ("top_shell_layers", "0"), ("top_shell_layers", "1000"), ("bottom_shell_layers", "7"),
+    ("skeleton_infill_density", "0%"), ("skeleton_infill_density", "100%"),
+    ("skin_infill_density", "12.5%"),
+    *[("sparse_infill_pattern", v) for v in overrides._INFILL_PATTERNS],
+    *[("brim_type", v) for v in
+      ("no_brim", "outer_only", "inner_only", "outer_and_inner", "brim_ears")],
 ])
 def test_values_orca_reads_pass(key, value):
     assert overrides.validate_emitted({key: value}) == []
 
 
-def test_the_allowlist_is_exactly_the_four_measured_keys():
-    assert set(overrides.NATIVE_KEPT) == {"wall_generator", "wall_loops", "support_type", "support_style"}
+def test_the_infill_pattern_list_is_the_26_orca_2_4_0_values():
+    assert len(overrides._INFILL_PATTERNS) == 26 == len(set(overrides._INFILL_PATTERNS))
+    assert "zig-zag" not in overrides._INFILL_PATTERNS
+
+
+def test_the_allowlist_is_exactly_the_measured_keys():
+    assert set(overrides.NATIVE_KEPT) == {
+        "wall_generator", "wall_loops", "support_type", "support_style",
+        "sparse_infill_pattern", "skeleton_infill_density", "skin_infill_density",
+        "top_shell_layers", "bottom_shell_layers", "brim_type",
+        "sparse_infill_density", "enable_support"}
     # not a back door into the Prusa-translation table
     assert not set(overrides.NATIVE_KEPT) & set(overrides.CARRIED)
 
@@ -154,3 +193,50 @@ def test_fidelity_reports_a_kept_native_setting_as_preserved_not_unsupported():
 def test_a_non_string_value_is_refused_not_a_crash(value):
     faults = overrides.validate_emitted({"wall_loops": value, "support_type": value})
     assert len(faults) == 2
+
+
+def test_fidelity_reports_the_six_added_settings_as_preserved():
+    from snapstudio_core import assignments
+
+    said = {"sparse_infill_pattern": "gyroid", "skeleton_infill_density": "30%",
+            "skin_infill_density": "30%", "top_shell_layers": "0",
+            "bottom_shell_layers": "0", "brim_type": "inner_only"}
+    rows = assignments._override_rows({"overrides": dict(said)}, {"overrides": dict(said)},
+                                      "Slide", 0)
+    assert len(rows) == 6
+    assert {r["status"] for r in rows} == {assignments.PRESERVED_EXACT}
+
+
+def test_fidelity_reports_orca_worded_infill_density_and_support_as_preserved():
+    from snapstudio_core import assignments
+
+    said = {"sparse_infill_density": "30%", "enable_support": "1"}
+    rows = assignments._override_rows({"overrides": dict(said)}, {"overrides": dict(said)},
+                                      "Slide", 0)
+    assert len(rows) == 2 and {r["status"] for r in rows} == {assignments.PRESERVED_EXACT}
+    # a changed or dropped value is still not "preserved"
+    changed = assignments._override_rows({"overrides": dict(said)},
+                                         {"overrides": {**said, "sparse_infill_density": "40%"}},
+                                         "Slide", 0)
+    assert any(r["status"] == assignments.CHANGED for r in changed)
+    dropped = assignments._override_rows({"overrides": dict(said)}, {"overrides": {}}, "Slide", 0)
+    assert all(r["status"] == assignments.CHANGED for r in dropped)
+
+
+@pytest.mark.parametrize("key,value", [("sparse_infill_density", "101%"), ("sparse_infill_density", "30"),
+                                        ("sparse_infill_density", "٣٠%"), ("enable_support", "2"),
+                                        ("enable_support", "true")])
+def test_orca_worded_density_and_support_keep_their_strict_gates(key, value):
+    assert overrides.validate_emitted({key: value})
+
+
+def test_a_prusa_per_object_brim_type_is_still_not_carried_and_blocks_the_claim():
+    from snapstudio_core import assignments
+
+    src = {"dialect": assignments.DIALECT_PRUSA, "overrides": {"brim_type": "outer_only"}}
+    rows = assignments._override_rows(src, {"overrides": {}}, "Slide", 0)
+    assert [r["status"] for r in rows] == [assignments.UNSUPPORTED]
+    # the same key from a Bambu/Orca source is a dropped native setting, as before
+    bambu = assignments._override_rows({"overrides": {"brim_type": "outer_only"}},
+                                       {"overrides": {}}, "Slide", 0)
+    assert [r["status"] for r in bambu] == [assignments.CHANGED]

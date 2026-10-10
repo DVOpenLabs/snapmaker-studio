@@ -69,7 +69,7 @@ export default function LiveWorkspace() {
           <h2 className="truncate text-xl font-semibold tracking-tight">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">{file.path}</p>
         </div>
-        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} />}
+        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />}
         <div className="ml-auto flex gap-2">
           <Button variant="secondary" size="sm" onClick={openFile}>
             <FolderOpen className="h-4 w-4" /> Open another
@@ -91,7 +91,7 @@ export default function LiveWorkspace() {
                 {rv.scoreCap ?? d.score ?? "—"}
               </div>
               <div className="space-y-1.5">
-                <StatusBadge verdict={d.verdict as Verdict} />
+                <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />
                 <p className="text-sm font-medium">{rv.headline}</p>
                 <p className="text-sm text-muted-foreground">{rv.atRisk[0] ?? d.recommended_action}</p>
               </div>

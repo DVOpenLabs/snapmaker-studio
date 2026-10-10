@@ -45,9 +45,10 @@ def readiness_report(path: str) -> dict:
     # --- compatibility checks -------------------------------------------------
     checks.append(_check(
         "Fits U1 profile checks",
-        verdict in (READY, CONVERTIBLE, "REPAIRABLE"),
-        "Prepare a U1 copy and review in Orca" if verdict != READY
-        else "Review in Orca before slicing"))
+        verdict in (READY, CONVERTIBLE, "REPAIRABLE") and not diag.get("prepare_blocked"),
+        ("Studio cannot prepare a copy of this file yet; review it in Snapmaker Orca"
+         if diag.get("prepare_blocked") else "Prepare a U1 copy and review in Orca")
+        if verdict != READY else "Review in Orca before slicing"))
     if dims:
         fits = dims["x"] <= U1_BUILD[0] and dims["y"] <= U1_BUILD[1] and dims["z"] <= U1_BUILD[2]
         checks.append(_check(

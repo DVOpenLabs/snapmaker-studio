@@ -12,6 +12,7 @@ from snapstudio_core.doctor import diagnose_path as do_diagnose_path
 from snapstudio_core.diff import diff_projects as do_diff
 from snapstudio_core.report import write_fix_report
 from snapstudio_core.errors import SnapStudioError
+from snapstudio_core.convert import check_structure
 
 @click.group()
 def cli():
@@ -52,14 +53,25 @@ def _run_repair(path, mode, remap, out, dry_run, opt_profile=None):
     src_fp = compute_fingerprint(tm)
     outcome = do_repair(tm, mode=mode, remap=parse_remap(remap), dry_run=dry_run,
                         opt_profile=opt_profile)
+    # The same gate Prepare and `doctor` use: a copy Studio cannot vouch for is not written.
+    check_structure(tm)
     if dry_run:
         click.echo("DRY RUN - no files written")
         click.echo(str(outcome.report)); return
+    # `repair` / `optimize` keep a `<stem>.orig.3mf` snapshot of the input: that is
+    # this command's documented in-place contract (the desktop and the API do not).
     backup = src.with_suffix(".orig.3mf")
-    if not backup.exists(): shutil.copy2(src, backup)
+    made_backup = not backup.exists()
+    if made_backup: shutil.copy2(src, backup)
     out = Path(out) if out else src.with_name(src.stem + "_SnapmakerU1.3mf")
-    tm.save(out)
-    res = do_validate(ThreeMF.open(out), against=src_fp)
+    try:
+        tm.save(out)
+        res = do_validate(ThreeMF.open(out), against=src_fp)
+    except BaseException:
+        # A failure must not leave a snapshot of a repair that never happened.
+        if made_backup:
+            backup.unlink(missing_ok=True)
+        raise
     entry = {"file": src.name, "output": out.name, **outcome.report,
              "validated_ok": res.ok, "errors": res.errors}
     write_fix_report(out.parent / "FIX_REPORT.json", [entry], base_dir=out.parent)
