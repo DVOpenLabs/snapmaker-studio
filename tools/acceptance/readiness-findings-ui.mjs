@@ -84,7 +84,7 @@ const violations = [];
 const errors = [];
 
 async function visit(label, file, theme) {
-  const ctx = await browser.newContext({ viewport: { width: 1100, height: 1000 }, colorScheme: theme });
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 2800 }, colorScheme: theme });
   await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
   await ctx.route(`${ENGINE}/**`, async (route) => {
     const url = new URL(route.request().url());
@@ -101,27 +101,40 @@ async function visit(label, file, theme) {
   await page.getByRole("button", { name: "Open a model" }).last().click();
   const heading = page.getByText("Print risk signals", { exact: true });
   await heading.waitFor({ timeout: 150000 });
+  // The Intelligence Report loads on its own request; wait for it so the page check covers it.
+  await page.getByText("Studio Intelligence Report", { exact: false }).first().waitFor({ timeout: 240000 });
+  await page.getByText("Risks found", { exact: true }).waitFor({ timeout: 30000 });
   const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
-  await card.scrollIntoViewIfNeeded();
-  await sleep(500);
+  await sleep(1000);
   const text = (await card.innerText()).replace(/\s+/g, " ");
+  const pageText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
   await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
-  await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });
+  await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });   // taken after the report loaded
   await ctx.close();
-  return text;
+  return { text, pageText };
 }
 
 try {
   for (const theme of ["light", "dark"]) {
-    const t = await visit("01-signals-found", flagged, theme);
+    const { text: t, pageText: tp } = await visit("01-signals-found", flagged, theme);
     check(`${theme}: card lists signals with what to do`, /What to do:/.test(t) && /(Risk|Heads up):/.test(t), t.slice(0, 200));
     check(`${theme}: card names its evidence kind`, /Studio's check|Estimate/.test(t));
     check(`${theme}: card says what was checked and not checked`, /Studio checked:/.test(t) && /Studio did not check:.*object spacing/.test(t) && /printer health/.test(t));
     check(`${theme}: card says what Studio cannot know and to verify in Snapmaker Orca`, /cannot know/.test(t) && /Verify in Snapmaker Orca/.test(t));
     check(`${theme}: no percentage, band or verdict`, !/\d\s*%/.test(t) && !/Likely to print|Risky|Few risks|readiness/i.test(t));
-    const c = await visit("02-nothing-flagged", clean, theme);
+    const { text: c, pageText: cp } = await visit("02-nothing-flagged", clean, theme);
     check(`${theme}: with no signals it says what was covered and not that the print will succeed`, /did not flag anything/.test(c) && /not a sign the print will succeed/.test(c) && /Studio did not check:/.test(c), c.slice(0, 200));
     check(`${theme}: the nothing-flagged result also has no percentage or verdict`, !/\d\s*%/.test(c) && !/Likely to print|Risky|Few risks|readiness|will print/i.test(c));
+    // Whole page, after the Intelligence Report has loaded: no score hero, "/ 100", percentage, readiness rating or success verdict.
+    // Allowed on the page: measured geometry ("16.7% of surfaces", "steep overhangs"), the pricing margin, and the Project Doctor's own
+    // step heading "Print-Readiness" (a verdict with stars, not a score). Everything else must not match.
+    const allowed = /\d+(\.\d+)?\s*%\s*(of surfaces|margin|steep overhangs)|Print-Readiness/gi;
+    for (const [name, raw] of [["flagged project", tp], ["nothing flagged", cp]]) {
+      const pt = raw.replace(allowed, " ");
+      const bad = [...pt.matchAll(/.{0,40}(\d\s*%|\/\s*100\b|Likely to print|Risky|Few risks|Some risks|Several risks|Readiness|Studio score|expected print success).{0,30}/gi)].map((m) => m[0]);
+      check(`${theme}: whole page (${name}) has no score, percentage, readiness rating or success verdict`, bad.length === 0, bad.join(" | "));
+      check(`${theme}: whole page (${name}) shows the Intelligence Report's "Risks found" count`, /Risks found\s*\d+/i.test(pt));
+    }
   }
   check("no engine request named a host other than this machine, or discovery", violations.length === 0, violations.join("; "));
   check("no page errors", errors.length === 0, errors.join(" | ").slice(0, 300));

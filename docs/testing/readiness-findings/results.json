@@ -1,12 +1,12 @@
 {
   "browser": "Microsoft Edge (Chromium, headless)",
-  "passed": 16,
-  "total": 16,
+  "passed": 24,
+  "total": 24,
   "results": [
     {
       "name": "light: card lists signals with what to do",
       "ok": true,
-      "detail": "Print risk signals Studio found 1 thing worth settling before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found s"
+      "detail": "Print risk signals Studio found 1 thing to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found some"
     },
     {
       "name": "light: card names its evidence kind",
@@ -39,9 +39,29 @@
       "detail": ""
     },
     {
+      "name": "light: whole page (flagged project) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (flagged project) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (nothing flagged) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: whole page (nothing flagged) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "name": "dark: card lists signals with what to do",
       "ok": true,
-      "detail": "Print risk signals Studio found 1 thing worth settling before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found s"
+      "detail": "Print risk signals Studio found 1 thing to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found some"
     },
     {
       "name": "dark: card names its evidence kind",
@@ -70,6 +90,26 @@
     },
     {
       "name": "dark: the nothing-flagged result also has no percentage or verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (flagged project) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (flagged project) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (nothing flagged) has no score, percentage, readiness rating or success verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: whole page (nothing flagged) shows the Intelligence Report's \"Risks found\" count",
       "ok": true,
       "detail": ""
     },

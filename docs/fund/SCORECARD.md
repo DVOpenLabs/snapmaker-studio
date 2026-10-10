@@ -45,7 +45,7 @@ flowchart LR
 |---|---|
 | `dashboard_final.png` | Branded dashboard, Doctors first-class, Demo entry |
 | `demo_report.png` | Studio Intelligence Report (demo) |
-| `report_full.png` | Full Report: score, metrics, Expected Improvement, risks + community fixes, why-not-Orca |
+| `report_full.png` | Full Report: metrics, risks + community fixes, why-not-Orca (screenshot predates #92 and shows a score and an Expected Improvement figure Studio no longer displays) |
 | `why_studio.png` | Outcome comparison vs Orca & Fluidd |
 | `before_dashboard.png` / `after_dashboard.png` | Brand evolution |
 
@@ -56,8 +56,8 @@ flowchart LR
 3. **"Why Studio?"** -> positioning.
 Every screen reinforces the Intelligence Layer narrative (sidebar mark + tagline on
 all; "Powered by Studio Intelligence" on the Report; outcomes framing on Why Studio).
-Demo Mode verified: `/demo_report` returns score 78 + Expected Improvement + 3
-risks with community fixes; renders with no printer and no file.
+Demo Mode verified: `/demo_report` returns the risks with community fixes (it
+returned a score and an Expected Improvement before #92 removed both); renders with no printer and no file.
 
 ## Scorecard
 

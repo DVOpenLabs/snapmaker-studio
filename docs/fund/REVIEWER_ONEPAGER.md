@@ -13,9 +13,10 @@ were never going to work.
 
 ### What Studio does
 Before a layer is sliced, one screen — the **Studio Intelligence Report** — answers:
-**Will it print? · What will it cost? · What to sell it for? · Profit? · Biggest
+**What's at risk? · What will it cost? · What to sell it for? · Profit? · Biggest
 risk? · Next action?** Each risk carries the **community's known fix** with a
-confidence level, plus an **Expected Improvement** estimate (e.g. 72% -> 90%).
+confidence level. (Earlier builds also showed an expected-improvement percentage; it was
+never calibrated and was removed in #92.)
 
 ### Why it's novel (and why it expands the ecosystem)
 No tool in the U1 world does **cost -> pricing -> profit** intelligence, **pre-slice
