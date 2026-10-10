@@ -24,6 +24,7 @@ const log = (m) => console.error(`[real-engine] ${m}`);
 const expect = (ok, what) => { if (!ok) failures.push(what); return ok; };
 const scenarios = {};
 let engineB = null;
+let abandonedA = null; // the start body of the abandoned request in scenario 3, replayed again after the session expires
 
 const wire = [];
 const entries = new WeakMap();
@@ -147,6 +148,7 @@ try {
     const exactRetry = bStart ? await page.evaluate((b) => window.__h.raw("start", b), bStart.body) : null;
     const bJob = bStart?.reply?.job_id;
     const bState = bJob ? await page.evaluate(([j, c]) => window.__h.raw("status", { job_id: j, client_id: c }), [bJob, client]) : null;
+    abandonedA = held;
     release();
     const ok =
       expect(seen, "A's start was held on its way to the engine") &&
@@ -189,6 +191,26 @@ try {
   }
 
   log("5 session limit");
+  // ---- 4b. abandoned A replayed after its session expired -----------------------------------------------------------------
+  if (engineB && abandonedA) {
+    log("4b abandoned A after expiry");
+    const mark = wire.length;
+    const base = `http://127.0.0.1:${P}`, token = engineB.handshake.token;
+    const call = (route, body) => page.evaluate(([b, t, r, bd]) => window.__h.rawAt(b, t, r, bd), [base, token, route, body]);
+    const replay = await call("start", abandonedA);
+    const again = await call("start", abandonedA);
+    const cancelOld = await call("cancel", { client_id: abandonedA.client_id, request_id: abandonedA.request_id, seq: abandonedA.seq });
+    const statusOld = await call("status", { job_id: "anything", client_id: abandonedA.client_id });
+    const w = slice(mark);
+    const refused = (r) => r.status === 409 && r.body?.error === "SESSION_EXPIRED";
+    const ok =
+      expect(refused(replay) && refused(again), `A's late start meets an unknown session twice (observed ${replay.status} ${replay.body?.error}, ${again.status} ${again.body?.error})`) &&
+      expect(refused(cancelOld), `a cancel for the dead session is SESSION_EXPIRED (observed ${cancelOld.status} ${cancelOld.body?.error})`) &&
+      expect(statusOld.status === 404 && statusOld.body?.error === "EXPIRED", "a status call with the dead session's id is 404 EXPIRED") &&
+      expect(w.filter((e) => e.route === "session").length === 0, "the replay opened no session: nothing is revived");
+    scenarios.abandonedAfterExpiry = { covered: true, passed: ok, observed: w.map(compact) };
+  }
+
   // ---- 5. SESSION_LIMIT -----------------------------------------------------------------------------------------------
   if (engineB) {
     const base = `http://127.0.0.1:${P}`, token = engineB.handshake.token;
@@ -197,6 +219,7 @@ try {
       for (let i = 0; i < 80; i++) { const r = await window.__h.rawAt(b, t, "session", {}); if (r.status !== 200) return { n, status: r.status, error: r.body?.error }; n++; }
       return { n, status: 200, error: null };
     }, [base, token]);
+    const mark = wire.length;
     const out = await page.evaluate(async ([path, b, t]) => {
       const { loadScene, resetSceneSession, sceneErrorText } = window.__h.scene;
       resetSceneSession(); // as at app start: no session yet
@@ -205,8 +228,9 @@ try {
     }, [files.showcase, base, token]);
     const ok =
       expect(opened.status === 503 && opened.error === "SESSION_LIMIT", `the real engine refuses sessions past its limit (observed ${opened.status} ${opened.error} after ${opened.n})`) &&
-      expect(out.code === "SESSION_LIMIT" && /try again/i.test(out.text), "the client reports SESSION_LIMIT in plain words");
-    scenarios.sessionLimit = { covered: true, passed: ok, sessionsOpenedBeforeRefusal: opened.n, clientResult: out };
+      expect(out.code === "SESSION_LIMIT" && /try again/i.test(out.text), "the client reports SESSION_LIMIT in plain words") &&
+      expect(slice(mark).filter((e) => e.route === "session").length === 1 && slice(mark).every((e) => e.route === "session"), "the client sent exactly one session request and nothing else (no retry, no start)");
+    scenarios.sessionLimit = { covered: true, passed: ok, sessionsOpenedBeforeRefusal: opened.n, clientResult: out, observed: slice(mark).map(compact) };
   }
 } catch (e) { failures.push(String(e?.stack ?? e).slice(0, 600)); }
 finally { await browser.close(); if (engineB) stopEngine(engineB.backend); cleanup(); }

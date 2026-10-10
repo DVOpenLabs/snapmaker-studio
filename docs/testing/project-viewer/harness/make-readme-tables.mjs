@@ -22,7 +22,7 @@ export function render(r) {
   const out = [];
   const c = r.checks, b = r.bundle, i = r.interaction, f = r.cyclesFacade, a = r.cyclesApp, m = r.memory, l = r.largeScene;
   out.push(`Measured at commit \`${r.commit}\`${r.dirtyOutsideEvidenceFolder ? " **with uncommitted changes outside this folder** (so not yet a statement about a commit)" : " (clean outside this evidence folder, which is committed afterwards)"}, ${r.collectedAt}.`);
-  out.push(`Machine: ${r.machine.os}, ${r.machine.browser}, hardware WebGL: ${yes(r.machine.webglHardware)}.`);
+  out.push(`Machine: ${r.machine.os === "win32" ? "Windows (win32)" : r.machine.os}, Microsoft Edge ${r.machine.browser} headless, hardware WebGL: ${yes(r.machine.webglHardware)}.`);
   out.push("");
   out.push("**Checks**\n");
   out.push(table(["Check", "Result"], [
@@ -54,7 +54,7 @@ export function render(r) {
     ["WebGL contexts created", n(f.contextsCreated), n(a.contextsCreatedDuring)],
     ["WebGL contexts still live at the end", n(f.contextsStillLive), n(a.contextsLiveAtEnd)],
     ["Peak canvases in the page at once", n(f.peakConnectedCanvases), "-"],
-    ["Canvases connected at the end (before)", n(f.canvasesConnectedAfter), `${n(a.connectedCanvasesAtEnd)} (${n(a.connectedCanvasesBefore)})`],
+    ["Canvases left connected", `${n(f.canvasesConnectedAfter)} after the cycles`, `${n(a.connectedCanvasesAtEnd)} at the end, ${n(a.connectedCanvasesBefore)} before`],
     ["Live contexts on a detached canvas", n(f.detachedCanvasesWithLiveContext), n(a.liveContextsAttachedToDetachedCanvas)],
     ["Listeners on detached canvases", "-", n(a.listenersOnDetachedCanvases)],
     ["Listeners left", n(f.listenersLeftAfter), `${n(a.listenersOnConnectedTargets)} on connected targets`],
@@ -87,6 +87,7 @@ export function render(r) {
   out.push("\n**Original files** hashed before and after every run: " + Object.entries(r.originalFilesUnchanged).map(([k, v]) => `${k} ${v ? "unchanged" : "CHANGED"}`).join(", ") + ".");
   out.push("\n**Screenshots**\n");
   out.push(table(["Screenshot", "Page overflows sideways", "Canvases", "Console errors"], Object.entries(r.screenshots).map(([k, v]) => [`\`${k}\``, yes(v.overflowX), n(v.canvases), v.consoleErrors.length ? v.consoleErrors.map((e) => e.slice(0, 80)).join("; ") : "none"])));
+  out.push("\nThe two `no-webgl` rows record the context-creation error that the test provokes on purpose (WebGL is switched off in those runs); the other rows record no console error.");
   if (r.harnessErrors?.length) out.push("\n**HARNESS ERRORS (this run is not valid evidence):** " + r.harnessErrors.map((e) => e.split("\n")[0]).join(" | "));
   return out.join("\n");
 }

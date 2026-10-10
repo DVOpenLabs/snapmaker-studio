@@ -19,6 +19,12 @@ function manualLoader() {
   });
   return { load, pending };
 }
+/** A loader that IGNORES abort, like a transport that cannot recall a request: every answer is delivered when the test says, however late. */
+function manualLoaderIgnoringAbort() {
+  const pending: { path: string; opts: LoadSceneOptions; resolve: (s: SceneV1) => void; reject: (e: unknown) => void }[] = [];
+  const load: ControllerDeps["load"] = (path, opts) => new Promise<SceneV1>((resolve, reject) => { pending.push({ path, opts, resolve, reject }); });
+  return { load, pending };
+}
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const host = () => { const el = document.createElement("div"); document.body.appendChild(el); return el; };
 
@@ -42,9 +48,9 @@ describe("SceneController", () => {
     expect(el.querySelectorAll("canvas")).toHaveLength(0);
   });
 
-  it("drops a stale answer: A, then B, then A again shows only the last A", async () => {
-    const { load, pending } = manualLoader();
-    const { factory } = makeFakeFactory();
+  it("drops late successful answers from a loader that ignores abort: A, then B, then A again shows only the last A", async () => {
+    const { load, pending } = manualLoaderIgnoringAbort();
+    const { factory, stats } = makeFakeFactory();
     const c = new SceneController({ load, viewportFactory: factory, theme: "dark" });
     c.setHost(host());
     c.setPath("a.3mf");
@@ -53,13 +59,21 @@ describe("SceneController", () => {
     expect(pending.map((p) => p.path)).toEqual(["a.3mf", "b.3mf", "a.3mf"]);
     expect(pending[0].opts.signal.aborted).toBe(true);
     expect(pending[1].opts.signal.aborted).toBe(true);
-    pending[0].resolve(scene({ revision: "1".repeat(64) }));
+    // The first two were aborted, but their (successful) answers still arrive, late and out of order.
     pending[1].resolve(scene({ revision: "2".repeat(64) }));
+    pending[0].resolve(scene({ revision: "1".repeat(64) }));
     await flush();
     expect(c.getState().phase).toBe("loading");
+    expect(c.getState().revision).toBeNull();
+    expect(stats.created).toBe(0); // neither stale answer built a viewer
     pending[2].resolve(scene({ revision: "3".repeat(64) }));
     await flush();
     expect(c.getState().revision).toBe("3".repeat(64));
+    expect(stats.created).toBe(1);
+    // A stale failure arriving after the view is shown changes nothing either.
+    pending[0].reject(new SceneError("LIMIT_EXCEEDED"));
+    await flush();
+    expect(c.getState()).toMatchObject({ phase: "shown", error: null });
     c.dispose();
   });
 

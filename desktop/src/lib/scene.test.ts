@@ -199,18 +199,22 @@ describe("a start that never answers", () => {
 });
 
 // ---- The session contract with the engine ------------------------------------------------------------------------------
-// A stand-in engine that follows the session contract agreed for the engine update (PR #97): POST /scene/session opens a
-// session; starts carry client_id and a strictly increasing seq; a start whose seq is not higher than the highest seen is
-// refused (STALE_START), which includes an exact retry; a start for a cancelled request or seq is refused
-// (CANCELLED_BEFORE_START); an unknown or expired session gives 409 SESSION_EXPIRED; more sessions than allowed gives 503
-// SESSION_LIMIT; a newer start replaces the running job; cancel takes {client_id, request_id, seq} and keeps that seq dead.
+// A stand-in engine that follows the session contract as the real engine implements it: POST /scene/session opens a session;
+// starts carry client_id and a strictly increasing seq; requests are keyed by (session, request id). An exact retry (same
+// session, same seq, same request id) returns the current job while it exists. Otherwise a start whose seq is not higher than
+// the highest seen is refused (STALE_START). Cancellation is a "dead-through" mark: a cancel for seq N refuses every start of
+// that session with seq N or lower (CANCELLED_BEFORE_START), and cancels the running job only if its seq is exactly N. An
+// unknown or expired session gives 409 SESSION_EXPIRED; more sessions than allowed gives 503 SESSION_LIMIT; a newer start
+// replaces the running job (replaced_job_id only within one session). NOTE: the comment above `SUPERSEDED` in scene.ts still
+// says a retry of a processed start is refused as stale; the real engine answers an exact retry with the same job (the client
+// never sends one), and this stand-in follows the real engine.
 // Delivery of any call can be held and released by hand, so every ordering below is deterministic: no timers, no sleeping.
 type Job = { id: string; request: string; session: string; seq: number; state: "running" | "succeeded" | "cancelled" };
 type Reply = { status: number; body: unknown };
 function makeEngine(options: { maxSessions?: number } = {}) {
-  const sessions = new Map<string, { highest: number; deadSeqs: Set<number>; deadRequests: Set<string> }>();
+  const sessions = new Map<string, { highest: number; deadThrough: number }>();
   const jobs: Job[] = [];
-  const byRequest = new Map<string, Job>();
+  const byRequest = new Map<string, Job>(); // keyed by session and request id
   let running: Job | null = null;
   let opened = 0;
   const log: { route: string; body: Record<string, unknown> }[] = [];
@@ -227,21 +231,23 @@ function makeEngine(options: { maxSessions?: number } = {}) {
     if (route === "session") {
       if (options.maxSessions !== undefined && sessions.size >= options.maxSessions) return { status: 503, body: { error: "SESSION_LIMIT" } };
       const id = `session-${++opened}`;
-      sessions.set(id, { highest: 0, deadSeqs: new Set(), deadRequests: new Set() });
+      sessions.set(id, { highest: 0, deadThrough: 0 });
       return { status: 200, body: { client_id: id, ttl_s: 900 } };
     }
     if (route === "start") {
       const s = sessions.get(String(body.client_id));
       if (!s) return { status: 409, body: { error: "SESSION_EXPIRED" } };
       const seq = Number(body.seq), request = String(body.request_id);
-      if (s.deadSeqs.has(seq) || s.deadRequests.has(request)) return { status: 409, body: { error: "CANCELLED_BEFORE_START" } };
+      if (seq <= s.deadThrough) return { status: 409, body: { error: "CANCELLED_BEFORE_START" } };
+      const existing = byRequest.get(`${String(body.client_id)}|${request}`);
+      if (existing && existing.seq === seq) return { status: 200, body: started(existing.state, { job_id: existing.id, request_id: request }) }; // an exact retry
       if (seq <= s.highest) return { status: 409, body: { error: "STALE_START" } };
       s.highest = seq;
       let replaced: string | null = null;
       if (running) { running.state = "cancelled"; if (running.session === String(body.client_id)) replaced = running.id; } // replaced_job_id only within one session
       const job: Job = { id: `job-${jobs.length + 1}`, request, session: String(body.client_id), seq, state: "running" };
       jobs.push(job);
-      byRequest.set(request, job);
+      byRequest.set(`${String(body.client_id)}|${request}`, job);
       running = job;
       return { status: 200, body: started("running", { job_id: job.id, request_id: request, replaced_job_id: replaced }) };
     }
@@ -261,10 +267,9 @@ function makeEngine(options: { maxSessions?: number } = {}) {
     // cancel
     const s = sessions.get(String(body.client_id));
     if (!s) return { status: 409, body: { error: "SESSION_EXPIRED" } };
-    s.deadSeqs.add(Number(body.seq));
-    s.deadRequests.add(String(body.request_id));
-    const j = byRequest.get(String(body.request_id));
-    if (j && j.session === String(body.client_id) && j.seq === Number(body.seq) && j.state === "running") j.state = "cancelled"; // only the exact attempt
+    s.deadThrough = Math.max(s.deadThrough, Number(body.seq));
+    const j = byRequest.get(`${String(body.client_id)}|${String(body.request_id)}`);
+    if (j && j.seq === Number(body.seq) && j.state === "running") j.state = "cancelled"; // only the exact attempt
     return { status: 200, body: status("cancelled") };
   };
   const transport: SceneTransport = async (route, body) => {
@@ -480,6 +485,16 @@ describe("job credentials", () => {
     await running;
   });
 
+  it("a cancel is dead-through: it refuses its seq and every lower seq, never a higher one", async () => {
+    const engine = makeEngine();
+    await loadScene("warm.3mf", opts(new AbortController().signal, engine.transport)); // session-1, seq 1
+    await engine.transport("cancel", { client_id: "session-1", request_id: "never-started", seq: 5 });
+    for (const seq of [2, 4, 5]) {
+      expect(await engine.transport("start", { path: "x.3mf", request_id: `r-${seq}`, client_id: "session-1", seq })).toEqual({ status: 409, body: { error: "CANCELLED_BEFORE_START" } });
+    }
+    expect((await engine.transport("start", { path: "x.3mf", request_id: "r-6", client_id: "session-1", seq: 6 })).status).toBe(200);
+  });
+
   it("after an admitted start is rejected (WORKER_WEDGED, UNSUPPORTED_FORMAT) the next try uses a fresh request id and a higher seq", async () => {
     const engine = makeEngine();
     let reject: { status: number; code: string } | null = { status: 503, code: "WORKER_WEDGED" };
@@ -498,8 +513,10 @@ describe("job credentials", () => {
     const [first, second] = engine.starts();
     expect(second.request_id).not.toBe(first.request_id);
     expect(Number(second.seq)).toBeGreaterThan(Number(first.seq));
-    // An exact retry of the admitted start is refused as stale, which is why the client never sends one.
-    expect(await engine.transport("start", first)).toEqual({ status: 409, body: { error: "STALE_START" } });
+    // An exact retry of the admitted start returns the current job (the client never sends one: every retry is fresh).
+    const retry = await engine.transport("start", first);
+    expect(retry.status).toBe(200);
+    expect((retry.body as { job_id: string }).job_id).toBe(engine.jobs[0].id);
   });
 });
 
