@@ -23,15 +23,25 @@ export function stopTree(pid) {
   } catch { /* already gone */ }
 }
 
-/** Last STDERR_TAIL_BYTES of text, with the repo and home folders replaced so no absolute local path is reported. */
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Last STDERR_TAIL_BYTES of text. The repo and home folders are replaced first (case-insensitively, both slash styles)
+ *  and only then is the text cut, so a path straddling the cut cannot leak. */
 export function boundedTail(text, repoRoot) {
-  let t = String(text).slice(-STDERR_TAIL_BYTES).trim();
-  const roots = [[resolve(repoRoot), "<repo>"], [homedir(), "~"]];
-  for (const [root, label] of roots) {
+  let t = String(text);
+  for (const [root, label] of [[resolve(repoRoot), "<repo>"], [homedir(), "~"]]) {
     if (!root) continue;
-    for (const form of new Set([root, root.replaceAll("\\", "/")])) t = t.split(form).join(label);
+    for (const form of new Set([root, root.replaceAll("\\", "/")])) t = t.replace(new RegExp(escapeRe(form), "gi"), label);
   }
-  return t;
+  return t.slice(-STDERR_TAIL_BYTES).trim();
+}
+
+/** SNAPSTUDIO_ENGINE_TIMEOUT_MS: unset/empty gives the default; anything but a positive whole number is an error. */
+export function resolveTimeout(raw) {
+  if (raw === undefined || raw === "") return DEFAULT_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`SNAPSTUDIO_ENGINE_TIMEOUT_MS must be a positive whole number of milliseconds (got "${String(raw).slice(0, 40)}")`);
+  return n;
 }
 
 /**
@@ -41,7 +51,14 @@ export function boundedTail(text, repoRoot) {
  */
 export function startEngine({ command, args, cwd, env, repoRoot, timeoutMs = DEFAULT_TIMEOUT_MS, onSpawn }) {
   return new Promise((resolveP, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    try { resolveTimeout(String(timeoutMs)); } catch (e) { reject(e); return; }
+    let child;
+    try { child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] }); } catch (e) {
+      reject(new Error(e?.code === "EINVAL"
+        ? `engine could not be started: ${basename(String(command))} looks like a .cmd/.bat shim, which cannot be spawned directly (set PYTHON to the python.exe itself)`
+        : `engine could not be started: ${e?.code ?? e?.message}`));
+      return;
+    }
     if (onSpawn) onSpawn(child);
     let buf = "";
     let stderr = "";

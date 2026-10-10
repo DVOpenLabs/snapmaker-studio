@@ -28,7 +28,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { startEngine, stopTree } from "./engine-startup.mjs";
+import { resolveTimeout, startEngine, stopTree } from "./engine-startup.mjs";
 
 if (process.platform !== "win32") { console.error("This check is written for Windows (taskkill, npx.cmd)."); process.exit(2); }
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,7 +58,7 @@ try {
     command: process.env.PYTHON || "py", args: ["-m", "snapstudio_api"], repoRoot: repo,
     cwd: join(repo, "backend"),
     env: { ...process.env, SNAPSTUDIO_DATA_DIR: join(work, "data"), PYTHONUNBUFFERED: "1" },
-    timeoutMs: Number(process.env.SNAPSTUDIO_ENGINE_TIMEOUT_MS) || undefined,
+    timeoutMs: resolveTimeout(process.env.SNAPSTUDIO_ENGINE_TIMEOUT_MS),
     onSpawn: (c) => children.push(c),
   }));
 } catch (e) {
