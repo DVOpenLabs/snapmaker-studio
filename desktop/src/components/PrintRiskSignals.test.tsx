@@ -48,7 +48,7 @@ describe("PrintRiskSignals", () => {
 
   it("explains an empty result instead of saying nothing", () => {
     const html = render({ available: false, reason: "no design or printer information was available to check", limitations });
-    expect(html).toContain("Studio has nothing to check yet");
+    expect(html).toContain("Studio could not run these checks");
     expect(html).toContain("Verify in Snapmaker Orca");
   });
 });

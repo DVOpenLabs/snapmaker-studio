@@ -520,7 +520,7 @@ export interface ReportRisk {
 export interface ReportEvidence { doctor: string; status: string; detail: string; }
 export interface IntelligenceReport {
   available: boolean;
-  studio_score?: number | null;
+  risks_found?: number;
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;

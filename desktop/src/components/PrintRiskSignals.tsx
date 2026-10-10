@@ -42,7 +42,7 @@ export function PrintRiskSignals({ findings }: { findings: PrintFindings }) {
             )}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">Studio has nothing to check yet: {findings.reason ?? "no information was available"}.</p>
+          <p className="text-sm text-muted-foreground">Studio could not run these checks: {findings.reason ?? "no design or printer information was available"}.</p>
         )}
         {findings.limitations && findings.limitations.map((l, i) => (
           <p key={i} className="text-[11px] text-muted-foreground">{l}</p>
