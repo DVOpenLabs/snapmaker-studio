@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversionResult } from "@/api";
 import { candidate, mapping, slot } from "@/lib/projectMaterials.fixtures";
 import {
-  KEEP_OWN_NOTICE, USAGE_COPY, buildSelections, choiceReduce, type Choices, type MaterialPresetList, type ProjectMaterialsAnalysis,
+  KEEP_OWN_NOTICE, SPOOL_FOREIGN_PRESET_HINT, USAGE_COPY, beyondToolheadsNote, buildSelections, choiceReduce, type Choices, type MaterialPresetList, type ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 import { useProvider } from "@/store/provider";
 
@@ -709,7 +709,10 @@ describe("how the project uses each slot", () => {
     expect(notes[1].textContent).toContain("does not prove it is unused");
     expect(notes[2].textContent).toBe("Studio cannot tell whether this colour is used, because part of the project could not be read.");
     expect(screen.queryByRole("button", { name: /remove|merge|delete|drop/i })).toBeNull();
-    for (const text of Object.values(USAGE_COPY)) expect(text.toLowerCase()).not.toMatch(/ready|safe|best|clean|guarantee|unused colour is/);
+    for (const text of [...Object.values(USAGE_COPY), beyondToolheadsNote(5, 4, 1) ?? "", SPOOL_FOREIGN_PRESET_HINT]) {
+      expect(text.toLowerCase()).not.toMatch(/ready|safe|best|clean|guarantee|unused colour is/);
+    }
+    expect(SPOOL_FOREIGN_PRESET_HINT).toContain("name suggests");                // a guess from the name, not a fact
   });
 
   it("says nothing about usage when the engine did not send it, rather than calling the slot unused", () => {

@@ -285,7 +285,7 @@ def test_a_bambu_preset_that_remains_is_followed_by_how_to_choose_a_snapmaker_on
     # the existing sentence is unchanged and the new one follows it, after the caveat
     assert SENTENCE in line
     assert line.index(SENTENCE) < line.index(SPOOL_PRESET_CAVEAT) < line.index(SPOOL_FOREIGN_PRESET_HINT)
-    assert "does not choose a preset" in line and "choose one under Orca preset" in line
+    assert "name suggests" in line and "does not choose a preset" in line and "choose one under Orca preset" in line
     assert "ready" not in SPOOL_FOREIGN_PRESET_HINT.lower()
     assert is_foreign_preset("Bambu PLA Basic @BBL H2D") and is_foreign_preset("Generic PLA @BBL X1C")
     assert not is_foreign_preset("Snapmaker PLA Matte @U1") and not is_foreign_preset("") and not is_foreign_preset(None)

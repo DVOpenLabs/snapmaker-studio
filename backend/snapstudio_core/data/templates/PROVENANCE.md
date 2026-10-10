@@ -117,3 +117,12 @@ values moved: `machine_start_gcode`, and `supertack_plate_temp` /
 a second preset resolver to keep in step with every Orca release. Studio knows
 what it changed because Studio made the change — `preset_deviation` declares
 exactly that. The preset files are audit evidence for this document, nothing more.
+
+## `nozzle_volume_type` is left out of prepared copies
+
+The base project has no `nozzle_volume_type`, and neither do the Snapmaker Orca 2.3.5 and 2.3.6 projects committed as test
+fixtures. Bambu Studio 2.08 and OrcaSlicer 2.4.2 projects (including one OrcaSlicer file that names a U1) carry it, for
+example `["Standard"]`. `orca_import.apply_compatibility` therefore removes it, and any declaration of it in
+`different_settings_to_system`, from every prepared copy in every mode. This is based on those fixtures and on a reporter's
+screenshot of a "newer version, values replaced" notice; it is **not confirmed in Snapmaker Orca** that leaving the key out
+removes the notice.

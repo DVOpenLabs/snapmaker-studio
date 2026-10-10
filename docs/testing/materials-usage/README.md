@@ -27,3 +27,16 @@ Real-browser check (Microsoft Edge, Chromium, headless; dark and light) of the r
 | `01b-slot-5-no-reference-*` | The fifth slot: "found no object, part, colour change or setting ... does not prove it is unused, and Studio does not remove it"; no remove or merge control |
 | `02-spool-without-preset-bambu-*` | A spool chosen on a slot whose preset is a Bambu one: the existing sentence, the caveat, then how to choose a Snapmaker preset |
 | `03-unreadable-project-*`, `03b-slot-5-unknown-*` | Unreadable object list: colours nothing else references stay "Studio cannot tell", never "unused" |
+
+## Things a reader should know
+
+- **The Fidelity card changes for any project that carried `nozzle_volume_type`** (Bambu Studio and OrcaSlicer files, including an
+  OrcaSlicer file that names a U1). The key is left out of the copy and listed under "Print settings Snapmaker Orca does not write",
+  so the headline reads "Every change and everything not carried over is listed below, with the reason." instead of
+  "Everything Studio can identify is in the prepared copy, and every change is listed below." Both statements are true;
+  this one is simply the accurate one once something was left out. Not confirmed in Snapmaker Orca that leaving it out
+  changes how the copy opens.
+- `usage_readable` is true only when the object list and any painting were read in full. Otherwise colours nothing else
+  references are "unknown".
+- The extra cost of reading usage was measured only on the small committed fixtures (about 0.18 s for the 62 KB painted
+  Snapmaker Orca fixture). A large painted model was not timed.

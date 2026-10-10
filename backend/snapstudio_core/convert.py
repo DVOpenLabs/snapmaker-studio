@@ -228,6 +228,8 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         # not a hand-maintained subset of profile swaps.
         for item in config_diff(before, recommended_after):
             key = item["key"]
+            if item.get("removed") and key not in after:
+                continue    # left out of the applied copy too (a compatibility removal every mode makes): not "optional"
             recommended_changes.append({
                 "key": key, "old": display_value(item["old"], key=key),
                 "new": display_value(item["new"], key=key),

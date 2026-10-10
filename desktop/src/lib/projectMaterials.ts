@@ -229,7 +229,7 @@ export const SPOOL_WITHOUT_PRESET_NONE_EXISTING =
 
 /** Said after it when the preset that remains is another printer's (Bambu): picking a spool does not pick a preset. */
 export const SPOOL_FOREIGN_PRESET_HINT =
-  "That preset comes from another printer's profile set, and choosing a spool does not choose a preset. To use an installed Snapmaker preset for this slot, choose one under Orca preset.";
+  "This preset's name suggests it comes from another printer's profile set, and choosing a spool does not choose a preset. To use an installed Snapmaker preset for this slot, choose one under Orca preset.";
 
 /** Another printer's (Bambu) filament preset name, as opposed to an installed U1 preset. */
 export function isForeignPreset(name: string | null | undefined): boolean {
@@ -249,7 +249,7 @@ export function beyondToolheadsNote(total: number, toolheads: number | undefined
   if (!beyond || beyond <= 0) return null;
   const heads = toolheads ?? 4;
   return `This project has ${total} materials, ${beyond} beyond the U1's ${heads} toolheads. ` +
-    "Studio does not remove or merge colours. Taking one out safely needs a check in Snapmaker Orca first.";
+    "Studio does not remove or merge colours. Taking one out needs a check in Snapmaker Orca first.";
 }
 
 /** Whether a spool needs the person's explicit confirmation before it is used (the engine decides). */

@@ -485,7 +485,9 @@ def attach_usage(analysis: dict, usage: dict | None) -> dict:
                           "referenced_by": list(found["referenced_by"]) if found else []}
     analysis["toolheads"] = DEFAULT_TOOLHEADS
     analysis["beyond_toolheads"] = max(0, len(analysis.get("slots", [])) - DEFAULT_TOOLHEADS)
-    analysis["usage_readable"] = bool(usage) and bool(usage.get("object_list_readable"))
+    # True only when everything Studio reads for usage was read in full: the object list, and any painting.
+    analysis["usage_readable"] = bool(usage and usage.get("object_list_readable")
+                                      and (usage.get("painting") or {}).get("complete"))
     return analysis
 
 

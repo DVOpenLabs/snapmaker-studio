@@ -247,3 +247,29 @@ def test_the_usage_answer_names_no_object_and_does_not_change_the_file(env, tmp_
     assert _sha(path) == before
     assert "Private" not in json.dumps(out["slots"][0]["usage"])
     assert set(out["slots"][0]["usage"]) == {"verdict", "referenced_by"}
+
+
+def _fixture(name):
+    from pathlib import Path
+    return str(Path(__file__).parent / "fixtures" / "painted" / name)
+
+
+def test_painted_only_slots_are_referenced_through_the_service(env):
+    out = service.project_materials(_fixture("bambustudio-2.08.02.61-authored.3mf"))
+    by = {s["slot"]: s["usage"] for s in out["slots"]}
+    assert by[1] == {"verdict": "referenced", "referenced_by": ["painted"]}        # nothing but its paint names this slot
+    assert by[2]["verdict"] == "no_reference_found" and out["usage_readable"] is True
+
+
+def test_incomplete_painting_makes_usage_unreadable_and_unreferenced_slots_unknown(env):
+    out = service.project_materials(_fixture("snapmaker-orca-2.3.5-authored.3mf"))
+    by = {s["slot"]: s["usage"]["verdict"] for s in out["slots"]}
+    assert by[1] == by[2] == by[3] == "referenced" and by[4] == "unknown"
+    assert out["usage_readable"] is False and out["beyond_toolheads"] == 1
+
+
+def test_usage_readable_needs_the_object_list_and_the_painting():
+    ok = {"slots": {}, "object_list_readable": True, "painting": {"complete": True}}
+    assert pm.attach_usage({"slots": []}, ok)["usage_readable"] is True
+    assert pm.attach_usage({"slots": []}, {**ok, "painting": {"complete": False}})["usage_readable"] is False
+    assert pm.attach_usage({"slots": []}, {**ok, "object_list_readable": False})["usage_readable"] is False

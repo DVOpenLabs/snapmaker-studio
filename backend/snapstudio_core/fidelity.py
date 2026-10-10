@@ -206,6 +206,10 @@ def _model_part_row(part: str, before: bytes, after: bytes,
 
 # --- semantic elements ------------------------------------------------------
 
+# Settings other slicers write and Snapmaker Orca does not; each has its own wording, not the "original printer" one.
+NOT_WRITTEN_BY_ORCA = frozenset({"nozzle_volume_type"})
+
+
 def _settings_row(before: dict | None, after: dict | None) -> list[dict]:
     if before is None or after is None:
         return [_row("Print settings", UNVERIFIED,
@@ -224,12 +228,19 @@ def _settings_row(before: dict | None, after: dict | None) -> list[dict]:
                                 + (" …" if len(changed) > 8 else ""),
                          reason=("U1 machine profile, Snapmaker Orca import fixes, or "
                                  "Studio-recommended settings if you chose them")))
+    not_written = [k for k in dropped if k in NOT_WRITTEN_BY_ORCA]
+    dropped = [k for k in dropped if k not in NOT_WRITTEN_BY_ORCA]
     if dropped:
         rows.append(_row("Print settings not carried over", REMOVED,
                          detail=f"{len(dropped)} setting(s): " + ", ".join(dropped[:8])
                                 + (" …" if len(dropped) > 8 else ""),
                          reason=("these belong to the original printer and have no "
                                  "meaning on a U1")))
+    if not_written:
+        rows.append(_row("Print settings Snapmaker Orca does not write", REMOVED,
+                         detail=f"{len(not_written)} setting(s): " + ", ".join(not_written),
+                         reason=("projects saved by Snapmaker Orca do not contain these; leaving them out is not "
+                                 "confirmed in Snapmaker Orca to change how the copy opens")))
     if added:
         rows.append(_row("Print settings added", ADDED,
                          detail=f"{len(added)} setting(s): " + ", ".join(added[:8])

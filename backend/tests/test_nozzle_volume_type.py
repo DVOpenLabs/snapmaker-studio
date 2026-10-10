@@ -7,6 +7,7 @@ notice is not confirmed in Snapmaker Orca, so these tests pin what Studio writes
 from __future__ import annotations
 
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -55,8 +56,10 @@ def test_the_removal_is_a_recorded_change_with_a_plain_reason(tmp_path, mode):
     summary = result.settings_summary
     rows = [r for group in ("compat_changed", "mapped_to_u1") for r in summary[group] if r["key"] == "nozzle_volume_type"]
     assert len(rows) == 1
-    assert "genuine U1" in rows[0]["reason"]
+    assert rows[0]["reason"] == "left out: Snapmaker Orca does not write this setting"
     assert "not been confirmed in Snapmaker Orca" in rows[0]["explanation"]
+    wording = (rows[0]["reason"] + " " + rows[0]["explanation"]).lower()
+    assert "bambu-only" not in wording and "original printer" not in wording and "no meaning" not in wording
 
 
 def test_the_removal_is_not_declared_as_a_preset_deviation(tmp_path):
@@ -84,3 +87,111 @@ def test_rule_alone_changes_nothing_when_the_key_is_absent():
     changes: list = []
     orca_import._drop_foreign_nozzle_volume_type(cfg, changes)
     assert changes == [] and cfg == {"nozzle_diameter": ["0.4"] * 4}
+
+
+ORCASLICER = FIXTURES / "orcaslicer-2.4.2-painted-cube.3mf"
+
+
+def _with_settings(src: Path, dst: Path, **changes) -> Path:
+    """A copy of a fixture whose project settings state `changes`; every other part is carried byte for byte."""
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == SETTINGS:
+                data = json.dumps({**json.loads(data), **changes}).encode()
+            zout.writestr(info, data)
+    return dst
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+def test_a_declaration_of_the_key_is_withdrawn_in_both_modes(tmp_path, mode):
+    src = _with_settings(BAMBU, tmp_path / "declared.3mf", different_settings_to_system=[
+        "layer_height;nozzle_volume_type", "nozzle_volume_type", "", "nozzle_volume_type;filament_flow_ratio", ""])
+    cfg = _settings(_prepare(src, tmp_path / "out", mode).output_path)
+    assert "nozzle_volume_type" not in cfg
+    assert not any("nozzle_volume_type" in str(e) for e in cfg.get("different_settings_to_system") or [])
+    if mode == "preserve":          # a deviation the project made and Studio did not touch is still declared
+        entries = [str(e) for e in cfg["different_settings_to_system"]]
+        assert "layer_height" in entries[0] and "filament_flow_ratio" in entries[3]
+
+
+def test_preserve_and_recommended_agree_on_the_key_and_its_declaration(tmp_path):
+    src = _with_settings(BAMBU, tmp_path / "declared.3mf", different_settings_to_system=["nozzle_volume_type", "", "", "", ""])
+    a = _settings(_prepare(src, tmp_path / "a", "preserve").output_path)
+    b = _settings(_prepare(src, tmp_path / "b", "recommended").output_path)
+    for cfg in (a, b):
+        assert "nozzle_volume_type" not in cfg
+        assert all("nozzle_volume_type" not in str(e) for e in cfg["different_settings_to_system"])
+
+
+def test_the_withdrawal_is_an_accounted_change():
+    cfg = {"nozzle_volume_type": ["Standard"], "different_settings_to_system": ["nozzle_volume_type", "", ""]}
+    changes = orca_import.apply_compatibility(cfg)
+    assert {c["key"] for c in changes} >= {"nozzle_volume_type", "different_settings_to_system"}
+    assert all(c["reason"] and c["explanation"] for c in changes)
+    assert cfg["different_settings_to_system"] == ["", "", ""]
+
+
+def test_the_preserve_summary_does_not_offer_the_applied_removal_as_optional(tmp_path):
+    summary = _prepare(BAMBU, tmp_path, "preserve").settings_summary
+    assert [r for r in summary["recommended_changes"] if r["key"] == "nozzle_volume_type"] == []
+    assert summary["recommended_changes"], "other recommended changes are still offered"
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+def test_an_orcaslicer_authored_u1_file_loses_the_key_with_an_honest_reason(tmp_path, mode):
+    assert _settings(ORCASLICER)["nozzle_volume_type"] == ["Standard"]       # not Bambu-only: it names a U1
+    with_rule = _settings(_prepare(ORCASLICER, tmp_path / "a", mode).output_path)
+    assert "nozzle_volume_type" not in with_rule
+    result = _prepare(ORCASLICER, tmp_path / "c", mode)
+    rows = [r for g in ("compat_changed", "mapped_to_u1") for r in result.settings_summary[g] if r["key"] == "nozzle_volume_type"]
+    assert len(rows) == 1 and "Snapmaker Orca does not write" in rows[0]["reason"]
+    assert "Bambu" not in rows[0]["reason"] and "original printer" not in rows[0]["reason"]
+
+
+def test_orcaslicer_other_keys_are_unchanged_by_the_rule(tmp_path, monkeypatch):
+    a = _settings(_prepare(ORCASLICER, tmp_path / "a", "preserve").output_path)
+    monkeypatch.setattr(orca_import, "_drop_foreign_nozzle_volume_type", lambda cfg, changes: None)
+    b = _settings(_prepare(ORCASLICER, tmp_path / "b", "preserve").output_path)
+    assert {k for k in set(a) | set(b) if a.get(k, "<absent>") != b.get(k, "<absent>")} == {"nozzle_volume_type"}
+
+
+def test_snapmaker_orca_2_3_6_fixtures_do_not_carry_the_key():
+    found = sorted(FIXTURES.parent.rglob("*.3mf"))
+    assert found
+    for path in found:
+        with zipfile.ZipFile(path) as z:
+            if SETTINGS in z.namelist() and "nozzle_volume_type" not in json.loads(z.read(SETTINGS)):
+                continue
+        # every file that has it is from Bambu Studio or OrcaSlicer, never Snapmaker Orca
+        assert "snapmaker-orca" not in path.name, path.name
+
+
+def test_the_fidelity_row_says_snapmaker_orca_does_not_write_it(tmp_path):
+    from snapstudio_core import fidelity
+    out = _prepare(BAMBU, tmp_path, "preserve").output_path
+    report = fidelity.audit(str(BAMBU), out)
+    rows = [r for r in report["rows"] if r["element"] in ("Print settings not carried over", "Print settings Snapmaker Orca does not write")]
+    mine = [r for r in rows if "nozzle_volume_type" in r["detail"]]
+    assert len(mine) == 1 and mine[0]["element"] == "Print settings Snapmaker Orca does not write"
+    assert "original printer" not in mine[0]["reason"] and "no meaning" not in mine[0]["reason"]
+
+
+def test_the_prepare_ledger_records_the_removal(tmp_path, monkeypatch):
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    from snapstudio_api import service
+    src = tmp_path / "in.3mf"
+    shutil.copy(BAMBU, src)
+    service.convert(str(src), out_dir=str(tmp_path / "out"))
+    entry = service.fix_history(source=str(src))["entries"][0]
+    rows = [c for c in entry["changes"] + [{"key": f["title"], "reason": f["detail"]} for f in entry["findings"]] if c.get("key") == "nozzle_volume_type"]
+    assert rows and "Snapmaker Orca does not write" in rows[0]["reason"]
+
+
+def test_the_fidelity_claims_change_honestly_for_a_file_that_carried_the_key(tmp_path):
+    """The card's headline moves from 'Everything Studio can identify...' to 'Every change and everything not carried
+    over is listed below' for such a file: something was left out, and it is listed with its reason."""
+    from snapstudio_core import fidelity
+    out = _prepare(BAMBU, tmp_path, "preserve").output_path
+    claims = fidelity.audit(str(BAMBU), out)["claims"]
+    assert claims["fully_accounted"] is True and claims["nothing_removed"] is False and claims["may_claim_nothing_lost"] is False

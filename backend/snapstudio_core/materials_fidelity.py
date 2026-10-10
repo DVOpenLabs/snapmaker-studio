@@ -268,7 +268,7 @@ SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
 SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it."
 #: Said after it when the preset that remains is another printer's (Bambu): picking a spool does not pick a preset.
 SPOOL_FOREIGN_PRESET_HINT = (
-    "That preset comes from another printer's profile set, and choosing a spool does not choose a preset. "
+    "This preset's name suggests it comes from another printer's profile set, and choosing a spool does not choose a preset. "
     "To use an installed Snapmaker preset for this slot, choose one under Orca preset.")
 _FOREIGN_PRESET = re.compile(r"@BBL|^Bambu", re.IGNORECASE)
 
