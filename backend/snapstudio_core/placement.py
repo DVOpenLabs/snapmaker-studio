@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import zipfile
 
 from . import units as _units
@@ -212,6 +213,7 @@ def _read(archive: zipfile.ZipFile, name: str) -> str:
 
 _READ_CACHE: dict = {}
 _READ_SLOTS = 4
+_READ_LOCK = threading.Lock()
 
 
 def read_objects(path: str, keep_points: bool = True) -> dict:
@@ -225,13 +227,18 @@ def read_objects(path: str, keep_points: bool = True) -> dict:
     if keep_points:
         return _read_objects(path, True)
     key = geometry.file_identity(path)
-    if key is not None and key in _READ_CACHE:
-        return copy.deepcopy(_READ_CACHE[key])
+    if key is not None:
+        with _READ_LOCK:
+            hit = _READ_CACHE.get(key)
+        if hit is not None:
+            return copy.deepcopy(hit)
     result = _read_objects(path, False)
     if key is not None and geometry.stat_identity(path) == key[:3]:
-        while len(_READ_CACHE) >= _READ_SLOTS:
-            _READ_CACHE.pop(next(iter(_READ_CACHE)))
-        _READ_CACHE[key] = copy.deepcopy(result)
+        stored = copy.deepcopy(result)
+        with _READ_LOCK:
+            while len(_READ_CACHE) >= _READ_SLOTS:
+                _READ_CACHE.pop(next(iter(_READ_CACHE)), None)
+            _READ_CACHE[key] = stored
     return result
 
 

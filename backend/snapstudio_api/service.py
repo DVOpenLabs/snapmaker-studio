@@ -2059,24 +2059,33 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     multi = (info.get("colors") or 0) > 1
     bed = None
     bed_known = False
+    # Offline: the machine Studio prepares for (its profile polygon). Connected: the printable area of
+    # the printer that identifies itself; a printer's reported bed is axis TRAVEL (about 271 x 335 on a
+    # U1, anchored at 0,0), never used as a printable rectangle, so a printer Studio cannot identify
+    # gets a size check against what it reported and NO placement check.
+    target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
     if host:
-        from snapstudio_core import moonraker
+        from snapstudio_core import moonraker, printer_profiles
+        target = None
         try:
             caps = moonraker.capabilities(host, port)
+            identity = printer_profiles.identify({"reachable": True,
+                                                  "klipper_objects": caps.get("klipper_objects"),
+                                                  "toolhead_count": caps.get("toolhead_count")})
+            target = _placement_target({"identity": identity})
             bm = caps.get("bed_mm")
-            if bm and bm.get("x"):
+            if identity.get("printer_id"):
+                volume = printer_profiles.load(identity["printer_id"]).get("build_volume_mm") or {}
+                if volume.get("x") and volume.get("y") and volume.get("z"):
+                    bed, bed_known = volume, True
+            elif bm and bm.get("x"):
                 bed, bed_known = bm, True
         except Exception:
             pass
     # Two separate facts: how big each object is (size, per object) and where the instances sit
     # (placement, per instance and plate). A combined extent is neither, and is never used here.
-    placed = None
     try:
-        from snapstudio_core import plate_placement
-        # The printable area of the machine Studio prepares for (its profile polygon and edge margin).
-        # A connected printer's reported bed is axis TRAVEL (about 271 x 335 on a U1, anchored at 0,0),
-        # not a printable rectangle, so it is never used as one here.
-        placed = plate_placement.assess(path)
+        placed = _assess_against(path, target)
     except Exception:
         placed = None
     return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,
@@ -2586,6 +2595,12 @@ READY_NOW_MAX = 50  # newest library projects per scan
 _READY_CACHE: dict[tuple, dict] = {}
 _READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
 _ready_cache_lock = threading.Lock()
+
+
+def printer_profiles_target_id() -> str:
+    from snapstudio_core import printer_profiles
+
+    return printer_profiles.PREPARE_TARGET_ID
 
 
 def _placement_target(facts: dict) -> dict | None:

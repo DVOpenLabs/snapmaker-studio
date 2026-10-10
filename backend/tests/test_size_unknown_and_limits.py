@@ -172,10 +172,12 @@ def test_project_info_keeps_its_old_cost_unless_asked_for_placement_data(tmp_pat
 def test_a_connected_printers_travel_extents_are_not_a_printable_rectangle(tmp_path, monkeypatch):
     from snapstudio_core import moonraker
     # a real U1 reports ~271 x 335 of axis TRAVEL; its printable area is 270 x 270 from about (0.5, 1)
-    monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {"bed_mm": {"x": 271, "y": 335, "z": 275}})
+    monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {
+        "bed_mm": {"x": 271, "y": 335, "z": 275}, "toolhead_count": 4,
+        "klipper_objects": ["print_task_config", "extruder"]})       # a Snapmaker: the U1 identifies itself
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 300, 0))], name="travel.3mf")
     result = service.bed_fit(path, host="u1.invalid")
-    assert result["bed_known"] is True                                    # the size check still uses the report
+    assert result["bed_known"] is True and result["bed_mm"]["y"] <= 270  # the profile volume, not the travel
     assert result["overall_level"] == "risk"
     assert any(f["text"].startswith("By placement") and f["level"] == "risk" for f in result["findings"])
     assert "outside" in texts(result)
@@ -225,3 +227,46 @@ def test_placed_instances_number_uses_of_the_same_object(tmp_path):
         [], [("1", fx.tf(10, 10, 0), "/" + a), ("1", fx.tf(100, 10, 0), "/" + b)]), extra))
     instances = pp.placed_instances(path)["instances"]
     assert [(i["instance_index"], i["instance_count"]) for i in instances] == [(0, 1), (0, 1)]
+
+
+def test_a_printer_that_cannot_be_identified_gets_no_placement_verdict(tmp_path, monkeypatch):
+    from snapstudio_core import moonraker
+    monkeypatch.setattr(moonraker, "capabilities", lambda host, port: {
+        "bed_mm": {"x": 271, "y": 335, "z": 275}, "toolhead_count": 1, "klipper_objects": ["extruder"]})
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 300, 0))], name="unknown.3mf")
+    result = service.bed_fit(path, host="x.invalid")
+    assert result["placement_checked"] is False
+    assert not any(f["text"].startswith("By placement") for f in result["findings"])
+    assert "Where it sits on the plate was not checked here" in result["overall_text"]
+
+
+def test_unjudged_instances_in_a_two_plate_project_are_a_warning_never_a_fit(tmp_path):
+    objects = {"1": [("1", "normal_part")]}
+    settings = fx.model_settings_xml(objects, [(1, [("1", None)]), (2, [("1", None)])])   # no instance_id
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(50, 50, 0)), ("1", fx.tf(400, 50, 0))],
+                   settings=settings, name="unjudged.3mf")
+    result = service.bed_fit(path)
+    text = texts(result)
+    assert result["overall_level"] == "warn"
+    assert "each of the" not in text and "found nothing off the plate" not in text
+    assert any(f["level"] == "warn" and f["text"].startswith("By placement") for f in result["findings"])
+
+
+def test_the_caches_survive_many_threads(tmp_path):
+    import threading
+    paths = [project(tmp_path, [fx.cube_object("1", 10 + i)], [("1", fx.tf(100, 100, 0))], name=f"t{i}.3mf")
+             for i in range(8)]
+    errors = []
+
+    def work(i):
+        try:
+            for p in paths:
+                geometry.measure(p)
+                placement.read_objects(p, keep_points=False)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert errors == []

@@ -11,6 +11,7 @@ of stalling.
 from __future__ import annotations
 from dataclasses import dataclass
 import copy
+import threading
 from pathlib import Path
 
 from .container import ThreeMF
@@ -187,6 +188,7 @@ def measure(path: str) -> tuple[list[dict], list[dict], list[dict]]:
 #: placement and the layout of the same file, and each of those used to re-read every mesh.
 _CACHE: dict = {}
 _CACHE_SLOTS = 4
+_CACHE_LOCK = threading.Lock()      # requests run on several threads; the dict is never touched unlocked
 
 
 def stat_identity(path: str):
@@ -221,16 +223,20 @@ def file_identity(path: str):
 
 def _measure(path: str):
     key = file_identity(path)
-    if key is not None and key in _CACHE:
-        items, unresolved, sizes = _CACHE[key]
-        return copy.deepcopy((items, unresolved, sizes))
+    if key is not None:
+        with _CACHE_LOCK:
+            hit = _CACHE.get(key)
+        if hit is not None:
+            return copy.deepcopy(hit)
     result = _measure_uncached(path)
     # only remember it if the file is still the one that was read: a change during the measurement
     # would otherwise be filed under the identity of the old content
     if key is not None and stat_identity(path) == key[:3]:
-        while len(_CACHE) >= _CACHE_SLOTS:
-            _CACHE.pop(next(iter(_CACHE)))
-        _CACHE[key] = copy.deepcopy(result)
+        stored = copy.deepcopy(result)
+        with _CACHE_LOCK:
+            while len(_CACHE) >= _CACHE_SLOTS:
+                _CACHE.pop(next(iter(_CACHE)), None)
+            _CACHE[key] = stored
     return result
 
 
