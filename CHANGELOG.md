@@ -17,7 +17,12 @@ All notable changes to this project are documented here. The format is based on
   100 for a project with validation issues). The report shows how many risks were found, the
   biggest risk and the next step. A printer that does not answer is no longer counted as healthy
   or as checked, and the printer-health note "50% of recent prints failed" now reads
-  "5 of the last 10 prints failed".
+  "5 of the last 10 prints failed". The Printer line states what Studio read ("Answered, 2
+  concerns") instead of "Compatible", and with nothing found the report says only what was
+  checked.
+- **`u1convert doctor` prints issue counts instead of "Score: N/100"** and says it is a rule
+  check, not a prediction that a print will succeed. A 3MF whose objects cannot be counted now
+  keeps object spacing as "not verified" instead of being treated as a single object.
 
 ## [1.5.1] - 2026-10-09
 

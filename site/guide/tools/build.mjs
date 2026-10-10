@@ -74,7 +74,7 @@ const need = (obj, fields, where) => {
 const seen = new Set();
 const unique = (id, where) => { if (seen.has(id)) fail(`${where}: duplicate page id "${id}"`); seen.add(id); };
 const validatePageEvidence = (page, where) => {
-  if (page.checked !== undefined && typeof page.checked !== "string") fail(`${where}: checked must be a version string`);
+  if (page.checked !== undefined && typeof page.checked !== "string") fail(`${where}: checked must be a version string or "unreleased"`);
   for (const source of page.sources || []) {
     if (!source.label || !source.ref || !SOURCE_KINDS.has(source.kind)) fail(`${where}: invalid source`);
     if (!resolveSourceRef(source.ref)) fail(`${where}: source ref does not resolve to this release: ${source.ref}`);
@@ -232,7 +232,9 @@ function sourcesHtml(page) {
   if (!page.sources?.length) return "";
   const labels = { file: "Read from your file", engine: "Studio's check", estimate: "Estimate", orca: "Verify in Snapmaker Orca" };
   const rows = (page.sources || []).map((s) => `<li><a href="${esc(s.ref.startsWith("@") ? G.links[s.ref.slice(1)] : s.ref)}" target="_blank" rel="noopener noreferrer">${esc(s.label)}</a> — ${labels[s.kind]}; source code on GitHub.</li>`).join("");
-  const checked = page.checked ? `<p class="checked-version">Checked against Snapmaker Studio v${esc(page.checked)}.</p>` : "";
+  const checked = page.checked === "unreleased"
+    ? `<p class="checked-version">Checked against the current code on main (not yet in a numbered release).</p>`
+    : page.checked ? `<p class="checked-version">Checked against Snapmaker Studio v${esc(page.checked)}.</p>` : "";
   return `<details class="sources"><summary>Where this comes from</summary><div>${checked}${rows ? `<ul>${rows}</ul>` : ""}</div></details>`;
 }
 function figureHtml(shotId, label) {

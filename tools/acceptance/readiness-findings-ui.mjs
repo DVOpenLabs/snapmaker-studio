@@ -13,6 +13,7 @@
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -76,6 +77,22 @@ for (let i = 0; i < 80 && !uiReady; i++) { try { uiReady = (await fetch(`${UI}/`
 if (!uiReady) { console.error(`This checkout's UI did not come up on ${UI}.`); process.exit(2); }
 console.log(`UI: this checkout (${join(repo, "desktop")}) on ${UI}`);
 
+/* ---------- a fake printer (Moonraker look-alike) on this machine, started only for one scenario ---------- */
+const job = (filename, status) => ({ job_id: filename + status, filename, status, start_time: 1, end_time: 2, print_duration: 1, total_duration: 1, filament_used: 1, metadata: {} });
+const fakeJobs = [job("example-project.gcode", "error"), job("other-a.gcode", "completed"), job("other-b.gcode", "completed"), job("other-c.gcode", "completed"), job("other-d.gcode", "completed")];
+function startFakePrinter() {
+  const srv = http.createServer((req, res) => {
+    const url = req.url || "";
+    const reply = (obj) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
+    if (url.startsWith("/printer/info")) return reply({ result: { state: "ready", state_message: "Printer is ready", hostname: "example-printer" } });
+    if (url.startsWith("/server/info")) return reply({ result: { klippy_state: "ready", warnings: ["example firmware warning"], failed_components: [] } });
+    if (url.startsWith("/server/history/list")) return reply({ result: { jobs: fakeJobs } });
+    if (url.startsWith("/server/history/totals")) return reply({ result: { job_totals: { total_jobs: 5 } } });
+    res.writeHead(404); res.end("{}");
+  });
+  return new Promise((resolve) => srv.listen(7125, "127.0.0.1", () => resolve(srv)));
+}
+
 const results = [];
 const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  - " + detail : ""}`); };
 const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -83,7 +100,7 @@ console.log(`browser: Edge ${browser.version()}`);
 const violations = [];
 const errors = [];
 
-async function visit(label, file, theme) {
+async function visit(label, file, theme, { expand = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 2800 }, colorScheme: theme });
   await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("mode", "simple"); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
   await ctx.route(`${ENGINE}/**`, async (route) => {
@@ -107,6 +124,11 @@ async function visit(label, file, theme) {
   const card = heading.locator("xpath=ancestor::div[contains(@class,'space-y-3')][1]");
   await sleep(1000);
   const text = (await card.innerText()).replace(/\s+/g, " ");
+  if (expand) {
+    await page.getByRole("button", { name: /See risks, recommendations/ }).click();
+    await page.getByText("Supporting Doctors", { exact: true }).waitFor({ timeout: 10000 });
+    await sleep(500);
+  }
   const pageText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
   await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
   await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });   // taken after the report loaded
@@ -136,6 +158,19 @@ try {
       check(`${theme}: whole page (${name}) shows the Intelligence Report's "Risks found" count`, /Risks found\s*\d+/i.test(pt));
     }
   }
+  // A reachable (fake) printer, with the Intelligence Report's evidence expanded: no health number, grade, "good to print" or "Compatible".
+  const fake = await startFakePrinter();
+  try {
+    for (const theme of ["light", "dark"]) {
+      const { text: t, pageText: pt } = await visit("03-printer-answered-evidence", flagged, theme, { expand: true });
+      check(`${theme}: with a reachable printer, the card counts printer history as checked`, /Studio checked:.*printer history for the same file name/.test(t) && /Studio checked:.*printer health/.test(t), t.slice(0, 260));
+      check(`${theme}: with a reachable printer, a failed print with the same file name is a signal`, /failed 1 time before/.test(t));
+      const body = pt.replace(/Print-Readiness/g, "");
+      const hits = [...body.matchAll(/.{0,40}(\d+\s*\/\s*100|good to print|Healthy \(|\bCompatible\b|Studio score|Readiness|Likely to print).{0,30}/gi)].map((m) => m[0]);
+      check(`${theme}: expanded evidence shows the Printer line without a health number, grade, "good to print" or "Compatible"`,
+        /Supporting Doctors/i.test(pt) && /Answered, \d+ concern/i.test(pt) && hits.length === 0, hits.join(" | ") || (/Answered, \d+ concern/i.test(pt) ? "" : "no 'Answered, N concern' line"));
+    }
+  } finally { fake.close(); }
   check("no engine request named a host other than this machine, or discovery", violations.length === 0, violations.join("; "));
   check("no page errors", errors.length === 0, errors.join(" | ").slice(0, 300));
 } catch (e) {

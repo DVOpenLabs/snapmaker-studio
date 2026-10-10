@@ -37,7 +37,7 @@ local-first and open-source, true to the U1's open Klipper/Moonraker ethos.
 ## Competitive positioning (outcomes, not features)
 | The question a maker asks | OrcaSlicer | Fluidd | **Studio** |
 |---|---|---|---|
-| Will it print — before I slice? | Slices, then errors | No model analysis | **Project Doctor verdict** |
+| What is at risk — before I slice? | Slices, then errors | No model analysis | **Project Doctor findings** (advisory) |
 | Why won't it slice (and the fix)? | "Out of bounds", no reason | — | **Cause + exact fix** |
 | What will it cost to make? | Grams + time only | — | **Cost Doctor** |
 | What should I sell it for / profit? | — | — | **Pricing + Profit Doctor** |

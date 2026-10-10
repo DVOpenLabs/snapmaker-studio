@@ -28,7 +28,7 @@ approachable to first-time and business users.
 ### Outcomes vs the alternatives
 | Maker's question | Orca | Fluidd | **Studio** |
 |---|---|---|---|
-| Will it print, before slicing? | no | no | **yes** |
+| What is at risk, before slicing? | no | no | **yes** (advisory checks, not a prediction) |
 | Why won't it, + the fix? | no | no | **yes** |
 | Cost / price / profit? | no | no | **yes** |
 | Printer healthy? (0–100) | no | partial | **yes** |

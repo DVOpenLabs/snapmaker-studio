@@ -1,7 +1,7 @@
 {
   "browser": "Microsoft Edge (Chromium, headless)",
-  "passed": 24,
-  "total": 24,
+  "passed": 30,
+  "total": 30,
   "results": [
     {
       "name": "light: card lists signals with what to do",
@@ -110,6 +110,36 @@
     },
     {
       "name": "dark: whole page (nothing flagged) shows the Intelligence Report's \"Risks found\" count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: with a reachable printer, the card counts printer history as checked",
+      "ok": true,
+      "detail": "Print risk signals Studio found 3 things to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found something in this project that can cause trouble when slicing. "
+    },
+    {
+      "name": "light: with a reachable printer, a failed print with the same file name is a signal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "light: expanded evidence shows the Printer line without a health number, grade, \"good to print\" or \"Compatible\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: with a reachable printer, the card counts printer history as checked",
+      "ok": true,
+      "detail": "Print risk signals Studio found 3 things to sort out before you slice. Each says what it means and what to do. Heads up: Design validation flagged 6 issues Studio's check Studio's validation found something in this project that can cause trouble when slicing. "
+    },
+    {
+      "name": "dark: with a reachable printer, a failed print with the same file name is a signal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dark: expanded evidence shows the Printer line without a health number, grade, \"good to print\" or \"Compatible\"",
       "ok": true,
       "detail": ""
     },

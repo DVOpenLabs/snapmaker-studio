@@ -601,7 +601,7 @@ u1convert validate model_U1.3mf                        # check integrity
 $ u1convert doctor model.3mf
 
   Verdict : REPAIRABLE
-  Score   : 90/100
+  Issues  : 0 file-structure, 1 U1-compatibility
   Project type            : Bambu/Orca project
   Snapmaker U1 compatible : yes
   Notes        :
@@ -609,9 +609,8 @@ $ u1convert doctor model.3mf
 
 Recommended action: Run `u1convert repair <file> --mode u1` to prepare a U1 profile copy.
 Read-only check - no files were modified.
+These are rule checks Studio ran on the file; they are not a prediction that a print will succeed.
 ```
-
-The score counts the rule checks Studio ran on the file; it is not a prediction that a print will succeed.
 
 Verdicts: **READY** (loads as-is) · **REPAIRABLE** (run `repair`) · **CONVERTIBLE** (an STL — run `repair`) · **HIGH_RISK** (not a usable project). Add `--json` for machine-readable output.
 
