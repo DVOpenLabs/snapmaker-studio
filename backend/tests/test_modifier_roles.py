@@ -229,7 +229,7 @@ def test_a_dropped_modifier_is_caught(prepared_modifier, tmp_path):
 def test_a_duplicated_modifier_is_caught(prepared_modifier, tmp_path):
     broken = damaged(prepared_modifier, tmp_path, SETTINGS, lambda t: t.replace(
         "</object>", re.search(r'<part id="2".*?</part>', t, re.S).group(0) + "</object>"))
-    assert any("uses a part id twice" in p for p in problems(broken))
+    assert any("lists 3 part(s) and has 2 component(s)" in p for p in problems(broken))
 
 
 def test_swapped_roles_are_caught(prepared_modifier, tmp_path):

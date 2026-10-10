@@ -101,6 +101,14 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
         score -= 15
 
     score = max(0, min(100, score))
+    # The same structure gate Prepare runs, applied to the source: a file Prepare
+    # would refuse must not be sent to Prepare.
+    from .convert import structure_problems
+    try:
+        structure = structure_problems(tm)
+    except Exception:  # noqa: BLE001 — a doctor never fails on an unreadable corner
+        structure = []
+    validation_issues.extend(structure)
     painted = sum(fp.painted_triangles.values()) > 0
 
     if not res.structural_ok:
@@ -109,6 +117,13 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     elif score == 100 and not compatibility_issues:
         verdict = READY
         action = "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice."
+    elif structure:
+        # Minimal change: keep schema doctor/1 and the existing verdict set. Prepare
+        # would refuse this file, so it is "needs review", not "fixable by Prepare".
+        verdict = HIGH_RISK
+        action = ("Studio cannot prepare a copy of this file yet: it carries settings or "
+                  "structure Studio has not verified Snapmaker Orca reads. Your original is "
+                  "not changed. Open it in Snapmaker Orca to review it.")
     else:
         verdict = REPAIRABLE
         action = "Prepare a U1 profile copy, then review it in Snapmaker Orca before slicing."

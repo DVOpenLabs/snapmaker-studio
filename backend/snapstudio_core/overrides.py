@@ -226,6 +226,24 @@ def _int_gate(low: int, high: int):
     return gate
 
 
+_INFILL_PATTERNS = (
+    "rectilinear", "alignedrectilinear", "zigzag", "crosszag", "lockedzag", "line",
+    "grid", "triangles", "tri-hexagon", "cubic", "adaptivecubic", "quartercubic",
+    "supportcubic", "lightning", "honeycomb", "3dhoneycomb", "lateral-honeycomb",
+    "lateral-lattice", "crosshatch", "tpmsd", "tpmsfk", "gyroid", "concentric",
+    "hilbertcurve", "archimedeanchords", "octagramspiral",
+)
+
+
+def _percent_gate(value: str):
+    # Only the canonical form Studio writes for a carried infill density: `<n>%`,
+    # 0..100, ASCII, no sign, no exponent. Reuses the CARRIED fill_density gate.
+    if not isinstance(value, str) or not value.endswith("%"):
+        return False
+    again, _why = _carry_infill(value, DEFAULT_NOZZLE_MM)
+    return again == value
+
+
 #: Per-object settings that already arrive in Snapmaker Orca's OWN words, because a
 #: Bambu Studio or Orca project spells them the same way: the two slicers share
 #: one settings dialect. They are never translated, only kept — and kept only when
@@ -238,6 +256,21 @@ def _int_gate(low: int, high: int):
 #:   wall_loops      integer 0..1000
 #:   support_type    normal(auto) | tree(auto) | normal(manual) | tree(manual)
 #:   support_style   default | grid | snug | organic | tree_slim | tree_strong | tree_hybrid
+#: Added from the same source (permalinks pin Snapmaker/OrcaSlicer v2.4.0,
+#: commit b1831e5dcb464172de33783142425aafda834fbc):
+#:   sparse_infill_pattern  the 26 enum values, PrintConfig.cpp L2511-2566
+#:     https://github.com/Snapmaker/OrcaSlicer/blob/b1831e5dcb464172de33783142425aafda834fbc/src/libslic3r/PrintConfig.cpp#L2511-L2566
+#:     (the legacy Prusa spelling `zig-zag` is not one of them and stays refused)
+#:   skeleton_infill_density / skin_infill_density  percent 0..100; only acts when
+#:     the pattern is lockedzag, harmless otherwise
+#:   top_shell_layers / bottom_shell_layers  integer; 0 is legal in Orca, the 1000
+#:     cap is Studio's own. Per-object settable: PrintObjectConfig / PrintRegionConfig
+#:     https://github.com/Snapmaker/OrcaSlicer/blob/b1831e5dcb464172de33783142425aafda834fbc/src/libslic3r/PrintConfig.hpp#L876-L1165
+#:   brim_type       no_brim | outer_only | inner_only | outer_and_inner | brim_ears.
+#:     `auto_brim` and `painted` stay refused (maintainer decision).
+#: Orca does not enforce ranges when it loads a project (bbs_3mf.cpp L4186-L4206):
+#: https://github.com/Snapmaker/OrcaSlicer/blob/b1831e5dcb464172de33783142425aafda834fbc/src/libslic3r/Format/bbs_3mf.cpp#L4186-L4206
+#: so these gates are the only range check there is.
 #: This is an allowlist, not a pass-through: any other key is still refused.
 NATIVE_KEPT = {
     "wall_generator": _enum_gate("classic", "arachne"),
@@ -245,6 +278,13 @@ NATIVE_KEPT = {
     "support_type": _enum_gate("normal(auto)", "tree(auto)", "normal(manual)", "tree(manual)"),
     "support_style": _enum_gate("default", "grid", "snug", "organic", "tree_slim",
                                 "tree_strong", "tree_hybrid"),
+    "sparse_infill_pattern": _enum_gate(*_INFILL_PATTERNS),
+    "skeleton_infill_density": _percent_gate,
+    "skin_infill_density": _percent_gate,
+    "top_shell_layers": _int_gate(0, 1000),
+    "bottom_shell_layers": _int_gate(0, 1000),
+    "brim_type": _enum_gate("no_brim", "outer_only", "inner_only", "outer_and_inner",
+                            "brim_ears"),
 }
 
 #: Every key this module knows how to *write*. A prepared copy must never carry

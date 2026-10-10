@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **More Bambu Studio projects now prepare.** Studio keeps six more per-object settings that
+  Snapmaker Orca 2.4.0 reads in the same words: infill pattern, skeleton and skin infill
+  density, top and bottom shell layers, and brim type (`no_brim`, `outer_only`, `inner_only`,
+  `outer_and_inner`, `brim_ears`; the creator's automatic brim is still not carried). Every value
+  is checked first, and anything else is still refused rather than guessed.
+- A project that uses the same part more than once in one object (for example two copies of one
+  piece in an assembly) is no longer refused as corrupt. A real mismatch between the parts and
+  the object is still refused.
+- The Doctor no longer recommends "Prepare a U1 profile copy" for a file Prepare would refuse; it
+  now says Studio cannot prepare it yet and points to reviewing the original in Snapmaker Orca.
+- When Prepare refuses a file, the message now says in plain language which settings or structure
+  and on which object, and what to do next. The raw technical wording is kept in a collapsed
+  "Technical details" area.
+- Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
+  was never modified; the extra copy was only a leftover. The command-line `repair` and
+  `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
+
 ## [1.5.0] - 2026-10-06
 
 **Project Materials: pick the real spool, and the real Snapmaker Orca preset, for each colour (#39).**

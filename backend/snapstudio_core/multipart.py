@@ -41,6 +41,7 @@ copied verbatim.
 """
 from __future__ import annotations
 
+import html as _html
 import re
 
 from . import overrides as object_overrides
@@ -556,11 +557,10 @@ def validate_archive(tm) -> dict:
             problems.append(
                 f"object {object_id}: part ids {sorted(own_parts)} do not match its "
                 f"component ids {sorted(own_components)}")
-        if len(set(own_parts)) != len(own_parts):
-            problems.append(f"object {object_id} uses a part id twice")
-        if len(set(own_components)) != len(own_components):
-            problems.append(
-                f"object {object_id} references the same mesh twice in its components")
+        # A repeated part id or a mesh referenced by two components is legitimate:
+        # 3MF Core allows a component to be instanced more than once and Bambu
+        # Studio writes exactly that. The count and the multiset above are the
+        # whole rule; uniqueness is not.
 
     # Two objects referencing one mesh is **not** a fault: a genuine Snapmaker Orca
     # project in the fixtures holds eight objects that all build from the same two
@@ -584,8 +584,11 @@ def validate_archive(tm) -> dict:
         stated = {key: value for key, value in
                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', body)
                   if key not in ("name", "extruder")}
+        name = re.search(r'<metadata key="name" value="([^"]*)"', body)
+        shown = _html.unescape(name.group(1))[:60].replace('"', "'") if name else ""
+        label = f' ("{shown}")' if shown else ""
         for fault in object_overrides.validate_emitted(stated):
-            problems.append(f"object {object_id}: {fault}")
+            problems.append(f"object {object_id}{label}: {fault}")
 
     for matrix in re.findall(r'key="matrix" value="([^"]*)"', settings):
         values = matrix.split()

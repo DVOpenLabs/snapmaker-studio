@@ -2,8 +2,8 @@
 
 Pure engine orchestration (no network/UI): STL files are wrapped into a minimal
 U1 3MF; Bambu/Orca 3MF projects are repaired into U1 form. The original is never
-overwritten — output is written next to the source as `<stem>_SnapmakerU1.3mf`,
-and 3MF repairs also leave a `<stem>.orig.3mf` backup.
+overwritten — output is written next to the source as `<stem>_SnapmakerU1.3mf`.
+No `<stem>.orig.3mf` backup is written unless the caller passes `keep_backup=True`.
 """
 from __future__ import annotations
 from dataclasses import dataclass, asdict
@@ -325,6 +325,20 @@ def _carry_prusa_settings(source: ThreeMF, wrapped: ThreeMF) -> dict | None:
         return None
 
 
+def structure_problems(tm) -> list[str]:
+    """Everything `check_structure` would refuse on, as plain strings; empty when sound.
+
+    Shared by Prepare (which raises on a non-empty list) and by the Doctor (which
+    must not recommend a Prepare the same engine would refuse). Read-only.
+    """
+    from . import multipart
+
+    result = multipart.validate_archive(tm)
+    if result.get("ok", True):
+        return []
+    return list(result.get("problems") or ["the structure is unsound"])
+
+
 def check_structure(tm) -> None:
     """Refuse to save a prepared copy whose descriptions of itself disagree.
 
@@ -333,18 +347,18 @@ def check_structure(tm) -> None:
     would have reached the user as a project Snapmaker Orca opens wrongly. It runs
     on every prepared copy now, before the file is written.
     """
-    from . import multipart
     from .errors import UnsoundOutput
 
-    result = multipart.validate_archive(tm)
-    if not result.get("ok", True):
-        raise UnsoundOutput(result.get("problems") or ["the structure is unsound"])
+    problems = structure_problems(tm)
+    if problems:
+        raise UnsoundOutput(problems)
 
 
 def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
                   dry_run: bool = False, confirmed_presets: dict | None = None,
                   filament_catalog=None, confirmed_colours: dict | None = None,
-                  material_context: dict | None = None) -> ConversionResult:
+                  material_context: dict | None = None,
+                  keep_backup: bool = False) -> ConversionResult:
     """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
 
     `confirmed_presets` maps a filament slot to the exact installed Orca preset the
@@ -355,7 +369,11 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     only feeds the plain-language record of what happened and changes nothing in the copy.
 
     With `confirmed_presets`, a project whose existing vendor/type declarations Orca would
-    copy between slots sharing a preset is not prepared: the result is `blocked`."""
+    copy between slots sharing a preset is not prepared: the result is `blocked`.
+
+    The output is always a NEW file and the original is never touched, so no backup of
+    the original is written unless `keep_backup=True` (a `<stem>.orig.3mf` copy, made only
+    after the prepared copy has been saved). The desktop and the API never ask for one."""
     src = Path(path)
     if prepare_mode == "u1":
         prepare_mode = "recommended"
@@ -445,11 +463,12 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
                 context=material_context, catalog=filament_catalog, nozzle=pm.project_nozzle(before),
                 guard=material_guard)
     check_structure(tm)
-    backup = src.with_suffix(".orig.3mf")
-    if not dry_run and not backup.exists():
-        shutil.copy2(src, backup)
     if out:
         tm.save(out)
+        if keep_backup:
+            backup = src.with_suffix(".orig.3mf")
+            if not backup.exists():
+                shutil.copy2(src, backup)
     res = do_validate(tm, against=src_fp)
     return _finish("3mf", tm, out, res, prepare_mode=prepare_mode, settings_summary=summary)
 
