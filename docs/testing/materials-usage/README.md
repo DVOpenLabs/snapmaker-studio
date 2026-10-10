@@ -36,7 +36,7 @@ Real-browser check (Microsoft Edge, Chromium, headless; dark and light) of the r
   "Everything Studio can identify is in the prepared copy, and every change is listed below." Both statements are true;
   this one is simply the accurate one once something was left out. Not confirmed in Snapmaker Orca that leaving it out
   changes how the copy opens.
-- `usage_readable` is true only when the object list and any painting were read in full. Otherwise colours nothing else
+- `usage_readable` is true only when the object list and any painting were read in full (missing geometry, or paint the file mentions but Studio cannot decode, counts as not read). Otherwise colours nothing else
   references are "unknown".
 - The extra cost of reading usage was measured only on the small committed fixtures (about 0.18 s for the 62 KB painted
   Snapmaker Orca fixture). A large painted model was not timed.

@@ -273,3 +273,32 @@ def test_usage_readable_needs_the_object_list_and_the_painting():
     assert pm.attach_usage({"slots": []}, ok)["usage_readable"] is True
     assert pm.attach_usage({"slots": []}, {**ok, "painting": {"complete": False}})["usage_readable"] is False
     assert pm.attach_usage({"slots": []}, {**ok, "object_list_readable": False})["usage_readable"] is False
+
+
+def _project_without_geometry(tmp_path):
+    cfg = _cfg(filament_colour=["#FF0000", "#00FF00", "#0000FF", "#FFFFFF", "#FFFF00"], filament_type=["PLA"] * 5,
+               filament_vendor=["Bambu Lab"] * 5, filament_settings_id=["Bambu PLA Basic @BBL H2D"] * 5)
+    path = tmp_path / "nogeo.3mf"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("Metadata/project_settings.config", json.dumps(cfg))
+        z.writestr("Metadata/model_settings.config", "<config><object id='1'><metadata key='extruder' value='1'/></object></config>")
+    return path
+
+
+def test_a_project_whose_geometry_is_missing_leaves_unreferenced_slots_unknown(env, tmp_path):
+    out = service.project_materials(str(_project_without_geometry(tmp_path)))
+    verdicts = [s["usage"]["verdict"] for s in out["slots"]]
+    assert verdicts == ["referenced", "unknown", "unknown", "unknown", "unknown"]
+    assert out["usage_readable"] is False
+
+
+def test_paint_the_file_mentions_but_studio_cannot_decode_leaves_slots_unknown(env, tmp_path, monkeypatch):
+    monkeypatch.setattr(pc.painted_color, "read_container", lambda tm: pc.painted_color._none_found(1, marker_seen=True))
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["usage_readable"] is False
+    assert out["slots"][4]["usage"]["verdict"] == "unknown" and out["slots"][0]["usage"]["verdict"] == "referenced"
+
+
+def test_a_file_with_no_painting_at_all_is_still_readable(env, tmp_path):
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["usage_readable"] is True and out["slots"][4]["usage"]["verdict"] == "no_reference_found"

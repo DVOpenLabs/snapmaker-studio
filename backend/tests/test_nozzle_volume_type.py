@@ -195,3 +195,41 @@ def test_the_fidelity_claims_change_honestly_for_a_file_that_carried_the_key(tmp
     out = _prepare(BAMBU, tmp_path, "preserve").output_path
     claims = fidelity.audit(str(BAMBU), out)["claims"]
     assert claims["fully_accounted"] is True and claims["nothing_removed"] is False and claims["may_claim_nothing_lost"] is False
+
+
+def _declarations(cfg) -> list[str]:
+    dss = cfg.get("different_settings_to_system")
+    return [str(e) for e in (dss if isinstance(dss, list) else [dss or ""])]
+
+
+@pytest.mark.parametrize("mode", ["preserve", "recommended"])
+@pytest.mark.parametrize("declared", [
+    None,                                                                         # the source never declared it
+    ["nozzle_volume_type", "", "", "", ""],                                       # a list
+    ["layer_height;nozzle_volume_type", "nozzle_volume_type", "", "", ""],
+    "nozzle_volume_type;layer_height",                                            # a scalar string
+])
+def test_real_convert_leaves_no_declaration_of_the_key(tmp_path, mode, declared):
+    extra = {} if declared is None else {"different_settings_to_system": declared}
+    src = _with_settings(BAMBU, tmp_path / "s.3mf", **extra)
+    cfg = _settings(_prepare(src, tmp_path / "out", mode).output_path)
+    assert "nozzle_volume_type" not in cfg
+    assert not any("nozzle_volume_type" in e for e in _declarations(cfg)), cfg.get("different_settings_to_system")
+
+
+@pytest.mark.parametrize("extra", [
+    {}, {"exclude_object": "0", "brim_type": "auto_brim"},
+    {"different_settings_to_system": ["nozzle_volume_type", "", "", "", ""]},
+])
+def test_optional_recommendations_never_repeat_what_the_preserve_copy_already_has(tmp_path, extra):
+    src = _with_settings(BAMBU, tmp_path / "s.3mf", **extra)
+    preserve = _prepare(src, tmp_path / "a", "preserve")
+    applied = _settings(preserve.output_path)
+    recommended = _settings(_prepare(src, tmp_path / "b", "recommended").output_path)
+    offered = {r["key"] for r in preserve.settings_summary["recommended_changes"]}
+    differing = {k for k in set(applied) | set(recommended) if applied.get(k, "<absent>") != recommended.get(k, "<absent>")}
+    assert offered <= differing, offered - differing          # nothing already applied is offered again
+    assert offered, "the genuinely different recommendations are still offered"
+    for key in ("exclude_object", "brim_type", "nozzle_volume_type"):
+        if key in extra or key == "nozzle_volume_type":
+            assert key not in offered, key

@@ -119,6 +119,7 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
     # preserve: they are not settings choices the creator made, they are the
     # values that stop Snapmaker Orca behaving correctly on a U1 no matter what
     # the creator wanted. Each change is reported with its old value and reason.
+    had_nozzle_volume_type = "nozzle_volume_type" in work
     if mode in ("preserve", "u1", "optimize"):
         report["orca_compatibility"] = orca_import.apply_compatibility(
             work, filament_count(work))
@@ -166,6 +167,14 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 report["project_materials_declarations_withdrawn"] = restored
                 if declared:
                     declared["new"] = copy.deepcopy(work["different_settings_to_system"])
+
+    # Whatever declared above, the key left out of the copy is not declared in it.
+    if had_nozzle_volume_type and mode in ("preserve", "u1", "optimize"):
+        late = orca_import.withdraw_nozzle_volume_type_declaration(work)
+        if late:
+            report.setdefault("orca_compatibility", []).extend(late)
+            if report.get("preset_deviations_declared"):
+                report["preset_deviations_declared"]["new"] = copy.deepcopy(work["different_settings_to_system"])
 
     # ThreeMF is in-memory here. Replacing the parts even for dry runs lets the
     # caller validate the exact would-be project without writing an output file.

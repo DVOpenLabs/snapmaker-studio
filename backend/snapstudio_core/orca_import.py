@@ -226,22 +226,30 @@ NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: the setting it name
 
 def _withdraw_declaration(cfg: dict, key: str, changes: list) -> None:
     """Take `key` out of every entry of `different_settings_to_system`, so a value that is gone is not still declared."""
-    entries = cfg.get("different_settings_to_system")
-    if not isinstance(entries, list):
+    old = cfg.get("different_settings_to_system")
+    if not isinstance(old, (list, str)):
         return
     new, touched = [], False
-    for entry in entries:
+    for entry in (old if isinstance(old, list) else [old]):      # a scalar string is the process entry
         parts = [p.strip() for p in str(entry).split(";") if p.strip()]
         if key in parts:
             touched = True
             entry = ";".join(p for p in parts if p != key)
         new.append(entry)
     if touched:
-        old = cfg["different_settings_to_system"]
+        new = new if isinstance(old, list) else new[0]
         cfg["different_settings_to_system"] = new
         _change(changes, "different_settings_to_system", old, new, NOZZLE_VOLUME_TYPE_DECLARATION_REASON,
                 f"The project declared {key} as a deviation from its presets. With the setting left out of the copy "
                 "there is nothing left to declare.")
+
+
+def withdraw_nozzle_volume_type_declaration(cfg: dict) -> list[dict]:
+    """The last word on the key's declaration: run after every step that can declare, so none can bring it back."""
+    changes: list[dict] = []
+    if "nozzle_volume_type" not in cfg:
+        _withdraw_declaration(cfg, "nozzle_volume_type", changes)
+    return changes
 
 
 def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:

@@ -1047,7 +1047,7 @@ def _none_found(model_parts: int, marker_seen: bool = False) -> dict:
         "format_version_source": None, "format_version_known": False,
         "objects": [], "slots": [], "slots_referenced": [],
         "painted_triangle_count": 0, "malformed_triangle_count": 0,
-        "truncated": False, "default_slot_resolved": True,
+        "truncated": False, "default_slot_resolved": True, "paint_marker_undecodable": marker_seen,
         "confidence": CONFIRMED,
         "evidence": f"no paint attribute in {model_parts} mesh part(s)",
         "limits": {},

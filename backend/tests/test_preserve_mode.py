@@ -134,8 +134,11 @@ def test_recommended_is_opt_in_and_print_sequence_contract(tmp_path):
     assert preview
     # Preview is the complete real recommended pipeline delta, including the
     # identity/preset work that a profile-swap-only preview missed.
-    actual_delta = {x["key"] for x in config_diff(before, _prepared(recommended))}
-    assert {x["key"] for x in preview} == actual_delta
+    # "Optional" is precise: Recommended's result differs from the Preserve copy being made now. What both modes
+    # change to the same value is already applied and is not offered again.
+    applied, full = _prepared(preserve), _prepared(recommended)
+    actual_delta = {x["key"] for x in config_diff(before, full)}
+    assert {x["key"] for x in preview} == {k for k in actual_delta if applied.get(k, "<absent>") != full.get(k, "<absent>")}
     assert {"nozzle_temperature", "different_settings_to_system", "print_sequence"} <= actual_delta
     # Recommended no longer stamps a legacy "Snapmaker PLA" identity over the filaments:
     # Orca replaced the carried print values from that preset. Identity changes only when
