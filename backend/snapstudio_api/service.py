@@ -2064,6 +2064,7 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     # U1, anchored at 0,0), never used as a printable rectangle, so a printer Studio cannot identify
     # gets a size check against what it reported and NO placement check.
     target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
+    profile = None
     if host:
         from snapstudio_core import moonraker, printer_profiles
         target = None
@@ -2073,15 +2074,19 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
                                                   "klipper_objects": caps.get("klipper_objects"),
                                                   "toolhead_count": caps.get("toolhead_count")})
             target = _placement_target({"identity": identity})
-            bm = caps.get("bed_mm")
             if identity.get("printer_id"):
-                volume = printer_profiles.load(identity["printer_id"]).get("build_volume_mm") or {}
-                if volume.get("x") and volume.get("y") and volume.get("z"):
-                    bed, bed_known = volume, True
-            elif bm and bm.get("x"):
-                bed, bed_known = bm, True
+                # the identified printer's RECORDED printable volume, labelled as the profile's, not as
+                # something the printer measured
+                profile = printer_profiles.load(identity["printer_id"])
+            else:
+                # a printer Studio cannot identify reports axis travel, not a printable size: neither
+                # the size nor the placement can be judged
+                return {"schema_version": bf.SCHEMA_VERSION, "available": False, "basis": "size",
+                        "reason": ("Studio does not know this connected printer's printable area (it "
+                                   "reports axis travel, which is not a printable size), so it cannot say "
+                                   "whether the objects fit.")}
         except Exception:
-            pass
+            target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
     # Two separate facts: how big each object is (size, per object) and where the instances sit
     # (placement, per instance and plate). A combined extent is neither, and is never used here.
     try:
@@ -2090,7 +2095,7 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
         placed = None
     return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,
                              unmeasured=info.get("objects_unmeasured") or 0,
-                             bed=bed, bed_known=bed_known, object_count=object_count,
+                             bed=bed, bed_known=bed_known, profile=profile, object_count=object_count,
                              multi_material=multi)
 
 
@@ -2650,13 +2655,18 @@ def _ready_analysis(path: str, target: dict | None,
     is only done when asked for: `need_placement=False` returns the cheap traits and
     leaves placement None, and a later `True` call fills it in on the same cache entry.
     """
-    from snapstudio_core import plate_placement, project_traits
+    from snapstudio_core import fileid, plate_placement, project_traits
 
     try:
         st = os.stat(path)
     except OSError:
         return "missing", None, None
-    key = (path, st.st_mtime_ns, st.st_size, target["key"] if target else None)
+    # the content fingerprint is part of the key: a same-size replacement that kept its timestamp
+    # must not be served a placement computed for the old content
+    identity = fileid.file_identity(path)
+    if identity is None:
+        return "missing", None, None
+    key = (identity, target["key"] if target else None)
     with _ready_cache_lock:
         hit = _READY_CACHE.get(key)
     if hit is None:

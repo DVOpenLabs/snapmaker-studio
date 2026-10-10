@@ -450,3 +450,29 @@ def test_an_unavailable_placement_is_not_cached_as_done(tmp_path, monkeypatch):
     service._ready_analysis(str(f), target, need_placement=True)
     service._ready_analysis(str(f), target, need_placement=True)
     assert calls["n"] == 2                      # tried again, not remembered as done
+
+def test_a_same_size_replacement_with_the_same_timestamp_is_not_served_stale(tmp_path, monkeypatch):
+    import os
+    from snapstudio_api import service
+    from snapstudio_core import plate_placement
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    before = os.stat(path)
+    service._READY_CACHE.clear()
+    seen = []
+
+    def spy(p, *a, **k):
+        seen.append(p)
+        return {"available": True, "off_plate": [], "items": [], "tag": len(seen)}
+
+    monkeypatch.setattr(plate_placement, "assess", spy)
+    from snapstudio_core import project_traits
+    monkeypatch.setattr(project_traits, "extract", lambda p: {"readable": True})
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    _s, _t, first = service._ready_analysis(str(path), target, need_placement=True)
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))]))
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert os.stat(path).st_size == before.st_size and os.stat(path).st_mtime_ns == before.st_mtime_ns
+    _s, _t, second = service._ready_analysis(str(path), target, need_placement=True)
+    assert first["tag"] == 1 and second["tag"] == 2          # analysed again, not served from the cache

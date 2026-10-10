@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from .container import ThreeMF
+from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
 from . import units as _units
 
@@ -189,36 +190,6 @@ def measure(path: str) -> tuple[list[dict], list[dict], list[dict]]:
 _CACHE: dict = {}
 _CACHE_SLOTS = 4
 _CACHE_LOCK = threading.Lock()      # requests run on several threads; the dict is never touched unlocked
-
-
-def stat_identity(path: str):
-    """``(resolved path, mtime, size)`` or None."""
-    try:
-        resolved = Path(path).resolve()
-        st = resolved.stat()
-    except OSError:
-        return None
-    return (str(resolved), st.st_mtime_ns, st.st_size)
-
-
-def file_identity(path: str):
-    """What a remembered measurement is keyed by: the stat identity PLUS a fingerprint of the content.
-
-    A replacement of the same size that kept its timestamp (a copy that preserves times, a build that
-    rewrites in place) still changes the fingerprint, so a stale measurement is never served."""
-    import hashlib
-
-    base = stat_identity(path)
-    if base is None:
-        return None
-    digest = hashlib.blake2b(digest_size=16)
-    try:
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                digest.update(chunk)
-    except OSError:
-        return None
-    return base + (digest.hexdigest(),)
 
 
 def _measure(path: str):

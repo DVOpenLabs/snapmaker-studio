@@ -192,9 +192,28 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
 
 
 def _placed_findings(placed: dict | None, findings: list, fixes: list) -> str | None:
-    """Add the "By placement" statements; returns the level they raised, or None."""
+    """Add the "By placement" statements; returns the level they raised, or None.
+
+    Placement has three parts: where the instances sit sideways, how high they stand (their placed Z,
+    build-item scale included: a 10 mm cube scaled to 300 is 300 mm tall where it is placed), and
+    which of them could not be judged at all."""
     if not placed or not placed.get("available"):
         return None
+    from .plate_placement import over_height
+
+    tall = over_height(placed)
+    level = _placed_sideways(placed, findings, fixes)
+    if tall:
+        top = max(row["bounds_mm"]["max"][2] for row in tall)
+        n = len(tall)
+        findings.append(_f("risk", f"By placement, {n} placed instance{'s' if n != 1 else ''} stand up to "
+                                   f"{top:.0f} mm, above the {placed['bed_height_mm']:.0f} mm height limit."))
+        fixes.append("Scale the tall instance down or split it in Snapmaker Orca.")
+        return "risk"
+    return level
+
+
+def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
     plate_count = placed.get("plate_count") or 1
     if plate_count > 1:
         # Plates share one grid with unrecorded spacing: each plate is judged on whether its own

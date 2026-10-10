@@ -54,12 +54,20 @@ def test_a_printer_reporting_fewer_tools_than_the_profile_is_believed():
     assert any(c["field"] == "tool_count" for c in out["conflicts"])
 
 
-def test_a_much_bigger_bed_is_used_as_reported():
+def test_a_much_bigger_printable_area_is_used_when_the_printer_is_identified(tmp_path, monkeypatch):
+    from snapstudio_api import service
+    from tests import scene_fixtures as fx
+    big_profile = {"printer_id": "bigmachine", "build_volume_mm": {"x": 1000.0, "y": 1000.0, "z": 1000.0}}
+    real_load = printer_profiles.load
+    monkeypatch.setattr(printer_profiles, "load",
+                        lambda pid: big_profile if pid == "bigmachine" else real_load(pid))
+    path = str(fx.three_mf(tmp_path / "far.3mf", fx.model_xml([fx.cube_object("1", 20)], [("1", fx.tf(500, 500, 0))])))
+    # the placement is DERIVED through the service from the identified printer, not written by hand
+    target = service._placement_target({"identity": {"printer_id": "bigmachine"}})
+    placement = service._assess_against(path, target)
+    assert placement["available"] and placement["off_plate"] == []
     project = {"filament_count": {"value": 1, "confidence": "confirmed", "evidence": "t"}}
-    big = facts(bed_mm={"x": 1000.0, "y": 1000.0, "z": 1000.0})
-    out = pf.evaluate(project, big, placement={
-        "available": True, "off_plate": [], "bed_height_mm": 1000.0,
-        "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": 1000.0, "max_y": 1000.0}, "items": []})
+    out = pf.evaluate(project, facts(bed_mm={"x": 1000.0, "y": 1000.0, "z": 1000.0}), placement=placement)
     bed = next(c for c in out["checks"] if c["id"] == "bed.fit")
     assert bed["result"] == pf.OK and "1000 × 1000 mm printable area" in bed["evidence"]
 

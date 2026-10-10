@@ -177,7 +177,9 @@ def test_a_connected_printers_travel_extents_are_not_a_printable_rectangle(tmp_p
         "klipper_objects": ["print_task_config", "extruder"]})       # a Snapmaker: the U1 identifies itself
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 300, 0))], name="travel.3mf")
     result = service.bed_fit(path, host="u1.invalid")
-    assert result["bed_known"] is True and result["bed_mm"]["y"] <= 270  # the profile volume, not the travel
+    assert result["bed_mm"]["y"] <= 270                                   # the profile volume, not the travel
+    assert result["bed_mm_source"] == "profile" and result["bed_known"] is False
+    assert "connected" not in result["bed_source"]                        # recorded volume, not "your printer"
     assert result["overall_level"] == "risk"
     assert any(f["text"].startswith("By placement") and f["level"] == "risk" for f in result["findings"])
     assert "outside" in texts(result)
@@ -235,9 +237,10 @@ def test_a_printer_that_cannot_be_identified_gets_no_placement_verdict(tmp_path,
         "bed_mm": {"x": 271, "y": 335, "z": 275}, "toolhead_count": 1, "klipper_objects": ["extruder"]})
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(100, 300, 0))], name="unknown.3mf")
     result = service.bed_fit(path, host="x.invalid")
-    assert result["placement_checked"] is False
-    assert not any(f["text"].startswith("By placement") for f in result["findings"])
-    assert "Where it sits on the plate was not checked here" in result["overall_text"]
+    # neither the printable size nor the placement is known: unknown, never "fits"
+    assert result["available"] is False and "does not know this connected printer's printable area" in result["reason"]
+    long = project(tmp_path, [box_object("1", 10, 300, 10)], [("1", fx.tf(10, 10, 0))], name="long.3mf")
+    assert service.bed_fit(long, host="x.invalid")["available"] is False        # 10 x 300 x 10 is not reported as fitting
 
 
 def test_unjudged_instances_in_a_two_plate_project_are_a_warning_never_a_fit(tmp_path):
@@ -270,3 +273,21 @@ def test_the_caches_survive_many_threads(tmp_path):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert errors == []
+
+
+def test_a_cube_scaled_to_300_mm_tall_is_over_height_by_placement(tmp_path):
+    path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 0")], name="zscale.3mf")
+    result = service.bed_fit(path)
+    assert result["overall_level"] == "risk"
+    assert any(f["text"].startswith("By placement") and "stand up to 300 mm" in f["text"] and f["level"] == "risk"
+               for f in result["findings"])
+    assert any("tall instance" in fix for fix in result["fixes"])
+
+
+def test_a_tall_modifier_does_not_make_the_bed_fit_check_report_over_height(tmp_path):
+    sub = fx.sub_model_xml([fx.cube_object("1", 10), fx.cube_object("2", 300, origin=(40, 0, 0))])
+    root = fx.model_xml([fx.composite_object("100", [("1", "/3D/Objects/o.model", None), ("2", "/3D/Objects/o.model", None)])],
+                        [("100", fx.tf(20, 20, 0))])
+    settings = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "modifier_part")]}, [(1, [("100", 0)])])
+    path = str(fx.three_mf(tmp_path / "mod.3mf", root, {"3D/Objects/o.model": sub, SETTINGS: settings}))
+    assert not any("stand up to" in f["text"] for f in service.bed_fit(path)["findings"])

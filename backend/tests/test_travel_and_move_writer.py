@@ -88,3 +88,19 @@ def test_a_tall_object_is_not_confirmed_by_preflight_even_when_it_is_on_the_plat
     check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
     assert check["result"] == "attention" and "height limit" in check["evidence"]
     assert check["confidence"] == "confirmed" and "300" in check["evidence"]
+
+
+def test_a_tall_modifier_does_not_make_a_short_part_over_height(tmp_path):
+    # a 10 mm printable part and a 300 mm modifier volume on the same object
+    sub = fx.sub_model_xml([fx.cube_object("1", 10), fx.cube_object("2", 300, origin=(40, 0, 0))])
+    root = fx.model_xml([fx.composite_object("100", [("1", "/3D/Objects/o.model", None), ("2", "/3D/Objects/o.model", None)])],
+                        [("100", fx.tf(20, 20, 0))])
+    settings = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "modifier_part")]}, [(1, [("100", 0)])])
+    path = str(fx.three_mf(tmp_path / "mod.3mf", root, {"3D/Objects/o.model": sub, "Metadata/model_settings.config": settings}))
+    report = pp.assess(path)
+    assert report["available"] and report["items"][0]["bounds_mm"]["max"][2] == 10.0
+    assert pp.over_height(report) == []
+    # and a tall PRINTABLE part is over height
+    settings2 = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "normal_part")]}, [(1, [("100", 0)])])
+    path2 = str(fx.three_mf(tmp_path / "tall2.3mf", root, {"3D/Objects/o.model": sub, "Metadata/model_settings.config": settings2}))
+    assert len(pp.over_height(pp.assess(path2))) == 1
