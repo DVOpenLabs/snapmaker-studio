@@ -99,7 +99,7 @@ def check_answers(manifest, pages, tmp_path):
     assert post_slice._machine_match({"printer_model": "Snapmaker U1"}, {})["confidence"] == post_slice.CONFIRMED
     assert post_slice._machine_match({"printer_model": "not a known printer"}, {})["confidence"] == post_slice.LIKELY
     clean = success_predict.findings(readiness={"ready": True})
-    assert clean["signals"] == [] and "your slicer settings" in clean["not_checked"] and clean["limitations"]
+    assert clean["signals"] == [] and "object spacing" in clean["not_checked"] and clean["limitations"]
     src = tmp_path / "answer-source.3mf"
     shutil.copy(ROOT / "examples" / "demo_offplate_foreign.3mf", src)
     before = _sha(src)

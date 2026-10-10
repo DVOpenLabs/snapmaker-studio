@@ -32,7 +32,7 @@ def test_clean_design_says_what_was_checked_and_not_that_it_will_succeed():
     assert out["available"] is True
     assert out["signals"] == []
     assert "design validation" in out["checked"] and "printer health" in out["checked"]
-    assert "object spacing" in out["not_checked"] and "your slicer settings" in out["not_checked"]
+    assert "object spacing" in out["not_checked"]
     assert "not a sign the print will succeed" in out["summary"]
     assert any("Verify in Snapmaker Orca" in x for x in out["limitations"])
 
@@ -114,3 +114,51 @@ def test_reachable_printer_counts_health_and_history_as_checked(monkeypatch, tmp
     cube.write_bytes(b"\0" * 80 + (0).to_bytes(4, "little"))
     out = service.predict_success(str(cube), host="printer.invalid")
     assert "printer health" in out["checked"] and "this file's print history" in out["checked"]
+
+
+def test_unavailable_first_layer_or_validation_is_a_gap_not_a_clean_result():
+    out = sp.findings(
+        readiness={"available": False, "reason": "could not read"},
+        first_layer={"available": False, "reason": "geometry unavailable", "bed_aware": False},
+        toolfit={"available": True, "overall_level": "ok"},
+    )
+    assert out["checked"] == ["colors against toolheads"]
+    assert "design validation" in out["not_checked"] and "first-layer risk" in out["not_checked"]
+    assert out["signals"] == []
+
+
+def test_printer_health_driver_from_the_real_formatter_has_no_percentage():
+    from snapstudio_core import health_score
+    hs = health_score.score(failures={"available": True, "failure_rate": 0.5, "failed": 5, "total": 10,
+                                      "recent_failure_streak": 0})
+    out = sp.findings(readiness={"ready": True}, health=hs)
+    sig = next(s for s in out["signals"] if s["id"] == "printer-health")
+    assert "5 of the last 10 prints failed" in sig["details"]
+    assert not re.search(r"\d\s*%", json.dumps(out))
+
+
+def test_measured_bed_and_single_object_remove_the_claims_they_cover():
+    plain = sp.findings(readiness={"ready": True}, first_layer={"overall_level": "ok"})
+    assert "clean or level the bed" in plain["limitations"][0]
+    assert "spacing between objects" in plain["limitations"][1]
+    covered = sp.findings(readiness={"ready": True},
+                          first_layer={"overall_level": "ok", "bed_aware": True},
+                          spacing_unverified=False)
+    assert "level the bed" not in covered["limitations"][0] and "how clean the bed is" in covered["limitations"][0]
+    assert "spacing" not in covered["limitations"][1]
+    assert "object spacing" not in covered["not_checked"]
+    assert "object spacing" in plain["not_checked"]
+
+
+def test_prior_failures_match_by_file_stem_across_3mf_and_gcode():
+    from snapstudio_api import service
+    jobs = [
+        {"filename": "gear box.gcode", "status": "error"},
+        {"filename": "folder/Gear Box.GCODE", "status": "cancelled"},
+        {"filename": "gear box.gcode", "status": "completed"},
+        {"filename": "other.gcode", "status": "error"},
+    ]
+    assert service._prior_failures(jobs, "Gear Box.3mf") == 2
+    assert service._prior_failures(jobs, "other.stl") == 1
+    assert service._prior_failures(jobs, "none.3mf") == 0
+    assert service._prior_failures(None, "x.3mf") == 0

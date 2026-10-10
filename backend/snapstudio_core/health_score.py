@@ -48,7 +48,7 @@ def score(diagnostics=None, failures=None) -> dict:
         if rate > 0:
             p = round(rate * 40)
             if p:
-                drivers.append((p, f"{round(rate * 100)}% of recent prints failed"))
+                drivers.append((p, f"{failures.get('failed')} of the last {failures.get('total')} prints failed"))
         streak = int(failures.get("recent_failure_streak") or 0)
         if streak >= 4:
             drivers.append((25, f"{streak} prints failed in a row"))

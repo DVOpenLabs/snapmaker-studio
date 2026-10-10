@@ -11,10 +11,9 @@ what it can't yet see.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = "report/1"
+SCHEMA_VERSION = "report/2"   # 2: no studio_score / print_success_score / expected_improvement (#92)
 
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
-_LEVEL_SCORE = {"ok": 100, "warn": 70, "risk": 40}
 
 
 def _push_findings(risks, recs, doctor, doc):
@@ -82,21 +81,9 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
 
     cur = (cost or {}).get("currency") or (pricing or {}).get("currency") or "$"
 
-    # --- headline scores ---
+    # No headline score: nothing here is calibrated against print outcomes, and a
+    # number (even the printer's own health figure) read as design readiness (#92).
     health_score = health.get("score") if avail["health"] else None
-
-    # Studio Intelligence Score: the printer-health score when it is known;
-    # otherwise the doctors' levels. The risk-signal list (predict) is never
-    # turned into a number: it is not calibrated against print outcomes (#92).
-    if health_score is not None:
-        studio_score = round(health_score)
-    else:
-        worst = "ok"
-        for d in (bed_fit, mm, first_layer):
-            lvl = (d or {}).get("overall_level")
-            if lvl and _ORDER[lvl] > _ORDER[worst]:
-                worst = lvl
-        studio_score = _LEVEL_SCORE[worst] if any([avail["bed_fit"], avail["mm"], avail["first_layer"]]) else None
 
     # --- money headline ---
     money = cost or {}
@@ -195,14 +182,12 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
             "Studio does not verify object-to-object spacing yet — confirm in Snapmaker Orca.")
 
     # --- one-line verdict ---
-    bits = []
-    if studio_score is not None:
-        bits.append(f"Studio score {studio_score}/100")
+    risks_found = len([r for r in risks if r["doctor"] != "Object spacing"])
     if biggest_risk:
-        bits.append(f"top risk: {biggest_risk['text']}")
+        count = f"{risks_found} risk{'s' if risks_found != 1 else ''} found; " if risks_found else ""
+        verdict = f"{count}top risk: {biggest_risk['text']}."
     else:
-        bits.append("no major blockers found")
-    verdict = "; ".join(bits) + "." if bits else "Report ready."
+        verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
 
     # --- Before vs After: "why not just use Orca?" ---
     n_issues = len(risks)
@@ -228,7 +213,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "comparison": comparison,
-        "studio_score": studio_score,
+        "risks_found": risks_found,
         "cost": cost_v,
         "suggested_price": price_v,
         "margin_pct": margin_pct,

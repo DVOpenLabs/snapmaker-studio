@@ -5,6 +5,8 @@ will it print, what it costs, what to sell it for, the profit, the biggest risk,
 and the next action. The Doctors become evidence behind one Studio Intelligence
 Score. Pure synthesis over already-computed dicts — no network here.
 """
+import re
+
 from snapstudio_core import intelligence_report as ir
 
 
@@ -24,14 +26,18 @@ def test_unavailable_with_nothing():
     assert out["available"] is False
 
 
+_SCORE_KEYS = {"studio_score", "print_success_score", "expected_improvement"}
+
+
 def test_headline_from_printer_health_and_no_success_percentage():
     out = ir.build(
         predict={"available": True, "signals": []},
         health={"available": True, "score": 90, "grade": "A", "drivers": []},
     )
     assert out["available"] is True
-    assert out["studio_score"] == 90
-    assert "print_success_score" not in out
+    assert not _SCORE_KEYS & set(out)   # no number: not even the printer's own health figure
+    assert out["schema_version"] == "report/2"
+    assert not re.search(r"\d\s*(%|/\s*100)", out["verdict"])
     assert out["printer_compatibility"] in ("Compatible", "Check", "Unknown")
 
 
@@ -85,7 +91,8 @@ def test_doctors_summarised_as_evidence():
 def test_demo_is_a_complete_compelling_report():
     out = ir.demo()
     assert out["available"] is True and out["is_demo"] is True
-    assert out["studio_score"] is not None
+    assert not _SCORE_KEYS & set(out)
+    assert out["risks_found"] >= 1
     assert out["cost"] and out["suggested_price"]      # money headline present
     assert out["biggest_risk"] is not None             # shows real value (a caught risk)
     assert len(out["recommendations"]) >= 1
@@ -135,7 +142,36 @@ def test_no_expected_success_percentage_after_fixes():
 def test_headline_questions_present():
     out = ir.build(predict={"available": True, "signals": [{"id": "x", "level": "warn", "title": "x"}]},
                    health={"available": True, "score": 70, "grade": "C", "drivers": []})
-    for k in ("studio_score", "cost", "suggested_price",
+    for k in ("risks_found", "cost", "suggested_price",
               "margin_pct", "printer_compatibility", "risks", "biggest_risk",
               "recommendations", "next_action", "supporting", "verdict"):
         assert k in out
+
+
+def test_flawed_file_without_a_reachable_printer_never_gets_a_green_score():
+    """The old hero read 100/100 for a file with validation issues and an unreachable printer."""
+    out = ir.build(
+        predict={"available": True,
+                 "signals": [{"id": "design-validation", "level": "warn", "title": "Design validation flagged 6 issues"}]},
+        first_layer={"overall_level": "ok", "findings": []},
+    )
+    assert not _SCORE_KEYS & set(out)
+    assert out["risks_found"] == 1
+    assert "1 risk found" in out["verdict"] and "Design validation flagged 6 issues" in out["verdict"]
+    assert not re.search(r"\d\s*(%|/\s*100)|100", out["verdict"])
+
+
+def test_spacing_notice_is_not_counted_as_a_risk_found():
+    out = ir.build(
+        first_layer={"overall_level": "ok", "findings": []},
+        spacing={"status": "unknown"},
+    )
+    assert out["risks_found"] == 0
+    assert any(r["doctor"] == "Object spacing" for r in out["risks"])
+    assert "not a sign the print will succeed" not in out["verdict"] or out["biggest_risk"] is None
+
+
+def test_clean_report_does_not_say_the_print_will_succeed():
+    out = ir.build(first_layer={"overall_level": "ok", "findings": []})
+    assert out["risks_found"] == 0
+    assert "not a sign the print will succeed" in out["verdict"]

@@ -2117,18 +2117,39 @@ def predict_success(path: str, host: str | None = None, port: int = 7125) -> dic
             pass
         try:
             from snapstudio_core import moonraker
-            base = os.path.basename(path).lower()
+            base = os.path.basename(path)
             hist = moonraker.history(host, port, 50)
-            from snapstudio_core import failure_patterns as fp
-            fa = fp.assess(hist.get("jobs"), hist.get("totals"))
-            for ro in (fa.get("repeat_offenders") or []):
-                if (ro.get("filename") or "").lower() == base:
-                    prior = int(ro.get("failures") or 0)
+            prior = _prior_failures(hist.get("jobs"), base)
             history_ok = True
         except Exception:
             pass
+    spacing_unverified = True
+    try:
+        from snapstudio_core.collision import assess_spacing
+        spacing_unverified = assess_spacing(
+            (insights(path) or {}).get("objects"), str(path).lower().endswith(".stl")
+        ).get("status") == "unknown"
+    except Exception:
+        pass
     return sp.findings(readiness=readiness, toolfit=toolfit, first_layer=fl,
-                       health=health, prior_failures=prior, printer_checked=history_ok)
+                       health=health, prior_failures=prior, printer_checked=history_ok,
+                       spacing_unverified=spacing_unverified)
+
+
+def _prior_failures(jobs, filename: str) -> int:
+    """Failed jobs in the printer's history whose file stem matches this file's, so a
+    design .3mf matches the .gcode Orca exported from it. Name only, not contents."""
+    import os
+    from snapstudio_core import failure_patterns as fp
+
+    def stem(name):
+        base = fp._base(name)
+        return os.path.splitext(base)[0].lower() if base else None
+    want = stem(filename)
+    if not want:
+        return 0
+    return sum(1 for j in (jobs or [])
+               if j.get("status") in fp._FAILURE_STATES and stem(j.get("filename")) == want)
 
 
 def pricing_doctor(path: str, host: str | None = None, filename: str | None = None,
@@ -2246,7 +2267,7 @@ def demo_report() -> dict:
 def intelligence_report(path: str, host: str | None = None, filename: str | None = None,
                         port: int = 7125, currency: str = "$", **factors) -> dict:
     """Studio Intelligence Report: run every Doctor and synthesise one verdict —
-    Studio score, risk signals, cost, price, profit, biggest risk, next action,
+    risk signals, cost, price, profit, biggest risk, next action,
     with each Doctor as supporting evidence. Read-only; one failing Doctor never
     sinks the report."""
     from snapstudio_core import intelligence_report as ir
@@ -2283,6 +2304,8 @@ def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
     fail = None
     try:
         diag = moonraker.diagnostics(host, port)
+        if diag.get("klippy_state") is None:
+            diag = None   # the printer did not answer: that is not "healthy"
     except Exception:
         pass
     try:
