@@ -20,6 +20,9 @@ All notable changes to this project are documented here. The format is based on
 - When Prepare refuses a file, the message now says in plain language which settings or structure
   and on which object, and what to do next. The raw technical wording is kept in a collapsed
   "Technical details" area.
+- A project with blank (`nil`) per-part speed values that Snapmaker Orca 2.4.0 cannot read, which
+  stops Orca loading the whole file, is now named in plain language by the Doctor and by Prepare
+  instead of being passed on.
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.

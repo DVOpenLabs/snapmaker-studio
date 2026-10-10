@@ -448,6 +448,23 @@ def _parts_by_object(settings_xml: str) -> dict:
     return out
 
 
+#: Options Snapmaker Orca 2.4.0 declares non-nullable that Bambu Studio can write
+#: `nil` into at part level (Orca v2.4.0 PrintConfig.cpp: inner_wall_speed L4258,
+#: small_perimeter_speed L1753, internal_solid_infill_speed L5055,
+#: sparse_infill_speed L3459, top_surface_speed L5925). `vertical_shell_speed` is
+#: not an Orca 2.4.0 option at all and is deliberately not listed.
+NIL_UNREADABLE = frozenset({
+    "inner_wall_speed", "small_perimeter_speed", "internal_solid_infill_speed",
+    "sparse_infill_speed", "top_surface_speed",
+})
+
+
+def _object_label(body: str) -> str:
+    name = re.search(r'<metadata key="name" value="([^"]*)"', body)
+    shown = _html.unescape(name.group(1))[:60].replace('"', "'") if name else ""
+    return f' ("{shown}")' if shown else ""
+
+
 def _settings_objects(settings_xml: str) -> dict:
     """Each settings object's own metadata, above its parts."""
     return {object_id: body.split("<part", 1)[0]
@@ -584,11 +601,26 @@ def validate_archive(tm) -> dict:
         stated = {key: value for key, value in
                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', body)
                   if key not in ("name", "extruder")}
-        name = re.search(r'<metadata key="name" value="([^"]*)"', body)
-        shown = _html.unescape(name.group(1))[:60].replace('"', "'") if name else ""
-        label = f' ("{shown}")' if shown else ""
+        label = _object_label(body)
         for fault in object_overrides.validate_emitted(stated):
             problems.append(f"object {object_id}{label}: {fault}")
+
+    # Part-level values Snapmaker Orca 2.4.0 cannot read. Bambu Studio writes `nil`
+    # ("not overridden") into per-part speed lists; in Orca 2.4.0 these options are
+    # not nullable (PrintConfig.cpp: coFloats / coFloatsOrPercents, added with plain
+    # `add`; the only nullable options are the `filament_*` retraction ones), and
+    # Config.hpp throws "Deserializing nil into a non-nullable object", so the whole
+    # project fails to load. Refused with the part named, never silently edited.
+    for object_id, body in _SETTINGS_OBJECT.findall(settings):
+        label = _object_label(body)
+        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*>(.*?)</part>', body, re.S):
+            bad = [key for key, value in
+                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', part_body)
+                   if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
+            if bad:
+                problems.append(
+                    f"part {part_id} of object {object_id}{label}: has speed values "
+                    f"Snapmaker Orca 2.4.0 cannot read (nil in {', '.join(sorted(bad))})")
 
     for matrix in re.findall(r'key="matrix" value="([^"]*)"', settings):
         values = matrix.split()

@@ -181,3 +181,47 @@ def test_cli_dry_run_writes_no_backup(tmp_path):
     src = Path(_inject(tmp_path, SUPPORT_SHAPE))
     assert _cli("repair", str(src), "--dry-run").exit_code == 0
     assert not _orig(src).exists()
+
+
+# --- part-level nil in options Snapmaker Orca 2.4.0 cannot read ---------------
+
+NIL_SPEEDS = {"inner_wall_speed": "50,nil", "small_perimeter_speed": "50%,nil",
+              "internal_solid_infill_speed": "50,nil", "sparse_infill_speed": "50,nil",
+              "top_surface_speed": "50,nil"}
+
+
+def _with_part_metadata(tmp_path, extra: dict, name="nil.3mf") -> str:
+    import re
+    import zipfile
+    from tests.test_native_object_settings import BASE, CONFIG
+    out = tmp_path / name
+    add = "".join(f'      <metadata key="{k}" value="{v}"/>\n' for k, v in extra.items())
+    with zipfile.ZipFile(BASE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == CONFIG:
+                text, n = re.subn(r'(<part id="1"[^>]*>\n)', lambda m: m.group(1) + add,
+                                  data.decode("utf-8"), count=1)
+                assert n
+                data = text.encode("utf-8")
+            dst.writestr(item, data)
+    return str(out)
+
+
+def test_a_nil_in_a_non_nullable_part_speed_is_refused_plainly_and_the_doctor_agrees(tmp_path):
+    src = _with_part_metadata(tmp_path, {**NIL_SPEEDS, "vertical_shell_speed": "80%,nil"})
+    problems = conv.structure_problems(ThreeMF.open(src))
+    assert len(problems) == 1 and "part 1 of object 2" in problems[0]
+    assert "vertical_shell_speed" not in problems[0]        # not an Orca 2.4.0 option
+    assert doctor.diagnose_path(src).verdict == doctor.HIGH_RISK
+    with pytest.raises(UnsoundOutput) as ei:
+        conv.convert_to_u1(src, str(tmp_path / "out"))
+    text = str(ei.value)
+    assert text.startswith("Snapmaker Orca 2.4.0 cannot load this project: part 1 of object 2")
+    assert "inner_wall_speed" in text and "Studio does not edit" in text
+    assert not (tmp_path / "out").exists() or not list((tmp_path / "out").iterdir())
+
+
+def test_a_nil_in_a_nullable_or_unlisted_option_is_not_refused(tmp_path):
+    src = _with_part_metadata(tmp_path, {"filament_retraction_length": "nil", "outer_wall_speed": "60"})
+    assert conv.structure_problems(ThreeMF.open(src)) == []
