@@ -23,6 +23,10 @@ All notable changes to this project are documented here. The format is based on
 - A project with blank (`nil`) per-part speed values that Snapmaker Orca 2.4.0 cannot read, which
   stops Orca loading the whole file, is now named in plain language by the Doctor and by Prepare
   instead of being passed on.
+- A prepared copy of a multi-plate project that carried the authoring slicer's per-plate cache
+  files is no longer reported as not validated because the plate count appeared to drop; plates
+  are now counted from the project's plate list. The fidelity audit also reports infill density
+  and support settings that were kept unchanged as kept, not as "not carried".
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.

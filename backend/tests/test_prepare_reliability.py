@@ -225,3 +225,29 @@ def test_a_nil_in_a_non_nullable_part_speed_is_refused_plainly_and_the_doctor_ag
 def test_a_nil_in_a_nullable_or_unlisted_option_is_not_refused(tmp_path):
     src = _with_part_metadata(tmp_path, {"filament_retraction_length": "nil", "outer_wall_speed": "60"})
     assert conv.structure_problems(ThreeMF.open(src)) == []
+
+
+# --- plate cache files are not plates -------------------------------------------
+
+def test_a_multi_plate_project_with_slice_cache_files_still_validates(tmp_path):
+    import re
+    import zipfile
+    from tests.test_native_object_settings import BASE, CONFIG
+    from snapstudio_core.fingerprint import compute_fingerprint
+    src = tmp_path / "plates.3mf"
+    with zipfile.ZipFile(BASE) as z, zipfile.ZipFile(src, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in z.infolist():
+            data = z.read(item.filename)
+            if item.filename == CONFIG:
+                text = data.decode("utf-8")
+                block = re.search(r"  <plate>.*?</plate>\n", text, re.S).group(0)
+                data = text.replace(block, block + block.replace(
+                    '"plater_id" value="1"', '"plater_id" value="2"'), 1).encode("utf-8")
+            dst.writestr(item, data)
+        for n in (1, 2):
+            dst.writestr(f"Metadata/plate_{n}.json", b"{}")
+    fp = compute_fingerprint(ThreeMF.open(str(src)))
+    assert fp.plate_count == 2
+    result = conv.convert_to_u1(str(src), str(tmp_path / "out"))
+    assert result.validated_ok, result.errors
+    assert compute_fingerprint(ThreeMF.open(result.output_path)).plate_count == 2

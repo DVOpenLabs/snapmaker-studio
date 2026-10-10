@@ -167,7 +167,8 @@ def test_the_allowlist_is_exactly_the_measured_keys():
     assert set(overrides.NATIVE_KEPT) == {
         "wall_generator", "wall_loops", "support_type", "support_style",
         "sparse_infill_pattern", "skeleton_infill_density", "skin_infill_density",
-        "top_shell_layers", "bottom_shell_layers", "brim_type"}
+        "top_shell_layers", "bottom_shell_layers", "brim_type",
+        "sparse_infill_density", "enable_support"}
     # not a back door into the Prusa-translation table
     assert not set(overrides.NATIVE_KEPT) & set(overrides.CARRIED)
 
@@ -204,3 +205,26 @@ def test_fidelity_reports_the_six_added_settings_as_preserved():
                                       "Slide", 0)
     assert len(rows) == 6
     assert {r["status"] for r in rows} == {assignments.PRESERVED_EXACT}
+
+
+def test_fidelity_reports_orca_worded_infill_density_and_support_as_preserved():
+    from snapstudio_core import assignments
+
+    said = {"sparse_infill_density": "30%", "enable_support": "1"}
+    rows = assignments._override_rows({"overrides": dict(said)}, {"overrides": dict(said)},
+                                      "Slide", 0)
+    assert len(rows) == 2 and {r["status"] for r in rows} == {assignments.PRESERVED_EXACT}
+    # a changed or dropped value is still not "preserved"
+    changed = assignments._override_rows({"overrides": dict(said)},
+                                         {"overrides": {**said, "sparse_infill_density": "40%"}},
+                                         "Slide", 0)
+    assert any(r["status"] == assignments.CHANGED for r in changed)
+    dropped = assignments._override_rows({"overrides": dict(said)}, {"overrides": {}}, "Slide", 0)
+    assert all(r["status"] == assignments.CHANGED for r in dropped)
+
+
+@pytest.mark.parametrize("key,value", [("sparse_infill_density", "101%"), ("sparse_infill_density", "30"),
+                                        ("sparse_infill_density", "٣٠%"), ("enable_support", "2"),
+                                        ("enable_support", "true")])
+def test_orca_worded_density_and_support_keep_their_strict_gates(key, value):
+    assert overrides.validate_emitted({key: value})

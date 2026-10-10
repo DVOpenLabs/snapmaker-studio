@@ -278,6 +278,12 @@ NATIVE_KEPT = {
     "support_type": _enum_gate("normal(auto)", "tree(auto)", "normal(manual)", "tree(manual)"),
     "support_style": _enum_gate("default", "grid", "snug", "organic", "tree_slim",
                                 "tree_strong", "tree_hybrid"),
+    # Orca's own words for two settings Studio also translates FROM Prusa
+    # (`fill_density`, `support_material`): a Bambu/Orca project already states them
+    # this way and the prepared copy keeps them unchanged, so the audit must see
+    # them as kept. Same gates as the translated form (`_carry_infill`, `_carry_support`).
+    "sparse_infill_density": _percent_gate,
+    "enable_support": _enum_gate("0", "1"),
     "sparse_infill_pattern": _enum_gate(*_INFILL_PATTERNS),
     "skeleton_infill_density": _percent_gate,
     "skin_infill_density": _percent_gate,
