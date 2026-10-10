@@ -27,8 +27,13 @@ PRIME_TOWER_MM = 55.0
 EDGE_FRAC = 0.95
 
 
-def _f(level: str, text: str) -> dict:
-    return {"level": level, "text": text}
+def _f(level: str, text: str, id: str | None = None, action: str | None = None) -> dict:
+    out = {"level": level, "text": text}
+    if id:
+        out["id"] = id         # the stable condition id (snapstudio_core.conditions)
+    if action:
+        out["action"] = action  # the step that belongs to THIS finding
+    return out
 
 
 def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
@@ -79,7 +84,8 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         bump("risk")
         findings.append(_f("risk", f"Taller than {source} can print: {z:.0f} mm vs the "
                                    f"{bz:.0f} mm max height — Orca reports this as out of bounds. "
-                                   f"Scale to {bz / z * 100:.0f}% or split it into shorter parts."))
+                                   f"Scale to {bz / z * 100:.0f}% or split it into shorter parts.",
+                               id="bed-height", action=f"Scale to {bz / z * 100:.0f}% to fit the height, or split into parts."))
         fixes.append(f"Scale to {bz / z * 100:.0f}% to fit the height, or split into parts.")
 
     # Too big in X/Y — the actual "out of bounds" most people hit.
@@ -91,7 +97,8 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         scale_pct = (min(_factors) if _factors else 0.0) * 100.0
         findings.append(_f("risk", f"Too big for the bed: {x:.0f}×{y:.0f} mm on a "
                                    f"{bx:.0f}×{by:.0f} mm bed — this is the “out of bounds” error "
-                                   f"Orca shows without saying which way. Scale to {scale_pct:.0f}% to fit."))
+                                   f"Orca shows without saying which way. Scale to {scale_pct:.0f}% to fit.",
+                               id="bed-footprint", action=f"Scale to {scale_pct:.0f}% so it fits the {bx:.0f}×{by:.0f} mm bed."))
         fixes.append(f"Scale to {scale_pct:.0f}% so it fits the {bx:.0f}×{by:.0f} mm bed.")
         diag = (x + y) / (2 ** 0.5)
         if (over_x ^ over_y) and diag <= min(bx, by):
@@ -103,7 +110,8 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         bump("warn")
         findings.append(_f("warn", f"Fills almost the whole bed ({x:.0f}×{y:.0f} of "
                                    f"{bx:.0f}×{by:.0f} mm) — a skirt, brim, or prime tower can spill "
-                                   f"past the edge and trigger out of bounds."))
+                                   f"past the edge and trigger out of bounds.",
+                               id="bed-near-full", action="Center the model, drop the brim/skirt, or scale down slightly."))
         fixes.append("Center the model, drop the brim/skirt, or scale down slightly.")
 
     # Multi-material: is there room for the prime/wipe tower?
@@ -114,7 +122,8 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
             findings.append(_f("warn", f"Little room for the multi-material prime/wipe tower "
                                        f"(~{PRIME_TOWER_MM:.0f} mm, depending on your Orca tower settings): "
                                        f"only {mx:.0f}×{my:.0f} mm is free beside the model, so Orca may push "
-                                       f"the tower off the bed (out of bounds)."))
+                                       f"the tower off the bed (out of bounds).",
+                                   id="bed-prime-tower-room", action="Shrink the model a little, or reduce/disable the prime tower in Orca."))
             fixes.append("Shrink the model a little, or reduce/disable the prime tower in Orca.")
 
     # Multiple parts share the plate — the arrangement must fit, not just one part.

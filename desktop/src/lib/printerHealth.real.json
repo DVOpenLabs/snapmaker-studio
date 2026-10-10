@@ -1,0 +1,56 @@
+{
+  "clean": {
+    "available": true,
+    "basis": "firmware state + last 5 prints",
+    "conditions": [],
+    "drivers": [
+      "No problems found in firmware state or recent history."
+    ],
+    "grade": "A",
+    "schema_version": "healthscore/1",
+    "score": 100,
+    "verdict": "Nothing concerning in the printer's own readings."
+  },
+  "failures-and-firmware-warning": {
+    "available": true,
+    "basis": "firmware state + last 10 prints",
+    "conditions": [
+      {
+        "id": "printer-failure-history",
+        "level": "warn",
+        "text": "8 of the last 10 prints failed; 6 prints failed in a row"
+      },
+      {
+        "id": "firmware-warning",
+        "level": "warn",
+        "text": "1 firmware warning"
+      }
+    ],
+    "drivers": [
+      "8 of the last 10 prints failed; 6 prints failed in a row",
+      "1 firmware warning"
+    ],
+    "grade": "F",
+    "schema_version": "healthscore/1",
+    "score": 38,
+    "verdict": "The printer's own readings show concerns; see the list below."
+  },
+  "failures-only-no-warning": {
+    "available": true,
+    "basis": "firmware state + last 5 prints",
+    "conditions": [
+      {
+        "id": "printer-failure-history",
+        "level": "warn",
+        "text": "1 of the last 5 prints failed"
+      }
+    ],
+    "drivers": [
+      "1 of the last 5 prints failed"
+    ],
+    "grade": "A",
+    "schema_version": "healthscore/1",
+    "score": 92,
+    "verdict": "A few things in the printer's own readings are worth a look; see the list below."
+  }
+}

@@ -701,7 +701,10 @@ export interface PrinterHealth {
   available: boolean;
   score?: number;
   grade?: "A" | "B" | "C" | "D" | "F";
+  /** One line per condition the printer reported (failure history is ONE line with merged evidence). */
   drivers?: string[];
+  /** The same list with stable condition ids; its length is the concern count the state chip and the report use. */
+  conditions?: { id: string; level: "warn" | "risk"; text: string }[];
   basis?: string;
   verdict?: string;
   reason?: string;

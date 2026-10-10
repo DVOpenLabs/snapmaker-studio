@@ -94,7 +94,7 @@ export default function Printers() {
     enabled: !!connected, refetchInterval: connected ? 60000 : false, retry: false,
   });
   // The state chip follows the same driver list as the health card below it (never "Healthy" beside listed concerns).
-  const badge = printerBadge({ diag: diag.data, drivers: health.data?.drivers });
+  const badge = printerBadge({ diag: diag.data, concerns: health.data?.conditions?.length ?? 0 });
   // Firmware Capability Intelligence: what this U1's firmware actually exposes.
   const firmware = useQuery({
     queryKey: ["printer-firmware", connected],

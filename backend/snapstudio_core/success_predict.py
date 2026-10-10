@@ -15,7 +15,9 @@ no control, no new printer calls.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = "successpredict/2"
+from . import conditions as C
+
+SCHEMA_VERSION = "successpredict/3"   # 3: one signal per stable condition id (snapstudio_core.conditions)
 
 # `kind` uses the same evidence kinds as the rest of the app: "engine" is one of
 # Studio's own checks, "estimate" is derived output, "orca" is advice to verify in
@@ -39,15 +41,6 @@ def _limitations(bed_measured: bool, spacing_unverified: bool) -> list:
     if not spacing_unverified:
         second = "Studio does not slice. Verify in Snapmaker Orca before you print."
     return [first, second]
-
-
-def _signal(sid: str, kind: str, level: str, title: str, meaning: str, action: str,
-            details: list | None = None) -> dict:
-    out = {"id": sid, "kind": kind, "level": level, "title": title,
-           "meaning": meaning, "action": action}
-    if details:
-        out["details"] = details
-    return out
 
 
 def findings(readiness=None, toolfit=None, first_layer=None, health=None,
@@ -83,65 +76,49 @@ def findings(readiness=None, toolfit=None, first_layer=None, health=None,
                 "reason": "no design or printer information was available to check",
                 "limitations": _limitations(False, spacing_unverified)}
 
-    signals: list[dict] = []
+    # Gather what each source says about each condition, then build ONE signal per condition id.
+    contribs: list = []
 
     if readiness_ok and readiness.get("ready") is False:
         warnings = [str(w) for w in (readiness.get("warnings") or [])]
         n = len(warnings)
-        signals.append(_signal(
-            "design-validation", "engine", "warn",
-            f"Design validation flagged {n} issue{'s' if n != 1 else ''}" if n
-            else "Design validation flagged an issue",
-            "Studio's validation found something in this project that can cause trouble when slicing.",
-            "Read the issues in Design Health and fix or check them in Snapmaker Orca.",
-            warnings[:5] + ([f"and {n - 5} more in Design Health"] if n > 5 else [])))
+        title = (f"Design validation flagged {n} issue{'s' if n != 1 else ''}" if n
+                 else "Design validation flagged an issue")
+        contribs.append(C.contribution(
+            C.DESIGN_VALIDATION, "warn", title,
+            facts=[title] + warnings[:5] + ([f"and {n - 5} more in Design Health"] if n > 5 else [])))
 
     if toolfit_ok:
         lvl = toolfit.get("overall_level")
-        if lvl == "risk":
-            signals.append(_signal(
-                "toolhead-fit", "engine", "risk",
-                "More colors than toolheads",
-                "The design uses more colors than the U1 can load at once.",
-                "Remap to fewer colors in Snapmaker Orca, or plan a filament swap."))
-        elif lvl == "warn":
-            signals.append(_signal(
-                "toolhead-fit", "engine", "warn",
-                "Color layout needs a swap or remap",
-                "The color layout does not map cleanly onto the four toolheads.",
-                "Check the color-to-toolhead mapping in Snapmaker Orca."))
+        if lvl in ("risk", "warn"):
+            contribs.append(C.contribution(
+                C.TOOLHEAD_FIT, lvl,
+                "More colors than toolheads" if lvl == "risk" else "Color layout needs a swap or remap",
+                action=("Remap to fewer colors in Snapmaker Orca, or plan a filament swap." if lvl == "risk"
+                        else "Check the color-to-toolhead mapping in Snapmaker Orca.")))
 
     if first_layer_ok:
-        lvl = first_layer.get("overall_level")
-        if lvl == "risk":
-            signals.append(_signal(
-                "first-layer", "estimate", "risk",
-                "First-layer adhesion looks risky",
-                "The first layer has little contact area or an awkward shape for this printer. This is an estimate from the geometry.",
-                "Look at the first layer in Snapmaker Orca's preview and consider a brim."))
-        elif lvl == "warn":
-            signals.append(_signal(
-                "first-layer", "estimate", "warn",
-                "First layer is marginal",
-                "The first layer may not stick well. This is an estimate from the geometry.",
-                "Watch the first layer, and check adhesion settings in Snapmaker Orca."))
+        contribs.extend(C.doctor_contributions(first_layer, "First Layer Doctor"))
 
     if health_ok:
-        drivers = [str(d) for d in (health.get("drivers") or []) if "no problem" not in str(d).lower()]
-        if drivers:
-            signals.append(_signal(
-                "printer-health", "estimate", "warn",
-                "The printer's own readings show concerns",
-                "The printer's diagnostics or print history point to something worth looking at.",
-                "Open Printer Hub and review these before a long print.",
-                drivers[:5]))
+        for cond in (health.get("conditions") or []):
+            contribs.append(C.contribution(cond["id"], cond.get("level", "warn"), cond["text"], source="health"))
 
     if prior_failures and prior_failures > 0:
-        signals.append(_signal(
-            "repeat-failure", "engine", "risk" if prior_failures >= 2 else "warn",
+        contribs.append(C.contribution(
+            C.PRINTER_FAILURE_HISTORY, "risk" if prior_failures >= 2 else "warn",
             f"A print with this file name failed {prior_failures} time{'s' if prior_failures != 1 else ''} before",
-            "The printer's history lists failed jobs with the same file name, ignoring the extension. Studio matches on the name only, not the contents.",
-            "Check why the earlier print failed before starting this one."))
+            source="history"))
+
+    signals: list[dict] = []
+    for f in C.merge(contribs):
+        kind, meaning, action = C.COPY.get(f["id"], ("engine", "Studio's check flagged this.", None))
+        sig = {"id": f["id"], "kind": kind, "level": f["level"], "title": f["text"],
+               "meaning": meaning, "action": f["action"] or action or "Verify in Snapmaker Orca.",
+               "facts": f["evidence"]}
+        if f["id"] == C.DESIGN_VALIDATION and len(f["evidence"]) > 1:
+            sig["details"] = f["evidence"][1:]
+        signals.append(sig)
 
     checked = [name for name, ok in have.items() if ok]
     not_checked = [name for name, ok in have.items() if not ok]
@@ -156,7 +133,6 @@ def findings(readiness=None, toolfit=None, first_layer=None, health=None,
         summary = ("Studio's checks did not flag anything in what they covered: "
                    + ", ".join(checked) + ". That is not a sign the print will succeed.")
 
-    signals.sort(key=lambda s: 0 if s["level"] == "risk" else 1)
     return {
         "schema_version": SCHEMA_VERSION,
         "available": True,

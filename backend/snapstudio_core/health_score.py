@@ -41,40 +41,54 @@ def score(diagnostics=None, failures=None) -> dict:
         return {"schema_version": SCHEMA_VERSION, "available": False,
                 "reason": "no printer diagnostics or print history to score"}
 
-    # Each driver: (penalty_points, plain-language reason).
-    drivers: list[tuple[int, str]] = []
+    # One condition per thing the printer reported (never one per line of evidence): the failure rate and the
+    # failure streak describe the same failed jobs, so they are ONE condition with merged text.
+    # Each: (penalty_points, condition id, plain-language text).
+    conds: list[tuple[int, str, str]] = []
 
     if have_fail:
+        parts: list[str] = []
+        penalty_f = 0
         rate = float(failures.get("failure_rate") or 0.0)
         if rate > 0:
             p = round(rate * 40)
             if p:
-                drivers.append((p, f"{failures.get('failed')} of the last {failures.get('total')} prints failed"))
+                penalty_f += p
+                parts.append(f"{failures.get('failed')} of the last {failures.get('total')} prints failed"
+                             if failures.get("failed") is not None and failures.get("total") is not None
+                             else "recent prints failed")
         streak = int(failures.get("recent_failure_streak") or 0)
         if streak >= 4:
-            drivers.append((25, f"{streak} prints failed in a row"))
+            penalty_f += 25
+            parts.append(f"{streak} prints failed in a row")
         elif streak >= 2:
-            drivers.append((15, f"{streak} prints failed in a row"))
+            penalty_f += 15
+            parts.append(f"{streak} prints failed in a row")
+        if parts:
+            conds.append((penalty_f, "printer-failure-history", "; ".join(parts)))
 
     if have_diag:
         st = diagnostics.get("klippy_state")
         if st and st != "ready":
-            drivers.append((30, f"firmware not ready ({st})"))
+            conds.append((30, "firmware-not-ready", f"firmware not ready ({st})"))
         fc = diagnostics.get("failed_components") or []
         if fc:
-            drivers.append((min(40, 20 * len(fc)), f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}"))
+            conds.append((min(40, 20 * len(fc)), "firmware-failed-component",
+                          f"{len(fc)} failed firmware component{'s' if len(fc) != 1 else ''}"))
         warns = diagnostics.get("warnings") or []
         if warns:
-            drivers.append((min(15, 5 * len(warns)), f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}"))
+            conds.append((min(15, 5 * len(warns)), "firmware-warning",
+                          f"{len(warns)} firmware warning{'s' if len(warns) != 1 else ''}"))
 
-    penalty = sum(p for p, _ in drivers)
+    penalty = sum(p for p, _, _ in conds)
     value = max(0, min(100, 100 - penalty))
     grade = _grade(value)
 
     # Most impactful first; if nothing pulled it down, say so.
-    drivers.sort(key=lambda d: d[0], reverse=True)
-    has_concerns = bool(drivers)
-    driver_text = [t for _, t in drivers] or ["No problems found in firmware state or recent history."]
+    conds.sort(key=lambda c: c[0], reverse=True)
+    conditions = [{"id": cid, "level": "warn", "text": text} for _, cid, text in conds]
+    has_concerns = bool(conditions)
+    driver_text = [c["text"] for c in conditions] or ["No problems found in firmware state or recent history."]
 
     basis_parts = []
     if have_diag:
@@ -88,7 +102,8 @@ def score(diagnostics=None, failures=None) -> dict:
         "available": True,
         "score": value,
         "grade": grade,
-        "drivers": driver_text,
+        "drivers": driver_text,            # one line per condition
+        "conditions": conditions,          # the same list, with stable ids; its length is the concern count
         "basis": basis,
         "verdict": _verdict(value, grade, has_concerns),
     }

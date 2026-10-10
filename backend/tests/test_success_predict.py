@@ -45,15 +45,19 @@ def test_no_printer_means_printer_signals_are_listed_as_not_checked():
 
 
 def test_each_signal_says_what_it_means_and_what_to_do():
+    from snapstudio_core import first_layer as fl, health_score as hs, toolhead_fit as tf
+    layer = fl.assess({"base_area_mm2": 80, "min_dim_mm": 8, "width_x_mm": 10, "width_y_mm": 8}, {"height_mm": 20},
+                      {"available": True, "range_mm": 0.3, "center_range_mm": 0.3, "corner_spread_mm": 0.1})
+    layer["available"] = True
+    health = hs.score(diagnostics={"klippy_state": "ready", "warnings": ["w"], "failed_components": []})
     out = sp.findings(
         readiness={"ready": False, "warnings": ["a", "b"]},
-        toolfit={"available": True, "overall_level": "risk"},
-        first_layer={"overall_level": "warn"},
-        health={"available": True, "score": 40, "drivers": ["Firmware is old"]},
-        prior_failures=2,
+        toolfit=tf.assess(5, 4, True),
+        first_layer=layer, health=health, prior_failures=2, printer_checked=True,
     )
     ids = {s["id"] for s in out["signals"]}
-    assert ids == {"design-validation", "toolhead-fit", "first-layer", "printer-health", "repeat-failure"}
+    assert ids == {"design-validation", "toolhead-fit", "first-layer-adhesion", "first-layer-bed-flatness",
+                   "first-layer-orientation", "firmware-warning", "printer-failure-history"}
     for s in out["signals"]:
         assert s["kind"] in ("engine", "estimate", "orca")
         assert s["level"] in ("warn", "risk")
@@ -127,13 +131,13 @@ def test_unavailable_first_layer_or_validation_is_a_gap_not_a_clean_result():
     assert out["signals"] == []
 
 
-def test_printer_health_driver_from_the_real_formatter_has_no_percentage():
+def test_printer_health_condition_from_the_real_formatter_has_no_percentage():
     from snapstudio_core import health_score
     hs = health_score.score(failures={"available": True, "failure_rate": 0.5, "failed": 5, "total": 10,
                                       "recent_failure_streak": 0})
     out = sp.findings(readiness={"ready": True}, health=hs)
-    sig = next(s for s in out["signals"] if s["id"] == "printer-health")
-    assert "5 of the last 10 prints failed" in sig["details"]
+    sig = next(s for s in out["signals"] if s["id"] == "printer-failure-history")
+    assert "5 of the last 10 prints failed" in sig["title"]
     assert not re.search(r"\d\s*%", json.dumps(out))
 
 

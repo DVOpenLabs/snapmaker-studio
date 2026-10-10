@@ -11,26 +11,11 @@ what it can't yet see.
 """
 from __future__ import annotations
 
+from . import conditions as C
+
 SCHEMA_VERSION = "report/2"   # 2: no studio_score / print_success_score / expected_improvement (#92)
 
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
-
-
-def _push_findings(risks, recs, doctor, doc):
-    """Collect a doctor's non-ok findings as risks and its fixes as recommendations."""
-    if not doc or not doc.get("available", True):
-        return
-    non_ok = [f for f in (doc.get("findings") or []) if f.get("level") in ("warn", "risk")]
-    for f in non_ok:
-        if f.get("level") in ("warn", "risk"):
-            risk = {"doctor": doctor, "level": f["level"], "text": f["text"]}
-            # A Doctor's fixes belong to a finding only when it has exactly one; otherwise the
-            # action is attached later by the condition that matches (see the signal merge).
-            if len(non_ok) == 1 and (doc.get("fixes") or []):
-                risk["action"] = doc["fixes"][0]
-            risks.append(risk)
-    for fx in (doc.get("fixes") or []):
-        recs.append(fx)
 
 
 def demo() -> dict:
@@ -44,12 +29,14 @@ def demo() -> dict:
                               "title": "More colors than toolheads"}]},
         bed_fit={"available": True, "overall_level": "risk",
                  "overall_text": "It won't fit as-is — this is the out-of-bounds error.",
-                 "findings": [{"level": "risk", "text": "Too big for the bed: 286×140 mm on a 270×270 mm bed — scale to 94% to fit."}],
+                 "findings": [{"level": "risk", "id": "bed-footprint", "text": "Too big for the bed: 286×140 mm on a 270×270 mm bed — scale to 94% to fit.",
+                              "action": "Scale to 94% so it fits the 270×270 mm bed."}],
                  "fixes": ["Scale to 94% so it fits the 270×270 mm bed.",
                            "Or rotate it ~45° — the diagonal fits within the bed."]},
         mm={"available": True, "overall_level": "warn",
             "overall_text": "Multi-material setup needs a tweak before slicing.",
-            "findings": [{"level": "warn", "text": "5 colours but only 4 toolheads — 1 colour can't load at once."}],
+            "findings": [{"level": "warn", "id": "toolhead-fit", "text": "5 colours but only 4 toolheads — 1 colour can't load at once.",
+                              "action": "Remap to 4 colours in Orca, or pause-and-swap mid-print."}],
             "fixes": ["Remap to 4 colours in Orca, or pause-and-swap mid-print."]},
         first_layer={"overall_level": "ok", "overall_text": "First layer looks solid.", "findings": []},
         health={"available": True, "drivers": []},
@@ -96,105 +83,56 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     margin_pct = (profit.get("margin_pct") if avail["profit"] else money.get("margin_pct")) if (avail["profit"] or avail["cost"]) else None
     profit_v = profit.get("profit_per_print") if avail["profit"] else (money.get("margin") if avail["cost"] else None)
 
-    # --- what Studio read from the printer (never "compatible": printer health says
-    # nothing about whether this file suits this printer) ---
-    concerns = []
-    for d in ((health or {}).get("drivers") or []) if avail["health"] else []:
-        if "no problem" in d.lower():
-            continue
-        # failure rate and failure streak describe the same failed jobs: one concern, as in the risk list below
-        if "prints failed" in d and any("prints failed" in c for c in concerns):
-            continue
-        concerns.append(d)
-    if not avail["health"]:
+    # --- findings: ONE per stable condition id (snapstudio_core.conditions) ---
+    # Severity is the max over every source that reports the condition, evidence is merged, the action is the one that
+    # belongs to the condition. The risk list, Biggest risk, Next, the printer line and the counts all derive from this.
+    contribs: list = []
+    recs: list = []
+    for label, doc in (("Size fit (dimensions only)", bed_fit), ("Multi-Material Doctor", mm), ("First Layer Doctor", first_layer)):
+        contribs.extend(C.doctor_contributions(doc, label))
+        if doc and doc.get("available", True):
+            recs.extend(doc.get("fixes") or [])
+    if avail["health"]:
+        conds = health.get("conditions")
+        if conds is None:   # an older health result: its lines are separate, never-merged conditions
+            conds = [{"id": f"unmapped:Printer Doctor:{i}", "level": "warn", "text": d}
+                     for i, d in enumerate(health.get("drivers") or []) if "no problem" not in d.lower()]
+        for cond in conds:
+            contribs.append(C.contribution(cond["id"], cond.get("level", "warn"), cond["text"], source="health"))
+    if avail["predict"]:
+        for i, sig in enumerate(predict.get("signals") or []):
+            sid = sig.get("id") or f"unmapped:Project Doctor:{i}"
+            title = sig.get("title") or ""
+            # A signal for a condition a Doctor also reports only restates it (severity/action); it adds evidence for the
+            # conditions only it can see (design validation, failure history).
+            facts = (sig.get("facts") or [title]) if (sid in C.PREDICTOR_ADDS_EVIDENCE or sid.startswith("unmapped:")) else []
+            contribs.append(C.contribution(sid, "risk" if sig.get("level") == "risk" else "warn", title,
+                                           facts=facts, action=sig.get("action"),
+                                           source="history" if sid == C.PRINTER_FAILURE_HISTORY else "predictor"))
+    if avail["profit"] and (profit.get("profit_per_print") or 0) <= 0:
+        contribs.append(C.contribution(C.PROFIT_BELOW_COST, "warn", "Priced below cost — not profitable as-is.",
+                                       action="Raise the price or cut cost before selling."))
+        recs.append("Raise the price or cut cost before selling.")
+
+    findings = C.merge(contribs)
+    risks = [{"doctor": f["doctor"], "level": f["level"], "text": f["text"], "condition": f["id"],
+              "evidence": f["evidence"], **({"action": f["action"]} if f.get("action") else {})} for f in findings]
+
+    # --- what Studio read from the printer (never "compatible": printer health says nothing about whether this
+    # file suits this printer). The count is the number of printer conditions in the findings above. ---
+    printer_concerns = [f for f in findings if f["id"] in C.PRINTER_CONDITIONS or f["doctor"] == "Printer Doctor"]
+    if not avail["health"] and not printer_concerns:
         printer_status = "Not checked"
-    elif concerns:
-        printer_status = f"Answered, {len(concerns)} concern{'s' if len(concerns) != 1 else ''}"
+    elif printer_concerns:
+        printer_status = f"Answered, {len(printer_concerns)} concern{'s' if len(printer_concerns) != 1 else ''}"
     else:
         printer_status = "Answered, no concerns"
-
-    # --- risks + recommendations from every doctor ---
-    risks: list = []
-    recs: list = []
-    _push_findings(risks, recs, "Size fit (dimensions only)", bed_fit)
-    _push_findings(risks, recs, "Multi-Material Doctor", mm)
-    _push_findings(risks, recs, "First Layer Doctor", first_layer)
-    drivers = [d for d in ((health or {}).get("drivers") or []) if "no problem" not in d.lower()] if avail["health"] else []
-    signals = [sg for sg in ((predict or {}).get("signals") or [])] if avail["predict"] else []
-    repeat = next((sg for sg in signals if sg.get("id") == "repeat-failure"), None)
-
-    # One condition, one risk. Failure history reaches us three ways (failure-rate driver, failure-streak
-    # driver, exact-file repeat signal); keep the strongest evidence, which is the exact-file signal.
-    failure_drivers = [d for d in drivers if "prints failed" in d]
-    for d in drivers:
-        if "prints failed" in d:
-            continue
-        risks.append({"doctor": "Printer Doctor", "level": "warn", "text": d})
-    if failure_drivers or repeat is not None:
-        # One failure risk, naming every piece of evidence: the exact-file repeat (if any) and the printer-wide rate.
-        printer_wide = next((d for d in failure_drivers if "of the last" in d), failure_drivers[0] if failure_drivers else None)
-        if repeat is not None:
-            text = repeat.get("title") or "A print with this file name failed before"
-            if printer_wide:
-                text += f"; {printer_wide}"
-            level = "risk" if repeat.get("level") == "risk" else "warn"
-            risk = {"doctor": "Project Doctor", "level": level, "text": text}
-            if repeat.get("action"):
-                risk["action"] = repeat["action"]
-        else:
-            risk = {"doctor": "Printer Doctor", "level": "warn", "text": printer_wide}
-        risks.append(risk)
-
-    def _level(sg):
-        return "risk" if sg.get("level") == "risk" else "warn"
-
-    def _merge_into_doctor(doctor, sg, same_condition=None):
-        """The Doctor already reports this condition: raise ONLY the matching finding to the signal's severity
-        (never its other findings), and do not add a second risk. Returns False when the Doctor has no finding."""
-        mine = [r for r in risks if r["doctor"] == doctor]
-        if not mine:
-            return False
-        matching = [r for r in mine if same_condition and same_condition(r)]
-        if not matching:   # the signal is derived from the Doctor's worst finding
-            top = max(_ORDER.get(r["level"], 0) for r in mine)
-            matching = [r for r in mine if _ORDER.get(r["level"], 0) == top]
-        for r in matching:
-            if _ORDER[_level(sg)] > _ORDER.get(r["level"], 0):
-                r["level"] = _level(sg)
-                if sg.get("action"):
-                    r["action"] = sg["action"]   # the step for THIS condition, not the Doctor's first fix
-            elif sg.get("action") and not r.get("action"):
-                r["action"] = sg["action"]       # e.g. first-layer findings carry no fixes of their own
-        return True
-
-    for sg in signals:
-        sid = sg.get("id")
-        if sid == "printer-health":
-            continue   # the same drivers are already listed as Printer Doctor risks
-        if sid == "repeat-failure":
-            continue   # merged with the printer-wide failure evidence above
-        if sid == "toolhead-fit" and _merge_into_doctor("Multi-Material Doctor", sg, lambda r: "toolhead" in r["text"].lower()):
-            continue   # the Multi-Material Doctor reports this same colors-vs-toolheads condition
-        if sid == "first-layer" and _merge_into_doctor("First Layer Doctor", sg):
-            continue
-        risk = {"doctor": "Project Doctor", "level": _level(sg), "text": sg.get("title") or ""}
-        if sg.get("action"):
-            risk["action"] = sg["action"]
-        risks.append(risk)
-    if avail["profit"] and (profit.get("profit_per_print") or 0) <= 0:
-        risks.append({"doctor": "Profit Doctor", "level": "warn",
-                      "text": "Priced below cost — not profitable as-is."})
-        recs.append("Raise the price or cut cost before selling.")
 
     # Object spacing / collisions are not verified by Studio. That is a limitation, not a
     # finding: it is listed as "not verified" and keeps the report from saying "found nothing".
     spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
     not_verified = ["object spacing"] if spacing_unverified else []
 
-    # dedup, severity-sort
-    seen = set()
-    risks = [r for r in risks if not (r["text"] in seen or seen.add(r["text"]))]
-    risks.sort(key=lambda r: _ORDER.get(r["level"], 0), reverse=True)
     seen_r = set()
     recommendations = [r for r in recs if not (r in seen_r or seen_r.add(r))]
 
