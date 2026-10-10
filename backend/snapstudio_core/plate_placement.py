@@ -405,14 +405,16 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
         plate_fit = _plate_fit(grouped, target, whose)
     not_judged = len(unresolved)
 
-    totals: dict[str, int] = {}
+    # instance numbers count uses of the SAME object: an id is only unique within its part
+    totals: dict[tuple, int] = {}
     for item in items:
-        totals[str(item["object_id"])] = totals.get(str(item["object_id"]), 0) + 1
-    seen: dict[str, int] = {}
+        who = (item.get("part"), str(item["object_id"]))
+        totals[who] = totals.get(who, 0) + 1
+    seen: dict[tuple, int] = {}
     reported = []
     for item in items:
         lo, hi = item["bounds"]["min"], item["bounds"]["max"]
-        oid = str(item["object_id"])
+        oid = (item.get("part"), str(item["object_id"]))
         instance_index = seen.get(oid, 0)
         seen[oid] = instance_index + 1
         if multi_plate:

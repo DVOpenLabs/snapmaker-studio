@@ -210,7 +210,7 @@ def _read(archive: zipfile.ZipFile, name: str) -> str:
         return ""
 
 
-def read_objects(path: str) -> dict:
+def read_objects(path: str, keep_points: bool = True) -> dict:
     """Every logical object in a prepared project, with its footprint on the plate.
 
     The footprint is the printable geometry only. A modifier or a support blocker
@@ -220,33 +220,43 @@ def read_objects(path: str) -> dict:
     the target, and it is recorded in the project's own documentation.
     """
     from . import geometry, multipart
+    from .container import ThreeMF
 
-    with zipfile.ZipFile(path) as archive:
-        names = archive.namelist()
-        root_bytes = archive.read(ROOT_MODEL) if ROOT_MODEL in names else b""
-        root = root_bytes.decode("utf-8", "ignore")
-        root_scale = _units.mm_per_unit(root)   # the unit the root model declares -> mm
-        settings_text = _read(archive, MODEL_SETTINGS)
-        try:
-            project = json.loads(_read(archive, PROJECT_SETTINGS) or "{}")
-        except json.JSONDecodeError:
-            project = {}
-        # (part, object id) -> its points / its components. An object id is only unique within
-        # its own part: object 1 in one file and object 1 in another are different objects.
-        parts: dict[str, dict] = {}
-        for name in sorted(n for n in names if n.endswith(".model")):
-            body = _read(archive, name)
-            scale = _units.mm_per_unit(body)   # each part's own declared unit
-            meshes: dict[str, list[tuple]] = {}
-            components: dict[str, list] = {}
-            for block in _OBJECT_BLOCK.findall(body):
-                tag = block[:block.index(">") + 1]
-                found = re.search(r'\bid="([0-9]+)"', tag)
-                if not found:
-                    continue
-                meshes[found.group(1)] = _scaled(_points(block), scale)
-                components[found.group(1)] = _components_of(block)
-            parts[name] = {"scale": scale, "meshes": meshes, "components": components}
+    # The same bounded reader and limits as the rest of the engine: a hostile or merely huge archive
+    # is refused (with an exception the callers turn into "could not measure"), never read whole.
+    tm = ThreeMF.open(path)
+    names = tm.list_parts()
+    if sum(len(tm.read_part(n)) for n in names if n.endswith(".model")) > geometry._MAX_BYTES:
+        raise TooLargeToMeasure("the model data is larger than Studio will measure")
+    budget = _Budget(geometry._MAX_VERTS)
+
+    def _text(name):
+        return tm.read_part(name).decode("utf-8", "ignore") if name in names else ""
+
+    root_bytes = tm.read_part(ROOT_MODEL) if ROOT_MODEL in names else b""
+    root = root_bytes.decode("utf-8", "ignore")
+    root_scale = _units.mm_per_unit(root)   # the unit the root model declares -> mm
+    settings_text = _text(MODEL_SETTINGS)
+    try:
+        project = json.loads(_text(PROJECT_SETTINGS) or "{}")
+    except json.JSONDecodeError:
+        project = {}
+    # (part, object id) -> its points / its components. An object id is only unique within
+    # its own part: object 1 in one file and object 1 in another are different objects.
+    parts: dict[str, dict] = {}
+    for name in sorted(n for n in names if n.endswith(".model")):
+        body = _text(name)
+        scale = _units.mm_per_unit(body)   # each part's own declared unit
+        meshes: dict[str, list[tuple]] = {}
+        components: dict[str, list] = {}
+        for block in _OBJECT_BLOCK.findall(body):
+            tag = block[:block.index(">") + 1]
+            found = re.search(r'\bid="([0-9]+)"', tag)
+            if not found:
+                continue
+            meshes[found.group(1)] = _scaled(_points(block, budget), scale)
+            components[found.group(1)] = _components_of(block)
+        parts[name] = {"scale": scale, "meshes": meshes, "components": components}
 
     polygon = polygon_of(project)
     parts_by_object = multipart._parts_by_object(settings_text) if settings_text else {}
@@ -255,23 +265,26 @@ def read_objects(path: str) -> dict:
     # transform of an object that several items use, and every instance would then be reported
     # at the last one's position.
     objects = []
-    seen_per_object: dict[str, int] = {}
-    totals: dict[str, int] = {}
+    seen_per_object: dict[tuple, int] = {}
+    totals: dict[tuple, int] = {}
     build = geometry.build_items(root_bytes) if root_bytes else []
+    # An object id is only unique within its part: instance 1 of 2 means two uses of the SAME object.
     for entry in build:
-        totals[entry["object_id"]] = totals.get(entry["object_id"], 0) + 1
+        who = (entry["part"] or ROOT_MODEL, entry["object_id"])
+        totals[who] = totals.get(who, 0) + 1
     for entry in build:
         object_id, transform_text = entry["object_id"], entry["transform"]
-        instance_index = seen_per_object.get(object_id, 0)
-        seen_per_object[object_id] = instance_index + 1
+        who = (entry["part"] or ROOT_MODEL, object_id)
+        instance_index = seen_per_object.get(who, 0)
+        seen_per_object[who] = instance_index + 1
         item = _units.scale_translation(parse_transform(transform_text), root_scale)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
         roles = dict(parts_by_object.get(object_id, []))
         item_part = entry["part"] or ROOT_MODEL
         explicit = entry["part"] is not None
         top = parts.get(item_part, {}).get("components", {})
-        printable: list[tuple] = []
-        every: list[tuple] = []
+        printable = _Extent(keep_points)
+        every = _Extent(False)
         resolved = True
         if explicit and object_id not in parts.get(item_part, {}).get("meshes", {}):
             resolved = False     # a named part that does not hold the object: not the root's object
@@ -281,24 +294,27 @@ def read_objects(path: str) -> dict:
         resolved = resolved and ok
         for leaf_part, mesh_id, component_transform in leaves:
             points = parts[leaf_part]["meshes"][mesh_id]
+            budget.take_moved(len(points))
             whole = compose(item, component_transform)
-            moved = [apply(whole, point) for point in points]
-            every.extend(moved)
-            if roles.get(mesh_id, "normal_part") == "normal_part":
-                printable.extend(moved)
+            is_part = roles.get(mesh_id, "normal_part") == "normal_part"
+            for point in points:
+                moved = apply(whole, point)
+                every.add(moved)
+                if is_part:
+                    printable.add(moved)
         objects.append({
             "object_id": object_id,
             "part": item_part,
             "item_index": entry["item_index"],
             "instance_index": instance_index,
-            "instance_count": totals[object_id],
+            "instance_count": totals[who],
             "name": _name_of(settings_text, object_id),
             "transform": transform_text,
             "part_ids": part_ids,
             "resolved": resolved,
-            "footprint": _footprint(printable) if resolved else None,
-            "footprint_with_helpers": _footprint(every) if resolved else None,
-            "printable_points": [(x, y) for x, y, _z in printable] if resolved else [],
+            "footprint": printable.footprint() if resolved else None,
+            "footprint_with_helpers": every.footprint() if resolved else None,
+            "printable_points": printable.xy() if resolved else [],
         })
 
     return {"schema_version": SCHEMA_VERSION, "objects": objects,
@@ -393,8 +409,65 @@ def _name_of(settings: str, object_id: str) -> str | None:
     return found.group(1) if found else None
 
 
-def _points(block: str) -> list[tuple]:
-    return [(float(x), float(y), float(z)) for x, y, z in _VERTEX.findall(block)]
+class TooLargeToMeasure(Exception):
+    """A project holds more geometry than Studio will measure."""
+
+
+class _Budget:
+    """Vertices read from meshes plus vertices moved onto the plate, counted while they are collected,
+    so a huge file stops early instead of being materialised and then dropped."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit, self.read, self.moved = limit, 0, 0
+
+    def take_read(self, n: int = 1) -> None:
+        self.read += n
+        if self.read > self.limit:
+            raise TooLargeToMeasure("too many vertices to measure")
+
+    def take_moved(self, n: int) -> None:
+        self.moved += n
+        if self.moved > self.limit:
+            raise TooLargeToMeasure("too many vertices to measure")
+
+
+def _points(block: str, budget: "_Budget | None" = None) -> list[tuple]:
+    out = []
+    for x, y, z in _VERTEX.findall(block):
+        if budget is not None:
+            budget.take_read()
+        out.append((float(x), float(y), float(z)))
+    return out
+
+
+class _Extent:
+    """The footprint of the points added to it, kept as a running min/max (and, only when asked, the
+    points themselves)."""
+
+    def __init__(self, keep: bool) -> None:
+        self.keep, self.points = keep, []
+        self.lo_x = self.lo_y = float("inf")
+        self.hi_x = self.hi_y = float("-inf")
+        self.n = 0
+
+    def add(self, point: tuple) -> None:
+        x, y = point[0], point[1]
+        if x < self.lo_x: self.lo_x = x
+        if x > self.hi_x: self.hi_x = x
+        if y < self.lo_y: self.lo_y = y
+        if y > self.hi_y: self.hi_y = y
+        self.n += 1
+        if self.keep:
+            self.points.append((x, y))
+
+    def xy(self) -> list[tuple]:
+        return list(self.points)
+
+    def footprint(self) -> dict | None:
+        if not self.n:
+            return None
+        return {"min_x": self.lo_x, "min_y": self.lo_y, "max_x": self.hi_x, "max_y": self.hi_y,
+                "width": self.hi_x - self.lo_x, "depth": self.hi_y - self.lo_y}
 
 
 def _footprint(points: list[tuple]) -> dict | None:

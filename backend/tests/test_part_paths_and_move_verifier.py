@@ -178,3 +178,45 @@ def test_a_move_other_than_the_one_asked_for_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(pp, "verify_only_placement_moved", lying)
     result = pp.prepare_placed_copy(str(src), out_dir=str(tmp_path / "out"))
     assert result["ok"] is False and "was not kept" in result["reason"]
+
+
+# --- bounded reading, and instance numbers that mean the same object -------------------------------------
+
+def test_two_parts_sharing_an_object_id_are_not_instances_of_each_other(tmp_path):
+    path = _two_parts(tmp_path, [("1", fx.tf(100, 100, 0), "/" + A), ("1", fx.tf(500, 100, 0), "/" + B)], name="lbl.3mf")
+    report = pp.assess(str(path))
+    assert [(r["instance_index"], r["instance_count"]) for r in report["items"]] == [(0, 1), (0, 1)]
+    assert "instance" not in report["summary"]
+    assert [(o["instance_index"], o["instance_count"]) for o in placement.read_objects(str(path))["objects"]] == [(0, 1), (0, 1)]
+
+
+def test_too_many_vertices_is_refused_while_collecting_never_reported_fine(tmp_path, monkeypatch):
+    settings = fx.model_settings_xml({"1": [("1", "normal_part")]}, [(1, [("1", 0), ("1", 1)])])
+    path = str(fx.three_mf(tmp_path / "v.3mf", fx.model_xml(
+        [fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0)), ("1", fx.tf(500, 100, 0))]), {SETTINGS: settings}))
+    monkeypatch.setattr(geometry, "_MAX_VERTS", 10)          # the file holds 8 vertices, 16 once placed twice
+    import pytest
+    with pytest.raises(placement.TooLargeToMeasure):
+        placement.read_objects(path)
+    report = pp.assess(path)
+    assert report["available"] is False                       # a clear "could not measure", not an OK
+
+
+def test_a_highly_compressed_archive_is_refused_not_expanded(tmp_path):
+    import time
+    big = fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))])
+    padded = big.replace("<resources>", "<resources>" + "<!--" + " " * (90 * 1024 * 1024) + "-->")
+    path = tmp_path / "bomb.3mf"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("_rels/.rels", fx.rels_xml())
+        z.writestr("3D/3dmodel.model", padded)
+    assert path.stat().st_size < 1_000_000
+    started = time.perf_counter()
+    report = pp.assess(str(path))
+    assert report["available"] is False
+    assert time.perf_counter() - started < 20
+    try:
+        placement.read_objects(str(path))
+        raise AssertionError("expected a refusal")
+    except placement.TooLargeToMeasure:
+        pass
