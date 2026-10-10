@@ -73,6 +73,27 @@ def over_height(placement: dict | None) -> list[dict]:
     return out
 
 
+#: Below this a placed part is under the build plane (float noise stays above it).
+BELOW_PLATE_MM = -0.01
+
+
+def below_plate(placement: dict | None) -> list[dict]:
+    """The placed instances that reach below the build plane (placed Z under zero).
+
+    Studio does not treat a sunk part as fitting. A slicer prints what is above the plane, and nothing in
+    the project says the parts under it are meant to be cut off, so "fits" cannot be confirmed: the
+    instance is reported instead, and the person decides. (Z is placed Z: the build item's own scale and
+    translation count.)"""
+    if not placement or not placement.get("available"):
+        return []
+    out = []
+    for row in placement.get("items") or []:
+        low = ((row.get("bounds_mm") or {}).get("min") or [None, None, None])[2]
+        if low is not None and low < BELOW_PLATE_MM:
+            out.append(row)
+    return out
+
+
 def u1_printable_height() -> float | None:
     """The U1's printable height (mm) from Studio's own U1 profile template; None if it records none."""
     try:
@@ -551,6 +572,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
         "schema_version": SCHEMA_VERSION,
         "available": True,
         "bed": target,
+        "bed_name": whose,
         "bed_height_mm": height_mm if height_mm is not None else (u1_printable_height() if not bed else None),
         "source_bed": source_bed,
         "source_printer": (traits.get("target_printer") or {}).get("value"),

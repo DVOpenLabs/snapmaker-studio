@@ -2592,14 +2592,15 @@ def _placement_target(facts: dict) -> dict | None:
     if printer_id == printer_profiles.PREPARE_TARGET_ID:
         return {"key": ("profile", printer_id), "bed": None, "name": None, "height": None}
     try:
-        volume = printer_profiles.load(printer_id).get("build_volume_mm") or {}
+        profile = printer_profiles.load(printer_id)
+        volume = profile.get("build_volume_mm") or {}
     except KeyError:
         return None
     if not (volume.get("x") and volume.get("y")):
         return None
     return {"key": ("profile", printer_id, float(volume["x"]), float(volume["y"])),
             "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": float(volume["x"]), "max_y": float(volume["y"])},
-            "name": "this printer's", "height": float(volume["z"]) if volume.get("z") else None}
+            "name": f"the {printer_profiles.display_name(profile)}'s", "height": float(volume["z"]) if volume.get("z") else None}
 
 
 def _assess_against(path: str, target: dict | None) -> dict | None:
@@ -2611,12 +2612,29 @@ def _assess_against(path: str, target: dict | None) -> dict | None:
                                   height_mm=target["height"])
 
 
+_READY_ATTEMPTS = 3
+
+
 def _ready_analysis(path: str, target: dict | None,
                     need_placement: bool = True) -> tuple[str, dict | None, dict | None]:
     """(file_state, traits, placement) for one file, cached by what was read.
 
-    Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
-    file or a different printer bed is analysed again and nothing else is.
+    The file is identified before it is read and again after: if it changed in between, what was
+    read may mix two versions, so it is discarded and read again (a few times at most). A file that
+    will not hold still is reported as unreadable this time and nothing about it is cached.
+    """
+    for _attempt in range(_READY_ATTEMPTS):
+        outcome = _ready_analysis_once(path, target, need_placement)
+        if outcome is not None:
+            return outcome
+    return "unreadable", None, None
+
+
+def _ready_analysis_once(path: str, target: dict | None, need_placement: bool):
+    """One pass of `_ready_analysis`; None when the file changed while it was being read.
+
+    Keyed by the file's content fingerprint (and the printable area it was placed against), so an
+    edited file or a different printer is analysed again and nothing else is.
 
     Placement (a full read of the model's geometry) is by far the slowest step, so it
     is only done when asked for: `need_placement=False` returns the cheap traits and
@@ -2651,6 +2669,8 @@ def _ready_analysis(path: str, target: dict | None,
             hit["placed"] = bool(hit["placement"] and hit["placement"].get("available"))
         except Exception:
             hit["placement"] = None
+    if fileid.file_identity(path) != identity:
+        return None          # replaced while it was being read: never cache or return a mix
     with _ready_cache_lock:
         if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
             _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first

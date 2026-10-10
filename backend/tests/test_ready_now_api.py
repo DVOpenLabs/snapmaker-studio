@@ -456,3 +456,48 @@ def test_a_same_size_replacement_with_the_same_timestamp_is_not_served_stale(tmp
     assert os.stat(path).st_size == before.st_size and os.stat(path).st_mtime_ns == before.st_mtime_ns
     _s, _t, second = service._ready_analysis(str(path), target, need_placement=True)
     assert first["tag"] == 1 and second["tag"] == 2          # analysed again, not served from the cache
+
+
+def test_a_file_replaced_while_it_is_being_read_is_read_again_never_mixed(tmp_path, monkeypatch):
+    import os
+    from snapstudio_api import service
+    from snapstudio_core import plate_placement, project_traits
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    service._READY_CACHE.clear()
+    reads = []
+
+    def extract(p):
+        reads.append(1)
+        if len(reads) == 1:                     # the file is replaced after Studio looked at version A
+            fx.three_mf(path, fx.model_xml([fx.cube_object("1", 30)], [("1", fx.tf(100, 100, 0))]))
+            return {"readable": True, "tag": "A"}
+        return {"readable": True, "tag": "B"}
+
+    monkeypatch.setattr(project_traits, "extract", extract)
+    monkeypatch.setattr(plate_placement, "assess", lambda p, *a, **k: {"available": True, "off_plate": [], "items": []})
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    state, traits, _placement = service._ready_analysis(str(path), target, need_placement=True)
+    assert state == "ok" and traits["tag"] == "B" and len(reads) == 2
+    assert len(service._READY_CACHE) == 1                # only the consistent B read was cached
+
+
+def test_a_file_that_never_holds_still_is_unreadable_and_not_cached(tmp_path, monkeypatch):
+    from snapstudio_api import service
+    from snapstudio_core import project_traits
+    from tests import scene_fixtures as fx
+    path = tmp_path / "a.3mf"
+    fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))]))
+    service._READY_CACHE.clear()
+    count = {"n": 0}
+
+    def extract(p):
+        count["n"] += 1
+        fx.three_mf(path, fx.model_xml([fx.cube_object("1", 10 + count["n"])], [("1", fx.tf(100, 100, 0))]))
+        return {"readable": True}
+
+    monkeypatch.setattr(project_traits, "extract", extract)
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    assert service._ready_analysis(str(path), target, need_placement=False) == ("unreadable", None, None)
+    assert count["n"] == service._READY_ATTEMPTS and len(service._READY_CACHE) == 0

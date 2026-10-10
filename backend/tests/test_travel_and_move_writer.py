@@ -104,3 +104,30 @@ def test_a_tall_modifier_does_not_make_a_short_part_over_height(tmp_path):
     settings2 = fx.model_settings_xml({"100": [("1", "normal_part"), ("2", "normal_part")]}, [(1, [("100", 0)])])
     path2 = str(fx.three_mf(tmp_path / "tall2.3mf", root, {"3D/Objects/o.model": sub, "Metadata/model_settings.config": settings2}))
     assert len(pp.over_height(pp.assess(path2))) == 1
+
+
+def test_a_part_sunk_below_the_build_plane_is_not_confirmed_to_fit(tmp_path, monkeypatch):
+    # a 10 mm cube scaled 30x in Z and moved to Z=-100 spans -100..200: under 270, but below the plate
+    path = str(fx.three_mf(tmp_path / "sunk.3mf", fx.model_xml(
+        [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")])))
+    assert len(pp.below_plate(pp.assess(path))) == 1 and pp.over_height(pp.assess(path)) == []
+    monkeypatch.setattr(service, "printer_facts", _facts({"printer_id": "snapmaker_u1"}))
+    check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
+    assert check["result"] == "attention" and check["confidence"] == "likely"
+    assert "below the build plate" in check["evidence"] and "-100" in check["evidence"]
+
+
+def test_a_part_resting_on_the_plate_is_not_below_it(tmp_path):
+    path = str(fx.three_mf(tmp_path / "flat.3mf", fx.model_xml([fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 0))])))
+    assert pp.below_plate(pp.assess(path)) == []
+
+
+def test_the_bed_check_source_names_the_printer_it_judged_against():
+    from snapstudio_core import preflight as pf
+    placement = {"available": True, "off_plate": [], "bed_name": "the Voron 2.4 250's", "bed_height_mm": 250.0,
+                 "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": 250.0, "max_y": 250.0},
+                 "items": [{"object_id": "1", "bounds_mm": {"min": [10, 10, 0], "max": [20, 20, 30]}}]}
+    out = pf.evaluate({}, {"reachable": True, "toolhead_count": 1, "bed_mm": {"x": 250, "y": 250, "z": 250},
+                           "klipper_objects": [], "print_state": "standby"}, placement=placement)
+    source = next(c for c in out["checks"] if c["id"] == "bed.fit")["source"]
+    assert "Voron" in source and "U1" not in source
