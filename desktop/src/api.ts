@@ -141,6 +141,8 @@ export interface SettingsSummary {
   warnings: string[];
   recommendations_available: boolean;
   recommended_changes: SettingsChange[];
+  /** Present only when the creator's supports will not be in effect in Orca (Recommended mode). */
+  supports_note?: string;
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
 }
@@ -1315,6 +1317,8 @@ export interface PlacementCheck {
   reason?: string;
   source_printer?: string | null;
   plate_count?: number;
+  /** False when positions across plates are not established by Studio (multi-plate projects). */
+  placement_established?: boolean;
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];

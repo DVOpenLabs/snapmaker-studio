@@ -364,6 +364,20 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
             action="Open the project in the slicer to see the plate.",
             source="Klipper toolhead axis limits")
     off = placement.get("off_plate") or []
+    multi_plate = (placement.get("plate_count") or 1) > 1
+    if not off and multi_plate:
+        # Each plate may fit, but where the plates sit on the slicer's grid is not
+        # something Studio establishes. Not OK, and not an error either: unknown.
+        return _check(
+            "bed.fit", "Fits the printer's bed", UNKNOWN,
+            evidence=(f"printer bed is {size}; the project has {placement.get('plate_count')} "
+                      "plates and each fits on its own, but Studio does not check where the "
+                      "plates sit"),
+            confidence=INFORMATIONAL,
+            consequence=("Snapmaker Orca can list an object as Outside even when its plate "
+                         "fits, so Studio cannot confirm the objects land on this printer's plates."),
+            action="Open the project in Snapmaker Orca and use Arrange all plates.",
+            source="project geometry vs printer bed")
     if not off:
         return _check(
             "bed.fit", "Fits the printer's bed", OK,
