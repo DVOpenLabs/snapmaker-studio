@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import zipfile
 
 from . import units as _units
@@ -210,7 +211,38 @@ def _read(archive: zipfile.ZipFile, name: str) -> str:
         return ""
 
 
+_READ_CACHE: dict = {}
+_READ_SLOTS = 4
+_READ_LOCK = threading.Lock()
+
+
 def read_objects(path: str, keep_points: bool = True) -> dict:
+    """See ``_read_objects``. With ``keep_points=False`` the per-vertex outline is not collected and
+    the result is remembered for the next call on the same, unchanged file: footprints are all most
+    callers need, and they no longer re-read every mesh to get them."""
+    import copy
+
+    from . import geometry
+
+    if keep_points:
+        return _read_objects(path, True)
+    key = geometry.file_identity(path)
+    if key is not None:
+        with _READ_LOCK:
+            hit = _READ_CACHE.get(key)
+        if hit is not None:
+            return copy.deepcopy(hit)
+    result = _read_objects(path, False)
+    if key is not None and geometry.stat_identity(path) == key[:3]:
+        stored = copy.deepcopy(result)
+        with _READ_LOCK:
+            while len(_READ_CACHE) >= _READ_SLOTS:
+                _READ_CACHE.pop(next(iter(_READ_CACHE)), None)
+            _READ_CACHE[key] = stored
+    return result
+
+
+def _read_objects(path: str, keep_points: bool = True) -> dict:
     """Every logical object in a prepared project, with its footprint on the plate.
 
     The footprint is the printable geometry only. A modifier or a support blocker
