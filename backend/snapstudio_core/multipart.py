@@ -469,6 +469,37 @@ def _settings_objects(settings_xml: str) -> dict:
             for object_id, body in _SETTINGS_OBJECT.findall(settings_xml)}
 
 
+def _metadata_problems(settings: str) -> list[str]:
+    """Validate retained settings even when the build places meshes directly."""
+    problems: list[str] = []
+    # Every per-object setting the copy states must be one Studio has measured
+    # the target to act on. A malformed override can cost the geometry on load.
+    for object_id, body in _settings_objects(settings).items():
+        stated = {key: value for key, value in
+                  re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', body)
+                  if key not in ("name", "extruder")}
+        label = _object_label(body)
+        for fault in object_overrides.validate_emitted(stated):
+            problems.append(f"object {object_id}{label}: {fault}")
+
+    # Orca 2.4.0 declares these vectors with plain add, not add_nullable
+    # (PrintConfig.cpp: coFloats / coFloatsOrPercents). Config.hpp throws
+    # "Deserializing nil into a non-nullable object", so a nil entry prevents
+    # loading the whole project. Refuse it with the part named; never edit it
+    # silently. The derived option list and its provenance stay in orca_nonnullable.py.
+    for object_id, body in _SETTINGS_OBJECT.findall(settings):
+        label = _object_label(body)
+        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*>(.*?)</part>', body, re.S):
+            bad = [key for key, value in
+                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', part_body)
+                   if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
+            if bad:
+                problems.append(
+                    f"part {part_id} of object {object_id}{label}: has values "
+                    f"Snapmaker Orca 2.4.0 cannot read (nil in {', '.join(sorted(bad))})")
+    return problems
+
+
 def validate_archive(tm) -> dict:
     """Check that geometry, component graph and metadata all agree.
 
@@ -496,11 +527,12 @@ def validate_archive(tm) -> dict:
         return {"schema_version": SCHEMA_VERSION, "multipart": False,
                 "ok": False, "problems": ["no root model in the archive"]}
 
+    problems.extend(_metadata_problems(settings))
     components = re.findall(r'<component[^>]*objectid="(\d+)"[^>]*/>', root)
     paths = set(re.findall(r'<component[^>]*p:path="([^"]+)"', root))
     if not components:
         return {"schema_version": SCHEMA_VERSION, "multipart": False,
-                "ok": True, "problems": []}
+                "ok": not problems, "problems": problems}
 
     # every referenced object file exists, and is declared as a relationship
     rels = read("3D/_rels/3dmodel.model.rels")
@@ -604,37 +636,6 @@ def validate_archive(tm) -> dict:
             problems.append(
                 f"the metadata describes object {object_id}, which the geometry "
                 "does not build from components")
-
-    # Every per-object setting the copy states must be one Studio has measured
-    # the target to act on, in the form it was measured in. Snapmaker Orca does
-    # not ignore a per-object value it cannot read: handed one, it opened the
-    # project with an empty plate, and handed a zero layer height it hung on
-    # load. A malformed override costs the geometry, so it is caught here rather
-    # than by the person opening the file.
-    for object_id, body in _settings_objects(settings).items():
-        stated = {key: value for key, value in
-                  re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', body)
-                  if key not in ("name", "extruder")}
-        label = _object_label(body)
-        for fault in object_overrides.validate_emitted(stated):
-            problems.append(f"object {object_id}{label}: {fault}")
-
-    # Part-level values Snapmaker Orca 2.4.0 cannot read. Bambu Studio writes `nil`
-    # ("not overridden") into per-part speed lists; in Orca 2.4.0 these options are
-    # not nullable (PrintConfig.cpp: coFloats / coFloatsOrPercents, added with plain
-    # `add`; the only nullable options are the `filament_*` retraction ones), and
-    # Config.hpp throws "Deserializing nil into a non-nullable object", so the whole
-    # project fails to load. Refused with the part named, never silently edited.
-    for object_id, body in _SETTINGS_OBJECT.findall(settings):
-        label = _object_label(body)
-        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*>(.*?)</part>', body, re.S):
-            bad = [key for key, value in
-                   re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', part_body)
-                   if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
-            if bad:
-                problems.append(
-                    f"part {part_id} of object {object_id}{label}: has values "
-                    f"Snapmaker Orca 2.4.0 cannot read (nil in {', '.join(sorted(bad))})")
 
     for matrix in re.findall(r'key="matrix" value="([^"]*)"', settings):
         values = matrix.split()

@@ -31,6 +31,8 @@ RAW_ENGINE_WORDS = ("must not be written into a prepared copy", "cannot vouch fo
 
 
 def _blocked(tmp_path, kind: str, base: str = "bambu") -> str:
+    if base == "direct":
+        return _direct_mesh(tmp_path, kind)
     if kind == "ironing":
         if base == "u1":
             return _edit(tmp_path, f"{kind}-u1.3mf", U1_BASE, object_extra={"ironing_type": "top surface"})
@@ -42,7 +44,35 @@ def _blocked(tmp_path, kind: str, base: str = "bambu") -> str:
     return _with_part_metadata(tmp_path, extra, f"{kind}.3mf")
 
 
-CASES = [("ironing", "bambu"), ("nil", "bambu"), ("ironing", "u1"), ("nil", "u1")]
+def _direct_mesh(tmp_path, kind: str = "clean") -> str:
+    """A native project whose build places a mesh without component wrappers."""
+    root = b'''<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources><object id="2" type="model"><mesh>
+    <vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/>
+      <vertex x="0" y="10" z="0"/><vertex x="0" y="0" z="10"/></vertices>
+    <triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>
+      <triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/></triangles>
+  </mesh></object></resources><build><item objectid="2"/></build>
+</model>'''
+    obj = '<metadata key="ironing_type" value="top surface"/>' if kind == "ironing" else ""
+    part = '<metadata key="outer_wall_speed" value="80,nil"/>' if kind == "nil" else ""
+    settings = (f'<config><object id="2"><metadata key="name" value="Sample"/>'
+                f'<metadata key="extruder" value="1"/>{obj}'
+                f'<part id="2" subtype="normal_part">{part}</part></object></config>')
+    out = tmp_path / f"direct-{kind}.3mf"
+    with zipfile.ZipFile(U1_BASE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "3D/3dmodel.model":
+                data = root
+            elif item.filename == "Metadata/model_settings.config":
+                data = settings.encode("utf-8")
+            dst.writestr(item, data)
+    return str(out)
+
+
+CASES = [(kind, base) for base in ("bambu", "u1", "direct") for kind in ("ironing", "nil")]
 
 
 @pytest.fixture
@@ -105,8 +135,9 @@ def test_a_genuine_u1_score_100_file_is_ready_only_when_nothing_blocks_it(tmp_pa
     assert blocked["score"] == 100 and blocked["verdict"] != "READY"
 
 
-def test_doctor_over_http_agrees(tmp_path):
-    src = _blocked(tmp_path, "nil")
+@pytest.mark.parametrize("kind,base", CASES)
+def test_doctor_over_http_agrees(tmp_path, kind, base):
+    src = _blocked(tmp_path, kind, base)
     httpd, token = build_server(port=0)
     port = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -126,9 +157,9 @@ def test_a_genuinely_unreadable_file_is_still_high_risk(tmp_path):
 
 # --- Model Connect / Model Browser import --------------------------------------
 
-@pytest.mark.parametrize("kind", ["ironing", "nil"])
-def test_a_readable_project_prepare_would_refuse_is_added_to_the_library(library_env, kind):
-    src = _blocked(library_env, kind)
+@pytest.mark.parametrize("kind,base", CASES)
+def test_a_readable_project_prepare_would_refuse_is_added_to_the_library(library_env, kind, base):
+    src = _blocked(library_env, kind, base)
     got = service.register_downloaded_model(src, "www.printables.com",
                                             "https://www.printables.com/model/1-x")
     assert got["ok"] is True and got["prepare_blocked"] is True
@@ -159,9 +190,9 @@ def test_the_intelligence_view_reports_the_same_thing(tmp_path, kind, base):
 
 # --- Compatibility Doctor -------------------------------------------------------
 
-@pytest.mark.parametrize("kind", ["ironing", "nil"])
-def test_the_compatibility_check_does_not_call_a_blocked_project_clean(tmp_path, kind):
-    res = service.compatibility_check(_blocked(tmp_path, kind))
+@pytest.mark.parametrize("kind,base", CASES)
+def test_the_compatibility_check_does_not_call_a_blocked_project_clean(tmp_path, kind, base):
+    res = service.compatibility_check(_blocked(tmp_path, kind, base))
     assert any(f["id"] == "prepare.blocked" for f in res["findings"])
     assert "No known U1 compatibility issues" not in res["summary"]
 
@@ -190,9 +221,9 @@ def _cli(*args):
     return CliRunner().invoke(cli, list(args))
 
 
-@pytest.mark.parametrize("kind", ["ironing", "nil"])
-def test_cli_doctor_and_repair_agree_with_prepare(tmp_path, kind):
-    src = _blocked(tmp_path, kind)
+@pytest.mark.parametrize("kind,base", CASES)
+def test_cli_doctor_and_repair_agree_with_prepare(tmp_path, kind, base):
+    src = _blocked(tmp_path, kind, base)
     before = _sha(src)
     doc = _cli("doctor", src)
     assert doc.exit_code == 1 and "READY" not in doc.output.replace("Verdict : REPAIRABLE", "")
@@ -211,10 +242,23 @@ def test_cli_doctor_and_repair_agree_with_prepare(tmp_path, kind):
 @pytest.mark.parametrize("kind,base", CASES)
 def test_prepare_refuses_in_plain_language_with_details_separate(tmp_path, kind, base):
     src = _blocked(tmp_path, kind, base)
+    before = _sha(src)
     with pytest.raises(UnsoundOutput) as ei:
         service.convert(src, str(tmp_path / "out"))
     assert not any(w in str(ei.value) for w in RAW_ENGINE_WORDS)
-    assert any(w in ei.value.details for w in RAW_ENGINE_WORDS[1:]) or "cannot vouch" in ei.value.details
+    expected = ("ironing_type is not a setting Studio has proved" if kind == "ironing"
+                else "cannot read (nil in")
+    assert expected in ei.value.details
+    assert _sha(src) == before
+    assert not Path(src).with_suffix(".orig.3mf").exists()
+    assert not (tmp_path / "out").exists() or not list((tmp_path / "out").iterdir())
+
+
+def test_a_clean_direct_mesh_project_still_prepares(tmp_path):
+    src = _direct_mesh(tmp_path)
+    assert eligibility.assess(ThreeMF.open(src)).preparable
+    assert not service.doctor(src)["prepare_blocked"]
+    assert conv.convert_to_u1(src, str(tmp_path / "out")).validated_ok
 
 
 # --- the Prusa brim_type collision (audit) -------------------------------------
