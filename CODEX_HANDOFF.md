@@ -392,3 +392,55 @@ Remaining gates: a decision on this specific security confirmation, the
 remaining bounded GUI checks, Opus/Fable reviews, and separately authorized
 owner integration into existing PR #108 followed by fresh CI. Opening files
 does not establish slicing correctness or a successful physical print.
+
+## Isolated Orca GUI continuation — 2026-10-13
+
+The maintainer explicitly authorized acknowledging only the already observed
+`Customized Preset` embedded-G-code warning for copied test outputs. The
+permission does not certify that the embedded G-code is safe. The suppression
+checkbox must remain unchecked. The earlier raw prompt capture is preserved.
+
+A fresh private runner copy was prepared with a narrow match for that exact
+dialog title and message, a verified unchecked checkbox, and exactly one visible
+modal-owned OK button. Authentication, legal prompts and every other security
+confirmation remain stop conditions. The runner parsed successfully. Its hash
+and implementation evidence are in
+[orca-native-6e35fe6-focus-block.json](docs/testing/prepare-contract/orca-native-6e35fe6-focus-block.json).
+
+**The resumed GUI run stopped before input.** It launched only the private C02
+Preserve copy, verified the owned executable, PID and start time, then detected
+that the foreground belonged to another window. The foreground guard stopped
+all GUI input; no dialog or project capture occurred, no prompt was
+acknowledged, and the owned Orca process closed normally. The copied input hash
+and production-profile signature matched before and after. The process was gone
+at the final check. No unrelated process was stopped.
+
+This attempt establishes no loading, plate membership, import prompt or
+settings result. It does not complete or replace the earlier two D01 loads. Of
+the 24 planned unique outputs, those two D01 variants are the only completed
+loads; the fresh C02 Preserve attempt did not complete, and the other 21
+outputs remain unrun. The earlier C02 security dialog observation remains valid
+as a prompt observation only; it was not acknowledged in this continuation.
+
+The foreground stop is the current GUI blocker. Do not bypass it with input to
+another window. Resume only when the owned Orca window can pass the foreground
+identity check. On a successful run, record loading, dialogs, plate membership
+and visible settings as separate observations. C11 source-grid placement and
+Recommended support-setting behavior remain the already known limitations; no
+new evidence or correction for them was produced here. No new product
+regression was established. This GUI lane does not test slicing correctness,
+G-code execution or print success.
+
+Private raw runner output and identities are under
+`.codex-run/orca-gui-6e35fe6-20261013/bounded-04/`; earlier prompt captures
+remain under `bounded-03/` and were not changed. The tracked source-independence
+check passed with **1281 filenames, 874 text files and zero violations**.
+The final protected-state recheck found **14 worktrees, 20 pre-existing branch
+heads and the original stash unchanged**, with no unexpected changes. Only the
+anonymized evidence and this handoff were added to the tracked tree; prior
+implementation and documentation commits remain intact.
+
+Remaining gates are actual completion of the bounded Orca GUI set when the
+foreground guard can pass, Opus/Fable reviews, and owner integration into the
+existing PR #108 followed by fresh CI. No integration, push, merge, tag or
+publication occurred.

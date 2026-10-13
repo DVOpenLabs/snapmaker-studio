@@ -1,0 +1,45 @@
+{
+  "schema": "orca-native-gui-validation/1",
+  "recorded_at": "2026-10-13T12:29:19.7788546Z",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "orca_version": "2.4.0",
+  "orca_executable_sha256": "d85b864427135fe98903bdddd999e8259e4f96d1f7c012e19c0a80d3e252d1b87",
+  "private_runner_sha256": "06F1B51AE68D99DA70FE932FDDEA69E14F92E4538A35B612CE2A99D4418A5559",
+  "status": "stopped by foreground guard before any dialog or project capture",
+  "attempt": {
+    "case": "C02",
+    "mode": "preserve",
+    "source_output_sha256": "DC21A6D807034D28349F9377E74AE03FB6B7EEF32549BC5A2DE23A118E1044E2",
+    "process_identity_verified": true,
+    "foreground_owner_verified": false,
+    "input_sent": false,
+    "dialog_observed": false,
+    "loaded": false,
+    "plate_membership": "unobserved",
+    "settings": "unobserved",
+    "input_unchanged": true,
+    "closure": "normal",
+    "stop_reason": "unrelated foreground window",
+    "production_profile_unchanged": true
+  },
+  "authorized_warning_policy": {
+    "exact_dialog_title": "Customized Preset",
+    "acknowledgement": "authorized only when exact embedded G-code safety text is present, one modal-scoped OK button exists, and suppression checkbox is verified unchecked",
+    "observed_in_this_attempt": false,
+    "previous_capture_unchanged": true
+  },
+  "bounded_set": {
+    "completed_loads_before_this_attempt": 2,
+    "remaining_outputs_not_run": 21,
+    "this_attempt_completed": false,
+    "no_other_outputs_started": true
+  },
+  "prohibited_actions_performed": [],
+  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-04/",
+  "limitations": [
+    "No project loading, plate membership, prompts or settings were observed in this attempt.",
+    "The authorized warning was not acknowledged because this attempt stopped before observing a dialog.",
+    "No slicing, G-code execution, upload or printer connection occurred.",
+    "Opening remains distinct from slicing correctness or print success."
+  ]
+}
