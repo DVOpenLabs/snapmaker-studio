@@ -12,9 +12,10 @@ release, merge, push or duplicate PR was performed.
   not a fresh branch from main.
 - Completed implementation/tests/CI commit:
   `6e35fe607123ad371c29b187c55f560edc13d694`.
-- This handoff is a separate documentation commit. Its exact SHA is available
-  with `git log -1 --format=%H -- CODEX_HANDOFF.md`; it is also the delivered
-  branch tip. Resolve it before integration and keep that SHA with the review.
+- Original handoff commit, preserved unchanged in history:
+  `906b7ec6e56c5894fa5953cba5dc44995124b119`.
+- Subsequent validation documentation is a new commit, not an amendment. Resolve
+  its SHA with `git log -1 --format=%H -- CODEX_HANDOFF.md` before integration.
 
 Claude's `wip/108-contracts` checkpoint
 `77d777086fb82258cc4d2f405536fdf66802b84b` has an identical tree to
@@ -99,7 +100,7 @@ Run the actual CI check from the repository root:
 .\.venv\Scripts\python.exe tools/check-source-independence.py --manifest .codex-run/evidence/source-coverage.json
 ```
 
-Final coverage including this handoff: **1278 tracked filenames, 871 tracked text
+Initial delivery coverage including this handoff: **1278 tracked filenames, 871 tracked text
 files, zero violations**. The exact enumerated paths are in
 [source-coverage.json](.codex-run/evidence/source-coverage.json): `filenames`
 contains every tracked path, `text_files` contains every scanned content path,
@@ -176,7 +177,7 @@ Require a clean target checkout, branch `fix/prepare-reliability`, and both loca
 and PR heads equal to `32c6fbc5d166ea0be120923cc1d0e6bf2d93a266`. If any differ,
 stop and reconcile that newer work read-only before integration; never overwrite
 it or repeat a patch already present. If the checks match, the existing branch
-can take the two Codex commits as an ordinary fast-forward:
+can take the Codex commit chain, including validation documentation, as an ordinary fast-forward:
 
 ```powershell
 git -C ../ss-reliability merge --ff-only codex/108-prepare-contract
@@ -200,3 +201,96 @@ Do not repeat the metadata-before-early-return repair, route/session action
 gates, fix-plan correction, refusal-detail assertion, generated direct-mesh
 regressions, CI guard or its mutation checks. Reuse the valid test and screenshot
 evidence above. Preserve #103's dirty checkout and all pending Claude tasks.
+
+## Exact-engine Orca validation follow-up — 2026-10-12
+
+**GUI checks remain blocked, not passed.** The supported Windows GUI runtime
+could not start: first `windows sandbox failed: helper_unknown_error: setup
+refresh had errors`, then `trusted Node process exited unexpectedly; kernel
+reset, rerun your request`, including a no-op after reset. No Orca process was
+started and no file-opening result, import-dialog observation or GUI setting
+was asserted. A question requesting permission to use the existing native
+isolated harness instead remains pending; elapsed time is not permission.
+
+The `computer-use` skill's `docs/guidance.md`
+requires: “Use only the Computer Use JS APIs for Windows app automation.” This
+is the procedural blocker for executing the prepared fallback. The harness copy
+is syntax-checked, uses private `--datadir` and TEMP/TMP, adds PID/start-time/path
+verification and a byte-hash tripwire for the production profile, and retains
+private evidence rather than recursively deleting it. It was **not executed**.
+
+Evidence independent of that blocker is in
+[orca-6e35fe6-results.json](docs/testing/prepare-contract/orca-6e35fe6-results.json).
+Raw generation, comparison records, outputs and unexecuted harness are in the
+new private lane `.codex-run/orca-gui-6e35fe6-20261012/`. Existing benchmark and
+creator-pair folders were read-only; none of their code/evidence was edited.
+One earlier local protection-summary artifact was inadvertently refreshed during
+the initial check; its previous result was restored from the prior recorded tool
+output, and this run's checks now use only the new lane's evidence paths.
+
+The installed binary is **Snapmaker Orca 2.4.0**, executable SHA-256
+`d85b864427135fe98903bdddd999e8259e4f96d1f7c012e19c0a80d3e252d1b87`.
+The exact implementation commit
+`6e35fe607123ad371c29b187c55f560edc13d694` was exported with `git archive`;
+**all 327 exported backend files were verified against their Git blobs**. The
+existing worktree's independent `.venv` supplies dependencies, while `-I` plus
+the explicit exported-backend path selects this committed engine. No source
+changes or unrelated placement/readiness/viewer work were made.
+
+### Generated-file results; these are not GUI results
+
+Both Preserve and Recommended were generated for every successful case below.
+Objects are settings objects; instances are root build items; plates are retained
+plate metadata records. These counts do not establish Orca's rebuilt membership.
+
+| Case | Objects / instances / plate records | Painting retained in the archive | Result in each mode |
+|---|---|---|---|
+| C02 | 2 / 2 / 1 | 196 support-paint attributes | Generated; GUI pending |
+| C03 | 1 / 1 / 1 | 92,087 colour-paint and 2,306 support-paint attributes; repeated part records kept | Generated; GUI pending |
+| C04 | 6 / 6 / 5 | 354 seam-paint attributes | Generated; GUI pending |
+| C06 | 2 / 2 / 2 | No paint attributes in the source | Generated; GUI pending |
+| D01 clean direct mesh | 1 / 1 / 0 | No paint on the built tetrahedron; exact test fixture also retains unused inherited mesh members | Generated; GUI pending |
+| C11a / C11b creator pair | 2 / 2 / 2 each | 472,906 colour-paint and 12,330 support-paint attributes each | Generated; GUI pending |
+
+The whole bounded fixture run produced **24 outputs and 6 refusals** (15 inputs,
+two modes). C09 was refused for unreadable non-nullable part values. Synthetic
+D02 (direct-mesh `nil`) and D03 (direct-mesh unverified object setting) were also
+refused. **Every refusal produced no output; all 30 calls produced no backup.**
+All twelve benchmark/creator originals and every input copy remain byte-identical.
+Original hashes and individual output hashes are in the new JSON evidence.
+
+For successful outputs, object count, build-item transforms, plate records,
+per-object settings, all mesh vertex/triangle values and painting attributes were
+checked independently. Non-root mesh members are byte-identical. These checks
+establish what the files contain, not the runtime interpretation of every value.
+
+### Regression distinction and limitations
+
+The 22 benchmark/creator outputs were compared with fresh outputs from the
+verified pre-Codex task base `32c6fbc5d166ea0be120923cc1d0e6bf2d93a266`.
+Every archive member has identical contents in that comparison. Thus **no new
+file-output regression from the Codex implementation was found**. This is not
+a comparison requiring byte identity to the creator's U1 project. The synthetic
+direct-mesh controls are covered by the earlier behavior regressions and the
+new generation/refusal checks; their GUI loading is not established.
+
+C11's inherited placement and support limitations remain visible in the files:
+source-grid build transforms are kept instead of the creator U1 file's positions;
+Recommended omits support keys from the process declaration while the raw
+`enable_support` value can still be `1`. The existing creator-pair GUI/source
+evidence explains why that can resolve to supports off in Orca. Current GUI
+support state, plate membership, out-of-bounds notices, customized-preset prompts
+and import errors were **not observed in this run**. No placement, support-policy,
+flush-matrix or prime-tower correction was attempted here.
+
+Paint bytes retained does not prove supports will be generated. Opening alone
+would not establish slicing correctness, collision freedom, correct filament
+mapping or a successful print. No uploads, printer calls or physical printing
+were performed. No GUI interaction with the user's Orca profile occurred.
+
+Remaining gates: runtime repair or explicit fallback authorization, actual Orca
+GUI checks on these exact outputs, **Opus/Fable reviews**, and fresh existing-PR
+CI after separately authorized owner integration. The earlier local unit/build
+evidence remains valid; only documentation was added, so those suites were not
+rerun. The final source scan and protected-checkout comparison for this follow-up
+are recorded under the new lane's `evidence/` directory.

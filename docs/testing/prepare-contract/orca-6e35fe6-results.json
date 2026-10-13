@@ -1,0 +1,2629 @@
+{
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "prior_handoff_commit": "906b7ec6e56c5894fa5953cba5dc44995124b119",
+  "base_commit": "32c6fbc5d166ea0be120923cc1d0e6bf2d93a266",
+  "exported_engine_files_verified": 327,
+  "orca": {
+    "version": "2.4.0",
+    "executable_sha256": "d85b864427135fe98903bdddd999e8259e4f96d1f7c012e19c0a80d3e252d1b87"
+  },
+  "gui_status": "BLOCKED: supported automation runtime failed to start; fallback authorization pending",
+  "runtime_errors": [
+    "windows sandbox failed: helper_unknown_error: setup refresh had errors",
+    "trusted Node process exited unexpectedly; kernel reset, rerun your request"
+  ],
+  "orca_processes_started": 0,
+  "new_output_regression_found": false,
+  "generated_count": 24,
+  "refused_count": 6,
+  "original_hashes": {
+    "C01": "8b9cbe118ad0bd8c42581fd8e0524df02968d81ed693dc51c5f75192d53f976c",
+    "C02": "80f6748e15f8630b7f69bcbe6e851af3df47929baa8d417a86683c10b7c4591d",
+    "C03": "e42dfa7993da95ede09d30535f438928cfcb55e7a11dca1e1aec1475cb4b5c5b",
+    "C04": "636beb5662d04e73b0b21585d77252bcc191acf41bebcd0368a5259ecdab6509",
+    "C05": "a9267d096c96924ba81d3ff9b7a34998a36e52079a2e0d44d6f5a6b01b82eb3a",
+    "C06": "900605adb7089eed04a91a90e1200fbc6f249168c7c10b458b35c4fa1e31ebdc",
+    "C07": "cabd66169e7fa0c88d1129bb927a55ce5a14d4172163651ae156d384991156ce",
+    "C08": "4e1dedc6df5ae9a4243a643cb5fb99d1b57cbe8679f2bc8aad87f827d0249227",
+    "C09": "0a0070aa61cae99a500d0cf2830b8a032a2bbaa8c8efe0027f897ffab4ce3d33",
+    "C10": "77ec459a491d9ab1d8ca71abfff65636e0d09a62a01374c595096e8d75bed1e2",
+    "C11a": "902189a611322553372bc1fa1c63e64302acb252272418273631472e589b4e2d",
+    "C11b": "7a25e43b9388a34c515868ec7b6b90b9b8d3c723746484570b7f3736db971d45"
+  },
+  "originals_byte_identical": true,
+  "no_input_backups": true,
+  "cases": [
+    {
+      "case": "C01",
+      "mode": "preserve",
+      "input_sha256": "8b9cbe118ad0bd8c42581fd8e0524df02968d81ed693dc51c5f75192d53f976c",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "cdf74c3ead3ddeec3f0c23ac285f21445161f3fadaaa58f5001df5e11f5d7526",
+      "output_relative_path": "outputs\\C01\\preserve\\C01_SnapmakerU1.3mf",
+      "settings_objects": 14,
+      "build_instances": 14,
+      "plate_records": 10,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "229.053",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.168"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#164B35"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "229.053",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.168"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#164B35"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;prime_tower_infill_gap;prime_tower_rib_wall;print_compatible_printers;print_settings_id;sparse_infill_pattern;version;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C01",
+      "mode": "recommended",
+      "input_sha256": "8b9cbe118ad0bd8c42581fd8e0524df02968d81ed693dc51c5f75192d53f976c",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "9a6e573b0520300e522cb3c1b955dc914a8e82570651083018cef28bc2c4fc04",
+      "output_relative_path": "outputs\\C01\\recommended\\C01_SnapmakerU1.3mf",
+      "settings_objects": 14,
+      "build_instances": 14,
+      "plate_records": 10,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "229.053",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.571",
+          "234.168"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#164B35"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#164B35"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C02",
+      "mode": "preserve",
+      "input_sha256": "80f6748e15f8630b7f69bcbe6e851af3df47929baa8d417a86683c10b7c4591d",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "dc21a6d807034d28349f9377e74ae03fb6b7eef32549bc5a2de23a118e1044e2",
+      "output_relative_path": "outputs\\C02\\preserve\\C02_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 196,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "216.972"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#474747"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "216.972"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#474747"
+        ]
+      },
+      "process_declarations": "bridge_flow;brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;version;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C02",
+      "mode": "recommended",
+      "input_sha256": "80f6748e15f8630b7f69bcbe6e851af3df47929baa8d417a86683c10b7c4591d",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "421b54a7efb6c1906275305ca1c9246e2b1f47f6937623d3f1e9ef3d806b72a1",
+      "output_relative_path": "outputs\\C02\\recommended\\C02_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 196,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "216.972"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#474747"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 1,
+          "sha256": "a37bbbb0764cc5bf8d8c251cb1c95e3d2e142934792916ccb362ceb5902d9f0b",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#474747"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C03",
+      "mode": "preserve",
+      "input_sha256": "e42dfa7993da95ede09d30535f438928cfcb55e7a11dca1e1aec1475cb4b5c5b",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "65fe8446e2296540f8ad7cdd8678dad6f3c2c72bd0672bd8a0c7d11e49374d2e",
+      "output_relative_path": "outputs\\C03\\preserve\\C03_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 92087,
+        "mmu_segmentation": 0,
+        "paint_supports": 2306,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "25",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "188.803"
+        ],
+        "wipe_tower_y": [
+          "193.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "2fac4f643f6d75524f2d72ea6dc18697b2e20614ab33dbeaaf9876a97f44222a",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#804000",
+          "#FFD7D7",
+          "#FFBA75"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "25",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "188.803"
+        ],
+        "wipe_tower_y": [
+          "193.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "2fac4f643f6d75524f2d72ea6dc18697b2e20614ab33dbeaaf9876a97f44222a",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#804000",
+          "#FFD7D7",
+          "#FFBA75"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;enable_support;ensure_vertical_shell_thickness;print_compatible_printers;print_settings_id;support_type;version;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C03",
+      "mode": "recommended",
+      "input_sha256": "e42dfa7993da95ede09d30535f438928cfcb55e7a11dca1e1aec1475cb4b5c5b",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "e125aaa32db6210c5aa931290376eb54cc97ba89cfc88eddfd485d215d5e8fb4",
+      "output_relative_path": "outputs\\C03\\recommended\\C03_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 92087,
+        "mmu_segmentation": 0,
+        "paint_supports": 2306,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "25",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "188.803"
+        ],
+        "wipe_tower_y": [
+          "193.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "2fac4f643f6d75524f2d72ea6dc18697b2e20614ab33dbeaaf9876a97f44222a",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#804000",
+          "#FFD7D7",
+          "#FFBA75"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "25",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "2fac4f643f6d75524f2d72ea6dc18697b2e20614ab33dbeaaf9876a97f44222a",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#804000",
+          "#FFD7D7",
+          "#FFBA75"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C04",
+      "mode": "preserve",
+      "input_sha256": "636beb5662d04e73b0b21585d77252bcc191acf41bebcd0368a5259ecdab6509",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "2d429f3c552c55743fed2147551ce0793c9be70e276398e48294a9d19d79b249",
+      "output_relative_path": "outputs\\C04\\preserve\\C04_SnapmakerU1.3mf",
+      "settings_objects": 6,
+      "build_instances": 6,
+      "plate_records": 5,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 354,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "5%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "48.8738",
+          "40",
+          "40",
+          "40",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "235.051",
+          "200",
+          "230.655",
+          "200",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 338,
+          "sha256": "d421fe35afec1551b619aa9e08cf84740790ff7ca3e76b9f688d7c9c80c3bf80",
+          "nonzero_entries": 312
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#AE835B",
+          "#F99963",
+          "#057748",
+          "#7C4B00",
+          "#AF7933",
+          "#898989",
+          "#161616",
+          "#042F56",
+          "#F72323",
+          "#FFFFFF",
+          "#00000000",
+          "#FFFF00"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "5%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "48.8738",
+          "40",
+          "40",
+          "40",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "235.051",
+          "200",
+          "230.655",
+          "200",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 169,
+          "sha256": "9e484f396d0dbe222d08154ab742c78659210bbc32fdb7acccf6d57789d87c7a",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#AE835B",
+          "#F99963",
+          "#057748",
+          "#7C4B00",
+          "#AF7933",
+          "#898989",
+          "#161616",
+          "#042F56",
+          "#F72323",
+          "#FFFFFF",
+          "#00000000",
+          "#FFFF00"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;enable_arc_fitting;enable_support;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;skeleton_infill_density;skin_infill_density;sparse_infill_density;sparse_infill_pattern;support_top_z_distance;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C04",
+      "mode": "recommended",
+      "input_sha256": "636beb5662d04e73b0b21585d77252bcc191acf41bebcd0368a5259ecdab6509",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "d65e0f7b55d54851702b1e27b0de4a05315fefadf9c82468b16aa4bfdb70214c",
+      "output_relative_path": "outputs\\C04\\recommended\\C04_SnapmakerU1.3mf",
+      "settings_objects": 6,
+      "build_instances": 6,
+      "plate_records": 5,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 354,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "5%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "48.8738",
+          "40",
+          "40",
+          "40",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "235.051",
+          "200",
+          "230.655",
+          "200",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 338,
+          "sha256": "d421fe35afec1551b619aa9e08cf84740790ff7ca3e76b9f688d7c9c80c3bf80",
+          "nonzero_entries": 312
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#AE835B",
+          "#F99963",
+          "#057748",
+          "#7C4B00",
+          "#AF7933",
+          "#898989",
+          "#161616",
+          "#042F56",
+          "#F72323",
+          "#FFFFFF",
+          "#00000000",
+          "#FFFF00"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "5%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 169,
+          "sha256": "9e484f396d0dbe222d08154ab742c78659210bbc32fdb7acccf6d57789d87c7a",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#AE835B",
+          "#F99963",
+          "#057748",
+          "#7C4B00",
+          "#AF7933",
+          "#898989",
+          "#161616",
+          "#042F56",
+          "#F72323",
+          "#FFFFFF",
+          "#00000000",
+          "#FFFF00"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C05",
+      "mode": "preserve",
+      "input_sha256": "a9267d096c96924ba81d3ff9b7a34998a36e52079a2e0d44d6f5a6b01b82eb3a",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "3d0d04fabbf50ab097284c378c6c59d448d5171067a44f985cb2563a2c82291d",
+      "output_relative_path": "outputs\\C05\\preserve\\C05_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "14.9999"
+        ],
+        "wipe_tower_y": [
+          "181.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "14.9999"
+        ],
+        "wipe_tower_y": [
+          "181.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;initial_layer_infill_speed;initial_layer_speed;print_compatible_printers;print_settings_id;sparse_infill_pattern;top_color_penetration_layers;top_one_wall_type;top_shell_layers;top_surface_pattern;version;wall_generator;wall_sequence;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C05",
+      "mode": "recommended",
+      "input_sha256": "a9267d096c96924ba81d3ff9b7a34998a36e52079a2e0d44d6f5a6b01b82eb3a",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "4bc4edc9bd364b6dbba1ea5633eb1b59a71569b18b2c24a212ae5876a9564873",
+      "output_relative_path": "outputs\\C05\\recommended\\C05_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "14.9999"
+        ],
+        "wipe_tower_y": [
+          "181.001"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C06",
+      "mode": "preserve",
+      "input_sha256": "900605adb7089eed04a91a90e1200fbc6f249168c7c10b458b35c4fa1e31ebdc",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "95fbab59e681eaf44c2547c51b382f8a997dd8bef98090b16a9f05802b70a2e9",
+      "output_relative_path": "outputs\\C06\\preserve\\C06_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "126.764",
+          "126.764"
+        ],
+        "wipe_tower_y": [
+          "126.764",
+          "6.93655"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "126.764",
+          "126.764"
+        ],
+        "wipe_tower_y": [
+          "126.764",
+          "6.93655"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;initial_layer_infill_speed;initial_layer_speed;print_compatible_printers;print_settings_id;sparse_infill_pattern;top_color_penetration_layers;top_one_wall_type;top_shell_layers;top_surface_pattern;version;wall_generator;wall_sequence;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C06",
+      "mode": "recommended",
+      "input_sha256": "900605adb7089eed04a91a90e1200fbc6f249168c7c10b458b35c4fa1e31ebdc",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "b67069ace7447917e625d03a9d5f4c3e07f6308442f096d8632aa54888abc544",
+      "output_relative_path": "outputs\\C06\\recommended\\C06_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "35",
+        "wipe_tower_x": [
+          "126.764",
+          "126.764"
+        ],
+        "wipe_tower_y": [
+          "126.764",
+          "6.93655"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 100,
+          "sha256": "bd307e90c7e09ddc6bbd551e4c5802546c86ec0a3881ade4f4378f45340d49cb",
+          "nonzero_entries": 90
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#0000FF",
+          "#00FFFF",
+          "#FF0000",
+          "#008000",
+          "#FF8000",
+          "#FFFF00",
+          "#A40000",
+          "#C6A639"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C07",
+      "mode": "preserve",
+      "input_sha256": "cabd66169e7fa0c88d1129bb927a55ce5a14d4172163651ae156d384991156ce",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "8f8df6db5b04c48ae081b4e456ddbf52c1e55a9deb6f10297c26b844f8be2d2e",
+      "output_relative_path": "outputs\\C07\\preserve\\C07_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "272.117"
+        ],
+        "wipe_tower_y": [
+          "275.626"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "751d542570e4d62da3cc39c1e120bf4afab3a1248f17a42097a83d464f86002b",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#594177",
+          "#A03CF7",
+          "#FFFFFF",
+          "#161616"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "272.117"
+        ],
+        "wipe_tower_y": [
+          "275.626"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "751d542570e4d62da3cc39c1e120bf4afab3a1248f17a42097a83d464f86002b",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#594177",
+          "#A03CF7",
+          "#FFFFFF",
+          "#161616"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;ironing_type;print_compatible_printers;print_settings_id;version;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C07",
+      "mode": "recommended",
+      "input_sha256": "cabd66169e7fa0c88d1129bb927a55ce5a14d4172163651ae156d384991156ce",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "9789416a79ab3fac3265597bb4d78d0945cf93e2f5c72d840ba5a5c6c7bec07d",
+      "output_relative_path": "outputs\\C07\\recommended\\C07_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "272.117"
+        ],
+        "wipe_tower_y": [
+          "275.626"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "751d542570e4d62da3cc39c1e120bf4afab3a1248f17a42097a83d464f86002b",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#594177",
+          "#A03CF7",
+          "#FFFFFF",
+          "#161616"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.24",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "35",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "751d542570e4d62da3cc39c1e120bf4afab3a1248f17a42097a83d464f86002b",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#00B1B7",
+          "#594177",
+          "#A03CF7",
+          "#FFFFFF",
+          "#161616"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C08",
+      "mode": "preserve",
+      "input_sha256": "4e1dedc6df5ae9a4243a643cb5fb99d1b57cbe8679f2bc8aad87f827d0249227",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "5c4458b20a5ed541bcfb8d4579b9c4fe97eeeff48ec13e74e9f348bbb48cfde8",
+      "output_relative_path": "outputs\\C08\\preserve\\C08_SnapmakerU1.3mf",
+      "settings_objects": 34,
+      "build_instances": 34,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "20",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c251f49139bee44e53584b4996c84e4a07d5ea588f8655ebd63d4db8252b7a24",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#000000",
+          "#00B1B7",
+          "#FFFFFF",
+          "#EC008C"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "20",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c251f49139bee44e53584b4996c84e4a07d5ea588f8655ebd63d4db8252b7a24",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#000000",
+          "#00B1B7",
+          "#FFFFFF",
+          "#EC008C"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;exclude_object;prime_tower_width;prime_volume;print_settings_id;version;wipe_tower_max_purge_speed;wipe_tower_wall_type",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C08",
+      "mode": "recommended",
+      "input_sha256": "4e1dedc6df5ae9a4243a643cb5fb99d1b57cbe8679f2bc8aad87f827d0249227",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "ede25dfba3e18ed514169e456e2067a98f0ed46eed8390298ca13f096a1495c0",
+      "output_relative_path": "outputs\\C08\\recommended\\C08_SnapmakerU1.3mf",
+      "settings_objects": 34,
+      "build_instances": 34,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 0,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "20",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c251f49139bee44e53584b4996c84e4a07d5ea588f8655ebd63d4db8252b7a24",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#000000",
+          "#00B1B7",
+          "#FFFFFF",
+          "#EC008C"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c251f49139bee44e53584b4996c84e4a07d5ea588f8655ebd63d4db8252b7a24",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#000000",
+          "#00B1B7",
+          "#FFFFFF",
+          "#EC008C"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;exclude_object;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C09",
+      "mode": "preserve",
+      "input_sha256": "0a0070aa61cae99a500d0cf2830b8a032a2bbaa8c8efe0027f897ffab4ce3d33",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Snapmaker Orca 2.4.0 cannot load this project: part 26 of object 28 (\"Sample\") (inner_wall_speed, internal_solid_infill_speed, small_perimeter_speed, sparse_infill_speed, top_surface_speed) has values it cannot read (a blank 'nil' entry), and Orca stops loading the whole file when it meets one. Studio does not edit those values for you. Open the original in the slicer that made it, reset those part settings, and export it again. No prepared copy was saved, and your original file was not changed."
+    },
+    {
+      "case": "C09",
+      "mode": "recommended",
+      "input_sha256": "0a0070aa61cae99a500d0cf2830b8a032a2bbaa8c8efe0027f897ffab4ce3d33",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Snapmaker Orca 2.4.0 cannot load this project: part 26 of object 28 (\"Sample\") (inner_wall_speed, internal_solid_infill_speed, small_perimeter_speed, sparse_infill_speed, top_surface_speed) has values it cannot read (a blank 'nil' entry), and Orca stops loading the whole file when it meets one. Studio does not edit those values for you. Open the original in the slicer that made it, reset those part settings, and export it again. No prepared copy was saved, and your original file was not changed."
+    },
+    {
+      "case": "C10",
+      "mode": "preserve",
+      "input_sha256": "77ec459a491d9ab1d8ca71abfff65636e0d09a62a01374c595096e8d75bed1e2",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "5c0791a4d261512db9fa682ac0870e415a7d4da88d69a58807910191f14b8f1f",
+      "output_relative_path": "outputs\\C10\\preserve\\C10_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 15788,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "76.9429"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "99f21e6be18d1b43ce8a217ccbc6bd34466ce2cc69c6b48734abff43af0328f1",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#0085D5",
+          "#F6DA5A",
+          "#000000",
+          "#D5B6A4",
+          "#F6DA5A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "76.9429"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "99f21e6be18d1b43ce8a217ccbc6bd34466ce2cc69c6b48734abff43af0328f1",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#0085D5",
+          "#F6DA5A",
+          "#000000",
+          "#D5B6A4",
+          "#F6DA5A"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;enable_support;print_settings_id;support_type;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C10",
+      "mode": "recommended",
+      "input_sha256": "77ec459a491d9ab1d8ca71abfff65636e0d09a62a01374c595096e8d75bed1e2",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "616307a7a6c021ba313d7d3892e909138b2ca426979c753458403d1ea574683a",
+      "output_relative_path": "outputs\\C10\\recommended\\C10_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 1,
+      "painting_counts": {
+        "paint_color": 15788,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "76.9429"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "99f21e6be18d1b43ce8a217ccbc6bd34466ce2cc69c6b48734abff43af0328f1",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#0085D5",
+          "#F6DA5A",
+          "#000000",
+          "#D5B6A4",
+          "#F6DA5A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.16",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "gyroid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "99f21e6be18d1b43ce8a217ccbc6bd34466ce2cc69c6b48734abff43af0328f1",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#0085D5",
+          "#F6DA5A",
+          "#000000",
+          "#D5B6A4",
+          "#F6DA5A"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C11a",
+      "mode": "preserve",
+      "input_sha256": "902189a611322553372bc1fa1c63e64302acb252272418273631472e589b4e2d",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "72c655d17dc656ef631f50c24e6ecb48b8b99f0b129a50461b33a9266a028428",
+      "output_relative_path": "outputs\\C11a\\preserve\\C11a_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 472906,
+        "mmu_segmentation": 0,
+        "paint_supports": 12330,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "236.895",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "233.729",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 32,
+          "sha256": "21a01bd77ffae4cbf6f4c0c8cb9dec50a0e70eaed5bab8d99351de6f5cce3bbe",
+          "nonzero_entries": 24
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "236.895",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "233.729",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "a32873aef211111c5d5ae73fc4bb7db14385bcb5fc632cfb5473b5a1a2fe7367",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;enable_support;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;support_filament;support_interface_filament;support_type;version;z_hop;z_hop_types",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C11a",
+      "mode": "recommended",
+      "input_sha256": "902189a611322553372bc1fa1c63e64302acb252272418273631472e589b4e2d",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "3c59c04a840f72dac979247d37b1a3ba7153c7fea743a37f9abe6a0ab35a0132",
+      "output_relative_path": "outputs\\C11a\\recommended\\C11a_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 472906,
+        "mmu_segmentation": 0,
+        "paint_supports": 12330,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "60",
+        "wipe_tower_x": [
+          "236.895",
+          "165"
+        ],
+        "wipe_tower_y": [
+          "233.729",
+          "250"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 32,
+          "sha256": "21a01bd77ffae4cbf6f4c0c8cb9dec50a0e70eaed5bab8d99351de6f5cce3bbe",
+          "nonzero_entries": 24
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.2",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "a32873aef211111c5d5ae73fc4bb7db14385bcb5fc632cfb5473b5a1a2fe7367",
+          "nonzero_entries": 0
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;ensure_vertical_shell_thickness;filament_adaptive_volumetric_speed;filament_flush_temp;filament_self_index;print_compatible_printers;print_settings_id;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C11b",
+      "mode": "preserve",
+      "input_sha256": "7a25e43b9388a34c515868ec7b6b90b9b8d3c723746484570b7f3736db971d45",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "567003c7a46b41c71852fb070ada817c4a06371baa9384e293a8a3be8ef2b4a5",
+      "output_relative_path": "outputs\\C11b\\preserve\\C11b_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 472906,
+        "mmu_segmentation": 0,
+        "paint_supports": 12330,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "39.2532",
+          "37.5956"
+        ],
+        "wipe_tower_y": [
+          "212.113",
+          "207.173"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c3b2a18dd39416c13d464a8710b2fffbf1406fe00fd0616af7fdd199116cdbd5",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "39.2532",
+          "37.5956"
+        ],
+        "wipe_tower_y": [
+          "212.113",
+          "207.173"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c3b2a18dd39416c13d464a8710b2fffbf1406fe00fd0616af7fdd199116cdbd5",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;enable_support;exclude_object;support_filament;support_interface_filament;support_type;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "C11b",
+      "mode": "recommended",
+      "input_sha256": "7a25e43b9388a34c515868ec7b6b90b9b8d3c723746484570b7f3736db971d45",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "6ca56a0c3acdca825afa4dc43c8d4c2b40dc5cbc200e480d6112e5023a67a108",
+      "output_relative_path": "outputs\\C11b\\recommended\\C11b_SnapmakerU1.3mf",
+      "settings_objects": 2,
+      "build_instances": 2,
+      "plate_records": 2,
+      "painting_counts": {
+        "paint_color": 472906,
+        "mmu_segmentation": 0,
+        "paint_supports": 12330,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "39.2532",
+          "37.5956"
+        ],
+        "wipe_tower_y": [
+          "212.113",
+          "207.173"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c3b2a18dd39416c13d464a8710b2fffbf1406fe00fd0616af7fdd199116cdbd5",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "1",
+        "support_type": "tree(manual)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "2",
+        "support_interface_filament": "2",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 16,
+          "sha256": "c3b2a18dd39416c13d464a8710b2fffbf1406fe00fd0616af7fdd199116cdbd5",
+          "nonzero_entries": 12
+        },
+        "filament_colour": [
+          "#FFFFFF",
+          "#000000",
+          "#F25FDE",
+          "#FFFF0A"
+        ]
+      },
+      "process_declarations": "compatible_printers;exclude_object;version",
+      "same_archive_member_contents_as_task_base": true
+    },
+    {
+      "case": "D01",
+      "mode": "preserve",
+      "input_sha256": "4c8b6bdc3f4a9506ff1373d9cf7cccdcbd74b48c74169200f4b3d57ca744a979",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "1e2cb9c03b4d82ee4cf237ea391e44dd9f52d2b17b648eda5269ffdaa087062f",
+      "output_relative_path": "outputs\\D01\\preserve\\D01_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 0,
+      "painting_counts": {
+        "paint_color": 2,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "3277ea41038e3ae16cd5aaef6dec4f1a432e3f8708c936779c97b694020af45a",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#FEC600",
+          "#FFFFFF",
+          "#000000",
+          "#61C680",
+          "#DE4343"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "3277ea41038e3ae16cd5aaef6dec4f1a432e3f8708c936779c97b694020af45a",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#FEC600",
+          "#FFFFFF",
+          "#000000",
+          "#61C680",
+          "#DE4343"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;exclude_object;version"
+    },
+    {
+      "case": "D01",
+      "mode": "recommended",
+      "input_sha256": "4c8b6bdc3f4a9506ff1373d9cf7cccdcbd74b48c74169200f4b3d57ca744a979",
+      "generated": true,
+      "refused": false,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "output_sha256": "616a1bab24fcc6bd81026ae355bcd3f95034e072d98a656a28dc4e4731467d87",
+      "output_relative_path": "outputs\\D01\\recommended\\D01_SnapmakerU1.3mf",
+      "settings_objects": 1,
+      "build_instances": 1,
+      "plate_records": 0,
+      "painting_counts": {
+        "paint_color": 2,
+        "mmu_segmentation": 0,
+        "paint_supports": 0,
+        "paint_seam": 0,
+        "fuzzy_skin_facets": 0
+      },
+      "geometry_values_unchanged": true,
+      "object_settings_unchanged": true,
+      "build_transforms_unchanged": true,
+      "mesh_members_byte_identical": true,
+      "source_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "auto_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "13"
+        ],
+        "wipe_tower_y": [
+          "214.5"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "3277ea41038e3ae16cd5aaef6dec4f1a432e3f8708c936779c97b694020af45a",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#FEC600",
+          "#FFFFFF",
+          "#000000",
+          "#61C680",
+          "#DE4343"
+        ]
+      },
+      "written_settings": {
+        "layer_height": "0.2",
+        "initial_layer_print_height": "0.25",
+        "wall_loops": "2",
+        "sparse_infill_density": "15%",
+        "sparse_infill_pattern": "grid",
+        "enable_support": "0",
+        "support_type": "tree(auto)",
+        "support_style": "default",
+        "support_threshold_angle": "30",
+        "support_filament": "0",
+        "support_interface_filament": "0",
+        "support_on_build_plate_only": "0",
+        "brim_type": "no_brim",
+        "prime_tower_width": "30",
+        "wipe_tower_x": [
+          "165"
+        ],
+        "wipe_tower_y": [
+          "200.821"
+        ],
+        "flush_volumes_matrix": {
+          "entries": 25,
+          "sha256": "3277ea41038e3ae16cd5aaef6dec4f1a432e3f8708c936779c97b694020af45a",
+          "nonzero_entries": 20
+        },
+        "filament_colour": [
+          "#FEC600",
+          "#FFFFFF",
+          "#000000",
+          "#61C680",
+          "#DE4343"
+        ]
+      },
+      "process_declarations": "brim_type;compatible_printers;exclude_object;version"
+    },
+    {
+      "case": "D02",
+      "mode": "preserve",
+      "input_sha256": "04775ff7d46920716e3a76a18e7195b3ed539a826a5dc886f24cb8241da1f369",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Snapmaker Orca 2.4.0 cannot load this project: part 2 of object 2 (\"Sample\") (outer_wall_speed) has values it cannot read (a blank 'nil' entry), and Orca stops loading the whole file when it meets one. Studio does not edit those values for you. Open the original in the slicer that made it, reset those part settings, and export it again. No prepared copy was saved, and your original file was not changed."
+    },
+    {
+      "case": "D02",
+      "mode": "recommended",
+      "input_sha256": "04775ff7d46920716e3a76a18e7195b3ed539a826a5dc886f24cb8241da1f369",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Snapmaker Orca 2.4.0 cannot load this project: part 2 of object 2 (\"Sample\") (outer_wall_speed) has values it cannot read (a blank 'nil' entry), and Orca stops loading the whole file when it meets one. Studio does not edit those values for you. Open the original in the slicer that made it, reset those part settings, and export it again. No prepared copy was saved, and your original file was not changed."
+    },
+    {
+      "case": "D03",
+      "mode": "preserve",
+      "input_sha256": "736b7a42296c9ff6879ec529e37100ee4aa755a0938a51d76dee1f51f4138908",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Studio only keeps per-object settings it has verified Snapmaker Orca reads. 1 setting(s) are not verified, on object 2 (\"Sample\"): ironing_type. Open the original in Snapmaker Orca to review those settings, or remove them in the slicer that made the file and export it again. No prepared copy was saved, and your original file was not changed."
+    },
+    {
+      "case": "D03",
+      "mode": "recommended",
+      "input_sha256": "736b7a42296c9ff6879ec529e37100ee4aa755a0938a51d76dee1f51f4138908",
+      "generated": false,
+      "refused": true,
+      "input_unchanged": true,
+      "no_backup": true,
+      "gui_loading": "NOT RUN",
+      "gui_objects_instances_plates": "NOT ESTABLISHED",
+      "gui_import_errors_preset_prompts": "NOT OBSERVED",
+      "gui_effective_supports": "NOT ESTABLISHED",
+      "no_output": true,
+      "reason": "Studio only keeps per-object settings it has verified Snapmaker Orca reads. 1 setting(s) are not verified, on object 2 (\"Sample\"): ironing_type. Open the original in Snapmaker Orca to review those settings, or remove them in the slicer that made the file and export it again. No prepared copy was saved, and your original file was not changed."
+    }
+  ],
+  "limitations": [
+    "Loading, import errors, preset prompts, GUI plate membership and effective supports were not observed.",
+    "Existing C11 placement/support/prime-tower limitations are unchanged from the task base; no unrelated fix attempted.",
+    "Paint attribute and mesh retention in files does not establish that painted supports will be generated.",
+    "D01 is the exact committed direct-mesh test fixture: one built tetrahedron and no plate records; unused inherited mesh members remain in its archive.",
+    "No creator U1 byte identity is required. Successful opening would not prove slicing or print correctness.",
+    "Opus/Fable reviews remain outstanding."
+  ]
+}
