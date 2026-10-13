@@ -294,3 +294,42 @@ CI after separately authorized owner integration. The earlier local unit/build
 evidence remains valid; only documentation was added, so those suites were not
 rerun. The final source scan and protected-checkout comparison for this follow-up
 are recorded under the new lane's `evidence/` directory.
+
+
+## Authorized native Orca preflight — 2026-10-13
+
+The maintainer explicitly authorized native PowerShell/.NET UI Automation for
+this isolated loading lane. This authorization remains valid; it does not grant
+permission to touch unrelated processes or override approval-review rejections.
+
+**GUI validation is still not run.** The preflight found an existing unrelated
+Snapmaker Orca process without this lane's private `--datadir`. The maintainer's
+instruction requires refusing to start in that state. The process was left
+untouched: no Orca launch, GUI input, loading assertion or prompt acknowledgement
+was performed. Close the existing instance normally before resuming the control.
+
+The active private harness file was absent. It was restored from the preserved
+pre-authorization copy; both old copies and existing evidence remain intact.
+The runner now scopes acknowledgements to known import modals and their OK/Close
+buttons, removes generic Yes handling, checks the owned PID/start time/path and
+foreground before input, and stops on unknown/authentication/legal/security
+prompts. The native seed leaves privacy agreement false. Arbitrary post-load
+hooks are disabled. PowerShell parsing passed; native runtime behavior remains
+untested until the control is actually run.
+
+New private evidence is under `.codex-run/orca-gui-6e35fe6-20261013/`.
+The anonymized preflight is
+[orca-native-6e35fe6-preflight.json](docs/testing/prepare-contract/orca-native-6e35fe6-preflight.json).
+Its harness hash binds this preparation state. The preflight source guard
+reported 1279 tracked filenames / 872 text files / zero violations; final guard
+coverage may increase with this new documentation. Protected-state preflight
+confirmed 14 worktrees, 20 branch heads and the original stash unchanged.
+
+Resume with D01 Preserve, using a fresh output directory and private data/TEMP.
+Continue the existing bounded outputs only after that control demonstrates
+isolation and capture. Do not regenerate or rerun passed file-level checks
+without a relevant change. Earlier engine and evidence commits remain intact.
+
+Remaining gates: existing Orca closure, actual control and GUI checks,
+Opus/Fable reviews, and owner integration into #108 followed by fresh PR CI.
+No runtime source, integration, push, main merge, tag or publication occurred.

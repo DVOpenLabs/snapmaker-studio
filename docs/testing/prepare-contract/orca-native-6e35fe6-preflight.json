@@ -1,0 +1,48 @@
+{
+  "schema": "orca-native-validation/1",
+  "recorded_at": "2026-10-13T11:01:36.498399+00:00",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "status": "blocked_by_existing_unrelated_orca_instance",
+  "gui_started_by_this_task": false,
+  "control_case_started": false,
+  "gui_inputs_issued": 0,
+  "loading": "not_run",
+  "import_prompts": "not_observed",
+  "plate_membership": "not_observed",
+  "effective_gui_settings": "not_observed",
+  "existing_process": {
+    "owned_by_this_task": false,
+    "private_data_directory": false,
+    "action": "left_untouched"
+  },
+  "harness_restored_from_preserved_private_copy": true,
+  "harness_sha256": "c7414375545b708a3e91caa3b4795bfc1e4128bc931e5f42cc40fedb468eb7c9",
+  "harness_validation": "PowerShell parser passed; runtime not exercised",
+  "hardening": [
+    "PID, start-time and executable-path identity checks",
+    "foreground process and target-window checks before input",
+    "known import modal and modal-scoped OK/Close only; no generic Yes",
+    "stop on unknown, authentication, legal or security prompt",
+    "private seed keeps privacy agreement false",
+    "arbitrary post-load hook disabled",
+    "existing evidence preserved; new result paths"
+  ],
+  "protected_state_preflight": {
+    "worktrees": 14,
+    "branches": 20,
+    "stashes": 1,
+    "unexpected_changes": []
+  },
+  "source_guard_preflight": {
+    "filenames": 1279,
+    "text_files": 872,
+    "violations": 0
+  },
+  "prior_file_validation": "unchanged; not repeated",
+  "remaining_gates": [
+    "close existing Orca normally, then run direct-mesh control",
+    "actual bounded GUI checks",
+    "Opus/Fable reviews",
+    "owner integration and fresh PR CI"
+  ]
+}
