@@ -483,3 +483,42 @@ No passed file-level checks were repeated. The final protected-state and source
 guard results for this documentation update are recorded in the private run
 evidence. Opus/Fable reviews and owner integration with fresh PR CI remain
 outstanding.
+
+## Manual C02 Preserve run — 2026-10-13
+
+The operator ran the foreground launcher from the supplied console command.
+Preflight passed and used the fresh `bounded-06/manual-c02-preserve-01/`
+evidence path. The task-owned Orca process and its main window were verified.
+The single activation call returned **false**. Before and after the call, the
+foreground HWND belonged to the host application, not Orca. The harness stopped
+at activation verification, sent no GUI input and closed its own Orca process
+normally.
+
+C02 **did not load**. No dialogs or import prompts were observed; the specific
+Customized Preset warning was not reached or acknowledged in this run. Plate
+membership and settings remain unobserved. The launcher console returned to
+the prompt and printed the result, but it did not capture or print the native
+PowerShell process exit code, so that code is not asserted here.
+
+The generated C02 Preserve input hash matched its expected SHA-256 and the
+runner reported `inputUnchanged=true`. Production-profile signatures matched
+before/after. No Orca process remained. No other fixture was started. The raw
+preflight, activation and process records are under
+`.codex-run/orca-gui-6e35fe6-20261013/bounded-06/manual-c02-preserve-01/`.
+Anonymized tracked evidence is
+[orca-native-manual-c02-activation-fail.json](docs/testing/prepare-contract/orca-native-manual-c02-activation-fail.json).
+
+The console prompt itself did not represent the Windows foreground owner: the
+captured foreground window was the host application. Windows therefore did not
+transfer foreground ownership to the Orca window, and the harness correctly
+stopped. Do not start the remaining 21 outputs until a future C02 run passes
+loading and isolation. Any later manual C02 attempt must begin from an actually
+foreground, visible PowerShell window; retain the one-call activation and stop
+if its return/ownership verification fails. This run provides no evidence about
+C11 placement/support behavior and establishes no product regression. No passed
+file-level checks were repeated.
+
+The source guard and protected-state recheck for this documentation update are
+recorded in the private `bounded-06/evidence/` lane. Opus/Fable reviews and
+owner integration with fresh PR CI remain outstanding. No integration, push,
+merge, tag or release occurred.
