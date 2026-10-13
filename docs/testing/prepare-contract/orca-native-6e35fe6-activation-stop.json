@@ -1,0 +1,42 @@
+{
+  "schema": "orca-native-gui-validation/1",
+  "recorded_at": "2026-10-13T14:21:50.3990848Z",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "orca_version": "2.4.0",
+  "runner_sha256": "2DE78708AC828DFB04643273DC582D08618121B4EBED428EDA416705D914FC1F",
+  "status": "stopped at one-shot startup activation verification",
+  "attempt": {
+    "case": "C02",
+    "mode": "preserve",
+    "source_output_sha256": "DC21A6D807034D28349F9377E74AE03FB6B7EEF32549BC5A2DE23A118E1044E2",
+    "task_owned_process_verified": true,
+    "main_window_ready": true,
+    "activation_call_return_value": false,
+    "actual_foreground_owned": false,
+    "failure_stage": "activation-verification",
+    "input_sent": false,
+    "dialogs_observed": 0,
+    "loaded": false,
+    "plate_membership": "unobserved",
+    "settings": "unobserved",
+    "input_unchanged": true,
+    "production_profile_unchanged": true,
+    "closure": "normal",
+    "owned_process_remaining": false
+  },
+  "foreground_identity": "different application window; exact PID and window identity retained only in private raw evidence",
+  "warning_acknowledgement": "not reached; no dialog was observed",
+  "bounded_continuation": {
+    "completed_loads_total": 2,
+    "other_unique_outputs_unrun": 21,
+    "continued_after_failure": false
+  },
+  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-05/c02-preserve/",
+  "prohibited_actions_performed": [],
+  "limitations": [
+    "This attempt did not establish GUI loading, prompts, plate membership or settings.",
+    "Activation returned false; no repeated activation call was made and no input was sent to another window.",
+    "No slicing, G-code execution, upload, printer connection or physical print occurred.",
+    "Opening is not evidence of slicing correctness or print success."
+  ]
+}

@@ -444,3 +444,42 @@ Remaining gates are actual completion of the bounded Orca GUI set when the
 foreground guard can pass, Opus/Fable reviews, and owner integration into the
 existing PR #108 followed by fresh CI. No integration, push, merge, tag or
 publication occurred.
+
+## Orca startup activation retry — 2026-10-13
+
+The isolated runner now waits up to 25 seconds for the task-owned process main
+window and confirms the UI Automation root matches that PID and HWND. It records
+the single `SetForegroundWindow` return value and the before/after foreground
+window identities. It marks activation complete only when the actual foreground
+PID, executable, start time and HWND match the task-owned window. The existing
+foreground guard remains active; this runner makes no second activation call.
+
+The fresh C02 Preserve retry reached a verified task-owned main window, but the
+one activation call returned **false**. Foreground verification showed another
+application window. The run stopped at activation verification with **no GUI
+input, no dialog observation, and no project load**. The task-owned process
+closed normally. The copied C02 output and production profile signatures match
+their recorded hashes. The Authorized Customized Preset acknowledgement was not
+reached. There was no second activation attempt and no other output was started.
+
+The exact foreground PID, HWND, title, class, executable and process start time
+are retained privately in
+`.codex-run/orca-gui-6e35fe6-20261013/bounded-05/c02-preserve/activation.json`
+and `foreground-failure.json`; the run summary is beside them. Anonymized
+tracked evidence is
+[orca-native-6e35fe6-activation-stop.json](docs/testing/prepare-contract/orca-native-6e35fe6-activation-stop.json).
+The runner hash in that evidence identifies the exact one-shot script used.
+
+This was a focus-activation failure, not a file-loading result or a product
+regression. The two prior D01 loads remain the only completed GUI loads. C02
+Preserve did not load in this retry, and the remaining 21 outputs were not run.
+The bounded GUI set remains paused until Orca can become foreground through the
+single verified activation call. The C11 source-grid placement and Recommended
+support-setting limitations remain the previously established behavior; this
+attempt adds no evidence about them. No slicing, G-code execution, upload,
+printer connection, integration, push, merge, tag or release occurred.
+
+No passed file-level checks were repeated. The final protected-state and source
+guard results for this documentation update are recorded in the private run
+evidence. Opus/Fable reviews and owner integration with fresh PR CI remain
+outstanding.
