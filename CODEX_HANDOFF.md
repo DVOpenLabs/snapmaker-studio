@@ -333,3 +333,62 @@ without a relevant change. Earlier engine and evidence commits remain intact.
 Remaining gates: existing Orca closure, actual control and GUI checks,
 Opus/Fable reviews, and owner integration into #108 followed by fresh PR CI.
 No runtime source, integration, push, main merge, tag or publication occurred.
+
+
+## Native Orca GUI results — 2026-10-13
+
+This supersedes the earlier **not run** preflight status above. After the
+maintainer closed the unrelated Orca instance, the authorized native harness
+ran using copied exact-commit outputs, private data/TEMP directories and owned
+PID/path/start-time/foreground checks. The fallback runtime now works.
+
+**Partial result: two unique outputs loaded, one stopped at a security prompt,
+and 21 were not run.** Preserve and Recommended D01 both reached the loaded
+project, with matching titles, valid captures and object-list observations.
+Orca showed Snapmaker U1, 0.4 mm nozzle, 0.2 mm layer height and 0.25 mm first
+layer height. The object list showed `Plate 1`, `Outside`, `Sample`, and Orca
+reported an out-of-bounds/height warning. This direct-mesh fixture's built
+tetrahedron has no placement transform and stays at its source origin. Loading
+is proven; printable placement is not. No repositioning or source fix was made.
+Supports and filament mapping were not inspected.
+
+C02 Preserve showed the newer-configuration/value-replacement information
+notice naming `nozzle_volume_type`. Only that identified notice's modal OK was
+acknowledged. It then showed **Customized Preset**, asking for confirmation that
+embedded G-code is safe. The maintainer's explicit stop-on-security-prompt rule
+applied: this dialog was left untouched, its `Don't show again` checkbox stayed
+unchecked, and the batch stopped. C02 completed loading, effective settings and
+plate membership remain unverified. No safety judgement about that preset is
+claimed. A scoped permission question is pending; no approval is inferred.
+
+Three harness versions and the separate attempts remain in the private lane.
+The first bounded run loaded D01 Recommended but aborted on the following C02
+startup identity assertion; its final profile comparison did not run. That is
+an incomplete technical attempt, not an acceptance pass. The next attempt
+stopped because native text omitted the body of a known information notice;
+combining captured OCR with native text fixed detection. The final attempt
+then reached the real security confirmation and correctly stopped. No
+previous failed attempt is presented as a successful candidate check.
+
+Completed control-01/control-02 and bounded-02/bounded-03 reports each say the
+whole production-profile hash was unchanged. A final preservation-only hash
+check found all **12 originals, 15 input copies and 24 generated outputs
+unchanged**; the passed generation/file checks were not rerun. Closure used
+normal close/Discard when possible, otherwise only the independently verified
+task-owned PID. No Orca process remained after cleanup. No slicing, uploads,
+printer connections, saves over originals or source edits were performed.
+Private profile seeding does not itself establish a network-isolation test.
+
+Anonymized tracked evidence:
+[orca-native-6e35fe6-results.json](docs/testing/prepare-contract/orca-native-6e35fe6-results.json).
+Raw captures, OCR, identities, harness snapshots and integrity hashes remain
+under `.codex-run/orca-gui-6e35fe6-20261013/`, untracked. Earlier commits remain
+intact. The protected-state and source-guard final checks are recorded in that
+lane's `evidence/` folder. Final checks: all 14 protected worktrees, 20 branch
+heads and the original stash unchanged; source guard 1281 filenames / 874 text
+files / zero violations. No push, integration, merge, tag or publication.
+
+Remaining gates: a decision on this specific security confirmation, the
+remaining bounded GUI checks, Opus/Fable reviews, and separately authorized
+owner integration into existing PR #108 followed by fresh CI. Opening files
+does not establish slicing correctness or a successful physical print.

@@ -1,0 +1,235 @@
+{
+  "schema": "orca-native-gui-validation/1",
+  "recorded_at": "2026-10-13T11:36:11.586740+00:00",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "orca_version": "2.4.0",
+  "orca_executable_sha256": "d85b864427135fe98903bdddd999e8259e4f96d1f7c012e19c0a80d3e252d1b87",
+  "harness_v3_sha256": "063916b6988023b6f61138c729eb882e7dc7b928c71df10426b954de7b55b058",
+  "status": "partial; stopped at maintainer security boundary",
+  "unique_outputs": {
+    "completed_loads": 2,
+    "blocked_before_completed_load": 1,
+    "not_run": 21,
+    "planned": 24
+  },
+  "results": [
+    {
+      "case": "D01",
+      "mode": "preserve",
+      "output_sha256": "1e2cb9c03b4d82ee4cf237ea391e44dd9f52d2b17b648eda5269ffdaa087062f",
+      "status": "loaded_with_outside_object_warning",
+      "title_matches_input": true,
+      "capture_valid": true,
+      "seconds_to_load": 10.1,
+      "import_prompts": [],
+      "object_list_observed": [
+        "Plate 1",
+        "Outside",
+        "Sample"
+      ],
+      "placement": "Sample is listed under Outside; no bed-placement pass",
+      "settings_observed": {
+        "printer": "Snapmaker U1",
+        "nozzle_diameter_mm": 0.4,
+        "layer_height_mm": 0.2,
+        "first_layer_height_mm": 0.25
+      },
+      "settings_not_checked": [
+        "effective support settings",
+        "filament mapping",
+        "embedded G-code safety"
+      ],
+      "input_unchanged": true,
+      "closure": "normal-after-dont-save-prompt",
+      "private_evidence_lane": "control-02"
+    },
+    {
+      "case": "D01",
+      "mode": "recommended",
+      "output_sha256": "616a1bab24fcc6bd81026ae355bcd3f95034e072d98a656a28dc4e4731467d87",
+      "status": "loaded_with_outside_object_warning",
+      "title_matches_input": true,
+      "capture_valid": true,
+      "seconds_to_load": 11.4,
+      "import_prompts": [],
+      "object_list_observed": [
+        "Plate 1",
+        "Outside",
+        "Sample"
+      ],
+      "placement": "Sample is listed under Outside; no bed-placement pass",
+      "settings_observed": {
+        "printer": "Snapmaker U1",
+        "nozzle_diameter_mm": 0.4,
+        "layer_height_mm": 0.2,
+        "first_layer_height_mm": 0.25
+      },
+      "settings_not_checked": [
+        "effective support settings",
+        "filament mapping",
+        "embedded G-code safety"
+      ],
+      "input_unchanged": true,
+      "closure": "stop-verified-own-pid",
+      "private_evidence_lane": "bounded-01"
+    },
+    {
+      "case": "C02",
+      "mode": "preserve",
+      "output_sha256": "dc21a6d807034d28349f9377e74ae03fb6b7eef32549bc5a2de23a118e1044e2",
+      "status": "stopped_at_security_confirmation",
+      "completed_loading": "unverified",
+      "import_prompts": [
+        {
+          "title": "Snapmaker Orca information",
+          "category": "newer-configuration/value-replacement notice",
+          "setting_named": "nozzle_volume_type",
+          "action": "acknowledged modal-scoped OK"
+        },
+        {
+          "title": "Customized Preset",
+          "category": "embedded G-code safety confirmation",
+          "action": "not acknowledged",
+          "dont_show_again": "left unchecked"
+        }
+      ],
+      "plate_membership": "unverified",
+      "effective_gui_settings": "unverified",
+      "input_unchanged": true,
+      "closure": "stop-verified-own-pid",
+      "private_evidence_lane": "bounded-03"
+    }
+  ],
+  "not_run": [
+    {
+      "case": "C01",
+      "mode": "preserve"
+    },
+    {
+      "case": "C01",
+      "mode": "recommended"
+    },
+    {
+      "case": "C02",
+      "mode": "recommended"
+    },
+    {
+      "case": "C03",
+      "mode": "preserve"
+    },
+    {
+      "case": "C03",
+      "mode": "recommended"
+    },
+    {
+      "case": "C04",
+      "mode": "preserve"
+    },
+    {
+      "case": "C04",
+      "mode": "recommended"
+    },
+    {
+      "case": "C05",
+      "mode": "preserve"
+    },
+    {
+      "case": "C05",
+      "mode": "recommended"
+    },
+    {
+      "case": "C06",
+      "mode": "preserve"
+    },
+    {
+      "case": "C06",
+      "mode": "recommended"
+    },
+    {
+      "case": "C07",
+      "mode": "preserve"
+    },
+    {
+      "case": "C07",
+      "mode": "recommended"
+    },
+    {
+      "case": "C08",
+      "mode": "preserve"
+    },
+    {
+      "case": "C08",
+      "mode": "recommended"
+    },
+    {
+      "case": "C10",
+      "mode": "preserve"
+    },
+    {
+      "case": "C10",
+      "mode": "recommended"
+    },
+    {
+      "case": "C11a",
+      "mode": "preserve"
+    },
+    {
+      "case": "C11a",
+      "mode": "recommended"
+    },
+    {
+      "case": "C11b",
+      "mode": "preserve"
+    },
+    {
+      "case": "C11b",
+      "mode": "recommended"
+    }
+  ],
+  "production_profile": {
+    "control_01": "whole-profile hash unchanged",
+    "control_02": "whole-profile hash unchanged",
+    "bounded_02": "whole-profile hash unchanged",
+    "bounded_03": "whole-profile hash unchanged",
+    "bounded_01": "runner aborted before final whole-profile comparison; not counted as a profile-integrity pass"
+  },
+  "file_preservation": {
+    "originals_unchanged": 12,
+    "input_copies_unchanged": 15,
+    "generated_outputs_unchanged": 24
+  },
+  "technical_attempts": [
+    {
+      "lane": "control-01",
+      "outcome": "D01 Preserve loaded; repeated as control-02 with refined identity and closure"
+    },
+    {
+      "lane": "bounded-01",
+      "outcome": "D01 Recommended loaded; next C02 launch failed startup identity assertion; verified owned process subsequently closed; batch incomplete"
+    },
+    {
+      "lane": "bounded-02",
+      "outcome": "C02 stopped because native text omitted known information-dialog body; no acknowledgement; fixed by combining captured OCR with native text"
+    },
+    {
+      "lane": "bounded-03",
+      "outcome": "known information notice handled; subsequent actual security confirmation left untouched; batch stopped"
+    }
+  ],
+  "fixture_limit": "D01 tetrahedron build item has no placement transform and is at the source origin; Outside is observed, not a printable-placement pass or a new regression claim",
+  "capture_policy": "raw screenshots, OCR, identities and harness remain private; tracked summary uses anonymous case ids and no account or source paths",
+  "prohibited_actions_performed": [],
+  "unverified": [
+    "slicing correctness",
+    "print success",
+    "effective support and filament mapping",
+    "remaining 21 GUI outputs",
+    "C02 completed loading"
+  ],
+  "remaining_gates": [
+    "scope decision on Customized Preset warning",
+    "remaining bounded GUI validation",
+    "Opus/Fable reviews",
+    "owner integration into existing PR #108 and fresh CI"
+  ]
+}
