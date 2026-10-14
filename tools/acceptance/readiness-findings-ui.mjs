@@ -195,10 +195,11 @@ async function visitPrinters(label, theme) {
   const text = (await card.innerText()).replace(/\s+/g, " ");
   const aria = await page.locator("[aria-label]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || ""));
   const pageText = ((await page.locator("body").innerText()) + " " + aria.join(" ")).replace(/\s+/g, " ");
+  const chipSaysReady = (await page.getByText("ready", { exact: true }).count()) > 0;   // the old chip label for healthy:false
   await card.screenshot({ path: join(out, `${label}-${theme}-card.png`) });
   await page.screenshot({ path: join(out, `${label}-${theme}-page.png`) });
   await ctx.close();
-  return { text, pageText };
+  return { text, pageText, chipSaysReady };
 }
 
 try {
@@ -244,12 +245,12 @@ try {
     }
     // The Printers page, with the fake printer answering: "What the printer reported", no grade or /100.
     for (const theme of ["light", "dark"]) {
-      const { text: t, pageText: pt } = await visitPrinters("05-printers-what-the-printer-reported", theme);
+      const { text: t, pageText: pt, chipSaysReady } = await visitPrinters("05-printers-what-the-printer-reported", theme);
       const bad = [...pt.matchAll(PRINTER_PAGE_BAD)].map((m) => m[0]);
       check(`${theme}: Printers page card is "What the printer reported" with what was read and no grade, score or /100`,
         /What the printer reported/.test(t) && /From firmware state/.test(t) && bad.length === 0, bad.join(" | ") || t.slice(0, 200));
       check(`${theme}: firmware warning + failed print (healthy:false, firmware ready): the chip reads "See concerns", not "ready"`,
-        /See concerns/.test(pt) && !/ready.{0,3}live/i.test(pt), pt.match(/.{0,40}live/i)?.[0] ?? "");
+        /See concerns/.test(pt) && !chipSaysReady, pt.match(/.{0,40}live/i)?.[0] ?? "");
       check(`${theme}: Printers page verdict does not say "Nothing concerning" while listing concerns`,
         !(/Nothing concerning/.test(t) && /(failed|warning)/.test(t)), t.slice(0, 260));
     }

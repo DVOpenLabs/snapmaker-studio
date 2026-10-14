@@ -19,13 +19,21 @@ _ORDER = {"ok": 0, "warn": 1, "risk": 2}
 
 
 def _community_entries(ck, risk) -> list:
-    """Community entries for one report risk: only a FULL symptom phrase found in the risk text counts (a shared word
-    or a shared number does not), and printer failure history never gets one. The global matcher is left as it is."""
+    """(entry, confidence) pairs for one report risk, chosen by IDENTITY: the condition id maps to one curated entry
+    (conditions.COMMUNITY_ENTRY) or to none. Confidence is "High" when one of the entry's symptom phrases also appears
+    in the finding, "Medium" when only the mapping links them. An id-less (legacy) finding falls back to a full
+    symptom-phrase match. The global matcher is left as it is."""
     cid = risk.get("condition") or ""
-    if not cid.startswith("unmapped:") and cid not in C.COMMUNITY_CONDITIONS:
-        return []   # printer history, firmware, validation and business findings never carry community guidance
     text = (risk.get("text") or "").lower()
-    return [e for e in ck.match(text, limit=6) if any(sym in text for sym in e["symptoms"])]
+    if cid.startswith("unmapped:"):
+        return [(e, "High") for e in ck.match(text, limit=6) if any(sym in text for sym in e["symptoms"])][:1]
+    entry_id = C.COMMUNITY_ENTRY.get(cid)
+    if not entry_id:
+        return []
+    entry = next((e for e in ck.KNOWN_ISSUES if e["id"] == entry_id), None)
+    if not entry:
+        return []
+    return [(entry, "High" if any(sym in text for sym in entry["symptoms"]) else "Medium")]
 
 
 def demo() -> dict:
@@ -152,11 +160,11 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         for rk in risks:
             hit = _community_entries(ck, rk)
             if hit:
-                e = hit[0]
+                e, confidence = hit[0]
                 rk["community"] = {
                     "fix": e["community_fix"],
                     "success_pattern": f"Most U1 users resolve “{e['title']}” this way.",
-                    "confidence": "High",   # only a full symptom phrase in the risk text reaches here (_community_entries)
+                    "confidence": confidence,
                     "sources": e["sources"],
                 }
     except Exception:

@@ -64,10 +64,11 @@ def score(diagnostics=None, failures=None) -> dict:
         elif streak >= 2:
             penalty_f += 15
             parts.append(f"{streak} prints failed in a row")
-        if parts:
-            # the level follows the failure-pattern result itself (80% failed / a long streak is a risk, not a warn)
+        pattern_level = failures.get("overall_level")     # the failure-pattern result itself
+        # "An occasional failure is normal": a pattern the history card calls ok is not a concern anywhere.
+        if parts and pattern_level != "ok":
             conds.append((penalty_f, "printer-failure-history", "; ".join(parts),
-                          "risk" if failures.get("overall_level") == "risk" else "warn"))
+                          "risk" if pattern_level == "risk" else "warn"))
 
     if have_diag:
         st = diagnostics.get("klippy_state")

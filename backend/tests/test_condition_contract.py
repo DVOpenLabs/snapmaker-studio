@@ -159,11 +159,15 @@ def _fixture():
 
 
 def test_desktop_printer_health_fixture_is_the_real_producer_output():
-    """desktop/src/lib/printerHealth.real.json is generated from the real formatter; regenerate it if this fails
-    (py -3.13 -c "import json,tests.test_condition_contract as t; ..." writes it; see the test body)."""
+    """desktop/src/lib/printerHealth.real.json is the real formatter's output; this fails if it is missing or stale.
+    Regenerate it by running this test once with SNAPSTUDIO_REGENERATE_FIXTURES=1."""
+    import os
+    import pytest
     expected = json.loads(json.dumps(_fixture()))
+    if os.environ.get("SNAPSTUDIO_REGENERATE_FIXTURES") == "1":
+        FIXTURE.write_text(json.dumps(expected, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
     if not FIXTURE.exists():
-        FIXTURE.write_text(json.dumps(expected, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        pytest.fail(f"{FIXTURE} is missing; regenerate it with SNAPSTUDIO_REGENERATE_FIXTURES=1 and commit it")
     assert json.loads(FIXTURE.read_text(encoding="utf-8")) == expected
 
 
@@ -375,3 +379,65 @@ def test_every_non_ok_finding_from_the_real_producers_has_a_condition_id():
         assert all(not c["id"].startswith("unmapped") for c in health["conditions"]) and health["conditions"]
         for sg in sp.findings(readiness={"ready": False, "warnings": ["a"]}, health=health, prior_failures=1, printer_checked=True)["signals"]:
             assert not sg["id"].startswith("unmapped")
+
+
+# --- community guidance is by identity, not by shared words ---
+def test_community_guidance_is_mapped_by_condition_id_with_derived_confidence():
+    from snapstudio_core import bed_fit as bf
+    painted = mm_doctor.assess(1, painted=True)
+    report = ir.build(mm=painted)
+    assert [r["condition"] for r in report["risks"]] == ["painted-regions"]
+    assert "community" not in report["risks"][0]              # shares "colour(s)" with a symptom; the opposite fix otherwise
+    orient = _layer(area=80, bed_range=0.01)                    # small base + tip: adhesion warn and orientation warn
+    rep = ir.build(first_layer=orient)
+    by_id = {r["condition"]: r for r in rep["risks"]}
+    assert "first-layer-orientation" in by_id and "community" not in by_id["first-layer-orientation"]
+    near = ir.build(bed_fit=bf.assess({"x": 268, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True,
+                                      object_count=1, multi_material=False))
+    assert near["risks"][0]["condition"] == "bed-near-full" and "community" not in near["risks"][0]
+    # mapped conditions still get their one entry; confidence follows the match
+    mm = mm_doctor.assess(5, heads=4, heads_known=True)
+    colors = ir.build(mm=mm)
+    c = colors["risks"][0]["community"]
+    assert "More colours than toolheads" in c["success_pattern"] and c["confidence"] == "High"
+    big = ir.build(bed_fit=bf.assess({"x": 300, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True))
+    assert "Out of bounds" in big["risks"][0]["community"]["success_pattern"]
+    # design validation, firmware and failure history never carry guidance
+    health = _health(["error"] * 6 + ["completed"] * 4, {**READY, "warnings": ["w"]})
+    rep2 = ir.build(predict=sp.findings(readiness={"ready": False, "warnings": ["a"]}, health=health, prior_failures=1, printer_checked=True), health=health)
+    assert rep2["risks"] and all("community" not in r for r in rep2["risks"])
+
+
+def test_real_multi_object_project_gets_no_wrong_guidance_through_the_service():
+    from snapstudio_api import service
+    path = Path(__file__).resolve().parent / "fixtures" / "prusa-multi-object" / "prusa_three_objects.3mf"
+    report = service.intelligence_report(str(path))
+    for r in report["risks"]:
+        if r["condition"] in ("painted-regions", "first-layer-orientation", "bed-near-full", "design-validation"):
+            assert "community" not in r, r["condition"]
+
+
+# --- failure history is a concern only when the failure pattern says so ---
+def test_one_failure_in_twenty_is_not_a_concern_anywhere():
+    statuses = ["completed"] * 19 + ["cancelled"]
+    pattern = fp.assess(_jobs(*statuses))
+    assert pattern["overall_level"] == "ok"                     # "An occasional failure is normal"
+    health = _health(statuses)
+    assert health["conditions"] == [] and "nothing concerning" in health["verdict"].lower()
+    predict = sp.findings(readiness={"ready": True}, health=health, printer_checked=True)
+    report = ir.build(predict=predict, health=health)
+    assert report["printer_status"] == "Answered, no concerns" and report["risks_found"] == 0
+
+
+def test_card_titles_and_actions_are_the_reports_for_the_same_condition(monkeypatch):
+    from snapstudio_api import service
+    from snapstudio_core import moonraker
+    for name in ("diagnostics", "history", "capabilities", "bed_mesh"):
+        monkeypatch.setattr(moonraker, name, lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+    report = service.intelligence_report(str(ROOT / "examples" / "demo_u1_showcase.3mf"), host="printer.invalid")
+    by_id = {r["condition"]: r for r in report["risks"]}
+    assert report["print_findings"]["signals"]
+    for sg in report["print_findings"]["signals"]:
+        r = by_id[sg["id"]]
+        assert sg["title"] == r["text"]
+        assert r.get("action") is None or sg["action"] == r["action"]

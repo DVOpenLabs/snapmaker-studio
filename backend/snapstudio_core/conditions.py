@@ -39,10 +39,19 @@ FIRMWARE_WARNING = "firmware-warning"
 PROFIT_BELOW_COST = "profit-below-cost"
 OBJECT_SPACING_UNVERIFIED = "object-spacing-unverified"
 
-# The only mapped conditions that may carry curated community guidance (it needs a full symptom phrase besides).
-COMMUNITY_CONDITIONS = frozenset({TOOLHEAD_FIT, FILAMENT_METADATA, PAINTED_REGIONS, BED_HEIGHT, BED_FOOTPRINT, BED_NEAR_FULL,
-                                  BED_PRIME_TOWER, FIRST_LAYER_ADHESION, FIRST_LAYER_BED_FLATNESS, FIRST_LAYER_CORNER_LIFT,
-                                  FIRST_LAYER_ORIENTATION})
+# Curated community guidance, by identity: a condition id maps to ONE community entry id, or to nothing. A condition
+# that is not listed here (painted regions, near-full bed, orientation, validation, firmware, failure history, ...)
+# never carries guidance, whatever words its text happens to share with a symptom.
+COMMUNITY_ENTRY = {
+    TOOLHEAD_FIT: "multi-material-limit",
+    FILAMENT_METADATA: "snorca-customized-preset",
+    BED_HEIGHT: "out-of-bounds",
+    BED_FOOTPRINT: "out-of-bounds",
+    BED_PRIME_TOWER: "prime-tower",
+    FIRST_LAYER_ADHESION: "first-layer-adhesion",
+    FIRST_LAYER_BED_FLATNESS: "first-layer-adhesion",
+    FIRST_LAYER_CORNER_LIFT: "first-layer-adhesion",
+}
 PRINTER_CONDITIONS = frozenset({PRINTER_FAILURE_HISTORY, FIRMWARE_NOT_READY, FIRMWARE_FAILED_COMPONENT, FIRMWARE_WARNING})
 # Conditions where the Print risk signals card holds evidence no Doctor result carries (the file-name history); for the rest a
 # signal only restates what the Doctor already says.

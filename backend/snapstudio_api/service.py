@@ -2329,7 +2329,16 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
     out = ir.build(predict=predict, bed_fit=bed, mm=mm, first_layer=fl,
                    health=health, cost=cost, pricing=pricing, profit=profit, spacing=spacing)
     if predict is not None:
-        out["print_findings"] = predict   # the card is shown from THIS reply, so it cannot differ from the report
+        # The card is shown from THIS reply, with the report's own wording and action for each condition id, so the two
+        # cannot differ.
+        by_id = {r.get("condition"): r for r in out.get("risks") or []}
+        for sg in predict.get("signals") or []:
+            r = by_id.get(sg.get("id"))
+            if r:
+                sg["title"] = r["text"]
+                if r.get("action"):
+                    sg["action"] = r["action"]
+        out["print_findings"] = predict
     return out
 
 
