@@ -31,12 +31,12 @@
     "other_unique_outputs_unrun": 21,
     "continued_after_failure": false
   },
-  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-05/c02-preserve/",
   "prohibited_actions_performed": [],
   "limitations": [
     "This attempt did not establish GUI loading, prompts, plate membership or settings.",
     "Activation returned false; no repeated activation call was made and no input was sent to another window.",
     "No slicing, G-code execution, upload, printer connection or physical print occurred.",
     "Opening is not evidence of slicing correctness or print success."
-  ]
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

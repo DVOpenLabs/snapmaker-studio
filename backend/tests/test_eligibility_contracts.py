@@ -427,10 +427,56 @@ def test_every_consumer_agrees_a_project_missing_a_required_part_is_unreadable(t
                                      {"reachable": True}, {"checks": []},
                                      file_state="ok" if traits["readable"] else "unreadable")
     assert res["bucket"] == readiness.CANT_DETERMINE
-    findings = service.compatibility_check(src)["findings"]
+    check = service.compatibility_check(src)
+    findings = check["findings"]
     assert not any(f["id"] == "prepare.blocked" for f in findings)   # not "readable but blocked"
+    # and it is not reported as clean: the actual outcome is an unreadable finding
+    unreadable = [f for f in findings if f["id"] == "project.unreadable"]
+    assert len(unreadable) == 1 and unreadable[0]["severity"] == "error"
+    assert member in unreadable[0]["evidence"]
+    assert "No known U1 compatibility issues" not in check["summary"]
+
+
+def test_a_settings_only_zip_is_unreadable_everywhere_not_clean(tmp_path):
+    out = tmp_path / "settings-only.3mf"
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("Metadata/project_settings.config", '{"printer_model": "Snapmaker U1"}')
+    assert service.doctor(str(out))["verdict"] == "HIGH_RISK"
+    res = service.compatibility_check(str(out))
+    assert [f["id"] for f in res["findings"]] == ["project.unreadable"]
+    assert "No known U1 compatibility issues" not in res["summary"]
+
+
+def test_self_closing_object_and_part_do_not_swallow_the_next_block(tmp_path):
+    from snapstudio_core import multipart
+    xml = ('<config><object id="1" extruder="1"/><object id="2"><metadata key="name" value="B"/>'
+           '<part id="7" subtype="normal_part"/><part id="8" subtype="normal_part"></part></object></config>')
+    objs = multipart._SETTINGS_OBJECT.findall(xml)
+    assert [o[0] for o in objs] == ["2"]
+    assert [m[0] for m in multipart._PART_HEAD.findall(xml)] == ["8"]
 
 
 def test_the_readable_determination_has_no_caller_supplied_default():
     import inspect
     assert list(inspect.signature(eligibility.assess).parameters) == ["tm"]
+
+
+def test_the_committed_compatibility_fixture_is_what_the_engine_emits(tmp_path, monkeypatch):
+    """desktop/src/test-fixtures/compat-blocked.json feeds the Compatibility route test; it is
+    the engine's own output for a C09-shaped nil, a U1 project with a per-object auto_brim, and
+    a clean project - not a hand-made stand-in."""
+    import json
+    monkeypatch.setenv("SNAPSTUDIO_DATA_DIR", str(tmp_path / "data"))
+    cases = {
+        "nil_speeds": _with_part_metadata(
+            tmp_path, {"outer_wall_speed": "80,nil,80,nil", "inner_wall_speed": "50,nil"}, "n.3mf"),
+        "u1_auto_brim": _edit(tmp_path, "b.3mf", U1_BASE, object_extra={"brim_type": "auto_brim"}),
+        "clean": _inject(tmp_path, SUPPORT_SHAPE, "c.3mf"),
+    }
+    fixture = json.loads((Path(__file__).parents[2] / "desktop" / "src" / "test-fixtures"
+                          / "compat-blocked.json").read_text(encoding="utf-8"))
+    for name, path in cases.items():
+        assert service.compatibility_check(path) == fixture[name], name
+    assert any(f["id"] == "prepare.blocked" for f in fixture["nil_speeds"]["findings"])
+    assert any(f["id"] == "prepare.blocked" for f in fixture["u1_auto_brim"]["findings"])
+    assert not any(f["id"] == "prepare.blocked" for f in fixture["clean"]["findings"])

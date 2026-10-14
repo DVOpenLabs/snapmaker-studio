@@ -35,11 +35,11 @@
     "no_other_outputs_started": true
   },
   "prohibited_actions_performed": [],
-  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-04/",
   "limitations": [
     "No project loading, plate membership, prompts or settings were observed in this attempt.",
     "The authorized warning was not acknowledged because this attempt stopped before observing a dialog.",
     "No slicing, G-code execution, upload or printer connection occurred.",
     "Opening remains distinct from slicing correctness or print success."
-  ]
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

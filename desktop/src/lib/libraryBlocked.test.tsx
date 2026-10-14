@@ -35,3 +35,15 @@ describe("a stored library record that Prepare would refuse", () => {
     expect(FILTERS.find((f) => f.label === "Needs prep")!.match(plain)).toBe(true);
   });
 });
+
+describe("library header counts", () => {
+  it("need-prep, review and ready counts agree with the filters", async () => {
+    const { libraryCounts } = await import("@/routes/Projects");
+    const rows = [
+      row,                                                              // blocked
+      { ...row, prepare_blocked: false, verdict: "REPAIRABLE" },        // needs prep
+      { ...row, prepare_blocked: false, verdict: "READY" },             // compatible
+    ];
+    expect(libraryCounts(rows)).toEqual({ total: 3, ready: 1, needPrep: 1, review: 1 });
+  });
+});

@@ -31,12 +31,12 @@
   "warning_acknowledgement": "not reached",
   "other_outputs_started": 0,
   "prior_completed_loads": "D01 Preserve and Recommended only",
-  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-06/manual-c02-preserve-01/",
   "console_output_was_pasted": true,
   "limitations": [
     "C02 did not load; no prompt, plate membership or GUI setting was observed.",
     "The foreground HWND remained owned by the host application, so the single activation call returned false and the runner stopped.",
     "No activation retry, input to another window, slicing, G-code execution, upload or printer connection occurred.",
     "Opening does not establish slicing correctness or print success."
-  ]
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

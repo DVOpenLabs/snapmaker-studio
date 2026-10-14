@@ -2623,7 +2623,7 @@
     "Existing C11 placement/support/prime-tower limitations are unchanged from the task base; no unrelated fix attempted.",
     "Paint attribute and mesh retention in files does not establish that painted supports will be generated.",
     "D01 is the exact committed direct-mesh test fixture: one built tetrahedron and no plate records; unused inherited mesh members remain in its archive.",
-    "No creator U1 byte identity is required. Successful opening would not prove slicing or print correctness.",
-    "Opus/Fable reviews remain outstanding."
-  ]
+    "No creator U1 byte identity is required. Successful opening would not prove slicing or print correctness."
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

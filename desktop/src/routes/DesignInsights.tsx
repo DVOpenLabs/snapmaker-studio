@@ -28,7 +28,7 @@ import { ColorPlanCard } from "@/components/ColorPlanCard";
 import { DesignHealth } from "@/components/DesignHealth";
 import { HeartPulse } from "lucide-react";
 import {
-  readinessStars, familyLabel, verdictStatus, colorsLabel, partsLabel,
+  readinessStars, familyLabel, verdictStatus, headlineWithReadiness, colorsLabel, partsLabel,
 } from "@/lib/simple";
 
 function Stars({ score }: { score: number | null | undefined }) {
@@ -145,7 +145,8 @@ export default function DesignInsights() {
   const setupRisk = !!(mm?.available && mm.multi_material && mm.overall_level && mm.overall_level !== "ok")
     || !!(bed?.available && bed.overall_level && bed.overall_level !== "ok")
     || !!(rep && !rep.ready);
-  const headlineStatus = setupRisk && d && status?.tone === "ready" ? verdictStatus("HIGH_RISK") : status;
+  // Readiness wording for setup review; never the unusable-project (HIGH_RISK) mapping.
+  const headlineStatus = headlineWithReadiness(d ? status : null, setupRisk);
   const headlineScore = setupRisk ? Math.min(d?.score ?? 0, 70) : d?.score;
 
   // ---- Done: it's ready ------------------------------------------------------

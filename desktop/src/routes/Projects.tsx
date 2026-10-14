@@ -30,6 +30,12 @@ export const FILTERS: { label: string; match: (p: { verdict: string | null; prep
   { label: "Review in Orca", match: (p) => !!p.prepare_blocked },
 ];
 
+/** Header counts use the same predicates as the filters, so the three always agree. */
+export function libraryCounts(rows: { verdict: string | null; prepare_blocked?: boolean }[]) {
+  const by = (label: string) => rows.filter((p) => FILTERS.find((f) => f.label === label)!.match(p)).length;
+  return { total: rows.length, ready: by("Profile compatible"), needPrep: by("Needs prep"), review: by("Review in Orca") };
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -151,8 +157,7 @@ export default function Projects() {
     () => (data ?? []).filter((p) => FILTERS[filter].match(p)),
     [data, filter]
   );
-  const total = data?.length ?? 0;
-  const readyCount = (data ?? []).filter((p) => p.verdict === "READY" && !p.prepare_blocked).length;
+  const { total, ready: readyCount, needPrep, review } = libraryCounts(data ?? []);
 
   const openProject = (p: LibraryProject) => {
     setFile(p.source_path);
@@ -171,7 +176,8 @@ export default function Projects() {
               <span>·</span>
               <CheckCircle2 className="h-3.5 w-3.5 text-ready" />
               <span>{readyCount} profile compatible</span>
-              {total - readyCount > 0 && <span>· {total - readyCount} need prep</span>}
+              {needPrep > 0 && <span>· {needPrep} need prep</span>}
+              {review > 0 && <span>· {review} to review in Orca</span>}
             </span>
           ) : (
             simple ? "Everything you've worked on, ready to revisit." : "Your prepared and checked designs."

@@ -33,7 +33,39 @@ CONTENT_EXCEPTIONS = {
 # source, tests, configuration or an unfamiliar format must not hide references.
 BINARY_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
                              ".pdf", ".3mf", ".zip", ".woff", ".woff2", ".ttf",
-                             ".exe", ".dll", ".out", ".mp4", ".gz"})
+                             ".exe", ".dll", ".mp4", ".gz"})
+# Tool output must never be tracked (a profiler dump once carried absolute local paths).
+ARTIFACT_SUFFIXES = frozenset({".out", ".prof", ".pstats", ".dmp", ".tee"})
+# Local absolute paths and user names, built from pieces so this file does not match itself.
+_DRIVE = r"[A-Za-z]:[\\/]+"
+LEAK_RULES = (
+    re.compile((_DRIVE + r"(?:Users|STL Files)[\\/]+(?!Public\b)").encode()),
+    re.compile(("/ho" + r"me/(?!runner\b)[A-Za-z0-9_.-]+/").encode()),
+)
+# Files that already carried such a path when this check was added (synthetic test paths and
+# historical handoff notes). The set is closed: a NEW tracked file with a local path fails.
+LEAK_BASELINE = frozenset({
+    "backend/tests/fixtures/providers/spoolman_0_26_1.json",
+    "backend/tests/test_diagnostics.py",
+    "backend/tests/test_fix_ledger.py",
+    "backend/tests/test_paths.py",
+    "backend/tests/test_privacy_adversarial.py",
+    "desktop/src/components/OrcaRoundTrip.tsx",
+    "desktop/src/lib/ecosystem.test.ts",
+    "desktop/src/routes/AfterSlicing.tsx",
+    "backend/tests/test_user_presets.py",
+    "desktop/src-tauri/src/main.rs",
+    "desktop/src/lib/orca.test.ts",
+    "desktop/src/store/sliced.test.ts",
+    "docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md",
+    "docs/internal/FABLE_PUBLIC_RELEASE_AUDIT.md",
+    "docs/internal/HANDOFF_main_contract.md",
+    "docs/internal/HANDOFF_main_ff1aef2.md",
+    "docs/internal/HANDOFF_main_overrides.md",
+    "docs/internal/HANDOFF_main_reachability.md",
+    "docs/internal/HANDOFF_main_session_restart.md",
+    "tools/harness/HarnessLauncher.Tests.ps1",
+})
 
 
 def scan(root: Path) -> tuple[list[str], dict]:
@@ -47,10 +79,17 @@ def scan(root: Path) -> tuple[list[str], dict]:
     for name in paths:
         if any(rule.search(name) for rule in RULES):
             problems.append(f"{name}: prohibited filename")
+        if Path(name).suffix.lower() in ARTIFACT_SUFFIXES:
+            problems.append(f"{name}: tool output must not be tracked")
         if name in CONTENT_EXCEPTIONS:
             exempt_files[name] = CONTENT_EXCEPTIONS[name]
             continue
         raw = (root / name).read_bytes()
+        for leak in LEAK_RULES:
+            hit = leak.search(raw)
+            if hit and name not in LEAK_BASELINE:
+                problems.append(f"{name}: local absolute path or user name "
+                                f"({hit.group(0).decode('latin-1')!r})")
         if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
             content = raw.decode("utf-16")
         elif b"\0" in raw and Path(name).suffix.lower() in BINARY_SUFFIXES:

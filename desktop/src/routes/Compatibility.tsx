@@ -30,6 +30,9 @@ export default function Compatibility() {
   // True while Project Materials holds choices: Prepare then goes through its review step, so a plain one is not offered beside it.
   const [materialsActive, setMaterialsActive] = useState(false);
   const requestGeneration = useRef(0);
+  // The engine says Studio can read this project but would refuse to prepare it: every Prepare
+  // entry point (button, mode chooser, Project Materials) stays off and the copy says why.
+  const blocked = !!result?.findings?.some((f) => f.id === "prepare.blocked");
 
   const checkM = useMutation({
     mutationFn: (p: string) => compatibilityCheck(p),
@@ -100,7 +103,7 @@ export default function Compatibility() {
 
       {/* Project Materials is a normal part of preparing a model, not a compatibility finding: it appears
           whenever the engine reports filament slots, whether or not the settings check found anything. */}
-      {path && (
+      {path && !blocked && (
         <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
           onActiveChange={setMaterialsActive}
           onPrepare={(materials) => prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
@@ -192,14 +195,15 @@ export default function Compatibility() {
 
           {counts && counts.total > 0 && (
             <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-              <p className="text-sm">
-                This model may be fine, but the project settings are for another printer. Studio can
-                prepare a U1 profile copy so Orca opens it with U1-compatible settings.
+              <p className="text-sm" data-testid={blocked ? "prepare-blocked-copy" : undefined}>
+                {blocked
+                  ? "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it, or remove the settings listed above in the slicer that made it and export it again."
+                  : "This model may be fine, but the project settings are for another printer. Studio can prepare a U1 profile copy so Orca opens it with U1-compatible settings."}
               </p>
-              <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
+              <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} blocked={blocked} onCustom={() => path && !blocked && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
               {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
-              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
+              <Button size="sm" onClick={() => path && !blocked && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={blocked || prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
                 Prepare U1 copy
               </Button>

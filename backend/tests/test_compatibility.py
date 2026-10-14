@@ -30,6 +30,10 @@ _VALID = {
 
 def _make(path, cfg: dict):
     with zipfile.ZipFile(path, "w") as z:
+        # the parts every readable 3MF project has; without them Studio reports it unreadable
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
+        z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr(SETTINGS, json.dumps(cfg))
 
 

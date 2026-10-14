@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format is based on
   are now counted from the project's plate list. The fidelity audit also reports infill density
   and support settings that were kept unchanged as kept, not as "not carried".
 - A project Studio can read but would refuse to prepare is now reported the same way everywhere:
-  the Doctor, Model Connect (it is still added to your library), the Validation Center, Ready Now,
+  the Doctor, Model Connect (it is still added to your library), the Validation Center's report, Ready Now,
   the Compatibility check and the command line all say it needs a look in Snapmaker Orca instead of
   calling it ready or sending it to Prepare, and `u1convert repair` refuses it with the same reason.
 - Projects Studio will not prepare now stay marked that way in your library and on the

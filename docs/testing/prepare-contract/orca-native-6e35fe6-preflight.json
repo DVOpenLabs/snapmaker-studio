@@ -42,7 +42,7 @@
   "remaining_gates": [
     "close existing Orca normally, then run direct-mesh control",
     "actual bounded GUI checks",
-    "Opus/Fable reviews",
     "owner integration and fresh PR CI"
-  ]
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

@@ -257,3 +257,37 @@ describe("a Prepare that wrote nothing is not reported as a success", () => {
     expect(screen.queryByRole("button", { name: /Copy path/ })).toBeNull();
   });
 });
+
+// --- a readable project Studio would refuse to prepare ---------------------------------------------
+// The findings below are the engine's own output (backend test_the_committed_compatibility_fixture_*).
+import blockedFixture from "@/test-fixtures/compat-blocked.json";
+
+describe.each(["nil_speeds", "u1_auto_brim"] as const)("prepare.blocked finding: %s", (name) => {
+  it("offers no Prepare entry point and explains the next step", async () => {
+    api.compatibilityCheck.mockResolvedValue((blockedFixture as Record<string, unknown>)[name]);
+    api.projectMaterials.mockResolvedValue(analysis());
+    page();
+    await screen.findByText("Studio cannot prepare a U1 copy of this project yet");
+    const copy = await screen.findByTestId("prepare-blocked-copy");
+    expect(copy.textContent).toContain("cannot prepare a U1 copy");
+    expect(screen.queryByText(/Studio can prepare a U1 profile copy/)).toBeNull();
+    expect(plainPrepare()?.disabled).toBe(true);
+    await waitFor(() => expect(materialsCard()).toBeNull());          // Project Materials' Prepare is off too
+    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.length).toBe(2);
+    for (const radio of radios) expect(radio.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Review settings" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(plainPrepare()!);
+    expect(api.convert).not.toHaveBeenCalled();
+  });
+});
+
+it("an eligible project with findings keeps its Prepare entry points", async () => {
+  api.compatibilityCheck.mockResolvedValue((blockedFixture as Record<string, unknown>).clean);
+  api.projectMaterials.mockResolvedValue({ schema: "project-materials/1", supported: false, reason: "no slots" });
+  page();
+  await screen.findByText("Invalid value for raft_first_layer_expansion");
+  expect(plainPrepare()?.disabled).toBe(false);
+  expect(screen.queryByTestId("prepare-blocked-copy")).toBeNull();
+  for (const radio of screen.getAllByRole("radio") as HTMLInputElement[]) expect(radio.disabled).toBe(false);
+});

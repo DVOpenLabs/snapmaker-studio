@@ -427,8 +427,8 @@ def worth_splitting(volumes: list[dict]) -> bool:
 # --- does the archive say the same thing three times? ------------------------
 
 _COMPOSITE = re.compile(r'<object id="(\d+)"[^>]*>\s*<components>(.*?)</components>', re.S)
-_SETTINGS_OBJECT = re.compile(r'<object id="(\d+)"[^>]*>(.*?)</object>', re.S)
-_PART_HEAD = re.compile(r'<part id="(\d+)"([^>]*)>')
+_SETTINGS_OBJECT = re.compile(r'<object id="(\d+)"[^>]*?(?<!/)>(.*?)</object>', re.S)
+_PART_HEAD = re.compile(r'<part id="(\d+)"([^>]*?)(?<!/)>')
 
 
 def _composite_objects(root_xml: str) -> dict:
@@ -489,7 +489,7 @@ def _metadata_problems(settings: str) -> list[str]:
     # silently. The derived option list and its provenance stay in orca_nonnullable.py.
     for object_id, body in _SETTINGS_OBJECT.findall(settings):
         label = _object_label(body)
-        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*>(.*?)</part>', body, re.S):
+        for part_id, part_body in re.findall(r'<part id="(\d+)"[^>]*?(?<!/)>(.*?)</part>', body, re.S):
             bad = [key for key, value in
                    re.findall(r'<metadata key="([^"]+)" value="([^"]*)"\s*/>', part_body)
                    if key in NIL_UNREADABLE and "nil" in [t.strip() for t in value.split(",")]]
@@ -564,6 +564,9 @@ def validate_archive(tm) -> dict:
             kind = _TYPE_ATTR.search(body, start, tag_end)
             if kind:
                 mesh_types[object_id] = kind.group(1)
+            if body[tag_end - 1] == "/":          # self-closing: no body, no geometry
+                problems.append(f"object {object_id} in {path} carries no geometry")
+                continue
             end = body.find("</object>", tag_end)
             if end >= 0:
                 if body.find("<triangle", tag_end, end) < 0:

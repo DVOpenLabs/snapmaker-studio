@@ -135,7 +135,19 @@ def check(path: str) -> dict:
     # would refuse to prepare is never reported as clean.
     from . import eligibility
     eligible = eligibility.assess(tm)
-    if eligible.readable and not eligible.preparable:
+    if not eligible.readable:
+        from .validate import REQUIRED
+        missing = [part for part in REQUIRED if not tm.has_part(part)]
+        findings.append(_finding(
+            "project.unreadable", "error",
+            "Studio cannot read this as a 3MF project",
+            "The file is missing parts every 3MF project needs, so Studio cannot say whether "
+            "Snapmaker Orca will open it, and it is not reported as compatible.",
+            "package structure",
+            "Open the original in the slicer that made it and export it again, or re-download it.",
+            "missing: " + ", ".join(missing),
+        ))
+    elif not eligible.preparable:
         findings.append(_finding(
             "prepare.blocked", "warning",
             "Studio cannot prepare a U1 copy of this project yet",

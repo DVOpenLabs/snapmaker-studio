@@ -229,7 +229,7 @@
   "remaining_gates": [
     "scope decision on Customized Preset warning",
     "remaining bounded GUI validation",
-    "Opus/Fable reviews",
     "owner integration into existing PR #108 and fresh CI"
-  ]
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

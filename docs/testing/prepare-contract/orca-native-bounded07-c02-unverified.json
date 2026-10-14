@@ -51,8 +51,7 @@
   "limitations": [
     "No slicing, G-code execution, printer connection, upload, or print-success claim",
     "Successful loading was not established",
-    "No additional output is eligible until C02 loading and isolation pass",
-    "Opus and Fable reviews remain outstanding"
+    "No additional output is eligible until C02 loading and isolation pass"
   ],
-  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-07/manual-c02-preserve-01/"
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
 }

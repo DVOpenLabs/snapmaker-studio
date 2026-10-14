@@ -52,7 +52,7 @@ def test_a_setup_warning_does_not_rewrite_the_doctors_verdict(tmp_path):
     r = readiness_report(f)
     assert diagnose_path(f).verdict == "READY"
     assert r["verdict"] == "READY" and r["profile_verdict"] == "READY"
-    assert r["ready"] is False and r["at_risk"] or not r["ready"]
+    assert r["ready"] is False and r["at_risk"]
     junk = tmp_path / "junk.3mf"
     junk.write_bytes(b"not a zip")
     assert readiness_report(str(junk))["verdict"] == "HIGH_RISK"

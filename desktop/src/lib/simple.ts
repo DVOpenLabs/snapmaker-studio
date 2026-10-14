@@ -37,6 +37,17 @@ export function verdictStatus(verdict: string | null | undefined, prepareBlocked
   }
 }
 
+/** The badge/stars headline when the readiness report says setup review remains. A compatible
+ *  profile stays compatible (the Doctor's verdict is never rewritten); the headline says "review",
+ *  using the readiness wording, not the unusable-project (HIGH_RISK) mapping. */
+export function headlineWithReadiness(
+  base: { icon: string; label: string; tone: Tone } | null,
+  setupRisk: boolean,
+): { icon: string; label: string; tone: Tone } | null {
+  if (!base || !setupRisk || base.tone !== "ready") return base;
+  return { icon: "⚠️", label: "Review before printing", tone: "repairable" };
+}
+
 /** "N color" / "N colors", guarding nulls. */
 export function colorsLabel(n: number | null | undefined): string | null {
   if (n == null) return null;
