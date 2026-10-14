@@ -113,6 +113,8 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], d
               [report["preset_deviations_declared"]]
               if report.get("preset_deviations_declared") else []]
     groups.append(report.get("project_materials_changes", []))
+    # the prime tower keys the layout correction moved: reported with their own reason
+    groups.append(report.get("placement_corrections", []))
     identity = report.get("identity", {})
     groups.append(identity.get("changed", []) if isinstance(identity, dict) else [])
     for group in groups:
@@ -246,6 +248,25 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         "recommendations_available": prepare_mode == "preserve",
         "recommended_changes": recommended_changes if prepare_mode == "preserve" else [],
     }
+    layout = outcome.report.get("layout")
+    if layout:
+        summary["layout"] = {k: layout.get(k) for k in (
+            "status", "plates", "formula_check", "tower", "tower_note", "stride_source", "stride_target",
+            "cols", "items_moved", "unresolved")}
+        summary["placement_changes"] = list(layout.get("disclosure") or [])
+        summary["warnings"] = summary["warnings"] + [
+            line for line in layout.get("disclosure") or []
+            if line.startswith("Plate positions were left")
+            or ("prime tower is outside" in line) or ("prime tower sits on an object" in line)]
+    intent = outcome.report.get("support_intent")
+    if intent:
+        from . import support_intent as _support_intent
+
+        summary["support_intent"] = {
+            "decision": intent["decision"], "kept": bool(intent["explicit"]),
+            "evidence": intent["evidence"], "blocker_evidence": intent["blocker_evidence"],
+            "disable_evidence": intent["disable_evidence"], "keys": intent["keys"],
+            "statement": _support_intent.statement(intent)}
     # Preservation invariant: every changed source setting needs a specific
     # repair-pipeline reason, a deliberate foreign-value clear, or the
     # profile-owned machine/compat allowlist.  The independent diff is the
@@ -410,7 +431,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                        confirmed_colours=confirmed_colours)
+                        confirmed_colours=confirmed_colours, source_path=str(src))
     after = load_project_settings(tm.read_part(SETTINGS))
     if confirmed_presets:
         # Judged on what this mode will actually write, not on what the source declared:
@@ -428,7 +449,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # results cannot diverge from a real recommended conversion or write.
         do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
                   confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                  confirmed_colours=confirmed_colours)
+                  confirmed_colours=confirmed_colours, source_path=str(src))
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)

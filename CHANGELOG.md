@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- Preparing a multi-plate project from a printer with a different plate size now lays each plate's objects out on the U1's plate grid (translation only; rotation, scale and painting untouched), in both modes, so Snapmaker Orca no longer lists the objects on later plates as outside. It is only done when every object's position matches the plate the project records for it; otherwise positions are left as they were and the prepared copy says why. Prime towers are not moved: Studio reports a tower it can prove is outside the plate or on an object, and otherwise says it cannot tell.
+- "Use Studio's U1 starter settings" keeps the support settings (`enable_support`, support type, support filament, interface filament) when the model itself marks where it needs support (painted support enforcers, support-enforcer volumes, or support switched on for an object); explicitly disabled supports stay off, and blocker-only data does not turn supports on.
 - Bed fit now reports each object's size and the instances' placement as separate facts; several small, separated objects are no longer summed into one "too big" object (#91).
 - Object placement judges each placed copy of a repeated object on its own, so a copy that hangs off the plate is no longer hidden by one that does not (#93).
 

@@ -22,7 +22,7 @@ export function PrepareModeChooser({ mode, onModeChange, onCustom, previewing = 
         </label>
         <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
           <input type="radio" name="prepare-mode" checked={mode === "recommended"} onChange={() => onModeChange("recommended")} />
-          <span><span className="block text-sm font-medium">Use Studio&apos;s U1 starter settings instead</span><span className="block text-xs text-muted-foreground">Replaces the creator&apos;s print settings with Studio&apos;s U1 defaults — useful when the file was made for a very different printer. Speed, temperature, retraction, supports and cooling will change.</span></span>
+          <span><span className="block text-sm font-medium">Use Studio&apos;s U1 starter settings instead</span><span className="block text-xs text-muted-foreground">Replaces the creator&apos;s print settings with Studio&apos;s U1 defaults — useful when the file was made for a very different printer. Speed, temperature, retraction, supports and cooling will change. The one exception: where the model itself marks that it needs support (painted support enforcers, support-enforcer volumes, or support switched on for an object), those support settings are kept — unless supports are explicitly switched off in the project.</span></span>
         </label>
         <div className="flex items-center justify-between rounded-md border p-3">
           <span><span className="block text-sm font-medium">Custom</span><span className="block text-xs text-muted-foreground">Review settings before preparing.</span></span>
