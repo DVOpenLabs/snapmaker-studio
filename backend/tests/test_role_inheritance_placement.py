@@ -119,10 +119,20 @@ SEAM_WORDS = ["precise_seam_center", "precise_seam_left", "precise_seam_right",
 
 @pytest.mark.parametrize("role", HELPER_ROLES + SEAM_WORDS)
 def test_every_consumer_of_the_extents_agrees_that_a_helper_volume_does_not_count(tmp_path, monkeypatch, role):
+    """One fixture (a 10 mm printable part beside a 300 mm helper volume under a nested assembly), every
+    consumer through its own service entry point: the overall extents, the placed items, the layout, preflight,
+    Ready Now, the Bed-Fit API (``service.bed_fit``), the validation report (``service.report``) and the scene.
+    At this head the Bed-Fit API and the report read the overall extents (``project_info``), which are
+    role-aware; the per-object size path is #91's and is asserted there."""
     from snapstudio_core import geometry, layout
     from snapstudio_core.intelligence import project_info
     path = nested_assembly(tmp_path, on_assembly(role))
     assert project_info(path)["dimensions_mm"] == {"x": 10.0, "y": 10.0, "z": 10.0}      # overall extents
+    fit = service.bed_fit(path)                                                            # Bed-Fit API
+    assert fit["overall_level"] == "ok", fit["overall_text"]
+    assert fit["dims_mm"] == {"x": 10.0, "y": 10.0, "z": 10.0}
+    report = next(c for c in service.report(path)["checks"] if c["name"] == "Fits the print bed")
+    assert report["status"] == "pass" and "10.0 × 10.0 × 10.0 mm" in report["detail"]      # validation report
     assert [i["dimensions"]["z"] for i in geometry.build_item_dims(path)] == [10.0]       # placed items
     assert layout.assess_layout(path)["status"] == "pass"                                  # plate-fit layout
     check = bed_fit_check(path, monkeypatch)                                               # preflight
@@ -136,6 +146,9 @@ def test_the_overall_extents_still_count_everything_when_no_role_says_otherwise(
     from snapstudio_core.intelligence import project_info
     path = nested_assembly(tmp_path, {"100": [("1", "normal_part")]})
     assert project_info(path)["dimensions_mm"]["z"] == 300.0
+    assert service.bed_fit(path)["overall_level"] == "risk"                               # the control
+    report = next(c for c in service.report(path)["checks"] if c["name"] == "Fits the print bed")
+    assert report["status"] == "warn"
 
 
 @pytest.mark.parametrize("word", SEAM_WORDS)
