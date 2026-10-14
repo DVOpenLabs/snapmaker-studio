@@ -20,15 +20,17 @@ can be cross-checked: every build item's printing footprint must sit inside the 
 record names for it. If any item fails that check, or its plate cannot be established, nothing is moved and
 the condition is reported as unresolved. Studio never guesses a grid.
 
-The tower rule: per plate, the tower rectangle (corner from ``wipe_tower_x/y`` with Orca's ``get_at``
-fallback to the first entry, ``prime_tower_width`` wide, brim added) must lie inside the U1 printable area
-and clear of every printing footprint on that plate. A valid position is left exactly as it is; otherwise
-the first free position from a fixed candidate order is used; if none is free the position is left and the
-condition reported. Orca sizes the tower's depth from purge volumes at slice time, so Studio's depth is an
-estimate (a square of ``prime_tower_width``) and the clearance carries a margin.
+The tower is NOT moved. Its footprint is not in the project: the depth of a prime tower is decided by
+Snapmaker Orca when it plans the tool changes (purge volumes, ribs, brim, clearance). From the file Studio
+knows the corner, the width and the brim, which is enough to PROVE a tower is outside the printable area (its
+corner or its known width leaves it) or sits on an object (its corner is inside a printing footprint), and
+never enough to say it is inside or clear. So each plate's tower is reported as ``outside_proven``,
+``overlap_proven`` or ``unknown``, with the known extents and, clearly marked as an estimate, a square of the
+tower's width and its clearances; ``wipe_tower_x/y`` are never written. Nothing here claims a tower is safe.
 """
 from __future__ import annotations
 
+import copy
 import math
 import re
 
@@ -37,10 +39,8 @@ from . import geometry, placement, plate_placement as pp
 #: Orca's ``LOGICAL_PART_PLATE_GAP``: the stride is the plate size times (1 + gap).
 PLATE_GAP = 1.0 / 5.0
 
-#: Clearance kept between the tower (brim included) and a printing footprint or the printable edge, mm.
-TOWER_MARGIN_MM = 3.0
-
-#: The tower's depth is not stored in the project; it is estimated as a square of its width.
+#: The tower's depth is not stored in the project. ONLY the estimate shown next to a tower uses it
+#: (a square of its width); no decision is taken from it.
 TOWER_DEPTH_FROM_WIDTH = 1.0
 
 _TOLERANCE = 1e-6
@@ -182,9 +182,20 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
                     "min": (item["bounds"]["min"][0] + dx, item["bounds"]["min"][1] + dy, item["bounds"]["min"][2]),
                     "max": (item["bounds"]["max"][0] + dx, item["bounds"]["max"][1] + dy, item["bounds"]["max"][2])}
 
+    # --- a project already authored on THIS U1 plate keeps the tower where its creator put it ----
+    # The starter profile owns a tower position (a constant written for no particular model). A project
+    # whose bed IS the U1's printable area was laid out in Orca for this very plate, tower included, so its
+    # position is placement, not tuning, and is kept in every mode.
+    src_polygon, dst_polygon = placement.polygon_of(source_cfg), placement.polygon_of(work)
+    if src_polygon and dst_polygon and sorted(src_polygon) == sorted(dst_polygon):
+        for key in ("wipe_tower_x", "wipe_tower_y"):
+            if key in source_cfg and work.get(key) != source_cfg[key]:
+                work[key] = copy.deepcopy(source_cfg[key])
+                report.setdefault("tower_kept_from_source", []).append(key)
+
     # --- the prime tower, per plate, against the footprints as they now are ----------------------
-    _place_towers(work, source_cfg, by_index, plate_index, multi, cols, target if target else None,
-                  report, plates_known=cells_ok or not multi, unresolved=bool(unresolved))
+    _assess_towers(work, by_index, plate_index, multi, cols, target if target else None, report,
+                   plates_known=cells_ok or not multi)
     _disclose(report, multi)
 
 
@@ -241,7 +252,7 @@ def _apply_offsets(tm, offsets: dict, report: dict) -> None:
     report["items_moved"] = moved
 
 
-# --- the prime tower -----------------------------------------------------------------------------
+# --- the prime tower (assessed, never moved) -----------------------------------------------------
 
 def _entry(values, plate: int, fallback: float | None = None):
     """Orca's ``get_at``: the plate's own entry, else the first."""
@@ -255,67 +266,41 @@ def _entry(values, plate: int, fallback: float | None = None):
         return fallback
 
 
-def _number_text(value: float) -> str:
-    text = format(round(value, 3), ".3f").rstrip("0").rstrip(".")
-    return text if text not in ("", "-0") else "0"
-
-
 def tower_rect(x: float, y: float, width: float, brim: float) -> tuple[float, float, float, float]:
-    """The rectangle a tower at corner (x, y) occupies, brim included (depth estimated, see module doc)."""
+    """The ESTIMATED rectangle of a tower at corner (x, y): a square of its width, brim included."""
     depth = width * TOWER_DEPTH_FROM_WIDTH
     return (x - brim, y - brim, x + width + brim, y + depth + brim)
 
 
-def candidates(bed: dict, width: float, brim: float) -> list[tuple[float, float]]:
-    """Corner positions to try, in a fixed order: back-left, back-right, front-left, front-right, then
-    the middle of the back, front, left and right edges. Each is the tower's inner corner."""
-    depth = width * TOWER_DEPTH_FROM_WIDTH
-    w, d = width + 2 * brim, depth + 2 * brim
-    m = TOWER_MARGIN_MM
-    left, right = bed["min_x"] + m, bed["max_x"] - m - w
-    front, back = bed["min_y"] + m, bed["max_y"] - m - d
-    mid_x, mid_y = (bed["min_x"] + bed["max_x"] - w) / 2.0, (bed["min_y"] + bed["max_y"] - d) / 2.0
-    corners = [(left, back), (right, back), (left, front), (right, front),
-               (mid_x, back), (mid_x, front), (left, mid_y), (right, mid_y)]
-    return [(cx + brim, cy + brim) for cx, cy in corners]
+def _gap(rect, box) -> float:
+    """Edge-to-edge distance between two rectangles (0 when they overlap)."""
+    dx = max(box[0] - rect[2], rect[0] - box[2], 0.0)
+    dy = max(box[1] - rect[3], rect[1] - box[3], 0.0)
+    return math.hypot(dx, dy)
 
 
-def _inside(rect, bed: dict, margin: float = 0.0) -> bool:
-    return (rect[0] >= bed["min_x"] + margin - _TOLERANCE and rect[1] >= bed["min_y"] + margin - _TOLERANCE
-            and rect[2] <= bed["max_x"] - margin + _TOLERANCE and rect[3] <= bed["max_y"] - margin + _TOLERANCE)
+def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, plates_known: bool) -> None:
+    """Per plate: what the file PROVES about the prime tower, and nothing it does not.
 
-
-def _clear(rect, footprints: list[tuple]) -> bool:
-    m = TOWER_MARGIN_MM
-    for fx0, fy0, fx1, fy1 in footprints:
-        if rect[0] < fx1 + m and rect[2] > fx0 - m and rect[1] < fy1 + m and rect[3] > fy0 - m:
-            return False
-    return True
-
-
-def _place_towers(work, source_cfg, by_index, plate_index, multi, cols, target, report, *,
-                  plates_known: bool, unresolved: bool) -> None:
+    ``outside_proven``: the corner, or the known width plus brim, leaves the U1 printable area.
+    ``overlap_proven``: the corner lies inside a printing footprint of that plate.
+    ``unknown``: neither is proven; the full footprint depends on Orca's tool-change planning.
+    """
     enabled = work.get("enable_prime_tower")
-    if str(enabled).lower() in ("0", "false", "", "none") or enabled is None:
+    if enabled is None or str(enabled).lower() in ("0", "false", "", "none"):
         return
     try:
         width = float(work.get("prime_tower_width"))
     except (TypeError, ValueError):
         width = 0.0
-    if width <= 0:
-        return
+    bed = pp.u1_bed_rect()
     try:
         brim = max(0.0, float(work.get("prime_tower_brim_width") or 0))
     except (TypeError, ValueError):
         brim = 0.0
-    bed = pp.u1_bed_rect()
-    n_plates = (max(plate_index.values()) + 1) if (multi and plate_index) else 1
-    if multi:
-        n_plates = max(n_plates, len(set(plate_index.values())))
+    n_plates = (len(set(plate_index.values())) or 1) if multi else 1
     xs, ys = work.get("wipe_tower_x"), work.get("wipe_tower_y")
-    plates = range(n_plates)
-    # footprints per plate, in the plate's own (target) frame
-    footprints: dict[int, list[tuple]] = {i: [] for i in plates}
+    footprints: dict[int, list[tuple]] = {i: [] for i in range(n_plates)}
     for index, item in by_index.items():
         idx = plate_index.get(index)
         if idx is None:
@@ -324,54 +309,40 @@ def _place_towers(work, source_cfg, by_index, plate_index, multi, cols, target, 
         lo, hi = item["bounds"]["min"], item["bounds"]["max"]
         footprints.setdefault(idx, []).append((lo[0] - ox, lo[1] - oy, hi[0] - ox, hi[1] - oy))
 
-    new_x = [_entry(xs, i) for i in plates]
-    new_y = [_entry(ys, i) for i in plates]
-    changed = False
-    for i in plates:
-        x, y = new_x[i], new_y[i]
-        record = {"plate": i + 1, "from": [x, y], "to": [x, y], "action": "kept", "reason": None}
-        if multi and (unresolved or not plates_known):
-            record.update(action="unresolved",
-                          reason="the plate layout could not be established, so the tower was not checked")
-            report["tower"].append(record)
-            continue
-        if x is None or y is None:
-            record.update(action="unresolved", reason="the project states no tower position for this plate")
-            report["tower"].append(record)
-            continue
-        rect = tower_rect(x, y, width, brim)
-        valid = _inside(rect, bed) and _clear(rect, footprints.get(i, []))
-        if valid:
-            record["rect"] = [round(v, 3) for v in rect]
-            report["tower"].append(record)
-            continue
-        why = ("outside the U1 printable area" if not _inside(rect, bed)
-               else "on top of a printing object")
-        for cx, cy in candidates(bed, width, brim):
-            candidate = tower_rect(cx, cy, width, brim)
-            if _inside(candidate, bed) and _clear(candidate, footprints.get(i, [])):
-                new_x[i], new_y[i] = cx, cy
-                record.update({"to": [cx, cy], "action": "moved", "reason": why,
-                               "rect": [round(v, 3) for v in candidate]})
-                changed = True
-                break
-        else:
-            record.update(action="unresolved", reason=f"{why}, and no free position was found")
-            record["rect"] = [round(v, 3) for v in rect]
+    for i in range(n_plates):
+        x, y = _entry(xs, i), _entry(ys, i)
+        record = {"plate": i + 1, "position": [x, y], "width": width, "brim": brim,
+                  "status": "unknown", "reason": None, "known_x_extent": None, "known_y_min": None,
+                  "estimate": {"rect": None, "clearance_to_edges": None, "clearance_to_objects": None,
+                              "note": "a square of the tower's width; Orca decides the real depth"}}
         report["tower"].append(record)
-
-    if not changed:
-        return
-    for key, values, original in (("wipe_tower_x", new_x, xs), ("wipe_tower_y", new_y, ys)):
-        old = original
-        # one entry per plate once any plate differs; a single plate keeps the list shape it had
-        text = [_number_text(v) for v in values]
-        if n_plates == 1 and isinstance(original, list) and len(original) >= 1:
-            text = [text[0]] + [str(v) for v in original[1:]]
-        work[key] = text
-        report["setting_changes"].append({
-            "key": key, "old": old, "new": text,
-            "reason": "the prime tower was moved inside the U1 printable area and clear of the objects"})
+        if multi and not plates_known:
+            record["reason"] = "the plate layout could not be established"
+            continue
+        if x is None or y is None or width <= 0:
+            record["reason"] = "the project states no usable tower position or width"
+            continue
+        record["known_x_extent"] = [round(x - brim, 3), round(x + width + brim, 3)]
+        record["known_y_min"] = round(y - brim, 3)
+        est = tower_rect(x, y, width, brim)
+        record["estimate"]["rect"] = [round(v, 3) for v in est]
+        record["estimate"]["clearance_to_edges"] = {
+            "left": round(est[0] - bed["min_x"], 3), "right": round(bed["max_x"] - est[2], 3),
+            "front": round(est[1] - bed["min_y"], 3), "back": round(bed["max_y"] - est[3], 3)}
+        boxes = footprints.get(i, [])
+        record["estimate"]["clearance_to_objects"] = (
+            round(min(_gap(est, box) for box in boxes), 3) if boxes else None)
+        if (x - brim < bed["min_x"] - _TOLERANCE or x + width + brim > bed["max_x"] + _TOLERANCE
+                or y - brim < bed["min_y"] - _TOLERANCE or y > bed["max_y"] + _TOLERANCE):
+            record.update(status="outside_proven",
+                          reason="its position and width already leave the U1 printable area")
+        elif any(b[0] <= x <= b[2] and b[1] <= y <= b[3] for b in boxes):
+            record.update(status="overlap_proven", reason="its corner is inside an object on that plate")
+        else:
+            record["reason"] = ("the tower's depth is decided when Snapmaker Orca plans the tool changes, "
+                                "so whether it is inside the plate and clear of the objects is not known")
+    report["tower_note"] = ("Studio did not move any prime tower: its full footprint (depth, ribs, brim, "
+                            "clearance) is only fixed when Snapmaker Orca plans the tool changes.")
 
 
 def _disclose(report: dict, multi: bool) -> None:
@@ -388,10 +359,12 @@ def _disclose(report: dict, multi: bool) -> None:
                 lines.append(f"Plate {p['plate']}'s objects are larger than the U1 plate, so they still "
                              "will not fit it; Snapmaker Orca will show them outside.")
     for t in report["tower"]:
-        if t["action"] == "moved":
-            lines.append(f"Moved plate {t['plate']}'s prime tower from ({t['from'][0]:g}, {t['from'][1]:g}) to "
-                         f"({t['to'][0]:g}, {t['to'][1]:g}): it was {t['reason']}.")
-        elif t["action"] == "unresolved":
-            lines.append(f"Plate {t['plate']}'s prime tower was left where it was: {t['reason']}.")
+        if t["status"] == "outside_proven":
+            lines.append(f"Plate {t['plate']}'s prime tower is outside the U1 printable area ({t['reason']}); "
+                         "Studio left it where it is because it cannot establish the tower's full footprint. "
+                         "Move it in Snapmaker Orca's prime tower settings.")
+        elif t["status"] == "overlap_proven":
+            lines.append(f"Plate {t['plate']}'s prime tower sits on an object ({t['reason']}); Studio left it "
+                         "where it is because it cannot establish the tower's full footprint.")
     for reason in report["unresolved"]:
         lines.append(f"Plate positions were left as the source had them: {reason}.")

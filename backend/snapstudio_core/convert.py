@@ -294,22 +294,22 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
     layout = outcome.report.get("layout")
     if layout:
         summary["layout"] = {k: layout.get(k) for k in (
-            "status", "plates", "formula_check", "tower", "stride_source", "stride_target", "cols",
-            "items_moved", "unresolved")}
+            "status", "plates", "formula_check", "tower", "tower_note", "stride_source", "stride_target",
+            "cols", "items_moved", "unresolved")}
         summary["placement_changes"] = list(layout.get("disclosure") or [])
         summary["warnings"] = summary["warnings"] + [
             line for line in layout.get("disclosure") or []
             if line.startswith("Plate positions were left")
-            or ("prime tower was left where it was" in line)]
+            or ("prime tower is outside" in line) or ("prime tower sits on an object" in line)]
     intent = outcome.report.get("support_intent")
     if intent:
+        from . import support_intent as _support_intent
+
         summary["support_intent"] = {
-            "kept": bool(intent["explicit"]), "evidence": intent["evidence"], "keys": intent["keys"],
-            "statement": (
-                "This model marks where it needs support (" + ", ".join(intent["evidence"]) + "), so its "
-                "support settings (" + ", ".join(intent["keys"]) + ") were kept as the creator set them "
-                "rather than reset to the U1 starter's." if intent["explicit"] else
-                "Supports use the U1 starter settings, as this mode states.")}
+            "decision": intent["decision"], "kept": bool(intent["explicit"]),
+            "evidence": intent["evidence"], "blocker_evidence": intent["blocker_evidence"],
+            "disable_evidence": intent["disable_evidence"], "keys": intent["keys"],
+            "statement": _support_intent.statement(intent)}
     # Preservation invariant: every changed source setting needs a specific
     # repair-pipeline reason, a deliberate foreign-value clear, or the
     # profile-owned machine/compat allowlist.  The independent diff is the
