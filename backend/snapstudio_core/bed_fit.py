@@ -96,7 +96,7 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         diag = (x + y) / (2 ** 0.5)
         if (over_x ^ over_y) and diag <= min(bx, by):
             fixes.append(f"Or it may fit rotated ~45° on the plate — the diagonal ({diag:.0f} mm) "
-                         f"is within the bed; try Arrange in Orca to confirm.")
+                         f"is within the bed; confirm it in Snapmaker Orca.")
 
     # Almost the whole plate — fits, but brim/skirt/tower can spill over.
     elif x > bx * EDGE_FRAC or y > by * EDGE_FRAC:
@@ -121,7 +121,7 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
     if object_count and object_count > 1:
         findings.append(_f("ok", f"{object_count} objects share the plate — the whole "
                                  f"arrangement must fit. If Orca still says out of bounds, one object "
-                                 f"is off the plate; use Arrange to re-pack them."))
+                                 f"is off the plate; review the plate in Snapmaker Orca."))
 
     if worst == "ok" and not any(f["level"] != "ok" for f in findings):
         findings.insert(0, _f("ok", f"Fits {source}'s {bx:.0f}×{by:.0f}×{bz:.0f} mm bed "

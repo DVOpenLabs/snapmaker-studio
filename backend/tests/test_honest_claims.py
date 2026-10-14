@@ -43,7 +43,7 @@ STRIDE = 396
 NOTE = ("Each plate fits on its own, but Studio cannot check where the plates sit. In our "
         "test with a two-plate project made for a larger-bed printer, Snapmaker Orca listed "
         "one object as Outside and would not slice until it was moved by hand; Arrange all "
-        "plates did not fix it. Review the project in Snapmaker Orca before slicing.")
+        "plates did not fix that in our test. Review the project in Snapmaker Orca before slicing.")
 
 
 def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=False,
@@ -349,3 +349,24 @@ def test_tower_outside_is_attention_and_never_ready_now(tmp_path):
     pre, result = run(ok)
     assert not any(c["id"] == "prime_tower.fit" for c in pre["checks"])
     assert result["bucket"] == rd.READY_NOW
+
+
+def test_a_tower_that_is_not_proven_outside_is_never_called_fine(tmp_path):
+    # Depth, brim and rotation are only known when Orca slices (Print.cpp
+    # wipe_tower_data().depth), so "inside" is never claimed: a note says so instead.
+    out = convert(build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30")),
+                  "preserve", tmp_path)["output_path"]
+    tower = service.placement_check(out)["prime_tower"]
+    assert tower["message"] is None and tower["outside"] == []
+    assert tower["note"].startswith("Studio could not verify how far the prime tower reaches")
+    # Informational only: it does not turn into a preflight check or a Doctor claim.
+    assert "prime tower" not in service.doctor(out)["recommended_action"].lower()
+
+
+def test_a_rotated_tower_is_not_judged(tmp_path):
+    from snapstudio_core import prime_tower
+    cfg = {"wipe_tower_x": ["300"], "wipe_tower_y": ["300"], "prime_tower_width": "60",
+           "wipe_tower_rotation_angle": "30"}
+    bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
+    assert prime_tower.findings(cfg, 1, bed) == []
+    assert prime_tower.unverified_note(cfg, []) is not None

@@ -35,7 +35,7 @@ KNOWN_ISSUES = [
         "cause": "The model (or its skirt/brim/prime tower) extends past the U1's "
                  "270×270×270 mm printable area; Orca refuses to slice but doesn't say which axis.",
         "community_fix": "Scale to fit (Studio's Project Doctor gives the exact %), rotate ~45° "
-                         "if only one axis is over, or split the model. Re-arrange so every object is on the plate.",
+                         "if only one axis is over, or split the model. Check in Snapmaker Orca that every object is on the plate.",
         "sources": ["r/snapmaker", "Snapmaker forum", "Facebook Snapmaker U1 group"],
     },
     {

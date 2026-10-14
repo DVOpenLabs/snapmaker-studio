@@ -8,8 +8,14 @@ settings, never asserted.
 
 `wipe_tower_x` / `wipe_tower_y` are plate-local lists; a plate with no entry of its
 own uses the first one. Only what is certain is claimed: the tower starts at (x, y)
-and is at least `prime_tower_width` wide. Its depth is not known from the file, so
-the y axis is judged on the start point only.
+and is at least `prime_tower_width` wide.
+
+Why only "at least": in Snapmaker Orca 2.4.0 (Print.cpp, `wipe_tower_data().depth`) the
+tower's depth comes from the tool changes and flush volumes of the sliced print, and
+its brim, cone base and `wipe_tower_rotation_angle` add to the footprint. None of
+that is in the file. So Studio can prove a tower is *outside* (its start point or
+minimum width already is), but it can never prove one is *inside*; a tower that is
+not reported is "not verified", not "fine". A rotated tower is not judged at all.
 """
 from __future__ import annotations
 
@@ -34,6 +40,8 @@ def findings(cfg: dict, plate_count: int, bed: dict) -> list[dict]:
     cfg = cfg or {}
     if _off(cfg.get("enable_prime_tower")):
         return []
+    if (_num(cfg.get("wipe_tower_rotation_angle"), 0.0) or 0.0) != 0.0:
+        return []   # the footprint is rotated; its corners are not known from the file
     xs, ys = cfg.get("wipe_tower_x"), cfg.get("wipe_tower_y")
     xs = xs if isinstance(xs, list) else ([xs] if xs is not None else [])
     ys = ys if isinstance(ys, list) else ([ys] if ys is not None else [])
@@ -59,7 +67,24 @@ def message(found: list[dict], bed: dict, whose: str = "the U1's") -> str | None
     first = found[0]
     label = f"plate {plates}" if len(found) == 1 else f"plates {plates}"
     return (f"The prime tower ({label}) sits outside {whose} printable area: it starts at "
-            f"X {first['x']:g}, Y {first['y']:g} and is at least {first['width']:g} mm wide, "
+            f"X {first['x']:g}, Y {first['y']:g} and is at least {first['width']:g} mm wide "
+            f"(its depth is only known when Orca slices), "
             f"while the area is X {bed['min_x']:g} to {bed['max_x']:g}, "
             f"Y {bed['min_y']:g} to {bed['max_y']:g} mm. Snapmaker Orca can refuse to slice "
             "that plate until the tower is moved.")
+
+
+UNVERIFIED_NOTE = (
+    "Studio could not verify how far the prime tower reaches: its depth, brim and rotation "
+    "are only known when Snapmaker Orca slices. Check the tower in Orca's preview."
+)
+
+
+def unverified_note(cfg: dict, found: list[dict]) -> str | None:
+    """Informational: a tower exists in the settings and none was proven outside."""
+    cfg = cfg or {}
+    if found or _off(cfg.get("enable_prime_tower")):
+        return None
+    if cfg.get("wipe_tower_x") in (None, [], "") or cfg.get("wipe_tower_y") in (None, [], ""):
+        return None
+    return UNVERIFIED_NOTE

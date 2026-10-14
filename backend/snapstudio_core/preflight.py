@@ -394,7 +394,8 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                      "plate."),
         action=("Use Studio's object-placement fix to move them on — it saves a copy and "
                 "leaves your original alone." if placement.get("fixable")
-                else "Open the project in Snapmaker Orca and use Arrange."),
+                else "Review the project in Snapmaker Orca before slicing; Studio could not "
+                     "bring every object onto the plate."),
         source="project geometry vs printer bed")
 
 

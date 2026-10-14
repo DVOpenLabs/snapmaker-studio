@@ -6,7 +6,7 @@ U1 by every size check, and still lands completely off a 270 mm plate. Size chec
 never catch it, because nothing is too big — it is in the wrong place.
 
 Snapmaker Orca's answer to this is a bare "out of bounds", and the community's
-answer is "hit Arrange and hope". This module gives the specific answer instead:
+answer is a guess. This module gives the specific answer instead:
 which object is off the plate, by how much and on which edge, whether one
 translation would bring the whole arrangement back on, and — when it would —
 writes a new copy with exactly that translation applied.
@@ -23,7 +23,7 @@ Discipline, in order of importance:
   all: the spacing between plates is not recorded in the file, so any move would
   be a guess. They are still *checked* — each plate is judged on whether its own
   contents fit a U1 plate, which does not depend on the grid — and the answer is
-  "open this in Orca and use Arrange".
+  "review this in Orca before slicing".
 """
 from __future__ import annotations
 
@@ -112,10 +112,12 @@ def _prime_tower(tm: ThreeMF, plate_count: int, target: dict, whose: str) -> dic
     except Exception:
         cfg = {}
     if cfg.get("printer_model") != "Snapmaker U1":
-        return {"outside": [], "message": None}
+        return {"outside": [], "message": None, "note": None}
     found = prime_tower.findings(cfg, plate_count, target)
     return {"outside": found,
-            "message": prime_tower.message(found, target, whose)}
+            "message": prime_tower.message(found, target, whose),
+            # Informational only: the depth is not in the file, so "inside" is never claimed.
+            "note": prime_tower.unverified_note(cfg, found)}
 
 
 def _overhang(bounds: dict, bed: dict) -> dict:
@@ -243,7 +245,7 @@ def _unavailable(reason: str) -> dict:
 # object at X=900 on plate 3 is not "off the plate", and Studio no longer says it
 # is.
 #
-# Moving them is Snapmaker Orca's Arrange, and Studio says so.
+# Studio says it cannot place them and points the user to Snapmaker Orca.
 
 MULTI_PLATE_REFUSAL = (
     "Studio does not reposition multi-plate projects. The spacing between plates "
@@ -257,8 +259,9 @@ MULTI_PLATE_REFUSAL = (
 MULTI_PLATE_UNVERIFIED = (
     "Each plate fits on its own, but Studio cannot check where the plates sit. In our "
     "test with a two-plate project made for a larger-bed printer, Snapmaker Orca listed "
-    "one object as Outside and would not slice until it was moved by hand; Arrange all "
-    "plates did not fix it. Review the project in Snapmaker Orca before slicing."
+    "one object as Outside and would not slice until it was moved by hand; "
+    "Arrange all plates did not fix that in our test. "
+    "Review the project in Snapmaker Orca before slicing."
 )
 
 
@@ -427,7 +430,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
                    "back on, keeping the creator's layout, rotation and scale.")
     else:
         summary = (f"{len(off_plate)} object(s) fall outside {whose} plate and one "
-                   "move will not fix it. Open it in Snapmaker Orca and use Arrange.")
+                   "move will not fix it. Review the project in Snapmaker Orca before slicing.")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -676,8 +679,8 @@ def prepare_placed_copy(path: str, out_dir: str | None = None,
         return {
             "schema_version": SCHEMA_VERSION, "ok": False,
             "reason": ("Studio moved the arrangement but the copy still has objects "
-                       "off the plate, so it is not safe to rely on. Open the original "
-                       "in Snapmaker Orca and use Arrange."),
+                       "off the plate, so it is not safe to rely on. Review the original "
+                       "in Snapmaker Orca before slicing."),
             "output_path": str(out), "output_name": out.name,
             "before": before, "after": after,
         }

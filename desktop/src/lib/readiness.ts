@@ -50,7 +50,7 @@ function deriveNextActions(atRisk: string[]): string[] {
     out.push("Plan colour swaps or remap to 4 colours in Snapmaker Orca.");
   if (blob.includes("support") || blob.includes("overhang"))
     out.push("Check / enable supports in Snapmaker Orca.");
-  if (blob.includes("plate") || blob.includes("layout") || blob.includes("arrange"))
+  if (blob.includes("plate") || blob.includes("layout"))
     out.push("Review the plates and the prime tower in Snapmaker Orca before slicing.");
   return out;
 }

@@ -155,8 +155,8 @@ def readiness_report(path: str, prepare_mode: str | None = None) -> dict:
             # A crash in layout analysis must NOT silently let the file pass as ready —
             # fall back to an explicit "unknown" that blocks readiness.
             layout = {"status": "unknown", "plates": 0, "object_count": 0,
-                      "messages": ["Layout couldn't be checked — open in Snapmaker Orca and use "
-                                   "Arrange all plates to confirm placement before slicing."]}
+                      "messages": ["Layout couldn't be checked — review the project in "
+                                   "Snapmaker Orca before slicing."]}
         if layout["status"] != "pass":
             checks.append(_check(
                 "Layout / plate fit",

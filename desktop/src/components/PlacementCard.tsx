@@ -49,7 +49,7 @@ export function PlacementCard({ path }: { path: string }) {
         : "Studio did not move anything — see the reason on the card.");
       if (result.ok) setCheck(result.after ?? check);
     } catch {
-      showToast("Couldn't reposition this project — open it in Snapmaker Orca and use Arrange.");
+      showToast("Couldn't reposition this project — review it in Snapmaker Orca before slicing.");
     } finally {
       setFixing(false);
     }
@@ -105,9 +105,13 @@ export function PlacementView({ check, fix, fixing, onFix }: {
           </p>
         )}
 
+        {check?.available && !check.prime_tower?.message && check.prime_tower?.note && (
+          <p className="text-[11px] text-muted-foreground">{check.prime_tower.note}</p>
+        )}
+
         {blocked && (
           <p className="rounded-md border border-border bg-muted/20 p-2.5 text-xs text-muted-foreground">
-            {blocked} Open the project in Snapmaker Orca and use Arrange.
+            {blocked} Review the project in Snapmaker Orca before slicing.
           </p>
         )}
 

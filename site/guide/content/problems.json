@@ -11,7 +11,7 @@
     "id": "heads-up", "label": "HEADS UP", "certainty": "check", "seen": ["check"],
     "means": "Worth knowing, often something Studio cannot fully assess, such as spacing between objects or whether the profile is for a U1.",
     "why": "Studio does not yet check spacing between objects in a multi-part layout, and says so rather than guessing.",
-    "do": ["Open the project in Snapmaker Orca and use **Arrange**; watch for collision warnings.", "If it says **Profile may not be a Snapmaker U1 profile**, make sure the active printer profile is Snapmaker U1, or prepare a U1 copy."],
+    "do": ["Review the project in Snapmaker Orca and watch for collision warnings.", "If it says **Profile may not be a Snapmaker U1 profile**, make sure the active printer profile is Snapmaker U1, or prepare a U1 copy."],
     "dont": "A heads-up is not a failure. It is something to look at, and often something Studio cannot check for you.",
     "shot": "compat-findings", "tasks": ["review-in-orca"], "keywords": ["spacing", "collision", "profile", "not a u1 profile", "warning"]
   },
@@ -59,9 +59,9 @@
     "id": "cannot-move-as-one-piece", "label": "Moving the objects as one piece would not bring them all on, so Studio will not guess.", "certainty": "confirmed", "seen": ["prepare"],
     "means": "One shift of the whole layout cannot bring every object onto the plate: the layout is wider than the plate in its current orientation.",
     "why": "Studio moves everything as one piece and verifies the copy, or does nothing. It will not half-fix a project. There is no **Move onto the plate (saves a copy)** button in this case.",
-    "do": ["Open the project in Snapmaker Orca and use **Arrange**, as Studio says.", "If one object is longer than the plate, resize, rotate or split it in Orca; Studio does not edit your model."],
+    "do": ["Review the project in Snapmaker Orca before slicing, as Studio says.", "If one object is longer than the plate, resize, rotate or split it in Orca; Studio does not edit your model."],
     "dont": "Do not hunt for a hidden Move button.",
-    "shot": "placement-oversized", "tasks": ["move-onto-plate", "review-in-orca"], "keywords": ["oversized", "too big", "too large", "will not guess", "arrange", "no move button", "wider than the plate"]
+    "shot": "placement-oversized", "tasks": ["move-onto-plate", "review-in-orca"], "keywords": ["oversized", "too big", "too large", "will not guess", "no move button", "wider than the plate"]
   },
   {
     "id": "could-not-open-3mf", "label": "Studio could not open this file as a 3MF project.", "certainty": "confirmed", "seen": ["open"],

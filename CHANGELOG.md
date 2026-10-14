@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format is based on
   only says your setting values are kept for a copy prepared with Preserve creator settings. What the
   mode writes is unchanged.
 
+- **Studio no longer recommends Arrange as a remedy.** Arrange was only ever observed failing to fix
+  an Outside object or an inherited prime tower, and was never tested otherwise, so every message and
+  guide page that told you to use it now says to review the project in Snapmaker Orca before slicing.
+
 ### Known limits (not changed)
 - For a project made for a printer with a larger bed, the objects keep the creator's positions, so
   Snapmaker Orca can list an object as Outside even when its plate fits, and in our test Arrange

@@ -55,7 +55,7 @@
       { "seen": "**1 object is outside the U1's printable area.**", "meaning": "An object hangs off the plate. Studio names the object, the edge and the distance.", "certainty": "confirmed", "action": "Decide whether it is misplaced or too big (next stage)." },
       { "seen": "**NEEDS ATTENTION** — “Invalid value for …”", "meaning": "Likely to cause trouble in Orca. For a downloaded 3MF it usually means settings from another printer; the text says the model itself may be fine.", "certainty": "check", "action": "Read the **Do this:** line. Preparing a U1 copy is designed to handle this." },
       { "seen": "**Print readiness (estimate)**", "meaning": "Studio starts at 100 and takes points off for each risk signal it found. The percentage is not a probability of print success. **Few risks** means the score is at least 75, so a signal may still have cost points. The line under it shows the percentage; the bullet list of signals appears only below 75.", "certainty": "info", "action": "Review any listed signals before printing." },
-      { "seen": "**HEADS UP**", "meaning": "Worth knowing, often something Studio cannot verify, such as spacing between objects.", "certainty": "check", "action": "Check it in Orca (**Arrange**, collision warnings)." },
+      { "seen": "**HEADS UP**", "meaning": "Worth knowing, often something Studio cannot verify, such as spacing between objects.", "certainty": "check", "action": "Check it in Orca (collision warnings)." },
       { "seen": "**STUDIO CAN’T TELL** / **STUDIO CAN’T CHECK THIS**", "meaning": "Studio lacks information it needs for this check. It is not a problem found; it is a gap.", "certainty": "unknown", "action": "Connect the printer, or check it yourself. See the unknown-versus-confirmed example in stage 6." },
       { "seen": "**LOOKS RIGHT**", "meaning": "Studio checked and found nothing wrong.", "certainty": "ok", "action": "Read any action listed on the card. It is advice, not a guarantee." }
     ],
@@ -97,7 +97,7 @@
     },
     "means": [
       { "seen": "**Move onto the plate (saves a copy)** is offered", "meaning": "One shift of the whole layout brings every object onto the plate. Studio can do it and verify the result.", "certainty": "ok", "action": "Press it, then prepare the moved copy." },
-      { "seen": "No Move button: “Moving the objects as one piece would not bring them all on, so Studio will not guess.”", "meaning": "A single shift cannot fix it: the layout is wider than the plate in its current orientation.", "certainty": "confirmed", "action": "Open the project in Orca and use **Arrange**; if an object still does not fit, rotate, resize or split it." },
+      { "seen": "No Move button: “Moving the objects as one piece would not bring them all on, so Studio will not guess.”", "meaning": "A single shift cannot fix it: the layout is wider than the plate in its current orientation.", "certainty": "confirmed", "action": "Review the project in Snapmaker Orca before slicing; if an object does not fit, rotate, resize or split it there." },
       { "seen": "**Preserve creator settings** (Recommended)", "meaning": "Keeps the creator's print settings and changes only the minimum for Orca to open the file.", "certainty": "info", "action": "The right choice for a downloaded model." },
       { "seen": "**Use Studio's U1 starter settings instead**", "meaning": "Replaces the creator's settings with Studio's U1 defaults: speed, temperature, retraction, supports and cooling change.", "certainty": "check", "action": "Use this when the file came from a very different printer." },
       { "seen": "“Print-setup risks remain (see the checks)”", "meaning": "Studio prepared the file for the U1, but the checks still list things for you.", "certainty": "info", "action": "Handle them in Orca (stage 5)." }
@@ -179,13 +179,13 @@
     "means": [
       { "seen": "**Open in Snapmaker Orca**", "meaning": "A one-way handoff. Studio opens the file in Orca and does nothing else with it.", "certainty": "info", "action": "Press it, or use **Copy path** and open the file in Orca yourself." },
       { "seen": "**Install Snapmaker Orca**", "meaning": "Studio could not find Orca on this computer.", "certainty": "info", "action": "Install it from its [releases page](@orca), then use **Copy path** and open the prepared file from inside Orca." },
-      { "seen": "**Do this in Orca** (fix plan)", "meaning": "A step Studio cannot do: for example turning on supports, or using Arrange and checking spacing.", "certainty": "check", "action": "Do it before slicing." },
+      { "seen": "**Do this in Orca** (fix plan)", "meaning": "A step Studio cannot do: for example turning on supports, or checking spacing.", "certainty": "check", "action": "Do it before slicing." },
       { "seen": "**Manual check in Orca required**", "meaning": "A preset you made yourself is named in the copy, but Studio cannot confirm Orca applies its temperature, flow and cooling.", "certainty": "unknown", "action": "Check the filament in Orca before slicing." },
       { "seen": "Orca shows a “Customized Preset” notice", "meaning": "Orca treats the project's settings as a customization, which can happen when the creator's tuned settings are kept.", "certainty": "info", "action": "Review the settings in Orca before slicing." }
     ],
     "steps": [
       "On the prepared result, press **Open in Snapmaker Orca** (or **Copy path**).",
-      "In Orca, check: the printer is **Snapmaker U1**; the filaments and colors match what you will load; the objects are on the plate (use **Arrange** if unsure); supports are set the way you want.",
+      "In Orca, check: the printer is **Snapmaker U1**; the filaments and colors match what you will load; the objects are on the plate (check the layout if unsure); supports are set the way you want.",
       "Slice in Orca (**Slice plate**).",
       "Export the G-code (the file of printer instructions) with Orca's own export command and note where it is saved. Menu wording can differ between Orca versions.",
       "Keep the exported `.gcode`. Save the Orca project too if you want your Orca settings kept."
@@ -205,7 +205,7 @@
     ],
     "problems": ["orca-not-found", "customized-preset", "manual-check-in-orca"],
     "tasks": ["open-in-orca", "review-in-orca"],
-    "keywords": ["orca", "slice", "slicer", "handoff", "export", "gcode", "arrange", "supports", "customized preset", "install orca"],
+    "keywords": ["orca", "slice", "slicer", "handoff", "export", "gcode", "supports", "customized preset", "install orca"],
     "next": { "page": "path-job", "why": "Next question: does the sliced job match my printer and loaded materials?" }
   },
   {
