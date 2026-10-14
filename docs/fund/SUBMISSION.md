@@ -11,7 +11,7 @@ desktop companion for the Snapmaker U1. It reads any model (STL / 3MF, including
 foreign Bambu/Orca projects), and before a single layer is sliced it answers the
 six questions a maker actually has, in one screen:
 
-1. **Will it print?** 2. **What will it cost?** 3. **What should I sell it for?**
+1. **What's at risk?** 2. **What will it cost?** 3. **What should I sell it for?**
 4. **What's my profit?** 5. **What's the biggest risk?** 6. **What do I do next?**
 
 It does this through **Studio Intelligence** — a set of read-only "Doctors"
@@ -37,7 +37,7 @@ local-first and open-source, true to the U1's open Klipper/Moonraker ethos.
 ## Competitive positioning (outcomes, not features)
 | The question a maker asks | OrcaSlicer | Fluidd | **Studio** |
 |---|---|---|---|
-| Will it print — before I slice? | Slices, then errors | No model analysis | **Project Doctor verdict** |
+| What is at risk — before I slice? | Slices, then errors | No model analysis | **Project Doctor findings** (advisory) |
 | Why won't it slice (and the fix)? | "Out of bounds", no reason | — | **Cause + exact fix** |
 | What will it cost to make? | Grams + time only | — | **Cost Doctor** |
 | What should I sell it for / profit? | — | — | **Pricing + Profit Doctor** |
@@ -51,19 +51,18 @@ and hands a clean, validated project to Orca.
 ## Innovation narrative
 The novel contribution is **synthesis**: not another slicer or telemetry viewer,
 but an intelligence layer that (a) reads the U1's own open Moonraker metadata and
-geometry, (b) runs specialised read-only analyses, (c) folds them into a single
-score + money headline + biggest-risk + next-action, and (d) attaches the
-community's known fix to each risk with a confidence level and an *Expected
-Improvement* estimate. No tool in the U1 ecosystem does cost→pricing→profit
+geometry, (b) runs specialised read-only analyses, (c) folds them into one
+list of risks + money headline + biggest-risk + next-action, and (d) attaches the
+community's known fix to each risk with a confidence level. No tool in the U1 ecosystem does cost→pricing→profit
 intelligence, pre-slice out-of-bounds explanation, or community-knowledge-backed
 fixes. This expands the Snapmaker ecosystem by making the open U1 approachable to
 first-time and business users.
 
 ## Screenshots (`docs/brand/shots/`)
 - `dashboard_final.png` — branded dashboard, Doctors as first-class, Demo entry.
-- `demo_report.png` / `report_full.png` — the Studio Intelligence Report: score,
-  five headline metrics, Expected Improvement, biggest risk, next action,
-  "why not Orca?", and per-risk community fixes.
+- `demo_report.png` / `report_full.png` — the Studio Intelligence Report: headline
+  metrics, biggest risk, next action, "why not Orca?", and per-risk community fixes.
+  (The screenshots predate #92 and show a score and an expected-improvement percentage that Studio no longer displays.)
 - `why_studio.png` — outcome-based positioning vs Orca & Fluidd.
 - `before_dashboard.png` / `after_dashboard.png` — brand evolution.
 

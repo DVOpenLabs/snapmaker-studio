@@ -46,7 +46,7 @@
       {
         "key": "verdict",
         "title": "The verdict",
-        "text": "A plain-language verdict with a star rating. It is advice about preparing the file, not a promise about the print."
+        "text": "A plain-language verdict. This screenshot is from v1.5.1, which also showed a star rating; newer builds show the verdict only. It is advice about preparing the file, not a promise about the print."
       },
       {
         "key": "prepare",

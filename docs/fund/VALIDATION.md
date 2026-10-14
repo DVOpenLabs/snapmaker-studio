@@ -19,7 +19,7 @@ OrcaSlicer issues). These are curated by theme — see
 | **Converted/foreign project won't open right ("Customized Preset")** | GitHub (Orca), forum | Conversion + validation conform filament arrays/purge to the colour count | Bambu/Orca projects open and print correctly on the U1 |
 | **"What does this cost / what should I charge?"** | FB sell-prints groups, Reddit | **Cost / Pricing / Profit Doctors** — true cost, tiered price, margin, break-even | Prices confidently; runs a print business, not guesswork |
 | **Fixes scattered across forums** | all of the above | **Community Knowledge** attaches the known fix + confidence to each risk in the Report | The answer is in-app, at the moment of the problem |
-| **No single "should I print this?" answer** | implicit across all | **Studio Intelligence Report** synthesises every Doctor into one score + next action | A 15-second decision, even for a first-timer |
+| **No single "should I print this?" answer** | implicit across all | **Studio Intelligence Report** lists the risks every Doctor found, the biggest one and the next action | A 15-second read of what to sort out first, even for a first-timer |
 
 ## Validation logic
 - **Breadth:** every shipped capability maps to a pain reported in 2+ community

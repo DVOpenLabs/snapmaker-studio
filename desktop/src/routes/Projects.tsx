@@ -236,7 +236,7 @@ export default function Projects() {
               <EmptyState
                 icon={FolderKanban}
                 title="Your design library starts here"
-                description="All your models, checked and scored."
+                description="All your models, with what Studio found."
                 action={<Button size="sm" onClick={() => nav("/")}><Plus className="h-4 w-4" /> Open your first model</Button>}
               />
             ) : (

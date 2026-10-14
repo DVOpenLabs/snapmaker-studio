@@ -120,7 +120,7 @@ _BANNED_READINESS = ["good to go", "confirmed it's print-ready", "sell around"]
 
 def test_intelligence_report_copy_is_advisory():
     clean = _ir.build(
-        predict={"available": True, "likelihood": 100, "band": "likely", "factors": []},
+        predict={"available": True, "signals": []},
         cost={"available": True, "true_cost": 0.21, "suggested_price": 0.37,
               "margin": 0.16, "margin_pct": 43.0, "currency": "$", "time_known": True},
         profit={"available": True, "profit_per_print": 0.16, "margin_pct": 43.0},
@@ -133,9 +133,16 @@ def test_intelligence_report_copy_is_advisory():
     assert "sell ~" not in str(clean.get("verdict", "")).lower()
 
 
-def test_success_predict_verdict_not_overconfident():
-    v = _sp.predict(readiness={"ready": True, "warnings": []})["verdict"].lower()
-    assert "good to go" not in v
+def test_success_predict_has_no_percentage_band_or_verdict():
+    """Issue #92: the risk-signal list must never regain a score that reads as a probability."""
+    import json
+    import re
+    out = _sp.findings(readiness={"ready": True, "warnings": []})
+    assert not {"likelihood", "band", "verdict", "factors"} & set(out)
+    blob = json.dumps(out).lower()
+    assert not re.search(r"\d\s*%", blob)
+    for phrase in ("likely to print", "risky to print", "good to go", "guaranteed", "100%"):
+        assert phrase not in blob
 
 
 def test_readme_and_release_notes_keep_the_golden_answer_for_success_unknown():

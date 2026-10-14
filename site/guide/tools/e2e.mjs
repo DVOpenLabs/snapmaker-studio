@@ -75,7 +75,7 @@ async function run(label, viewport, theme) {
   check(T("home has no horizontal overflow"), !(await overflow()));
   check(T("home states what the guide does not show"), /No screenshot of a connected printer/.test(await page.locator("#not-shown").innerText()));
   await snap("home");
-  check(T("home heading is concrete"), (await page.locator("#home-h").innerText()) === "Get your project ready to print");
+  check(T("home heading is concrete"), (await page.locator("#home-h").innerText()) === "Check your project before you slice");
   check(T("home description is concrete"), /Check a downloaded model, prepare a U1 copy, and understand what to review before printing./.test(await page.locator("#home .lead").innerText()));
   const yDoors = await page.locator("#home .doors").evaluate((n) => n.getBoundingClientRect().top);
   const yMap = await page.locator("#home .home-map").evaluate((n) => n.getBoundingClientRect().top);

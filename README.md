@@ -8,7 +8,7 @@
 [![CI](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DVOpenLabs/snapmaker-studio/actions/workflows/ci.yml)
 ![Status: stable](https://img.shields.io/badge/status-stable-brightgreen.svg)
 
-### You downloaded a model. Will it actually print on your U1?
+### You downloaded a model. What should you check before it goes to your U1?
 
 **Snapmaker Studio checks it against your real printer before you slice — tells you
 what is likely to go wrong, fixes what it can prove, and shows you exactly what
@@ -499,7 +499,7 @@ has endorsed Studio, and Studio does not claim otherwise.
 Designs from popular slicers and model sites don't always open cleanly on a given
 printer — and novices often can't tell *why*, or whether a file will even print.
 Snapmaker Studio closes that gap: open any design and get a plain-language read on
-what's in it, a readiness check, and a prepared U1 profile copy (review in Orca
+what's in it, a rule check, and a prepared U1 profile copy (review in Orca
 before slicing) — with a fidelity report that shows, element by element, what stayed
 identical, what Studio changed and why, and what it could not check. The Snapmaker U1
 is the first printer target; the workflow is built to grow across ecosystems.
@@ -514,8 +514,8 @@ is the first printer target; the workflow is built to grow across ecosystems.
 - **Project Intelligence** — read-only design data: dimensions, volume, triangle count
   and complexity, detected materials/colors, object and plate counts, and the source
   ecosystem. No guesswork, no fake data.
-- **Validation Center** — a readiness check that answers the questions a novice
-  actually has: *will it print, what's preserved, what changes, and what's at risk?* —
+- **Validation Center** — a rule check that answers the questions a novice
+  actually has: *does it load on the U1, what's preserved, what changes, and what's at risk?* —
   now backed by the Design Health geometry checks above.
 - **Prepare** — make a U1 profile copy in one click — review in Orca before slicing.
   Originals are never overwritten; every change is recorded.
@@ -525,8 +525,8 @@ is the first printer target; the workflow is built to grow across ecosystems.
   sliced gcode, and start — start/cancel/emergency-stop each require an explicit
   confirmation. Studio never auto-starts a print and uploads sliced gcode only (it
   does not slice).
-- **Design Library** — everything you open is checked, scored, and kept with its full
-  history, so you always know what's ready.
+- **Design Library** — everything you open is checked, and kept with its full
+  history, so you can see what Studio found.
 - **Engine + CLI** — the same workflow as a pure-Python engine and `u1convert` CLI for
   scripting and automation.
 
@@ -593,15 +593,15 @@ u1convert repair model.3mf --mode u1 -o model_U1.3mf   # prepare a U1 profile co
 u1convert validate model_U1.3mf                        # check integrity
 ```
 
-## Will my file print on the U1?
+## What does Studio check in my file?
 
-`doctor` is a read-only readiness check — it never modifies your file:
+`doctor` is a read-only rule check — it never modifies your file:
 
 ```text
 $ u1convert doctor model.3mf
 
   Verdict : REPAIRABLE
-  Score   : 90/100
+  Issues  : 0 in the file's structure, 1 for U1 compatibility
   Project type            : Bambu/Orca project
   Snapmaker U1 compatible : yes
   Notes        :
@@ -609,6 +609,7 @@ $ u1convert doctor model.3mf
 
 Recommended action: Run `u1convert repair <file> --mode u1` to prepare a U1 profile copy.
 Read-only check - no files were modified.
+These are rule checks Studio ran on the file; they are not a prediction that a print will succeed.
 ```
 
 Verdicts: **READY** (loads as-is) · **REPAIRABLE** (run `repair`) · **CONVERTIBLE** (an STL — run `repair`) · **HIGH_RISK** (not a usable project). Add `--json` for machine-readable output.

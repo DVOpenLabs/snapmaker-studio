@@ -9,7 +9,7 @@ Keep it to 7 questions — under 3 minutes. (Host on a Google Form / Tally; ques
 below are the source of truth.)
 
 1. What U1 experience do you have? *(New · Some · Experienced)*
-2. After the demo / first use, could you answer "will it print, what it costs, what
+2. After the demo / first use, could you answer "what is at risk, what it costs, what
    to sell it for"? *(Yes, instantly · Yes, with a look · No)*
 3. Did the **Studio Intelligence Report** make sense at a glance? *(1–5)*
 4. Was a flagged **risk + community fix** something you'd actually trust/act on? *(1–5)*

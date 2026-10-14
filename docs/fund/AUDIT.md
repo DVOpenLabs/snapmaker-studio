@@ -39,8 +39,8 @@ this is a *preview-only artifact*, not a bug; the packaged app was verified to
 launch, spawn its sidecar, and leave 0 orphans on close.
 
 ### Demo flow — intact
-Dashboard → "See a 10-second demo" → Studio Intelligence Report (score, metrics,
-Expected Improvement, biggest risk, next action, why-not-Orca, per-risk community
+Dashboard → "See a 10-second demo" → Studio Intelligence Report (metrics,
+biggest risk, next action, why-not-Orca, per-risk community
 fixes) → "Why Studio?" CTA. Runs with no printer and no model file.
 
 ## Issues to address (non-blocking)

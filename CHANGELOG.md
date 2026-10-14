@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **The "Print readiness (estimate)" percentage is gone (#92).** Nothing calibrated it against real
+  print outcomes, so a percentage and a "Likely to print" verdict could read as a chance of
+  success. The Workspace now shows a **Print risk signals** card: each signal Studio found, what it
+  means, what to do and what kind of evidence it rests on, then what Studio checked and did not
+  check. It never shows a percentage or a verdict.
+- **The Intelligence Report no longer has a score.** The large "/ 100" Studio score, the
+  readiness rating and the "expected success after fixes" figure are removed (the score could read
+  100 for a project with validation issues). The report shows how many risks were found, the
+  biggest risk and the next step. A printer that does not answer is no longer counted as healthy
+  or as checked, and the printer-health note "50% of recent prints failed" now reads
+  "5 of the last 10 prints failed". The Printer line states what Studio read ("Answered, 2
+  concerns") instead of "Compatible", and with nothing found the report says only what was
+  checked.
+- **`u1convert doctor` prints issue counts instead of "Score: N/100"** and says it is a rule
+  check, not a prediction that a print will succeed. A 3MF whose objects cannot be counted now
+  keeps object spacing as "not verified" instead of being treated as a single object.
+
 ## [1.5.1] - 2026-10-09
 
 **Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**

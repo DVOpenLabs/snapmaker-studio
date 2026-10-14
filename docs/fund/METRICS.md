@@ -41,7 +41,7 @@ Real, verifiable numbers (no projections, no fabricated traction).
 |---|---|
 | Data sent off-device | 0 (local-first) |
 | External network calls in Demo Mode | 0 |
-| Estimates labelled as estimates | yes (cost, price, profit, Expected Improvement) |
+| Estimates labelled as estimates | yes (cost, price, profit) |
 | Fabricated values | none (unavailable signals skipped, not invented) |
 
 ## What is NOT yet measured

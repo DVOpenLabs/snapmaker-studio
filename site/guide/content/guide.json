@@ -17,6 +17,8 @@
     "printers": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/PRINTER_COMPATIBILITY.md",
     "examples": "https://github.com/DVOpenLabs/snapmaker-studio/tree/main/examples",
     "issues": "https://github.com/DVOpenLabs/snapmaker-studio/issues/new/choose",
+    "risk_signals_code": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/backend/snapstudio_core/success_predict.py",
+    "risk_signals_card": "https://github.com/DVOpenLabs/snapmaker-studio/blob/main/desktop/src/components/PrintRiskSignals.tsx",
     "orca": "https://github.com/Snapmaker/OrcaSlicer/releases"
   },
   "certainty": {
