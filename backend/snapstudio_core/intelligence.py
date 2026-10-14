@@ -112,10 +112,15 @@ def _complexity(triangles: int | None) -> str | None:
     return "high"
 
 
-def project_info(path: str) -> dict:
+def project_info(path: str, placement_aware: bool = False) -> dict:
     """Rich, read-only insights for a design. Builds on the Doctor diagnosis and
     adds real geometry + material detail. Never raises on geometry — returns what
-    it can and leaves the rest null."""
+    it can and leaves the rest null.
+
+    ``placement_aware`` also reads every object's size and every instance's placed bounds
+    (``object_sizes_mm``, ``placed``). That means reading each mesh once more, so it is asked for
+    only by the callers that use it (Design Health, the bed-fit check, the validation report); the
+    rest keep the cost they had and get ``None`` for those three keys."""
     diag = diagnose_path(path).to_dict()
     is_stl = str(path).lower().endswith(".stl")
 
@@ -130,6 +135,40 @@ def project_info(path: str) -> dict:
             materials = _materials(tm)
     except Exception:
         pass  # geometry/materials are best-effort; diagnosis still stands
+
+    # SIZE and PLACEMENT are different facts and are kept apart here.
+    #   object_sizes_mm  how big each object is (per object, millimetres, before any build item
+    #                    moves, turns or scales it). Says nothing about where anything sits.
+    #   placed           where each instance sits and on which plate (placed bounds).
+    #   dimensions_mm    kept for existing readers: the overall extents of all the mesh data
+    #                    together. A size-only figure; for several objects it is NOT one object's
+    #                    size and NOT a position (dimensions_basis says so).
+    object_sizes: list[dict] | None = []
+    unmeasured: int | None = 0   # build items whose object could not be found, so have no size here
+    placed: dict | None
+    if not placement_aware:
+        object_sizes, unmeasured, placed = None, None, None
+    elif is_stl:
+        if dims:
+            object_sizes = [{"object_id": None, "instance_count": 1, "dimensions_mm": dict(dims)}]
+        placed = {"available": False, "basis": "placed_bounds", "instances": [],
+                  "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                  "reason": "A bare STL has no placement of its own; Studio centers it when it wraps "
+                            "the model into a U1 project."}
+    else:
+        try:
+            from . import geometry, plate_placement
+            placed_items, unresolved, sizes = geometry.measure(path)
+            object_sizes = [{"object_id": s["object_id"], "part": s["part"],
+                             "instance_count": s["instance_count"],
+                             "dimensions_mm": {k: round(v, 1) for k, v in s["dimensions"].items()}}
+                            for s in sizes]
+            unmeasured = len(unresolved)
+            placed = plate_placement.placed_instances(path, measured=(placed_items, unresolved))
+        except Exception:
+            placed = {"available": False, "basis": "placed_bounds", "instances": [],
+                      "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                      "reason": "Studio could not read where the objects sit in this project."}
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -146,6 +185,10 @@ def project_info(path: str) -> dict:
         "painted": diag.get("painted"),
         "materials": materials,
         "dimensions_mm": dims,
+        "dimensions_basis": "overall_extents_by_size",
+        "object_sizes_mm": object_sizes,
+        "objects_unmeasured": unmeasured,
+        "placed": placed,
         "triangles": triangles,
         "complexity": _complexity(triangles),
         "issues": [*(diag.get("validation_issues") or []), *(diag.get("compatibility_issues") or [])],

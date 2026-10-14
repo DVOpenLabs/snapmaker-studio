@@ -237,7 +237,7 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     from . import placement
 
     try:
-        read = placement.read_objects(path)
+        read = placement.read_objects(path, keep_points=False)
     except Exception:
         return items
     # Keyed by build item, not by object id: one object can be used by several items, each
@@ -265,6 +265,76 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
                                    y=round(box["depth"], 3), z=round(z_high - z_low, 3))
         out.append(entry)
     return out
+
+
+def placed_instances(path: str, measured: tuple | None = None) -> dict:
+    """Where each build item sits, with the plate it belongs to: PLACED bounds.
+
+    This is the placed counterpart of a size. It answers "where is each instance" and
+    "which plate is it on", never "is the object small enough" (that is a size, per
+    object, from ``geometry.object_sizes``). Bounds are per instance in millimetres,
+    measured from the parts that print. ``measured`` may carry ``geometry.measure_items`` output
+    already read. ``not_judged`` counts the build items that could not be found or placed on a plate;
+    they are not in ``instances`` and are never counted as fitting. When the project has more than one plate the
+    plates sit on one shared grid whose spacing the file does not record, so no extent
+    is combined across them: ``plate_extents`` gives each plate its own, and
+    ``combined_extent_mm`` is None. Read-only, never raises.
+    """
+    from . import geometry
+
+    try:
+        tm = ThreeMF.open(path)
+    except Exception:
+        return {"available": False, "basis": "placed_bounds", "instances": [],
+                "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                "reason": "Studio could not open this file as a 3MF project."}
+    raw_items, geometry_unresolved = measured if measured is not None else geometry.measure_items(path)
+    items = _printable_only(path, raw_items)
+    if not items:
+        return {"available": False, "basis": "placed_bounds", "instances": [],
+                "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
+                "not_judged": len(geometry_unresolved),
+                "reason": "Studio could not read where the objects sit in this project."}
+
+    plates = _plates_from_model_settings(tm)
+    numbers = sorted({p["ui_number"] for p in plates if p.get("ui_number") is not None})
+    plate_count = max(len(numbers), 1)
+    grouped, plate_unresolved = _group_items_by_plate(items, plates) if plates else ({}, [])
+    not_judged = len(geometry_unresolved) + (len(plate_unresolved) if plate_count > 1 else 0)
+    plate_of = {i.get("item_index"): number for number, members in grouped.items() for i in members}
+
+    totals: dict[tuple, int] = {}
+    for item in items:
+        who = (item.get("part"), str(item["object_id"]))
+        totals[who] = totals.get(who, 0) + 1
+    seen: dict[tuple, int] = {}
+    instances = []
+    for item in items:
+        oid = (item.get("part"), str(item["object_id"]))
+        ordinal = seen.get(oid, 0)
+        seen[oid] = ordinal + 1
+        lo, hi = item["bounds"]["min"], item["bounds"]["max"]
+        instances.append({
+            "item_index": item.get("item_index"),
+            "object_id": item["object_id"],
+            "instance_index": ordinal,
+            "instance_count": totals[oid],
+            "plate": plate_of.get(item.get("item_index")),
+            "bounds_mm": {"min": [round(v, 2) for v in lo], "max": [round(v, 2) for v in hi]},
+            "dimensions_mm": dict(item["dimensions"]),
+        })
+
+    def extent(members: list[dict]) -> dict:
+        cluster = _cluster_bounds(members)
+        return {"x": round(cluster["max_x"] - cluster["min_x"], 1),
+                "y": round(cluster["max_y"] - cluster["min_y"], 1)}
+
+    plate_extents = [dict(plate=number, instances=len(members), **extent(members))
+                     for number, members in sorted(grouped.items())]
+    return {"available": True, "basis": "placed_bounds", "instances": instances,
+            "plate_count": plate_count, "plate_extents": plate_extents,
+            "combined_extent_mm": extent(items) if plate_count <= 1 else None,
+            "not_judged": not_judged, "reason": None}
 
 
 def _unavailable(reason: str) -> dict:

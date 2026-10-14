@@ -11,10 +11,14 @@ of stalling.
 from __future__ import annotations
 import re
 from dataclasses import dataclass
+import copy
+import threading
 from pathlib import Path
 
 from . import roles as _roles
 from .container import ThreeMF
+from . import roles as _roles
+from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
 from . import units as _units
 
@@ -225,7 +229,7 @@ def build_item_dims(path: str) -> list[dict]:
 
     An item (or component) that names a ``p:path`` is looked up in THAT part and nowhere
     else; one that cannot be found is left out here and reported by ``measure_items``."""
-    return measure_items(path)[0]
+    return _measure(path)[0]
 
 
 def measure_items(path: str) -> tuple[list[dict], list[dict]]:
@@ -234,14 +238,58 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
     ``unresolved`` lists the build items whose object could not be found where the file says
     it is (a ``p:path`` naming a part that is absent, or an object the part does not hold).
     They are never measured against some other object that happens to share the id."""
+    items, unresolved, _sizes = _measure(path)
+    return items, unresolved
+
+
+def object_sizes(path: str) -> list[dict]:
+    """Per-object size (mm): each object as modelled, keyed by (part, object id), with its nested
+    component transforms applied but BEFORE any build item moves, turns or scales it. One entry per
+    distinct object (``instance_count`` says how many build items use it). This is a SIZE measure
+    and says nothing about where anything sits."""
+    return _measure(path)[2]
+
+
+def measure(path: str) -> tuple[list[dict], list[dict], list[dict]]:
+    """``(placed items, unresolved items, object sizes)`` from a single read of the project."""
+    return _measure(path)
+
+
+#: The last few projects measured, keyed by file identity: one request often asks for the size, the
+#: placement and the layout of the same file, and each of those used to re-read every mesh.
+_CACHE: dict = {}
+_CACHE_SLOTS = 4
+_CACHE_LOCK = threading.Lock()      # requests run on several threads; the dict is never touched unlocked
+
+
+def _measure(path: str):
+    key = file_identity(path)
+    if key is not None:
+        with _CACHE_LOCK:
+            hit = _CACHE.get(key)
+        if hit is not None:
+            return copy.deepcopy(hit)
+    result = _measure_uncached(path)
+    # only remember it if the file is still the one that was read: a change during the measurement
+    # would otherwise be filed under the identity of the old content
+    if key is not None and stat_identity(path) == key[:3]:
+        stored = copy.deepcopy(result)
+        with _CACHE_LOCK:
+            while len(_CACHE) >= _CACHE_SLOTS:
+                _CACHE.pop(next(iter(_CACHE)), None)
+            _CACHE[key] = stored
+    return result
+
+
+def _measure_uncached(path: str):
     try:
         tm = ThreeMF.open(path)
     except Exception:
-        return [], []
+        return [], [], []
     try:
         model_files = {p: tm.read_part(p) for p in tm.list_parts() if p.endswith(".model")}
         if sum(len(b) for b in model_files.values()) > _MAX_BYTES:
-            return [], []
+            return [], [], []
 
         # (part, object_id) -> (verts, [(component_objectid, component_part|None, component_xform)])
         parsed: dict[str, dict[str, tuple]] = {}
@@ -276,7 +324,7 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
 
         root_file = ROOT_MODEL
         if root_file not in parsed:
-            return [], []
+            return [], [], []
 
         def find_obj(objid, part, explicit):
             """The part that holds ``objid``. A named part is the only place looked in; with no
@@ -290,7 +338,10 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
                     return f
             return None
 
+        # The size of the objects and the placing of the items are counted against the vertex limit
+        # separately, so measuring both does not halve what a project may hold.
         budget = [0]
+        placed_budget = [0]
 
         def collect(objid, part, explicit, xform, acc, seen, bad, printing=None, role=None, records=None):
             f = find_obj(objid, part, explicit)
@@ -323,35 +374,59 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
                 collect(cid, cpart or f, cpart is not None, _compose(xform, ctf), acc, seen, bad,
                         printing, child_role, records)
 
+        def box_of(points):
+            xs = [p[0] for p in points]; ys = [p[1] for p in points]; zs = [p[2] for p in points]
+            return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
+
+        items = build_items(model_files[root_file])
         try:
-            settings_text = tm.read_part(SETTINGS_PART).decode("utf-8", "ignore") \
-                if tm.has_part(SETTINGS_PART) else ""
+            settings_text = tm.read_part(SETTINGS_PART).decode("utf-8", "ignore")                 if tm.has_part(SETTINGS_PART) else ""
             records = _roles.read_records(settings_text)
         except Exception:
             records = _roles.Records()
+        uses: dict[tuple, int] = {}
+        for it in items:
+            part = it["part"] or root_file
+            uses[(part, it["object_id"])] = uses.get((part, it["object_id"]), 0) + 1
 
+        # Each distinct object is collected once, as modelled; an item then only moves those points.
+        collected: dict[tuple, tuple] = {}
         out = []
         unresolved = []
-        for it in build_items(model_files[root_file]):
+        sizes: dict[tuple, dict] = {}
+        for it in items:
             oid = it["object_id"]
-            acc: list = []
-            printing: list = []
-            bad: list = []
             part = it["part"] or root_file
-            collect(oid, part, it["part"] is not None,
-                    _units.scale_translation(_xform(it["transform"]), unit_scale[root_file]),
-                    acc, frozenset(), bad, printing, None, records)
+            key = (part, oid)
+            if key not in collected:
+                points: list = []
+                printing: list = []
+                bad: list = []
+                collect(oid, part, it["part"] is not None, None, points, frozenset(), bad,
+                        printing, None, records)
+                collected[key] = (points, printing, bad)
+                # the SIZE of an object is the size of what prints, like its placed footprint
+                if printing and not bad:
+                    lo, hi = box_of(printing)
+                    sizes[key] = {"object_id": oid, "part": part, "instance_count": uses[key],
+                                  "dimensions": {"x": round(hi[0] - lo[0], 2),
+                                                 "y": round(hi[1] - lo[1], 2),
+                                                 "z": round(hi[2] - lo[2], 2)}}
+            points, printing, bad = collected[key]
             if bad:
                 unresolved.append({"item_index": it["item_index"], "object_id": oid,
                                    "part": part, "reason": bad[0]})
                 continue
-            if not acc:
+            if not points:
                 continue
+            xform = _units.scale_translation(_xform(it["transform"]), unit_scale[root_file])
             # the placed bounds are those of what PRINTS; an object made only of helper volumes has nothing
             # that prints, and keeps its full extent rather than vanishing from the checks
-            measured = printing or acc
-            xs = [p[0] for p in measured]; ys = [p[1] for p in measured]; zs = [p[2] for p in measured]
-            lo = (min(xs), min(ys), min(zs)); hi = (max(xs), max(ys), max(zs))
+            measured = printing or points
+            placed_budget[0] += len(measured)
+            if placed_budget[0] > _MAX_VERTS:
+                raise _TooLarge()
+            lo, hi = box_of([_apply(v, xform) for v in measured])
             # `item_index` is the build item's ordinal in the root model: one object used by two items is
             # two entries, and this tells them apart (an item with no geometry leaves a gap in the sequence).
             out.append({"object_id": oid,
@@ -361,11 +436,11 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
                                        "y": round(hi[1] - lo[1], 2),
                                        "z": round(hi[2] - lo[2], 2)},
                         "bounds": {"min": lo, "max": hi}})
-        return out, unresolved
+        return out, unresolved, list(sizes.values())
     except _TooLarge:
-        return [], []
+        return [], [], []
     except Exception:
-        return [], []
+        return [], [], []
 
 
 def load_mesh(path: str) -> Mesh | None:
