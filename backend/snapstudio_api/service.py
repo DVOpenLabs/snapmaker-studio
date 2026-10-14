@@ -574,7 +574,10 @@ def prepare_placed(path: str, out_dir: str | None = None) -> dict:
             changes=[{"key": "object placement", "old": "off the U1 plate",
                       "new": change.get("detail"), "reason": change.get("kept")}
                      for change in (result.get("changes") or [])],
-            findings=[{"title": f"Object {item.get('object_id')} outside the plate",
+            findings=[{"title": (f"Object {item.get('object_id')}, instance "
+                                 f"{(item.get('instance_index') or 0) + 1} of {item['instance_count']} "
+                                 "outside the plate" if (item.get("instance_count") or 1) > 1
+                                 else f"Object {item.get('object_id')} outside the plate"),
                        "detail": item.get("edges") and f"past the {item['edges']} edge"}
                       for item in (before.get("off_plate") or [])],
             validated=not ((result.get("after") or {}).get("off_plate")))
@@ -767,17 +770,8 @@ def preflight(path: str, host: str | None = None, port: int = 7125,
         facts["nozzle_revision"] = resolved["revision"]
         facts["nozzle_storage_error"] = resolved["storage_error"]
 
-    bed = None
-    dims = facts.get("bed_mm") or {}
-    if dims.get("x") and dims.get("y"):
-        bed = {"min_x": 0.0, "min_y": 0.0,
-               "max_x": float(dims["x"]), "max_y": float(dims["y"])}
     try:
-        # Name the plate after whatever supplied it, so a summary never describes a
-        # live bed as though it were the U1's.
-        placement = plate_placement.assess(
-            path, bed=bed,
-            bed_name=("this printer's" if bed else None))
+        placement = _assess_against(path, _placement_target(facts))
     except Exception:
         placement = None
 
@@ -2581,25 +2575,83 @@ _READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
 _ready_cache_lock = threading.Lock()
 
 
-def _ready_analysis(path: str, bed: dict | None,
+def _placement_target(facts: dict) -> dict | None:
+    """The printable area to judge placement against, or None when it is not known.
+
+    A connected printer reports the toolhead's AXIS TRAVEL (about 271 x 335 on a U1, whose plate is
+    270 x 270), which is not a printable area and is never used as one. What is used instead:
+    the U1's printable polygon when the machine identifies itself as the U1, or the recorded
+    printable volume of the profile it identifies as. A printer Studio cannot identify has no known
+    printable area: None, and the bed check says so rather than guessing.
+    """
+    from snapstudio_core import printer_profiles
+
+    printer_id = (facts.get("identity") or {}).get("printer_id")
+    if not printer_id:
+        return None
+    if printer_id == printer_profiles.PREPARE_TARGET_ID:
+        return {"key": ("profile", printer_id), "bed": None, "name": None, "height": None}
+    try:
+        profile = printer_profiles.load(printer_id)
+        volume = profile.get("build_volume_mm") or {}
+    except KeyError:
+        return None
+    if not (volume.get("x") and volume.get("y")):
+        return None
+    return {"key": ("profile", printer_id, float(volume["x"]), float(volume["y"])),
+            "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": float(volume["x"]), "max_y": float(volume["y"])},
+            "name": f"the {printer_profiles.display_name(profile)}'s", "height": float(volume["z"]) if volume.get("z") else None}
+
+
+def _assess_against(path: str, target: dict | None) -> dict | None:
+    from snapstudio_core import plate_placement
+
+    if target is None:
+        return None
+    return plate_placement.assess(path, bed=target["bed"], bed_name=target["name"],
+                                  height_mm=target["height"])
+
+
+_READY_ATTEMPTS = 3
+
+
+def _ready_analysis(path: str, target: dict | None,
                     need_placement: bool = True) -> tuple[str, dict | None, dict | None]:
     """(file_state, traits, placement) for one file, cached by what was read.
 
-    Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
-    file or a different printer bed is analysed again and nothing else is.
+    The file is identified before it is read and again after: if it changed in between, what was
+    read may mix two versions, so it is discarded and read again (a few times at most). A file that
+    will not hold still is reported as unreadable this time and nothing about it is cached.
+    """
+    for _attempt in range(_READY_ATTEMPTS):
+        outcome = _ready_analysis_once(path, target, need_placement)
+        if outcome is not None:
+            return outcome
+    return "unreadable", None, None
+
+
+def _ready_analysis_once(path: str, target: dict | None, need_placement: bool):
+    """One pass of `_ready_analysis`; None when the file changed while it was being read.
+
+    Keyed by the file's content fingerprint (and the printable area it was placed against), so an
+    edited file or a different printer is analysed again and nothing else is.
 
     Placement (a full read of the model's geometry) is by far the slowest step, so it
     is only done when asked for: `need_placement=False` returns the cheap traits and
     leaves placement None, and a later `True` call fills it in on the same cache entry.
     """
-    from snapstudio_core import plate_placement, project_traits
+    from snapstudio_core import fileid, plate_placement, project_traits
 
     try:
         st = os.stat(path)
     except OSError:
         return "missing", None, None
-    bed_key = (bed["max_x"], bed["max_y"]) if bed else None
-    key = (path, st.st_mtime_ns, st.st_size, bed_key)
+    # the content fingerprint is part of the key: a same-size replacement that kept its timestamp
+    # must not be served a placement computed for the old content
+    identity = fileid.file_identity(path)
+    if identity is None:
+        return "missing", None, None
+    key = (identity, target["key"] if target else None)
     with _ready_cache_lock:
         hit = _READY_CACHE.get(key)
     if hit is None:
@@ -2607,15 +2659,18 @@ def _ready_analysis(path: str, bed: dict | None,
         hit = {"state": "ok" if traits.get("readable") else "unreadable", "traits": traits,
                "placement": None, "placed": False}
     foreign = (hit["traits"].get("foreign_printer") or {}).get("value") is True
-    if need_placement and not hit["placed"] and hit["state"] == "ok" and bed and not foreign:
+    if need_placement and not hit["placed"] and hit["state"] == "ok" and target and not foreign:
         # Work on a copy so concurrent scans never mutate a shared entry. A failed read is
         # not cached as done: it is unknown this time and tried again next scan.
         hit = dict(hit)
         try:
-            hit["placement"] = plate_placement.assess(path, bed=bed, bed_name="this printer's")
-            hit["placed"] = True
+            hit["placement"] = _assess_against(path, target)
+            # an unavailable result (unreadable, too large) is not "done": it is tried again next scan
+            hit["placed"] = bool(hit["placement"] and hit["placement"].get("available"))
         except Exception:
             hit["placement"] = None
+    if fileid.file_identity(path) != identity:
+        return None          # replaced while it was being read: never cache or return a mix
     with _ready_cache_lock:
         if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
             _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first
@@ -2628,21 +2683,21 @@ def _ready_analysis(path: str, bed: dict | None,
 _PLACEMENT_MATTERS = ("cant_determine", "one_change_away", "ready_now")
 
 
-def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
+def _ready_one(row: dict, printer: dict, target: dict | None) -> dict:
     from snapstudio_core import preflight as pf
     from snapstudio_core import readiness
 
     project = {"path": row.get("source_path"), "name": row.get("name")}
     try:
-        state, traits, placement = _ready_analysis(project["path"], bed, need_placement=False)
+        state, traits, placement = _ready_analysis(project["path"], target, need_placement=False)
         foreign = ((traits or {}).get("foreign_printer") or {}).get("value") is True
         usable = state == "ok" and printer.get("reachable") and not foreign
         pre = pf.evaluate(traits, printer, placement) if usable else None
         result = readiness.classify_project(project, traits, printer, pre, state)
-        if usable and bed and result.get("bucket") in _PLACEMENT_MATTERS:
+        if usable and target and result.get("bucket") in _PLACEMENT_MATTERS:
             # Only now is the (slow) geometry read worth it, and it can only make the
             # result stricter, never claim more than the cheap pass did.
-            state, traits, placement = _ready_analysis(project["path"], bed, need_placement=True)
+            state, traits, placement = _ready_analysis(project["path"], target, need_placement=True)
             pre = pf.evaluate(traits, printer, placement)
             result = readiness.classify_project(project, traits, printer, pre, state)
         return result
@@ -2688,13 +2743,11 @@ def ready_now_start(host: str | None = None, port: int = 7125, provider: str | N
             printer = printer_facts(host, port) if host else {"reachable": False}
             printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind,
                                       provider_key)
-            dims = printer.get("bed_mm") or {}
-            bed = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(dims["x"]),
-                    "max_y": float(dims["y"])} if dims.get("x") and dims.get("y") else None)
+            target = _placement_target(printer)
 
             results: list[dict] = []
             for row in rows:
-                results.append(_ready_one(row, printer, bed))
+                results.append(_ready_one(row, printer, target))
                 publish(progress={"done": len(results), "total": len(rows)},
                         result={"results": list(results)})
             results.sort(key=readiness.sort_key)  # stable: newest first within a bucket
