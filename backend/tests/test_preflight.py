@@ -240,9 +240,12 @@ def test_objects_off_the_real_bed_need_attention_and_point_at_the_fix():
     assert "placement fix" in check["action"] or "placement" in check["action"]
 
 
-def test_unfixable_placement_points_at_arrange_instead():
+def test_unfixable_placement_points_at_the_slicer_without_promising_a_fix():
+    # Reworded: Arrange is not a tested remedy, so the action says to review the project.
     out = pf.evaluate(traits(), printer(), placement=placement(off=1, fixable=False))
-    assert "Arrange" in by_id(out, "bed.fit")["action"]
+    action = by_id(out, "bed.fit")["action"]
+    assert "Review the project in Snapmaker Orca" in action
+    assert "Arrange" not in action
 
 
 def test_bed_is_unknown_when_placement_could_not_be_read():

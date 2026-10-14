@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- **Projects with more than one plate no longer show a green "every object is inside".** Studio
+  checks that each plate fits the U1 on its own, but it does not move objects between plates and
+  cannot check where the plates sit. The Object placement card now says so: Orca can list an object
+  as Outside, and in our test Arrange all plates did not fix it. The card says to review the project
+  in Snapmaker Orca; the printer bed check reports "unknown" instead
+  of a pass, so Ready Now does not count such a project as ready; and the Project Doctor's "ready"
+  line carries the same note.
+- **A prime tower outside the printable area is reported.** From the copy's own tower position and
+  width, the Object placement card, the Prepare summary, the Project Doctor and the printer checks say
+  when the prime tower starts or reaches outside the U1's printable area, which Snapmaker Orca can
+  refuse to slice. Studio reports this; it does not move the tower.
+- **The plate count now comes from the plates the project declares**, not from slice-cache files, so
+  a project with several plates is no longer counted as one.
+- **"Use Studio's U1 starter settings instead" says when it does not keep the creator's supports.**
+  When the original turned supports on, the Prepare summary now says, before you open the copy, that
+  Snapmaker Orca will open with supports off (and that painted support areas then do nothing). The
+  summary no longer describes the written settings as "kept" in that mode, and the Validation Center
+  only says your setting values are kept for a copy prepared with Preserve creator settings. What the
+  mode writes is unchanged.
+
+- **Studio no longer recommends Arrange as a remedy.** Arrange was only ever observed failing to fix
+  an Outside object or an inherited prime tower, and was never tested otherwise, so every message and
+  guide page that told you to use it now says to review the project in Snapmaker Orca before slicing.
+
+### Known limits (not changed)
+- For a project made for a printer with a larger bed, the objects keep the creator's positions, so
+  Snapmaker Orca can list an object as Outside even when its plate fits, and in our test Arrange
+  all plates did not fix it; the object had to be moved by hand. Studio does not rearrange plates
+  or move the prime tower automatically.
+- The starter-settings mode puts the wipe tower at a fixed position and resets a multi-nozzle flush
+  table to zeros. Check the tower in Orca's preview and open Flushing volumes if you use them.
+- Preserve keeps the creator's wipe-tower position, which can lie outside the U1's printable area for
+  a project made for a larger bed; Studio now says so but does not move it.
+
 ## [1.5.1] - 2026-10-09
 
 **Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**

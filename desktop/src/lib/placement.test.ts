@@ -107,3 +107,17 @@ describe("blockedReason", () => {
       .toContain("will not guess");
   });
 });
+
+describe("placementVerdict for several plates", () => {
+  it("is unverified, not ok, and offers no fix when every plate fits on its own", () => {
+    const v = placementVerdict(check({ plate_count: 2, item_count: 2 }));
+    expect(v.tone).toBe("unverified");
+    expect(v.canFix).toBe(false);
+    expect(v.headline).toContain("Studio cannot check where the plates sit");
+    expect(v.headline).not.toMatch(/inside/i);
+  });
+
+  it("still reports an oversized plate as outside", () => {
+    expect(placementVerdict(check({ plate_count: 2, off_plate: [item()] })).tone).toBe("blocked");
+  });
+});

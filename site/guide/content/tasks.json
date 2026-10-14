@@ -110,10 +110,10 @@
         "Open that copy (**Open a model**) and prepare it (**Prepare U1 copy**)."
       ],
       "success": ["A new `…_placed_U1.3mf` beside your original, and the card says **The object sits inside the U1's printable area.**"],
-      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Open the project in Orca and use **Arrange**; see the placement example." }],
+      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Review the project in Snapmaker Orca before slicing; see the placement example." }],
       "notes": [{ "kind": "safe", "text": "The moved copy shifts the whole layout as one piece; the spacing between objects, their rotation, scale and height stay as the creator set them." }],
       "shot": "move-result",
-      "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
+      "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed"]
     },
     {
       "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode", "checked": "1.5.1", "sources": [{"label":"Copy writer","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/convert.py","kind":"engine"}],
@@ -221,7 +221,7 @@
       "steps": [
         "Check that the printer is **Snapmaker U1**.",
         "Check that the filaments and colors match what you will load, toolhead by toolhead.",
-        "Check that every object is on the plate. Use **Arrange** if unsure; Studio does not verify spacing between objects.",
+        "Check that every object is on the plate. Review the layout if unsure; Studio does not verify spacing between objects.",
         "Check that supports are set the way you want. Studio's fix plan marks these as **Do this in Orca**.",
         "If a preset you made is named in the copy, check its values in Orca (**Manual check in Orca required**).",
         "Slice (**Slice plate**), then export the G-code with Orca's own export command."
@@ -229,7 +229,7 @@
       "success": ["You have an exported `.gcode` file and know what you checked."],
       "differs": [{ "if": "Orca shows a “Customized Preset” notice.", "then": "That can happen when the creator's tuned settings are kept. Review the settings before slicing." }],
       "notes": [{ "kind": "limit", "text": "Orca's own screens are not shown in this guide, and its menu wording can differ between versions." }],
-      "shot": null, "problems": ["customized-preset", "manual-check-in-orca"], "keywords": ["orca", "review", "arrange", "supports", "slice", "export", "checklist", "gcode"]
+      "shot": null, "problems": ["customized-preset", "manual-check-in-orca"], "keywords": ["orca", "review", "supports", "slice", "export", "checklist", "gcode"]
     },
     {
       "id": "check-sliced-job", "page": "task-check-sliced-job", "group": "job", "title": "Check a sliced job",

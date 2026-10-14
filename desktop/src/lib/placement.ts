@@ -6,7 +6,15 @@
 
 import type { PlacementCheck, PlacementItem } from "@/api";
 
-export type PlacementTone = "ok" | "warn" | "blocked" | "unknown";
+export type PlacementTone = "ok" | "warn" | "blocked" | "unknown" | "unverified";
+
+/** Same sentence the engine puts in the placement summary for a multi-plate project. */
+export const MULTI_PLATE_UNVERIFIED =
+  "Each plate fits on its own, but Studio cannot check where the plates sit. In our " +
+  "test with a two-plate project made for a larger-bed printer, Snapmaker Orca listed " +
+  "one object as Outside and would not slice until it was moved by hand; " +
+  "Arrange all plates did not fix that in our test. " +
+  "Review the project in Snapmaker Orca before slicing.";
 
 export interface PlacementVerdict {
   tone: PlacementTone;
@@ -29,6 +37,11 @@ export function placementVerdict(check: PlacementCheck | null): PlacementVerdict
       headline: check.reason ?? "Studio could not check where the objects sit.",
       canFix: false,
     };
+  }
+  if (check.off_plate.length === 0 && (check.plate_count ?? 1) > 1) {
+    // Several plates: each may fit, but Studio does not know where the plates sit,
+    // so this is never a green "every object is inside".
+    return { tone: "unverified", headline: MULTI_PLATE_UNVERIFIED, canFix: false };
   }
   if (check.off_plate.length === 0) {
     const many = (check.item_count ?? 0) > 1;

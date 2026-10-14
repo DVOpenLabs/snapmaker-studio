@@ -490,10 +490,14 @@ def insights(path: str) -> dict:
     return project_info(path)
 
 
-def report(path: str) -> dict:
-    """Read-only Validation Center report: checks + preserved/changes/at-risk."""
+def report(path: str, prepare_mode: str | None = None) -> dict:
+    """Read-only Validation Center report: checks + preserved/changes/at-risk.
+
+    `prepare_mode` is only for a caller that knows how the file was prepared; the
+    file itself does not say, and without it the report makes no promise about
+    whether the creator's setting values were kept."""
     from snapstudio_core.validation_report import readiness_report
-    return readiness_report(path)
+    return readiness_report(path, prepare_mode)
 
 
 def canonical(path: str) -> dict:
