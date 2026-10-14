@@ -20,8 +20,8 @@ CONVERTIBLE = "CONVERTIBLE"    # an STL - convert it with `repair`
 
 # Appended to the READY action of a project with more than one plate.
 MULTI_PLATE_READY_NOTE = (
-    " This project has several plates and Studio has not checked where they sit: "
-    "use Arrange all plates in Snapmaker Orca first."
+    " This project has several plates and Studio has not checked where they sit; "
+    "Snapmaker Orca may list an object as Outside. Review it in Snapmaker Orca before slicing."
 )
 
 
@@ -74,6 +74,15 @@ def _filament_inconsistencies(cfg: dict) -> list[str]:
     return out
 
 
+def _prime_tower_note(cfg: dict, plate_count: int) -> str | None:
+    """Computed from the project's own tower settings against the U1 printable area."""
+    from . import prime_tower
+    from .plate_placement import u1_bed_rect
+
+    bed = u1_bed_rect()
+    return prime_tower.message(prime_tower.findings(cfg, plate_count, bed), bed)
+
+
 def diagnose(tm: ThreeMF) -> Diagnosis:
     """Diagnose a 3MF project (in-memory). Read-only. Score calculation unchanged."""
     src = detect_source(tm)
@@ -118,6 +127,9 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
         if fp.plate_count > 1:
             # The profile is ready; where the plates sit is not something Studio checks.
             action += MULTI_PLATE_READY_NOTE
+        tower = _prime_tower_note(cfg, fp.plate_count)
+        if tower:
+            action += " " + tower
     else:
         verdict = REPAIRABLE
         action = "Prepare a U1 profile copy, then review it in Snapmaker Orca before slicing."

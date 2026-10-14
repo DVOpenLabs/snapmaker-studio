@@ -376,7 +376,8 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
             confidence=INFORMATIONAL,
             consequence=("Snapmaker Orca can list an object as Outside even when its plate "
                          "fits, so Studio cannot confirm the objects land on this printer's plates."),
-            action="Open the project in Snapmaker Orca and use Arrange all plates.",
+            action=("Review the project in Snapmaker Orca before slicing; an object may be "
+                    "listed as Outside."),
             source="project geometry vs printer bed")
     if not off:
         return _check(
@@ -395,6 +396,20 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                 "leaves your original alone." if placement.get("fixable")
                 else "Open the project in Snapmaker Orca and use Arrange."),
         source="project geometry vs printer bed")
+
+
+def _prime_tower(placement: dict | None) -> dict | None:
+    """Only reported when the project's own settings put the tower outside the area."""
+    tower = (placement or {}).get("prime_tower") or {}
+    if not tower.get("outside"):
+        return None
+    return _check(
+        "prime_tower.fit", "Prime tower sits outside the printable area", ATTENTION,
+        evidence=tower.get("message"), confidence=CONFIRMED,
+        consequence=("Snapmaker Orca can refuse to slice a plate whose prime tower reaches "
+                     "past the printable area."),
+        action="Move the prime tower in Snapmaker Orca before slicing.",
+        source="project settings vs printable area")
 
 
 def _object_exclusion(project: dict, printer: dict) -> dict:
@@ -522,6 +537,7 @@ def evaluate(project: dict, printer: dict, placement: dict | None = None) -> dic
     checks = [
         _printer_found(printer),
         _bed(project, printer, placement),
+        _prime_tower(placement),
         _toolheads_vs_filaments(project, printer),
         _nozzle(project, printer),
         _nozzle_conflict(printer),

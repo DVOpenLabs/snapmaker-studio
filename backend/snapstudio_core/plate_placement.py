@@ -101,6 +101,23 @@ def _source_bed(tm: ThreeMF) -> dict | None:
     return parse_printable_area(cfg.get("printable_area"))
 
 
+def _prime_tower(tm: ThreeMF, plate_count: int, target: dict, whose: str) -> dict:
+    """The prime tower against the printable area, for a project that is already a
+    U1 project (a foreign project's tower is replaced or reported by Prepare)."""
+    from . import prime_tower
+
+    part = "Metadata/project_settings.config"
+    try:
+        cfg = json.loads(tm.read_part(part).decode("utf-8", "ignore")) if tm.has_part(part) else {}
+    except Exception:
+        cfg = {}
+    if cfg.get("printer_model") != "Snapmaker U1":
+        return {"outside": [], "message": None}
+    found = prime_tower.findings(cfg, plate_count, target)
+    return {"outside": found,
+            "message": prime_tower.message(found, target, whose)}
+
+
 def _overhang(bounds: dict, bed: dict) -> dict:
     """How far an item pokes past each edge, in mm. Zero means inside."""
     lo, hi = bounds["min"], bounds["max"]
@@ -230,16 +247,18 @@ def _unavailable(reason: str) -> dict:
 
 MULTI_PLATE_REFUSAL = (
     "Studio does not reposition multi-plate projects. The spacing between plates "
-    "is not recorded in the file, so any move would be a guess — open the project "
-    "in Snapmaker Orca and use Arrange."
+    "is not recorded in the file, so any move would be a guess — review the plates "
+    "in Snapmaker Orca."
 )
 
 # What Studio can say about a multi-plate project when every plate fits on its own.
 # It is deliberately not "every object is inside": the plates sit on one grid that
 # Studio neither moves nor checks, and Snapmaker Orca can list an object as Outside.
 MULTI_PLATE_UNVERIFIED = (
-    "Each plate fits on its own, but Studio cannot check where the plates sit. "
-    "Open the project in Snapmaker Orca and use Arrange all plates before slicing."
+    "Each plate fits on its own, but Studio cannot check where the plates sit. In our "
+    "test with a two-plate project made for a larger-bed printer, Snapmaker Orca listed "
+    "one object as Outside and would not slice until it was moved by hand; Arrange all "
+    "plates did not fix it. Review the project in Snapmaker Orca before slicing."
 )
 
 
@@ -417,6 +436,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None) -> d
         "source_bed": source_bed,
         "source_printer": (traits.get("target_printer") or {}).get("value"),
         "plate_count": plate_count,
+        "prime_tower": _prime_tower(tm, plate_count, target, whose),
         # False whenever positions across plates are not established by Studio.
         "placement_established": not multi_plate,
         "item_count": len(reported),

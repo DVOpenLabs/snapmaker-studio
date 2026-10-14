@@ -168,3 +168,17 @@ describe("PrepareSettingsSummary in Recommended mode", () => {
     expect(html).not.toContain("Supports");
   });
 });
+
+describe("PrepareSettingsSummary prime tower", () => {
+  const TOWER = "The prime tower (plate 1) sits outside the U1's printable area: it starts at X 236.895, Y 233.729.";
+  it("states a computed prime tower finding in either mode", () => {
+    for (const mode of ["preserve", "recommended"] as const) {
+      const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, prime_tower_note: TOWER }} mode={mode} />).replace(/&#x27;/g, "'");
+      expect(html).toContain("Prime tower");
+      expect(html).toContain(TOWER);
+    }
+  });
+  it("shows nothing about the tower when there is no finding", () => {
+    expect(renderToStaticMarkup(<PrepareSettingsSummary summary={summary} mode="preserve" />)).not.toContain("Prime tower");
+  });
+});

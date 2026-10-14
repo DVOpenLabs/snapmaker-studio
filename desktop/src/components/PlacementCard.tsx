@@ -99,6 +99,12 @@ export function PlacementView({ check, fix, fixing, onFix }: {
           </ul>
         )}
 
+        {check?.available && check.prime_tower?.message && (
+          <p className="rounded-md border border-risk/40 p-2.5 text-xs text-muted-foreground">
+            {check.prime_tower.message}
+          </p>
+        )}
+
         {blocked && (
           <p className="rounded-md border border-border bg-muted/20 p-2.5 text-xs text-muted-foreground">
             {blocked} Open the project in Snapmaker Orca and use Arrange.

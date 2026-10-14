@@ -10,8 +10,10 @@ export type PlacementTone = "ok" | "warn" | "blocked" | "unknown" | "unverified"
 
 /** Same sentence the engine puts in the placement summary for a multi-plate project. */
 export const MULTI_PLATE_UNVERIFIED =
-  "Each plate fits on its own, but Studio cannot check where the plates sit. " +
-  "Open the project in Snapmaker Orca and use Arrange all plates before slicing.";
+  "Each plate fits on its own, but Studio cannot check where the plates sit. In our " +
+  "test with a two-plate project made for a larger-bed printer, Snapmaker Orca listed " +
+  "one object as Outside and would not slice until it was moved by hand; Arrange all " +
+  "plates did not fix it. Review the project in Snapmaker Orca before slicing.";
 
 export interface PlacementVerdict {
   tone: PlacementTone;

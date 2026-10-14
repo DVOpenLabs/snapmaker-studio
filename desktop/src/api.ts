@@ -143,6 +143,8 @@ export interface SettingsSummary {
   recommended_changes: SettingsChange[];
   /** Present only when the creator's supports will not be in effect in Orca (Recommended mode). */
   supports_note?: string;
+  /** Present only when the project's prime tower sits outside the printable area. */
+  prime_tower_note?: string;
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
 }
@@ -1319,6 +1321,8 @@ export interface PlacementCheck {
   plate_count?: number;
   /** False when positions across plates are not established by Studio (multi-plate projects). */
   placement_established?: boolean;
+  /** Prime tower judged against the printable area, from the project's own settings. */
+  prime_tower?: { outside: { plate: number; x: number; y: number; width: number }[]; message: string | null };
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];

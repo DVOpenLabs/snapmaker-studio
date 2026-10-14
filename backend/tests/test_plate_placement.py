@@ -320,7 +320,7 @@ def test_the_refusal_explains_why_rather_than_just_declining(tmp_path):
         1: [(1, 170, 170)], 2: [(2, 540, 170)],
     }, printable_area=SOURCE_350)
     summary = pp.assess(p)["summary"]
-    assert "cannot check where the plates sit" in summary and "Arrange all plates" in summary
+    assert "cannot check where the plates sit" in summary and "did not fix it" in summary
 
 
 def test_a_plate_whose_contents_are_too_big_is_reported(tmp_path):

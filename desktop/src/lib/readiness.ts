@@ -51,7 +51,7 @@ function deriveNextActions(atRisk: string[]): string[] {
   if (blob.includes("support") || blob.includes("overhang"))
     out.push("Check / enable supports in Snapmaker Orca.");
   if (blob.includes("plate") || blob.includes("layout") || blob.includes("arrange"))
-    out.push("Arrange all plates in Snapmaker Orca before slicing.");
+    out.push("Review the plates and the prime tower in Snapmaker Orca before slicing.");
   return out;
 }
 

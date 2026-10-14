@@ -81,8 +81,8 @@ def assess_layout(path: str) -> dict:
         status = "warn"
         messages.append(
             f"Multi-plate project ({plates} plates) — Studio can't fully verify each plate's "
-            "object positions from the file. Open in Snapmaker Orca and use Arrange all plates "
-            "before slicing; objects may sit outside a plate."
+            "object positions from the file. Review it in Snapmaker Orca before slicing; "
+            "objects may sit outside a plate, and Arrange all plates did not fix that in our test."
         )
     else:
         (xlo, xhi), (ylo, yhi) = plate_window(items)

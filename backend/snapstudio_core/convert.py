@@ -476,6 +476,13 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     supports_note = _supports_note(tm, before, after, prepare_mode)
     if supports_note:
         summary["supports_note"] = supports_note
+    from . import prime_tower
+    from .plate_placement import u1_bed_rect
+    bed = u1_bed_rect()
+    tower_note = prime_tower.message(
+        prime_tower.findings(after, compute_fingerprint(tm).plate_count, bed), bed)
+    if tower_note:
+        summary["prime_tower_note"] = tower_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:
         # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
         summary["project_materials"] = {
