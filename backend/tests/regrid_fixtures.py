@@ -63,7 +63,8 @@ def project(tmp_path, name="multi.3mf", *, plates=2, bed=(330.0, 320.0), local=(
 
     ``local`` is each item's position in its plate's own frame (so it lands in the cell the formula predicts);
     ``transforms`` overrides the full 12-token transform of item ``i``; ``cfg`` updates project settings;
-    ``supports`` is one of None, "paint", "enforcer", "object" and writes that support intent into the copy.
+    ``supports`` is a token or a set of them ("paint" = enforcer paint, "paint_blocker", "enforcer" and
+    "blocker" volumes, "object" = enable_support 1 on the object, "object_off" = 0) written into the copy.
     """
     entries = read(BASE)
     root = entries[ROOT].decode("utf-8")
@@ -95,32 +96,36 @@ def project(tmp_path, name="multi.3mf", *, plates=2, bed=(330.0, 320.0), local=(
   </plate>
 """)
     ms = re.sub(r"  <plate>.*</plate>\n", "".join(blocks), ms, flags=re.S)
-    if supports == "enforcer":
-        # a second mesh (a small cube) in the object file, referenced by the root object as component 3
+    wanted = set([supports] if isinstance(supports, str) else (supports or ()))
+    helper_volumes = [t for t in ("enforcer", "blocker") if t in wanted]
+    for n, kind in enumerate(helper_volumes):
+        # a small extra mesh in the object file, referenced by the root object as component 3 / 4
+        number = 3 + n
         part = entries[OBJECT_PART].decode("utf-8")
         block = re.search(r'<object id="1".*?</object>', part, re.S).group(0)
-        clean = re.sub(r' paint_[a-z]+="[^"]*"', "", block).replace('id="1"', 'id="3"', 1)
-        clean = re.sub(r'p:UUID="[^"]*"', 'p:UUID="00030000-81cb-4c03-9d28-80fed5dfa1dc"', clean, count=1)
+        clean = re.sub(r' paint_[a-z]+="[^"]*"', "", block).replace('id="1"', f'id="{number}"', 1)
+        clean = re.sub(r'p:UUID="[^"]*"', f'p:UUID="0003000{number}-81cb-4c03-9d28-80fed5dfa1dc"', clean, count=1)
         clean = clean.replace('type="model"', 'type="other"', 1)          # a helper volume is typed "other"
         entries[OBJECT_PART] = part.replace("</resources>", clean + "\n </resources>", 1).encode("utf-8")
         root = entries[ROOT].decode("utf-8")
-        root = root.replace("</components>", '<component p:path="/3D/Objects/sample_cube_1.model" objectid="3" '
-                            'p:UUID="00030000-b206-40ff-9872-83e8017abed1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>'
-                            "</components>", 1)
+        root = root.replace("</components>", f'<component p:path="/3D/Objects/sample_cube_1.model" '
+                            f'objectid="{number}" p:UUID="0003000{number}-b206-40ff-9872-83e8017abed1" '
+                            'transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components>', 1)
         entries[ROOT] = root.encode("utf-8")
-        ms = ms.replace("  </object>", '    <part id="3" subtype="support_enforcer">\n'
-                        '      <metadata key="name" value="enforcer"/>\n    </part>\n  </object>', 1)
-    elif supports == "object":
-        ms = ms.replace('<metadata key="extruder" value="1"/>',
-                        '<metadata key="extruder" value="1"/>\n    <metadata key="enable_support" value="1"/>', 1)
+        ms = ms.replace("  </object>", f'    <part id="{number}" subtype="support_{kind}">\n'
+                        f'      <metadata key="name" value="{kind}"/>\n    </part>\n  </object>', 1)
+    for flag, value in (("object", "1"), ("object_off", "0")):
+        if flag in wanted:
+            ms = ms.replace('<metadata key="extruder" value="1"/>',
+                            f'<metadata key="extruder" value="1"/>\n    <metadata key="enable_support" value="{value}"/>', 1)
     entries[MODEL_SETTINGS] = ms.encode("utf-8")
 
-    if supports == "paint":
-        part = entries[OBJECT_PART].decode("utf-8")
-        part = part.replace('<triangle v1="0" v2="2" v3="1" paint_color="4"/>',
-                            '<triangle v1="0" v2="2" v3="1" paint_color="4" paint_supports="8"/>', 1)
-        assert "paint_supports" in part
-        entries[OBJECT_PART] = part.encode("utf-8")
+    for flag, state in (("paint", "4"), ("paint_blocker", "8")):
+        if flag in wanted:
+            part = entries[OBJECT_PART].decode("utf-8")
+            part = re.sub(r'(<triangle [^>]*?)(/>)', rf' paint_supports="{state}"', part, count=1)
+            assert "paint_supports" in part
+            entries[OBJECT_PART] = part.encode("utf-8")
 
     settings = json.loads(entries[SETTINGS])
     settings["printable_area"] = bed_polygon(*bed)

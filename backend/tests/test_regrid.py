@@ -116,88 +116,84 @@ def test_the_original_is_never_modified(tmp_path, mode):
     assert hashlib.sha256(open(src, "rb").read()).hexdigest() == before
 
 
-# --- the prime tower -----------------------------------------------------------------------------
+# --- the prime tower: assessed, never moved, never called safe --------------------------------------
 
-def tower(path):
+def tower_values(path):
     cfg = rf.settings_of(path)
     return cfg["wipe_tower_x"], cfg["wipe_tower_y"]
 
 
-def test_a_tower_outside_the_u1_plate_is_moved_inside_in_preserve(tmp_path):
-    src = rf.project(tmp_path, plates=2, cfg={
-        "wipe_tower_x": ["236.895", "165"], "wipe_tower_y": ["233.729", "250"], "prime_tower_width": "60"})
-    result = run(tmp_path, src, "preserve")
-    xs, ys = tower(result.output_path)
-    assert len(xs) == 2 and len(ys) == 2
-    for x, y in zip(xs, ys):
-        rect = regrid.tower_rect(float(x), float(y), 60.0, 5.0)
-        assert rect[0] >= 0.5 and rect[2] <= 270.5 and rect[1] >= 1 and rect[3] <= 271
-    moved = [t for t in result.settings_summary["layout"]["tower"] if t["action"] == "moved"]
-    assert [t["plate"] for t in moved] == [1, 2]
-    assert rf.settings_of(result.output_path)["prime_tower_width"] == "60"      # the creator's width is kept
+def tower_records(result):
+    return result.settings_summary["layout"]["tower"]
 
 
-def test_a_valid_tower_is_left_exactly_as_the_creator_had_it(tmp_path):
+@pytest.mark.parametrize("mode", MODES)
+def test_an_outside_tower_is_proven_and_reported_but_never_moved(tmp_path, mode):
+    cfg = {"wipe_tower_x": ["236.895", "165"], "wipe_tower_y": ["233.729", "250"], "prime_tower_width": "60"}
+    src = rf.project(tmp_path, plates=2, cfg=cfg)
+    result = run(tmp_path, src, mode)
+    records = tower_records(result)
+    if mode == "preserve":
+        # the creator's own values come through byte for byte: Studio did not move them
+        assert tower_values(result.output_path) == (["236.895", "165"], ["233.729", "250"])
+        # plate 1: x 236.9 + 60 + brim leaves the 270.5 edge, which the file proves; plate 2's depth is unknown
+        assert [r["status"] for r in records] == ["outside_proven", "unknown"]
+    assert all(r["status"] != "inside" and r["status"] != "safe" for r in records)
+    assert any("prime tower is outside" in w for w in result.settings_summary["warnings"]) == (mode == "preserve")
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_tower_that_looks_fine_is_unknown_not_safe(tmp_path, mode):
     src = rf.project(tmp_path, plates=2, bed=(270.0, 270.0), local=(135.5, 136.0),
                      cfg={"wipe_tower_x": ["39.25", "39.25"], "wipe_tower_y": ["212.1", "212.1"],
                           "prime_tower_width": "30"})
+    result = run(tmp_path, src, mode)
+    records = tower_records(result)
+    assert [r["status"] for r in records] == ["unknown", "unknown"]
+    assert records[0]["estimate"]["rect"] is not None and "depth" in records[0]["estimate"]["note"]
+    assert "tower_note" in result.settings_summary["layout"]
+    if mode == "preserve":
+        assert tower_values(result.output_path) == (["39.25", "39.25"], ["212.1", "212.1"])   # byte-identical
+
+
+def test_a_tower_whose_corner_is_inside_an_object_is_an_overlap_proven(tmp_path):
+    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(165.0, 160.0),
+                     cfg={"wipe_tower_x": ["165"], "wipe_tower_y": ["160"], "prime_tower_width": "30"})
     result = run(tmp_path, src, "preserve")
-    assert tower(result.output_path) == (["39.25", "39.25"], ["212.1", "212.1"])
-    assert all(t["action"] == "kept" for t in result.settings_summary["layout"]["tower"])
+    assert tower_records(result)[0]["status"] == "overlap_proven"
+    assert tower_values(result.output_path) == (["165"], ["160"])
 
 
-def test_a_tower_on_top_of_an_object_is_moved_clear_of_it(tmp_path):
-    # the object is centred where the creator put the tower (local 165, 160); a 30 mm tower at (155, 150)
-    src = rf.project(tmp_path, plates=2, bed=(270.0, 270.0), local=(165.0, 160.0),
-                     cfg={"wipe_tower_x": ["155"], "wipe_tower_y": ["150"], "prime_tower_width": "30"})
-    result = run(tmp_path, src, "preserve")
-    xs, ys = tower(result.output_path)
-    layout = result.settings_summary["layout"]
-    assert [t["action"] for t in layout["tower"]] == ["moved", "moved"]
-    rect = regrid.tower_rect(float(xs[0]), float(ys[0]), 30.0, 5.0)
-    obj = (155.0, 150.0, 175.0, 170.0)                      # the cube's footprint in the plate's own frame
-    assert rect[2] < obj[0] - 3 or rect[0] > obj[2] + 3 or rect[3] < obj[1] - 3 or rect[1] > obj[3] + 3
-
-
-def test_recommended_tower_constant_that_overlaps_an_object_is_moved(tmp_path):
-    # the profile constant is (165, 200.821); put the object exactly there (cube centre 175, 215)
-    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(175.0, 215.0))
-    result = run(tmp_path, src, "recommended")
-    layout = result.settings_summary["layout"]
-    assert layout["status"] == "not_multi_plate"
-    assert layout["tower"][0]["action"] == "moved" and layout["tower"][0]["reason"] == "on top of a printing object"
-
-
-def test_a_single_plate_control_with_a_valid_tower_is_byte_identical(tmp_path):
-    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0))
-    for mode in MODES:
-        result = run(tmp_path, src, mode)
-        cfg = rf.settings_of(result.output_path)
-        assert result.settings_summary["layout"]["tower"][0]["action"] == "kept"
-        if mode == "preserve":
-            assert (cfg["wipe_tower_x"], cfg["wipe_tower_y"]) == (["13"], ["211"])        # the base's own values
-        assert tokens(result.output_path) == tokens(src)
-
-
-def test_no_free_position_is_reported_and_the_tower_left_alone(tmp_path):
-    # a 250 mm tower leaves no room for any candidate on a 270 mm plate
+def test_every_tower_record_carries_the_known_extent_and_the_estimate_with_clearances(tmp_path):
     src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0),
-                     cfg={"wipe_tower_x": ["10"], "wipe_tower_y": ["10"], "prime_tower_width": "250"})
-    result = run(tmp_path, src, "preserve")
-    t = result.settings_summary["layout"]["tower"][0]
-    assert t["action"] == "unresolved" and tower(result.output_path) == (["10"], ["10"])
-    assert any("prime tower was left where it was" in w for w in result.settings_summary["warnings"])
+                     cfg={"wipe_tower_x": ["39.25"], "wipe_tower_y": ["212.1"], "prime_tower_width": "30"})
+    record = tower_records(run(tmp_path, src, "preserve"))[0]
+    assert record["known_x_extent"] == [34.25, 74.25] and record["known_y_min"] == 207.1
+    est = record["estimate"]
+    assert est["rect"] == [34.25, 207.1, 74.25, 247.1]
+    assert est["clearance_to_edges"] == {"left": 33.75, "right": 196.25, "front": 206.1, "back": 23.9}
+    assert est["clearance_to_objects"] is not None and est["clearance_to_objects"] > 0
 
 
-def test_a_disabled_tower_is_not_touched(tmp_path):
+@pytest.mark.parametrize("mode", MODES)
+def test_towers_are_never_written(tmp_path, mode):
+    src = rf.project(tmp_path, plates=2, cfg={"wipe_tower_x": ["236.895", "165"],
+                                                "wipe_tower_y": ["233.729", "250"]})
+    before = rf.settings_of(src)
+    after = rf.settings_of(run(tmp_path, src, mode).output_path)
+    if mode == "preserve":
+        assert (after["wipe_tower_x"], after["wipe_tower_y"]) == (before["wipe_tower_x"], before["wipe_tower_y"])
+
+
+def test_a_disabled_tower_is_not_assessed(tmp_path):
     src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0),
                      cfg={"enable_prime_tower": "0", "wipe_tower_x": ["900"], "wipe_tower_y": ["900"]})
     result = run(tmp_path, src, "preserve")
-    assert result.settings_summary["layout"]["tower"] == []
-    assert tower(result.output_path) == (["900"], ["900"])
+    assert tower_records(result) == []
+    assert tower_values(result.output_path) == (["900"], ["900"])
 
 
-# --- support intent ------------------------------------------------------------------------------
+# --- support intent: explicit disable > positive intent > starter reset > creator values -------------
 
 SUPPORT = ("enable_support", "support_type", "support_filament", "support_interface_filament")
 
@@ -206,30 +202,55 @@ def declared_first(path):
     return set(filter(None, rf.settings_of(path)["different_settings_to_system"][0].split(";")))
 
 
-@pytest.mark.parametrize("intent", ["paint", "enforcer", "object"])
-def test_explicit_support_intent_survives_the_starter_settings(tmp_path, intent):
-    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0), supports=intent)
-    result = run(tmp_path, src, "recommended")
+def support_case(tmp_path, supports, cfg=None, mode="recommended"):
+    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0), supports=supports, cfg=cfg)
+    result = run(tmp_path, src, mode)
+    return result, result.settings_summary.get("support_intent"), declared_first(result.output_path)
+
+
+@pytest.mark.parametrize("supports", ["paint", "enforcer", "object"])
+def test_positive_intent_survives_the_starter_settings(tmp_path, supports):
+    result, intent, declared = support_case(tmp_path, supports)
     cfg = rf.settings_of(result.output_path)
-    assert set(SUPPORT) <= declared_first(result.output_path)
+    assert intent["decision"] == "kept" and set(SUPPORT) <= declared
     assert (cfg["enable_support"], cfg["support_type"], cfg["support_filament"]) == ("1", "tree(manual)", "2")
-    stated = result.settings_summary["support_intent"]
-    assert stated["kept"] is True and "kept as the creator set them" in stated["statement"]
+    assert "kept as the creator set them" in intent["statement"]
 
 
-def test_without_support_intent_the_starter_reset_is_intentional(tmp_path):
-    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0))
-    result = run(tmp_path, src, "recommended")
-    assert not (set(SUPPORT) & declared_first(result.output_path))
-    stated = result.settings_summary["support_intent"]
-    assert stated["kept"] is False and "starter settings" in stated["statement"]
+@pytest.mark.parametrize("supports", ["blocker", "paint_blocker", {"blocker", "paint_blocker"}])
+def test_blocker_only_data_is_not_a_request_for_supports(tmp_path, supports):
+    result, intent, declared = support_case(tmp_path, supports)
+    assert intent["decision"] == "starter_reset" and not (set(SUPPORT) & declared)
+    assert intent["blocker_evidence"] and "do not turn supports on" in intent["statement"]
 
 
-def test_preserve_keeps_the_creators_declarations_as_they_were(tmp_path):
-    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0), supports="paint")
+def test_enforcers_with_an_explicit_object_disable_stay_disabled_and_say_so(tmp_path):
+    result, intent, declared = support_case(tmp_path, {"enforcer", "object_off"})
+    assert intent["decision"] == "disabled" and not (set(SUPPORT) & declared)
+    assert "Supports stay off" in intent["statement"] and "support-enforcer volumes" in intent["statement"]
+
+
+@pytest.mark.parametrize("enable, decision", [("0", "disabled"), ("1", "kept")])
+def test_painted_supports_with_global_enable_support_zero_or_one(tmp_path, enable, decision):
+    result, intent, declared = support_case(tmp_path, "paint", cfg={"enable_support": enable})
+    assert intent["decision"] == decision
+    assert bool(set(SUPPORT) & declared) == (decision == "kept")
+    assert rf.settings_of(result.output_path)["enable_support"] == enable           # the value is the creator's
+
+
+def test_with_no_support_data_the_starter_reset_stands(tmp_path):
+    result, intent, declared = support_case(tmp_path, None)
+    assert intent["decision"] == "starter_reset" and not (set(SUPPORT) & declared)
+    assert "starter settings" in intent["statement"]
+
+
+@pytest.mark.parametrize("supports", ["paint", "enforcer", {"enforcer", "object_off"}])
+def test_preserve_is_unchanged_whatever_the_intent(tmp_path, supports):
+    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0), supports=supports)
     result = run(tmp_path, src, "preserve")
+    # the creator's own declaration comes through as it was; Studio adds none and removes none of the four
     assert set(SUPPORT) <= declared_first(result.output_path)
-    assert "support_intent" not in result.settings_summary or result.settings_summary["support_intent"] is None
+    assert result.settings_summary.get("support_intent") is None
 
 
 # --- the audit accounts for it -------------------------------------------------------------------
@@ -253,3 +274,38 @@ def test_the_audit_makes_no_one_plate_outside_claim_about_a_multi_plate_copy(tmp
     row = next(r for r in report["rows"] if r["element"] == "Model geometry and object placement")
     assert row["status"] == "changed" and "translation only" in row["reason"]
     assert report["claims"]["geometry_unchanged"] is True
+
+
+# --- already-U1 projects and preservation ----------------------------------------------------------
+
+U1_POLYGON = ["0.5x1", "270.5x1", "270.5x271", "0.5x271"]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_an_already_u1_multi_plate_project_comes_out_placement_identical(tmp_path, mode):
+    # the creator's own Orca-made U1 project: plates on the U1 stride (324), tower where Orca put it
+    src = rf.project(tmp_path, plates=2, bed=(270.0, 270.0), local=(135.5, 136.0), cfg={
+        "printable_area": U1_POLYGON, "wipe_tower_x": ["39.25", "37.6"], "wipe_tower_y": ["212.1", "207.2"],
+        "prime_tower_width": "30"})
+    result = run(tmp_path, src, mode)
+    assert [i["tag"] for i in rf.items_of(result.output_path)] == [i["tag"] for i in rf.items_of(src)]
+    cfg = rf.settings_of(result.output_path)
+    assert (cfg["wipe_tower_x"], cfg["wipe_tower_y"]) == (["39.25", "37.6"], ["212.1", "207.2"])
+    assert result.settings_summary["layout"]["status"] == "same_grid"
+    assert not result.settings_summary["placement_changes"]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_painting_helper_relationships_and_object_files_are_untouched(tmp_path, mode):
+    src = rf.project(tmp_path, plates=2, supports={"paint", "enforcer"})
+    result = run(tmp_path, src, mode)
+    a, b = rf.read(src), rf.read(result.output_path)
+    for name in (n for n in a if n.startswith("3D/Objects/")):
+        assert a[name] == b[name]                                       # meshes, paint_color, paint_supports
+        for token in (b"paint_color", b"paint_supports"):
+            assert a[name].count(token) == b[name].count(token) > 0 or a[name].count(token) == 0
+    import re as _re
+    parts = lambda blob: _re.findall(rb'<part id="[^"]+" subtype="[^"]*"', blob["Metadata/model_settings.config"])
+    assert parts(a) == parts(b)                                         # helper-volume relationships
+    components = lambda blob: blob["3D/3dmodel.model"].count(b"<component ")
+    assert components(a) == components(b)
