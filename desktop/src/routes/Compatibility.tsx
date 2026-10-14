@@ -15,7 +15,7 @@ import { PrepareRefusal } from "@/components/PrepareRefusal";
 import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
 import type { MaterialSelection } from "@/lib/projectMaterials";
 import { Copy, Stethoscope } from "lucide-react";
-import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings } from "@/lib/compatibility";
+import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
 import { isExt } from "@/lib/modelPath";
 import { PlacementCard } from "@/components/PlacementCard";
@@ -30,9 +30,10 @@ export default function Compatibility() {
   // True while Project Materials holds choices: Prepare then goes through its review step, so a plain one is not offered beside it.
   const [materialsActive, setMaterialsActive] = useState(false);
   const requestGeneration = useRef(0);
-  // The engine says Studio can read this project but would refuse to prepare it: every Prepare
-  // entry point (button, mode chooser, Project Materials) stays off and the copy says why.
-  const blocked = !!result?.findings?.some((f) => f.id === "prepare.blocked");
+  // The engine says Studio cannot prepare this project (unreadable, or readable but refused): every
+  // Prepare entry point (button, mode chooser, Project Materials) stays off and the copy says why.
+  const gate = prepareGate(result?.findings);
+  const blocked = gate !== "open";
 
   const checkM = useMutation({
     mutationFn: (p: string) => compatibilityCheck(p),
@@ -196,7 +197,9 @@ export default function Compatibility() {
           {counts && counts.total > 0 && (
             <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
               <p className="text-sm" data-testid={blocked ? "prepare-blocked-copy" : undefined}>
-                {blocked
+                {gate === "unreadable"
+                  ? "Studio cannot read this file as a project, so it cannot prepare a U1 copy. Re-export the project from the slicer that made it and open the new file."
+                  : blocked
                   ? "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it, or remove the settings listed above in the slicer that made it and export it again."
                   : "This model may be fine, but the project settings are for another printer. Studio can prepare a U1 profile copy so Orca opens it with U1-compatible settings."}
               </p>

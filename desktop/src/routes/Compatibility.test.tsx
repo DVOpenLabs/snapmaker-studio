@@ -291,3 +291,25 @@ it("an eligible project with findings keeps its Prepare entry points", async () 
   expect(screen.queryByTestId("prepare-blocked-copy")).toBeNull();
   for (const radio of screen.getAllByRole("radio") as HTMLInputElement[]) expect(radio.disabled).toBe(false);
 });
+
+describe("project.unreadable finding", () => {
+  const UNREADABLE = { findings: [{ id: "project.unreadable", severity: "error", title: "Studio cannot read this project",
+    explanation: "A required part is missing.", suggested_action: "Re-export it.", setting_path: "3D/3dmodel.model", evidence: "missing" }],
+    summary: "Cannot read.", recommendation: "Open it in Orca." };
+
+  it("offers no Prepare entry point and sends no request", async () => {
+    api.compatibilityCheck.mockResolvedValue(UNREADABLE);
+    api.projectMaterials.mockResolvedValue(analysis());
+    page();
+    await screen.findByText("Studio cannot read this project");
+    const copy = await screen.findByTestId("prepare-blocked-copy");
+    expect(copy.textContent).toContain("cannot read this file as a project");
+    expect(plainPrepare()?.disabled).toBe(true);
+    await waitFor(() => expect(materialsCard()).toBeNull());
+    for (const radio of screen.getAllByRole("radio") as HTMLInputElement[]) expect(radio.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Review settings" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(plainPrepare()!);
+    fireEvent.click(screen.getByRole("button", { name: "Review settings" }));
+    expect(api.convert).not.toHaveBeenCalled();
+  });
+});

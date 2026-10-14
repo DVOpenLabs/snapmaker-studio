@@ -37,35 +37,68 @@ BINARY_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp",
 # Tool output must never be tracked (a profiler dump once carried absolute local paths).
 ARTIFACT_SUFFIXES = frozenset({".out", ".prof", ".pstats", ".dmp", ".tee"})
 # Local absolute paths and user names, built from pieces so this file does not match itself.
+# Matching is case-insensitive, accepts either separator and repeated separators, and the
+# whole path is captured so a baseline entry covers one known path, not a whole file.
 _DRIVE = r"[A-Za-z]:[\\/]+"
+_TAIL = r"[^\s\"'`<>|*?,;)\]}]*"
 LEAK_RULES = (
-    re.compile((_DRIVE + r"(?:Users|STL Files)[\\/]+(?!Public\b)").encode()),
-    re.compile(("/ho" + r"me/(?!runner\b)[A-Za-z0-9_.-]+/").encode()),
+    re.compile(_DRIVE + r"(?:Users|STL Files)[\\/]+(?!Public\b)" + _TAIL, re.IGNORECASE),
+    re.compile("/ho" + r"me/+(?!runner\b)[A-Za-z0-9_.-]+/" + _TAIL, re.IGNORECASE),
 )
-# Files that already carried such a path when this check was added (synthetic test paths and
-# historical handoff notes). The set is closed: a NEW tracked file with a local path fails.
-LEAK_BASELINE = frozenset({
-    "backend/tests/fixtures/providers/spoolman_0_26_1.json",
-    "backend/tests/test_diagnostics.py",
-    "backend/tests/test_fix_ledger.py",
-    "backend/tests/test_paths.py",
-    "backend/tests/test_privacy_adversarial.py",
-    "desktop/src/components/OrcaRoundTrip.tsx",
-    "desktop/src/lib/ecosystem.test.ts",
-    "desktop/src/routes/AfterSlicing.tsx",
-    "backend/tests/test_user_presets.py",
-    "desktop/src-tauri/src/main.rs",
-    "desktop/src/lib/orca.test.ts",
-    "desktop/src/store/sliced.test.ts",
-    "docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md",
-    "docs/internal/FABLE_PUBLIC_RELEASE_AUDIT.md",
-    "docs/internal/HANDOFF_main_contract.md",
-    "docs/internal/HANDOFF_main_ff1aef2.md",
-    "docs/internal/HANDOFF_main_overrides.md",
-    "docs/internal/HANDOFF_main_reachability.md",
-    "docs/internal/HANDOFF_main_session_restart.md",
-    "tools/harness/HarnessLauncher.Tests.ps1",
+# Known synthetic test paths and historical handoff notes, as (file, normalized path).
+# The set is closed: any other local path in ANY tracked file, including a different path
+# in a file listed here, fails. Nothing is exempt by file name alone.
+LEAK_BASELINE: frozenset[tuple[str, str]] = frozenset({
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/.local/share/spoolman'),
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/.local/share/spoolman/backups'),
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/spoolman/c:/program'),
+    ('backend/tests/test_diagnostics.py', '/home/alexmorgan/models'),
+    ('backend/tests/test_diagnostics.py', 'c:/users/alexmorgan/documents/secret'),
+    ('backend/tests/test_diagnostics.py', 'c:/users/someone/thing.3mf'),
+    ('backend/tests/test_fix_ledger.py', 'c:/users/someone'),
+    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/documents/secret'),
+    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/models/a.3mf'),
+    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/models/a_snapmakeru1.3mf'),
+    ('backend/tests/test_paths.py', 'c:/users/someone/appdata/local'),
+    ('backend/tests/test_privacy_adversarial.py', 'c:/users/someone/documents/orca/exports'),
+    ('backend/tests/test_user_presets.py', '/home/p/.config'),
+    ('backend/tests/test_user_presets.py', 'c:/users/p/appdata/roaming'),
+    ('desktop/src-tauri/src/main.rs', '/home/u/apps/snapmaker-orca.appimage'),
+    ('desktop/src-tauri/src/main.rs', '/home/u/my'),
+    ('desktop/src/components/OrcaRoundTrip.tsx', 'c:/users/you/documents/snapmaker'),
+    ('desktop/src/lib/ecosystem.test.ts', 'c:/users/someone/secret/x.exe'),
+    ('desktop/src/lib/orca.test.ts', 'c:/users/secret/path.3mf'),
+    ('desktop/src/routes/AfterSlicing.tsx', 'c:/users/you/downloads/something_pla_2h13m.gcode'),
+    ('desktop/src/store/sliced.test.ts', '/home/someone/prints/job.gcode'),
+    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/downloads/job.gcode'),
+    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/downloads/job_pla_2h13m.gcode'),
+    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/job.gcode'),
+    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', 'd:/stl files/sample/stock_u1_blank.3mf'),
+    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', 'd:/stl files/validation-out/'),
+    ('docs/internal/FABLE_PUBLIC_RELEASE_AUDIT.md', 'c:/users/secret/path.3mf'),
+    ('docs/internal/HANDOFF_main_contract.md', 'd:/stl files/snapmaker-studio'),
+    ('docs/internal/HANDOFF_main_ff1aef2.md', 'd:/stl files/snapmaker-studio'),
+    ('docs/internal/HANDOFF_main_overrides.md', 'd:/stl files/snapmaker-studio'),
+    ('docs/internal/HANDOFF_main_reachability.md', 'd:/stl files/snapmaker-studio'),
+    ('docs/internal/HANDOFF_main_session_restart.md', 'd:/stl files/snapmaker-studio'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', '/home/zq91/private/customer.stl'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', 'c:/users/some'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', 'c:/users/someone'),
 })
+
+
+BASELINE_LINES = frozenset(f"    ({f!r}, {t!r})," for f, t in LEAK_BASELINE)
+
+
+def normalize_leak(token: str) -> str:
+    """Fold case, separator style and doubled or escaped separators into one key."""
+    return re.sub(r"/+", "/", token.replace("\\", "/")).lower()
+
+
+def leak_hits(text: str) -> list[tuple[int, str]]:
+    """Every local-path match in ``text`` as (line, normalized path), not just the first."""
+    return sorted((text.count("\n", 0, m.start()) + 1, normalize_leak(m.group(0)))
+                  for rule in LEAK_RULES for m in rule.finditer(text))
 
 
 def scan(root: Path) -> tuple[list[str], dict]:
@@ -81,24 +114,33 @@ def scan(root: Path) -> tuple[list[str], dict]:
             problems.append(f"{name}: prohibited filename")
         if Path(name).suffix.lower() in ARTIFACT_SUFFIXES:
             problems.append(f"{name}: tool output must not be tracked")
-        if name in CONTENT_EXCEPTIONS:
-            exempt_files[name] = CONTENT_EXCEPTIONS[name]
-            continue
         raw = (root / name).read_bytes()
-        for leak in LEAK_RULES:
-            hit = leak.search(raw)
-            if hit and name not in LEAK_BASELINE:
-                problems.append(f"{name}: local absolute path or user name "
-                                f"({hit.group(0).decode('latin-1')!r})")
+        is_text = True
         if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
             content = raw.decode("utf-16")
         elif b"\0" in raw and Path(name).suffix.lower() in BINARY_SUFFIXES:
-            binary_files.append(name)
-            continue
+            # Known binary formats are still searched for path bytes, as latin-1 text.
+            content = raw.decode("latin-1")
+            is_text = False
         else:
             # Replacement characters do not hide ASCII references in legacy text.
             content = raw.decode("utf-8-sig", errors="replace")
+        # A content exception waives the reference patterns only; a local path is never waived.
+        # This file's own baseline entries are the one exact-line exemption, as RULE_LINES is.
+        leak_text = content
+        if name == SELF:
+            leak_text = "\n".join("" if line in BASELINE_LINES else line
+                                  for line in content.splitlines())
+        for line, token in leak_hits(leak_text):
+            if (name, token) not in LEAK_BASELINE:
+                problems.append(f"{name}:{line}: local absolute path or user name ({token!r})")
+        if not is_text:
+            binary_files.append(name)
+            continue
         text_files.append(name)
+        if name in CONTENT_EXCEPTIONS:
+            exempt_files[name] = CONTENT_EXCEPTIONS[name]
+            continue
         # Match the whole text so a name split over lines cannot bypass the guard.
         checked = "\n".join("" if name == SELF and line in RULE_LINES else line
                             for line in content.splitlines())
