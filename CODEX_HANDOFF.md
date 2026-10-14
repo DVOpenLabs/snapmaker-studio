@@ -522,3 +522,38 @@ The source guard and protected-state recheck for this documentation update are
 recorded in the private `bounded-06/evidence/` lane. Opus/Fable reviews and
 owner integration with fresh PR CI remain outstanding. No integration, push,
 merge, tag or release occurred.
+
+## Bounded-07 C02 Preserve attempt — 2026-10-13
+
+The operator ran the fresh foreground launcher against the exact committed
+engine. Preflight passed and used a new private output directory. The single
+startup activation call returned **true**, and foreground PID, executable,
+start time and main-window identity matched the task-owned Orca process. No
+manual focus handoff was needed.
+
+C02 **did not load**. Orca first displayed a newer-configuration notice with a
+replaced-setting message; its known modal OK was acknowledged. It then displayed
+the authorized `Customized Preset` embedded-G-code warning. The dialog capture
+visibly shows the `Don't show again` box empty, but the harness could not verify
+a unique unchecked checkbox through UI Automation. It therefore did not
+acknowledge that warning and stopped before import completion. The launcher
+recorded exit code **2**. No loading result, imported settings or plate
+membership is established. The workspace behind the dialog visibly showed
+Snapmaker U1, Textured PEI Plate, Nozzle 1 at 0.2 mm, Standard flow, and a
+0.08 mm High Quality process (0.08 mm layer and 0.1 mm first layer); those are
+background values only and are not attributed to the C02 file.
+
+The generated input hash remained the expected value and the runner reported
+`inputUnchanged=true`. The production-profile signature matched before and
+after. The runner verified and closed only its task-owned process. No other
+output was started. Raw screenshots and process evidence remain private under
+`.codex-run/orca-gui-6e35fe6-20261013/bounded-07/manual-c02-preserve-01/`.
+Anonymized tracked evidence is
+[orca-native-bounded07-c02-unverified.json](docs/testing/prepare-contract/orca-native-bounded07-c02-unverified.json).
+
+Because C02 loading did not pass, the remaining GUI outputs are not eligible
+for continuation. The next GUI gate is a safe, exact verification of the
+unchecked suppression box followed by a successful C02 load and preservation
+check. No slicing, G-code execution, upload, printer connection, integration,
+push, merge, tag or release occurred. Opus and Fable reviews remain
+outstanding. No claim about print correctness or success is made.

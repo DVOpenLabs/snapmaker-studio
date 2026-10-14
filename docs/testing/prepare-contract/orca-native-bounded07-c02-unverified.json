@@ -1,0 +1,58 @@
+{
+  "run_date": "2026-10-13",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "orca_version": "2.4.0",
+  "output": "C02 Preserve copied output",
+  "launcher_exit_code": 2,
+  "preflight": "passed; exact engine, harness, Orca, and C02 input hashes matched; fresh evidence path",
+  "activation": {
+    "single_call_returned_true": true,
+    "foreground_owner_verified": true,
+    "manual_handoff_needed": false,
+    "later_focus_guard_reached": false
+  },
+  "loading": {
+    "loaded": false,
+    "title": null,
+    "elapsed_seconds": null,
+    "status": "not established; runner stopped at the authorized-warning checkbox verification gate"
+  },
+  "prompts": [
+    {
+      "title": "Snapmaker Orca information",
+      "observed": "Newer-configuration notice reported at least one replaced setting; OCR did not preserve the replacement value",
+      "action": "known notice OK acknowledged",
+      "import_complete": false
+    },
+    {
+      "title": "Customized Preset",
+      "observed": "embedded-G-code safety confirmation for a custom preset",
+      "checkbox": "screenshot visibly shows unchecked; UI Automation did not verify a unique unchecked checkbox",
+      "action": "not acknowledged; runner stopped safely",
+      "authorized_acknowledgement_used": false
+    }
+  ],
+  "plate_membership": {
+    "established": false,
+    "observation": "no file object or plate membership was established"
+  },
+  "settings": {
+    "file_settings_established": false,
+    "background_ui_observation": "While the warning was open, the UI showed Snapmaker U1, Textured PEI Plate, Nozzle 1 0.2 mm, Flow Standard, and a 0.08 mm High Quality process with 0.08 mm layer height and 0.1 mm first-layer height. These are background UI values and are not attributed to the C02 file."
+  },
+  "preservation": {
+    "input_hash": "DC21A6D807034D28349F9377E74AE03FB6B7EEF32549BC5A2DE23A118E1044E2",
+    "input_unchanged": true,
+    "production_profile_unchanged": true,
+    "process_identity_verified": true,
+    "owned_process_closed": true,
+    "other_outputs_started": false
+  },
+  "limitations": [
+    "No slicing, G-code execution, printer connection, upload, or print-success claim",
+    "Successful loading was not established",
+    "No additional output is eligible until C02 loading and isolation pass",
+    "Opus and Fable reviews remain outstanding"
+  ],
+  "private_raw_evidence": ".codex-run/orca-gui-6e35fe6-20261013/bounded-07/manual-c02-preserve-01/"
+}
