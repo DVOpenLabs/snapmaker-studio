@@ -245,6 +245,9 @@ export interface LibraryProject {
   filament_count: number | null;
   last_action: string | null;
   updated_at: string | null;
+  /** Readable, but Studio would refuse to prepare a copy; persisted with the record. */
+  prepare_blocked?: boolean;
+  prepare_summary?: string | null;
 }
 
 export async function library(query = "", tag?: string): Promise<LibraryProject[]> {

@@ -163,8 +163,11 @@ def readiness_report(path: str) -> dict:
     score = base
     if not ready and isinstance(base, (int, float)):
         score = min(int(base), 70)   # not a perfect score while setup review remains
-    # Profile may be compatible, but if setup review remains do not surface a green "ready".
-    out_verdict = "HIGH_RISK" if (not ready and verdict == READY) else verdict
+    # `verdict` is the Doctor's own verdict and means the same thing here: HIGH_RISK is only
+    # "not a usable project". Setup warnings (spacing, overhangs, colours, layout) do not
+    # rewrite it; they are carried by `ready: false`, `at_risk` and the failed checks, which is
+    # also what keeps a green "ready" from being shown.
+    out_verdict = verdict
     return {
         "schema_version": SCHEMA_VERSION,
         "name": Path(path).name,

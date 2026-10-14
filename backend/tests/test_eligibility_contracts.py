@@ -282,3 +282,155 @@ def test_a_prusa_per_object_brim_type_stays_unsupported_and_blocks_nothing_remov
     rows = [r for r in report["rows"] if "brim_type" in r["detail"]]
     assert rows and all(r["status"] == "unsupported" for r in rows)
     assert report["claims"]["nothing_removed"] is False
+
+
+# --- the library record: producer -> library -> API -> desktop ------------------
+
+LIBRARY_FIXTURE = (Path(__file__).parents[2] / "desktop" / "src" / "test-fixtures"
+                   / "library-blocked.json")
+
+
+def _library_record(library_env, kind="ironing"):
+    src = _blocked(library_env, kind)
+    service.register_downloaded_model(src, "www.printables.com", "https://www.printables.com/model/1-x")
+    rows = service.library_list()["projects"]
+    return [r for r in rows if r["name"] == Path(src).name][0]
+
+
+def test_prepare_blocked_is_persisted_in_the_library_and_served_by_the_api(library_env):
+    rec = _library_record(library_env)
+    assert rec["prepare_blocked"] is True and rec["verdict"] != "HIGH_RISK"
+    assert rec["prepare_summary"] and not any(w in rec["prepare_summary"] for w in RAW_ENGINE_WORDS)
+    # it is stored, not recomputed: a fresh connection and the HTTP route see the same record
+    httpd, token = build_server(port=0)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        status, body = _request(port, "/library", {}, token)
+    finally:
+        httpd.shutdown()
+    served = [r for r in (body["projects"] if isinstance(body, dict) else body)
+              if r["name"] == rec["name"]][0]
+    assert served["prepare_blocked"] is True and served["prepare_summary"] == rec["prepare_summary"]
+
+
+def test_a_project_that_prepares_is_not_flagged_in_the_library(library_env):
+    src = _inject(library_env, SUPPORT_SHAPE, "fine.3mf")
+    service.register_downloaded_model(src, "www.printables.com", "https://www.printables.com/model/2-y")
+    rec = [r for r in service.library_list()["projects"] if r["name"] == "fine.3mf"][0]
+    assert rec["prepare_blocked"] is False and rec["prepare_summary"] is None
+
+
+def test_an_old_library_without_the_eligibility_table_migrates_and_defaults_to_not_blocked(tmp_path):
+    import sqlite3
+    from snapstudio_core import library
+    db = tmp_path / "old.db"
+    old = sqlite3.connect(db)
+    old.executescript("""CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+      source_path TEXT NOT NULL UNIQUE, source_family TEXT, output_path TEXT, verdict TEXT,
+      score INTEGER, filament_count INTEGER, last_action TEXT, updated_at TEXT);
+      INSERT INTO projects (name, source_path, verdict) VALUES ('a.3mf', 'x/a.3mf', 'REPAIRABLE');
+      PRAGMA user_version = 2;""")
+    old.commit(); old.close()
+    conn = library.connect(str(db))
+    try:
+        rows = library.list_projects(conn)
+    finally:
+        conn.close()
+    assert rows[0]["prepare_blocked"] is False
+
+
+def test_the_committed_desktop_fixture_is_what_the_producer_really_emits(library_env):
+    """The desktop test renders this committed record; it must be the engine's own output
+    (key set and the blocked fields), not a hand-made stand-in."""
+    import json
+    rec = _library_record(library_env)
+    fixture = json.loads(LIBRARY_FIXTURE.read_text(encoding="utf-8"))
+    assert set(fixture) == set(rec)
+    for key in ("verdict", "source_family", "prepare_blocked", "prepare_summary", "last_action"):
+        assert fixture[key] == rec[key], key
+
+
+# --- the nil list is derived from Orca's FFF config classes ---------------------
+
+def _generator():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "derive_orca_nonnullable", Path(__file__).parents[2] / "tools" / "derive-orca-nonnullable.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_nonnullable_list_matches_the_generator_and_the_pinned_source_digest():
+    from snapstudio_core import orca_nonnullable as nn
+    gen = _generator()
+    assert gen.digest(nn.NON_NULLABLE_VECTORS) == nn.SOURCE_DIGEST      # list == what was derived
+    assert gen.COMMIT in nn.__doc__
+    assert len(nn.NON_NULLABLE_VECTORS) == 172
+
+
+def test_enum_vectors_are_included_and_non_config_members_are_not():
+    from snapstudio_core.orca_nonnullable import NON_NULLABLE_VECTORS as N
+    assert {"z_hop_types", "retract_lift_enforce", "outer_wall_speed"} <= N
+    assert not N & {"clone_objects", "position", "e_position", "extruded_volume",
+                    "material_correction", "filament_retraction_length", "filament_z_hop"}
+
+
+def test_the_generator_reads_only_fff_vector_members():
+    gen = _generator()
+    header = """
+    PRINT_CONFIG_CLASS_DEFINE(
+        PrintRegionConfig,
+        ((ConfigOptionFloats, fast_speed))
+        ((ConfigOptionFloat, scalar_speed))
+        ((ConfigOptionEnumsGeneric, lift_kinds))
+        ((ConfigOptionStrings, names))
+    )
+    PRINT_CONFIG_CLASS_DEFINE(
+        SLAMaterialConfig,
+        ((ConfigOptionFloats, sla_only))
+    )
+    """
+    found = gen.derive(header)
+    assert set(found) == {"fast_speed", "lift_kinds"}
+
+
+def test_a_nil_in_an_enum_vector_part_option_is_refused(tmp_path):
+    src = _with_part_metadata(tmp_path, {"z_hop_types": "Slope Lift,nil"}, "enum-nil.3mf")
+    problems = conv.structure_problems(ThreeMF.open(src))
+    assert len(problems) == 1 and "z_hop_types" in problems[0]
+    assert service.doctor(src)["prepare_blocked"] is True
+    ok = _with_part_metadata(tmp_path, {"filament_z_hop": "nil"}, "nullable.3mf")
+    assert conv.structure_problems(ThreeMF.open(ok)) == []
+
+
+# --- one readability determination ----------------------------------------------
+
+def _without(tmp_path, base, member: str, name: str) -> str:
+    out = tmp_path / name
+    with zipfile.ZipFile(base) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            if item.filename != member:
+                dst.writestr(item, src.read(item.filename))
+    return str(out)
+
+
+@pytest.mark.parametrize("member", ["_rels/.rels", "[Content_Types].xml", "3D/3dmodel.model"])
+def test_every_consumer_agrees_a_project_missing_a_required_part_is_unreadable(tmp_path, member):
+    src = _without(tmp_path, U1_BASE, member, "broken.3mf")
+    assert eligibility.assess(ThreeMF.open(src)).readable is False
+    assert service.doctor(src)["verdict"] == "HIGH_RISK"
+    traits = project_traits.extract(src)
+    assert traits["readable"] is False
+    res = readiness.classify_project({"path": src, "name": "broken.3mf"}, traits,
+                                     {"reachable": True}, {"checks": []},
+                                     file_state="ok" if traits["readable"] else "unreadable")
+    assert res["bucket"] == readiness.CANT_DETERMINE
+    findings = service.compatibility_check(src)["findings"]
+    assert not any(f["id"] == "prepare.blocked" for f in findings)   # not "readable but blocked"
+
+
+def test_the_readable_determination_has_no_caller_supplied_default():
+    import inspect
+    assert list(inspect.signature(eligibility.assess).parameters) == ["tm"]

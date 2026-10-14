@@ -40,13 +40,28 @@ def structure_problems(tm) -> list[str]:
     return list(result.get("problems") or ["the structure is unsound"])
 
 
-def assess(tm, readable: bool = True) -> Eligibility:
-    """Eligibility of an opened source project.
+def is_readable(tm) -> bool:
+    """THE readability determination: the archive opened (the caller holds a ThreeMF) and
+    every part a 3MF project requires is present. The Doctor's HIGH_RISK, the traits behind
+    Ready Now and the Compatibility check all call this; nothing else decides readability."""
+    from .validate import REQUIRED
+
+    try:
+        parts = set(tm.list_parts())
+    except Exception:  # noqa: BLE001
+        return False
+    return all(required in parts for required in REQUIRED)
+
+
+def assess(tm) -> Eligibility:
+    """Eligibility of an opened source project. `readable` is decided here, once, by
+    `is_readable`; a caller cannot supply it.
 
     The gate only applies to a project that has `project_settings.config`: a geometry-only
     3MF is wrapped into a fresh project rather than repaired, so its own metadata is not
     what Prepare would write.
     """
+    readable = is_readable(tm)
     problems: list[str] = []
     if readable and tm.has_part(SETTINGS):
         try:

@@ -134,7 +134,7 @@ def check(path: str) -> dict:
     # B2. the same eligibility record Prepare and the Doctor use: a readable project Studio
     # would refuse to prepare is never reported as clean.
     from . import eligibility
-    eligible = eligibility.assess(tm, readable=tm.has_part("3D/3dmodel.model"))
+    eligible = eligibility.assess(tm)
     if eligible.readable and not eligible.preparable:
         findings.append(_finding(
             "prepare.blocked", "warning",

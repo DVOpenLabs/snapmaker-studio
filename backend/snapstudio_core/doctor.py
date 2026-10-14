@@ -40,6 +40,8 @@ class Diagnosis:
     prepare_blocked: bool = False
     #: The raw engine wording behind `prepare_blocked`, for a collapsed technical area.
     structure_problems: list = field(default_factory=list)
+    #: The plain sentence behind `prepare_blocked` ("" when preparable).
+    prepare_blocked_summary: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -110,14 +112,14 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     # The same structure gate Prepare runs, applied to the source: a file Prepare
     # would refuse must not be sent to Prepare.
     from . import eligibility
-    verdict_eligibility = eligibility.assess(tm, readable=res.structural_ok)
+    verdict_eligibility = eligibility.assess(tm)
     structure = verdict_eligibility.problems
     if structure:
         # One plain sentence for people; the raw wording stays in `structure_problems`.
         validation_issues.append(verdict_eligibility.summary)
     painted = sum(fp.painted_triangles.values()) > 0
 
-    if not res.structural_ok:
+    if not verdict_eligibility.readable:
         verdict = HIGH_RISK
         action = "This file is not a usable U1 project (missing required parts); repair may not recover it."
     elif structure:
@@ -143,6 +145,7 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
         validation_issues=validation_issues, compatibility_issues=compatibility_issues,
         recommended_action=action,
         prepare_blocked=bool(structure), structure_problems=list(structure),
+        prepare_blocked_summary=verdict_eligibility.summary,
     )
 
 

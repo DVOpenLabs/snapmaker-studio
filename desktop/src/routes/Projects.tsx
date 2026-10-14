@@ -23,10 +23,11 @@ function eventLabel(action: string): string {
   return action;
 }
 
-const FILTERS: { label: string; match: (v: string | null) => boolean }[] = [
+export const FILTERS: { label: string; match: (p: { verdict: string | null; prepare_blocked?: boolean }) => boolean }[] = [
   { label: "All", match: () => true },
-  { label: "Profile compatible", match: (v) => v === "READY" },
-  { label: "Needs prep", match: (v) => v !== "READY" },
+  { label: "Profile compatible", match: (p) => p.verdict === "READY" && !p.prepare_blocked },
+  { label: "Needs prep", match: (p) => p.verdict !== "READY" && !p.prepare_blocked },
+  { label: "Review in Orca", match: (p) => !!p.prepare_blocked },
 ];
 
 function fmtDate(iso: string | null): string {
@@ -84,7 +85,7 @@ function LibraryCard({ p, onOpen, onDelete, simple }: {
             </span>
             <span className="truncate font-medium">{p.name}</span>
           </button>
-          {p.verdict && <StatusBadge verdict={p.verdict as Verdict} />}
+          {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
@@ -147,11 +148,11 @@ export default function Projects() {
   });
 
   const shown = useMemo(
-    () => (data ?? []).filter((p) => FILTERS[filter].match(p.verdict)),
+    () => (data ?? []).filter((p) => FILTERS[filter].match(p)),
     [data, filter]
   );
   const total = data?.length ?? 0;
-  const readyCount = (data ?? []).filter((p) => p.verdict === "READY").length;
+  const readyCount = (data ?? []).filter((p) => p.verdict === "READY" && !p.prepare_blocked).length;
 
   const openProject = (p: LibraryProject) => {
     setFile(p.source_path);

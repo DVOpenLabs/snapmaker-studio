@@ -360,6 +360,12 @@ def extract(path: str) -> dict:
     except Exception:
         return _unreadable("Studio could not read this file as a 3MF project.")
 
+    # The one readability determination (same as the Doctor's HIGH_RISK): an archive that
+    # opens but lacks the parts a 3MF project requires is not a readable project.
+    if not _eligibility.is_readable(tm):
+        return _unreadable("Studio could not read this file as a 3MF project "
+                           "(parts a 3MF project needs are missing).")
+
     parts = set(tm.list_parts())
     attrs, meta = _model_head(tm)
 

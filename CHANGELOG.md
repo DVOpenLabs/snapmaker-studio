@@ -31,6 +31,10 @@ All notable changes to this project are documented here. The format is based on
   the Doctor, Model Connect (it is still added to your library), the Validation Center, Ready Now,
   the Compatibility check and the command line all say it needs a look in Snapmaker Orca instead of
   calling it ready or sending it to Prepare, and `u1convert repair` refuses it with the same reason.
+- Projects Studio will not prepare now stay marked that way in your library and on the
+  Dashboard and Projects lists ("Review in Orca first"), a missing required part makes a file
+  unreadable everywhere at once, and a setup warning no longer turns a compatible project into
+  "Needs review".
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
