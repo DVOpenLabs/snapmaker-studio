@@ -6,7 +6,7 @@ Real Studio engine and this branch's own web UI, driven in **Microsoft Edge (Chr
 is reachable: the only printer address used is this machine's own, where nothing listens, and any engine request naming another host
 or discovery is aborted and fails the run.
 
-**Result: 44/44 checks passed (including six self-tests that the printer-page check fails on "Score 85", "Grade B", "Printer Health Score", "92/100" and "Healthy (100/100) good to print") (`results.json`)**, in light and dark, including a scan of the whole page (visible text and every accessible name) after the Intelligence Report has loaded: no score, "/ 100", percentage, star rating ("X of 5"), "Score" or "rating" label, readiness rating, "will it print" or success verdict. The only percentages allowed are measured geometry ("N% of surfaces", "steep overhangs") and the pricing margin (`results.json`).
+**Result: 46/46 checks passed (including six self-tests that the printer-page check fails on "Score 85", "Grade B", "Printer Health Score", "92/100" and "Healthy (100/100) good to print") (`results.json`)**, in light and dark, including a scan of the whole page (visible text and every accessible name) after the Intelligence Report has loaded: no score, "/ 100", percentage, star rating ("X of 5"), "Score" or "rating" label, readiness rating, "will it print" or success verdict. The only percentages allowed are measured geometry ("N% of surfaces", "steep overhangs") and the pricing margin (`results.json`).
 
 | Screenshot | What it shows |
 |---|---|

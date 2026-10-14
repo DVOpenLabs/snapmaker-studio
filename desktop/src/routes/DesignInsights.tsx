@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
-import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, printFindings as apiPrintFindings, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
+import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, intelligenceReport as apiIntelligenceReport, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
 import { useFilament } from "@/store/filament";
 import { useOpenFile } from "@/hooks/useOpenFile";
@@ -121,12 +121,14 @@ export default function DesignInsights() {
     queryFn: () => apiBedFit(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
-  // Print risk signals from design + printer + history (no percentage; see #92).
-  const { data: findings } = useQuery({
-    queryKey: ["print-findings", file.path, u1Host],
-    queryFn: () => apiPrintFindings(file.path, u1Host),
+  // The Print risk signals card comes from the Intelligence Report's own reply (same query key and function as
+  // <IntelligenceReport>, so it is one request and one printer read): the card and the report cannot differ (#92).
+  const { data: reportReply } = useQuery({
+    queryKey: ["report", file.path, u1Host],
+    queryFn: () => apiIntelligenceReport(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
+  const findings = reportReply?.print_findings;
   const issues = [...(d?.validation_issues ?? []), ...(d?.compatibility_issues ?? [])];
 
   // Honest headline: a green "ready" verdict must not survive real print-setup risks

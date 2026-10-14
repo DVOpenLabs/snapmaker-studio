@@ -21,8 +21,9 @@ _ORDER = {"ok": 0, "warn": 1, "risk": 2}
 def _community_entries(ck, risk) -> list:
     """Community entries for one report risk: only a FULL symptom phrase found in the risk text counts (a shared word
     or a shared number does not), and printer failure history never gets one. The global matcher is left as it is."""
-    if risk.get("condition") == C.PRINTER_FAILURE_HISTORY:
-        return []
+    cid = risk.get("condition") or ""
+    if not cid.startswith("unmapped:") and cid not in C.COMMUNITY_CONDITIONS:
+        return []   # printer history, firmware, validation and business findings never carry community guidance
     text = (risk.get("text") or "").lower()
     return [e for e in ck.match(text, limit=6) if any(sym in text for sym in e["symptoms"])]
 
@@ -155,7 +156,7 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                 rk["community"] = {
                     "fix": e["community_fix"],
                     "success_pattern": f"Most U1 users resolve “{e['title']}” this way.",
-                    "confidence": "High",   # curated, widely-reported issues
+                    "confidence": "High",   # only a full symptom phrase in the risk text reaches here (_community_entries)
                     "sources": e["sources"],
                 }
     except Exception:

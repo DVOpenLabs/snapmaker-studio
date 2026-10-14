@@ -522,6 +522,8 @@ export interface IntelligenceReport {
   available: boolean;
   risks_found?: number;
   not_verified?: string[];
+  /** The Print risk signals card content from the SAME request, so the card and the report cannot differ. */
+  print_findings?: PrintFindings;
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;

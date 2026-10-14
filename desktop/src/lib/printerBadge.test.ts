@@ -18,6 +18,9 @@ describe("printerBadge", () => {
     expect(printerBadge({ diag: warned, concerns: 1 })).toEqual({ label: "See concerns", ok: false });
     expect(printerBadge({ diag: warned, concerns: 2 })?.label).toBe("See concerns");
   });
+  it("missing or still-loading health data is unknown, never Healthy", () => {
+    expect(printerBadge({ diag: ready, concerns: null })).toEqual({ label: "Checking…", ok: false });
+  });
   it("keeps the firmware state when it is not ready", () => {
     expect(printerBadge({ diag: { healthy: false, klippy_state: "shutdown" }, concerns: 0 })).toEqual({ label: "shutdown", ok: false });
     expect(printerBadge({ diag: { healthy: false, klippy_state: "shutdown" }, concerns: 2 })?.label).toBe("shutdown");

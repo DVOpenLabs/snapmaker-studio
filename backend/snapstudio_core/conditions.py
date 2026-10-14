@@ -39,6 +39,10 @@ FIRMWARE_WARNING = "firmware-warning"
 PROFIT_BELOW_COST = "profit-below-cost"
 OBJECT_SPACING_UNVERIFIED = "object-spacing-unverified"
 
+# The only mapped conditions that may carry curated community guidance (it needs a full symptom phrase besides).
+COMMUNITY_CONDITIONS = frozenset({TOOLHEAD_FIT, FILAMENT_METADATA, PAINTED_REGIONS, BED_HEIGHT, BED_FOOTPRINT, BED_NEAR_FULL,
+                                  BED_PRIME_TOWER, FIRST_LAYER_ADHESION, FIRST_LAYER_BED_FLATNESS, FIRST_LAYER_CORNER_LIFT,
+                                  FIRST_LAYER_ORIENTATION})
 PRINTER_CONDITIONS = frozenset({PRINTER_FAILURE_HISTORY, FIRMWARE_NOT_READY, FIRMWARE_FAILED_COMPONENT, FIRMWARE_WARNING})
 # Conditions where the Print risk signals card holds evidence no Doctor result carries (the file-name history); for the rest a
 # signal only restates what the Doctor already says.

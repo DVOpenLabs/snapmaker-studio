@@ -84,7 +84,7 @@ def assess(color_count, toolhead_count=None, printer_known: bool = False,
         bump("risk")
         findings.append(_f("risk", f"This design uses {n} colours but {source} has only {heads_txt} — {over} colour{'' if over == 1 else 's'} can't be loaded at the same time.", id="toolhead-fit"))
         swap_to = ("a single colour" if heads == 1 else f"{heads} colours")
-        findings.append(_f("warn", f"To print it as designed, swap filament mid-print (pause-and-swap), or remap it down to {swap_to} in your slicer. Either way Studio keeps all {n} original colours in the file."))
+        findings.append(_f("warn", f"To print it as designed, swap filament mid-print (pause-and-swap), or remap it down to {swap_to} in your slicer. Either way Studio keeps all {n} original colours in the file.", id="toolhead-fit"))
 
     overall_text = {
         "ok": "Your toolheads cover this design's colours.",

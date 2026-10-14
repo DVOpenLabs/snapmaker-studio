@@ -238,3 +238,140 @@ def test_community_fix_needs_a_full_symptom_phrase_and_never_attaches_to_failure
     from snapstudio_core import bed_fit as bf
     big = ir.build(bed_fit=bf.assess({"x": 300, "y": 100, "z": 10}, bed={"x": 270, "y": 270, "z": 270}, bed_known=True))
     assert "Out of bounds" in big["risks"][0]["community"]["success_pattern"]
+
+
+# --- one inputs snapshot per request ---
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _fake_printer(monkeypatch, *, diag_first, caps_first, caps_later, jobs, history_fails_later=True):
+    """Every printer-side source answers ONE way the first time and a different way afterwards (so a second read
+    would change the outcome). Returns the call counters."""
+    from snapstudio_core import moonraker
+    calls = {"diag": 0, "hist": 0, "caps": 0, "bed_mesh": 0}
+
+    def diagnostics(host, port=7125, timeout=3.0):
+        calls["diag"] += 1
+        return diag_first if calls["diag"] == 1 else {"klippy_state": None, "warnings": [], "failed_components": []}
+
+    def history(host, port=7125, limit=20, timeout=4.0):
+        calls["hist"] += 1
+        if calls["hist"] == 1:
+            return {"jobs": jobs, "totals": {}}
+        raise OSError("history disappeared")
+
+    def capabilities(host, port=7125, timeout=4.0):
+        calls["caps"] += 1
+        if calls["caps"] == 1:
+            return caps_first
+        if caps_later is None:
+            raise OSError("capabilities disappeared")
+        return caps_later
+
+    def bed_mesh(host, port=7125, timeout=4.0):
+        calls["bed_mesh"] += 1
+        return {"available": False} if calls["bed_mesh"] == 1 else {"available": True, "range_mm": 0.9, "center_range_mm": 0.9, "corner_spread_mm": 0.9}
+
+    monkeypatch.setattr(moonraker, "diagnostics", diagnostics)
+    monkeypatch.setattr(moonraker, "history", history)
+    monkeypatch.setattr(moonraker, "capabilities", capabilities)
+    monkeypatch.setattr(moonraker, "bed_mesh", bed_mesh)
+    return calls
+
+
+def _report(path):
+    from snapstudio_api import service
+    return service.intelligence_report(str(path), host="printer.invalid")
+
+
+def _card_matches_report(report):
+    by_id = {r["condition"]: r for r in report["risks"]}
+    for sg in report["print_findings"]["signals"]:
+        assert by_id[sg["id"]]["level"] == sg["level"], sg["id"]
+    return by_id
+
+
+def test_card_and_report_share_one_read_of_every_printer_source(monkeypatch):
+    """8 toolheads on the first read, 4 (or an error) on any later one: neither output may change, and each source
+    is read exactly once."""
+    jobs = [{"filename": "example-project.gcode", "status": "error"}] + [{"filename": f"o{i}.gcode", "status": "completed"} for i in range(4)]
+    caps8 = {"toolhead_count": 8, "bed_mm": {"x": 270, "y": 270, "z": 270}}
+    for later in ({"toolhead_count": 4, "bed_mm": {"x": 270, "y": 270, "z": 270}}, None):
+        calls = _fake_printer(monkeypatch, diag_first={"klippy_state": "ready", "warnings": ["w"], "failed_components": []},
+                              caps_first=caps8, caps_later=later, jobs=jobs)
+        report = _report(ROOT / "examples" / "demo_u1_showcase.3mf")       # 6 colors: fits 8 heads, not 4
+        assert calls == {"diag": 1, "hist": 1, "caps": 1, "bed_mesh": 1}, calls
+        by_id = _card_matches_report(report)
+        assert "toolhead-fit" not in by_id and "toolhead-fit" not in {s["id"] for s in report["print_findings"]["signals"]}
+        assert {"firmware-warning", "printer-failure-history"} <= set(by_id)
+        assert report["printer_status"] == "Answered, 2 concerns" and "printer health" in report["print_findings"]["checked"]
+    # and the other way round: 4 heads on the one read => the toolhead risk is in BOTH the card and the report
+    calls = _fake_printer(monkeypatch, diag_first={"klippy_state": "ready", "warnings": [], "failed_components": []},
+                          caps_first={"toolhead_count": 4, "bed_mm": {"x": 270, "y": 270, "z": 270}},
+                          caps_later={"toolhead_count": 8}, jobs=[])
+    report = _report(ROOT / "examples" / "demo_u1_showcase.3mf")
+    by_id = _card_matches_report(report)
+    assert calls["caps"] == 1 and "toolhead-fit" in by_id and "toolhead-fit" in {s["id"] for s in report["print_findings"]["signals"]}
+
+
+def test_history_is_read_even_when_diagnostics_has_no_firmware_state(monkeypatch):
+    """/printer/info incomplete (no klippy_state) but history readable: 8/10 failed + streak 6 must still count."""
+    jobs = [{"filename": f"o{i}.gcode", "status": "error"} for i in range(6)] + [
+        {"filename": "p0.gcode", "status": "completed"}, {"filename": "p1.gcode", "status": "completed"},
+        {"filename": "p2.gcode", "status": "error"}, {"filename": "p3.gcode", "status": "error"}]
+    calls = _fake_printer(monkeypatch, diag_first={"klippy_state": None, "warnings": [], "failed_components": [],
+                                                   "state_message": "printer info unavailable: timeout"},
+                          caps_first={"toolhead_count": 4, "bed_mm": {"x": 270, "y": 270, "z": 270}}, caps_later=None, jobs=jobs)
+    report = _report(ROOT / "examples" / "demo_u1_showcase.3mf")
+    assert calls["hist"] == 1
+    by_id = _card_matches_report(report)
+    f = by_id["printer-failure-history"]
+    assert f["level"] == "risk" and "8 of the last 10" in f["text"] and "6 prints failed in a row" in f["text"]
+    assert report["printer_status"] == "Answered, 1 concern"
+    assert "printer health" in report["print_findings"]["checked"] and "printer health" not in report["print_findings"]["not_checked"]
+
+
+def test_nothing_readable_means_not_checked(monkeypatch):
+    from snapstudio_core import moonraker
+    for name in ("diagnostics", "history", "capabilities", "bed_mesh"):
+        monkeypatch.setattr(moonraker, name, lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+    report = _report(ROOT / "examples" / "demo_u1_showcase.3mf")
+    assert report["printer_status"] == "Not checked"
+    assert "printer health" in report["print_findings"]["not_checked"]
+
+
+# --- every real producer finding that is not OK names its condition ---
+def test_every_non_ok_finding_from_the_real_producers_has_a_condition_id():
+    from snapstudio_core import bed_fit as bf
+    cases = []
+    for colors, heads, painted, meta in ((1, 4, True, None), (5, 4, False, None), (5, 8, False, ["x"]), (4, 4, True, ["y"]), (6, 1, False, ["z"])):
+        cases.append(("mm_doctor", mm_doctor.assess(colors, heads=heads, heads_known=True, painted=painted, metadata_issues=meta)))
+    for colors, heads in ((5, 4), (6, 1), (3, 4), (1, 4)):
+        cases.append(("toolhead_fit", tf.assess(colors, heads, True)))
+    bed = {"available": True, "range_mm": 0.3, "center_range_mm": 0.3, "corner_spread_mm": 0.3}
+    for foot, stab, b in (({"base_area_mm2": 20, "min_dim_mm": 3, "width_x_mm": 5, "width_y_mm": 4}, {"height_mm": 10}, bed),
+                          ({"base_area_mm2": 80, "min_dim_mm": 8, "width_x_mm": 10, "width_y_mm": 8}, {"height_mm": 20, "tip_risk": True}, {**bed, "range_mm": 0.15, "center_range_mm": 0.15}),
+                          ({"base_area_mm2": 3000, "min_dim_mm": 50, "width_x_mm": 150, "width_y_mm": 150}, {"height_mm": 90}, bed),
+                          ({"base_area_mm2": 3000, "min_dim_mm": 50, "width_x_mm": 150, "width_y_mm": 150}, {"height_mm": 90}, None)):
+        cases.append(("first_layer", fl.assess(foot, stab, b)))
+    big = {"x": 270, "y": 270, "z": 270}
+    for dims, multi in (({"x": 100, "y": 100, "z": 300}, False), ({"x": 300, "y": 100, "z": 10}, False),
+                        ({"x": 268, "y": 100, "z": 10}, False), ({"x": 262, "y": 100, "z": 10}, True)):
+        cases.append(("bed_fit", bf.assess(dims, bed=big, bed_known=True, object_count=2, multi_material=multi)))
+    seen_ids = set()
+    for name, doc in cases:
+        for f in doc.get("findings", []):
+            if f["level"] != "ok":
+                assert f.get("id"), (name, f["text"])
+                seen_ids.add(f["id"])
+                assert f.get("action") or name == "toolhead_fit", (name, f["text"])
+    assert {"toolhead-fit", "filament-metadata", "painted-regions", "bed-height", "bed-footprint", "bed-near-full",
+            "bed-prime-tower-room", "first-layer-adhesion", "first-layer-bed-flatness", "first-layer-corner-lift",
+            "first-layer-orientation"} <= seen_ids
+    # health conditions and predictor signals: every one is mapped, none falls through to "unmapped"
+    for statuses, diag in ((["error"] * 3 + ["completed"] * 2, {**READY, "warnings": ["w"], "failed_components": ["m"]}),
+                           (["completed"] * 5, {"klippy_state": "shutdown", "warnings": [], "failed_components": []})):
+        health = _health(statuses, diag)
+        assert all(not c["id"].startswith("unmapped") for c in health["conditions"]) and health["conditions"]
+        for sg in sp.findings(readiness={"ready": False, "warnings": ["a"]}, health=health, prior_failures=1, printer_checked=True)["signals"]:
+            assert not sg["id"].startswith("unmapped")

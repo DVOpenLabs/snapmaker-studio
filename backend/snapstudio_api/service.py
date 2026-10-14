@@ -1909,7 +1909,7 @@ def _upload_state(confirmation: dict) -> str:
     return "verified"
 
 
-def first_layer(path: str, host: str | None = None, port: int = 7125) -> dict:
+def first_layer(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """First-Layer Intelligence: fuse the design's footprint/stability with the printer's
     REAL measured bed (when a host is reachable) into plain-language first-layer findings.
     Read-only end to end. Works design-only when no printer is connected."""
@@ -1921,15 +1921,14 @@ def first_layer(path: str, host: str | None = None, port: int = 7125) -> dict:
                 "reason": "geometry unavailable", "bed_aware": False}
     bed = None
     bed_dim = 270.0
-    if host:
+    if snapshot is not None:
+        bed = snapshot.get("bed_mesh")
+    elif host:
         from snapstudio_core import moonraker
         bed = moonraker.bed_mesh(host, port)            # never raises
-        try:
-            caps = moonraker.capabilities(host, port)   # can raise when unreachable
-            if caps.get("bed_mm") and caps["bed_mm"].get("x"):
-                bed_dim = caps["bed_mm"]["x"]
-        except Exception:
-            pass
+    caps = _caps(host, port, snapshot)
+    if caps and caps.get("bed_mm") and caps["bed_mm"].get("x"):
+        bed_dim = caps["bed_mm"]["x"]
     out = fl.assess(md.get("footprint"), md.get("stability"), bed, bed_dim)
     out["available"] = True
     return out
@@ -2029,22 +2028,16 @@ def batch_pricing(paths: list[str], currency: str = "$", **factors) -> dict:
     return pricing.aggregate(priced)
 
 
-def _toolhead_count(host: str | None, port: int = 7125) -> tuple:
-    """The ONE place the toolhead count is read: (count, known) from the connected printer, or (None, False).
-    The Multi-Material Doctor and the Toolhead-Fit Doctor both use it, so they cannot disagree about the printer."""
-    if not host:
-        return None, False
-    from snapstudio_core import moonraker
-    try:
-        caps = moonraker.capabilities(host, port)   # can raise when unreachable
-        if caps.get("toolhead_count"):
-            return caps["toolhead_count"], True
-    except Exception:
-        pass
+def _toolhead_count(host: str | None, port: int = 7125, snapshot: dict | None = None) -> tuple:
+    """The ONE place the toolhead count is read: (count, known) from the connected printer (the request snapshot when
+    there is one), or (None, False). The Multi-Material and Toolhead-Fit Doctors both use it."""
+    caps = _caps(host, port, snapshot)
+    if caps and caps.get("toolhead_count"):
+        return caps["toolhead_count"], True
     return None, False
 
 
-def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
+def mm_doctor(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """Multi-Material Doctor: one verdict for a multicolour U1 print — colours vs
     toolheads, filament-settings consistency, painted-region mapping. Uses the
     connected U1's real toolhead count when reachable, else the U1's 4. Read-only."""
@@ -2053,13 +2046,13 @@ def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
     info = project_info(path)
     issues = info.get("issues") or []
     metadata_issues = [i for i in issues if "filament metadata inconsistent" in str(i)]
-    heads, heads_known = _toolhead_count(host, port)
+    heads, heads_known = _toolhead_count(host, port, snapshot)
     return mmd.assess(info.get("colors"), heads=heads, heads_known=heads_known,
                       painted=bool(info.get("painted")), metadata_issues=metadata_issues,
                       object_count=info.get("objects") or 1)
 
 
-def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
+def bed_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """Bed-Fit / Out-of-Bounds Doctor: does the model fit the U1 bed, and if not,
     WHY (the cryptic 'out of bounds' error) and HOW to fix it. Uses the connected
     U1's real bed when reachable, else the known U1 bed. Read-only; works offline."""
@@ -2071,64 +2064,96 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     multi = (info.get("colors") or 0) > 1
     bed = None
     bed_known = False
-    if host:
-        from snapstudio_core import moonraker
-        try:
-            caps = moonraker.capabilities(host, port)
-            bm = caps.get("bed_mm")
-            if bm and bm.get("x"):
-                bed, bed_known = bm, True
-        except Exception:
-            pass
+    caps = _caps(host, port, snapshot)
+    bm = (caps or {}).get("bed_mm")
+    if bm and bm.get("x"):
+        bed, bed_known = bm, True
     return bf.assess(dims, bed=bed, bed_known=bed_known,
                      object_count=object_count, multi_material=multi)
 
 
-def predict_success(path: str, host: str | None = None, port: int = 7125) -> dict:
-    """Print risk signals: list what design validation, toolhead fit, first-layer
-    risk and (when a printer is reachable) its health and this file's prior
-    failures flagged, plus what was and was not checked. No percentage or
-    verdict. Read-only; the printer-side signals are skipped when no host is given."""
+def _printer_snapshot(host: str, port: int = 7125, limit: int = 50) -> dict:
+    """ONE read of every printer-side input for a whole request, each source independently: diagnostics, print history,
+    capabilities (toolhead count, bed size) and the bed mesh. The Doctors, the Print risk signals and the Intelligence
+    Report all consume this snapshot, so a transient failure or a change between two reads cannot make them disagree,
+    and a source that is unreadable does not hide the ones that are.
+    {"diag", "hist_jobs", "history_ok", "caps", "bed_mesh", "health", "reachable"} (unreadable sources are None)."""
+    from snapstudio_core import moonraker, failure_patterns as fp, health_score as hs
+    snap = {"diag": None, "jobs": None, "history_ok": False, "caps": None, "bed_mesh": None,
+            "health": None, "reachable": False}
+    try:
+        diag = moonraker.diagnostics(host, port)
+        if diag.get("klippy_state") is not None:   # an answer with no firmware state is not a readable diagnosis
+            snap["diag"] = diag
+    except Exception:
+        pass
+    fail = None
+    try:
+        hist = moonraker.history(host, port, limit)
+        snap["jobs"] = hist.get("jobs")
+        snap["history_ok"] = True
+        fail = fp.assess(hist.get("jobs"), hist.get("totals"))
+    except Exception:
+        pass
+    try:
+        snap["caps"] = moonraker.capabilities(host, port)
+    except Exception:
+        pass
+    try:
+        snap["bed_mesh"] = moonraker.bed_mesh(host, port)   # never raises
+    except Exception:
+        pass
+    snap["reachable"] = bool(snap["diag"] or snap["history_ok"] or snap["caps"])
+    if snap["diag"] or fail:
+        snap["health"] = hs.score(diagnostics=snap["diag"], failures=fail)
+    return snap
+
+
+def _caps(host, port: int = 7125, snapshot: dict | None = None):
+    """Capabilities from the request snapshot when there is one (never read twice), else one read, else None."""
+    if snapshot is not None:
+        return snapshot.get("caps")
+    if not host:
+        return None
+    from snapstudio_core import moonraker
+    try:
+        return moonraker.capabilities(host, port)   # can raise when unreachable
+    except Exception:
+        return None
+
+
+def predict_success(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None,
+                    inputs: dict | None = None) -> dict:
+    """Print risk signals: one signal per stable condition id (design validation, toolhead fit, first-layer
+    conditions and, when a printer answered, its health conditions and this file's prior failures), plus what was and
+    was not checked. No percentage or verdict. Read-only. `snapshot` lets a caller that also builds the Intelligence
+    Report share ONE printer read (see `_printer_snapshot`)."""
     from snapstudio_core import success_predict as sp
     from snapstudio_core.validation_report import readiness_report
     import os
-    readiness = toolfit = fl = health = None
-    prior = 0
-    history_ok = False
+    inputs = inputs or {}
+    if snapshot is None and host:
+        snapshot = _printer_snapshot(host, port)
+    snapshot = snapshot or {}
+    readiness = toolfit = fl = None
     try:
         readiness = readiness_report(path)
     except Exception:
         pass
-    try:
-        toolfit = toolhead_fit(path, host, port)
-    except Exception:
-        pass
-    try:
-        fl = first_layer(path, host, port)
-    except Exception:
-        pass
-    # Only count the printer-side signals as checked when the printer answered;
-    # printer_health() scores an unreachable printer as healthy.
-    reachable = False
-    if host:
+    toolfit = inputs.get("toolfit")
+    if toolfit is None:
         try:
-            from snapstudio_core import moonraker
-            reachable = moonraker.diagnostics(host, port).get("klippy_state") is not None
+            toolfit = toolhead_fit(path, host, port, snapshot or None)
         except Exception:
             pass
-    if host and reachable:
+    fl = inputs.get("first_layer")
+    if fl is None:
         try:
-            health = printer_health(host, port)
+            fl = first_layer(path, host, port, snapshot or None)
         except Exception:
             pass
-        try:
-            from snapstudio_core import moonraker
-            base = os.path.basename(path)
-            hist = moonraker.history(host, port, 50)
-            prior = _prior_failures(hist.get("jobs"), base)
-            history_ok = True
-        except Exception:
-            pass
+    health = snapshot.get("health")
+    prior = _prior_failures(snapshot.get("jobs"), os.path.basename(path)) if snapshot.get("history_ok") else 0
     spacing_unverified = True
     try:
         from snapstudio_core.collision import assess_spacing
@@ -2138,7 +2163,7 @@ def predict_success(path: str, host: str | None = None, port: int = 7125) -> dic
     except Exception:
         pass
     return sp.findings(readiness=readiness, toolfit=toolfit, first_layer=fl,
-                       health=health, prior_failures=prior, printer_checked=history_ok,
+                       health=health, prior_failures=prior, printer_checked=bool(snapshot.get("history_ok")),
                        spacing_unverified=spacing_unverified)
 
 
@@ -2284,11 +2309,15 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
         except Exception:
             return None
 
-    predict = _safe(predict_success, path, host, port)
-    bed = _safe(bed_fit, path, host, port)
-    mm = _safe(mm_doctor, path, host, port)
-    fl = _safe(first_layer, path, host, port)
-    health = _safe(printer_health, host, port) if host else None
+    # ONE read of every printer-side input; each Doctor, the card and the report consume it, and the toolhead-fit and
+    # first-layer results are computed once and shared with the card.
+    snapshot = _safe(_printer_snapshot, host, port) if host else None
+    bed = _safe(bed_fit, path, host, port, snapshot)
+    mm = _safe(mm_doctor, path, host, port, snapshot)
+    fl = _safe(first_layer, path, host, port, snapshot)
+    toolfit = _safe(toolhead_fit, path, host, port, snapshot)
+    predict = _safe(predict_success, path, host, port, snapshot or {}, {"toolfit": toolfit, "first_layer": fl})
+    health = (snapshot or {}).get("health")
     cost = _safe(cost_to_price, path, host, filename, port, currency, **factors)
     pricing = _safe(pricing_doctor, path, host, filename, port, currency, **factors)
     profit = _safe(profit_doctor, path, host, filename, port, currency=currency, **factors)
@@ -2297,8 +2326,11 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
     from snapstudio_core.collision import assess_spacing
     _info = _safe(insights, path) or {}
     spacing = assess_spacing(_info.get("objects"), str(path).lower().endswith(".stl"))
-    return ir.build(predict=predict, bed_fit=bed, mm=mm, first_layer=fl,
-                    health=health, cost=cost, pricing=pricing, profit=profit, spacing=spacing)
+    out = ir.build(predict=predict, bed_fit=bed, mm=mm, first_layer=fl,
+                   health=health, cost=cost, pricing=pricing, profit=profit, spacing=spacing)
+    if predict is not None:
+        out["print_findings"] = predict   # the card is shown from THIS reply, so it cannot differ from the report
+    return out
 
 
 def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
@@ -2321,7 +2353,7 @@ def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
     return hs.score(diagnostics=diag, failures=fail)
 
 
-def toolhead_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
+def toolhead_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """Toolhead-Fit Intelligence: does the design's colour count fit the U1's toolheads?
     Uses the printer's REAL toolhead count when a host is reachable, else the U1's known 4.
     Read-only end to end; works offline (printer-unaware) when no host is given."""
@@ -2329,7 +2361,7 @@ def toolhead_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     from snapstudio_core import toolhead_fit as tf
     info = project_info(path)
     colors = info.get("colors")
-    heads, known = _toolhead_count(host, port)
+    heads, known = _toolhead_count(host, port, snapshot)
     return tf.assess(colors, heads, known)
 
 

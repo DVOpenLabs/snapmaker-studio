@@ -4,13 +4,14 @@
 // its own state. "Healthy" only appears with ready firmware and no concerns.
 export interface BadgeInput {
   diag: { healthy?: boolean; klippy_state?: string | null } | null | undefined;
-  /** Number of conditions the printer reported (`health.conditions.length`). */
-  concerns: number;
+  /** Number of conditions the printer reported (`health.conditions.length`); null while the health result is loading or missing. */
+  concerns: number | null;
 }
 export interface Badge { label: string; ok: boolean }
 
 export function printerBadge({ diag, concerns }: BadgeInput): Badge | null {
   if (!diag) return null;
+  if (concerns === null) return { label: "Checking…", ok: false };      // unknown is never "Healthy"
   const state = diag.klippy_state ?? null;
   const firmwareReady = state === "ready";
   if (!firmwareReady && state) return { label: state, ok: false };       // shutdown, error, startup: say so

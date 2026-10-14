@@ -104,6 +104,8 @@ def _service_with_printer(monkeypatch, diagnostics):
 
 def test_unreachable_printer_is_not_reported_as_checked(monkeypatch, tmp_path):
     service = _service_with_printer(monkeypatch, {"klippy_state": None, "warnings": []})
+    from snapstudio_core import moonraker
+    monkeypatch.setattr(moonraker, "history", lambda *a, **k: (_ for _ in ()).throw(OSError("down")))   # nothing readable
     cube = tmp_path / "c.stl"
     cube.write_bytes(b"\0" * 80 + (0).to_bytes(4, "little"))
     out = service.predict_success(str(cube), host="printer.invalid")
