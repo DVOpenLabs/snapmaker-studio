@@ -7,6 +7,9 @@ from pathlib import Path
 
 GUARD = Path(__file__).parents[2] / "tools" / "check-source-independence.py"
 BS = chr(92)
+NL = chr(10)
+NLB = NL.encode()
+USERS = "Us" + "ers"
 
 
 def _guard():
@@ -31,8 +34,9 @@ def _win(*parts: str, sep: str = BS) -> str:
 
 
 def _baselined(mod) -> tuple[str, str]:
-    """A real (file, normalized path) baseline entry that uses a Windows-style path."""
-    return next(e for e in sorted(mod.LEAK_BASELINE) if e[1].startswith("c:/" + "users/"))
+    """A real approved (file, line) baseline entry whose line holds a Windows-style path."""
+    return next(e for e in sorted(mod.LEAK_BASELINE)
+                if "c:/" + "users/" in e[1] and "#" not in e[1] and len(e[1]) < 150)
 
 
 def _leaks(problems: list[str], name: str) -> list[str]:
@@ -59,24 +63,51 @@ def test_a_clean_tree_and_the_public_sample_path_pass(tmp_path):
     assert problems == []
 
 
-def test_a_known_baseline_path_passes(tmp_path):
+def test_a_known_baseline_line_passes(tmp_path):
     mod = _guard()
-    name, token = _baselined(mod)
-    leak = _win(*token.split("/")[1:]).encode()
-    repo = _repo(tmp_path, {name: b"fixture " + leak + b"\n"})
+    name, line = _baselined(mod)
+    repo = _repo(tmp_path, {name: line.encode() + NLB})
     problems, _ = mod.scan(repo)
     assert _leaks(problems, name) == []
 
 
 def test_a_baseline_entry_does_not_hide_a_different_path_in_the_same_file(tmp_path):
     mod = _guard()
-    name, token = _baselined(mod)
-    known = _win(*token.split("/")[1:]).encode()
-    other = _win("Users", "intruder", "secret", "x.3mf").encode()
-    repo = _repo(tmp_path, {name: known + b"\n" + other + b"\n"})
+    name, line = _baselined(mod)
+    other = _win("Users", "intruder", "secret", "x.3mf")
+    repo = _repo(tmp_path, {name: (line + NL + other + NL).encode()})
     problems, _ = mod.scan(repo)
     found = _leaks(problems, name)
     assert len(found) == 1 and "intruder" in found[0]
+
+
+def test_a_longer_path_sharing_an_approved_prefix_fails(tmp_path):
+    mod = _guard()
+    name, line = _baselined(mod)
+    for extension in (" OtherClient/model.3mf", "/more", "-sibling"):
+        repo = _repo(tmp_path / ("e" + str(abs(hash(extension)))), {name: (line + extension).encode() + NLB})             if (tmp_path / ("e" + str(abs(hash(extension))))).mkdir() is None else None
+        problems, _ = mod.scan(repo)
+        assert _leaks(problems, name), extension
+
+
+def test_unc_file_host_and_url_encoded_paths_are_found(tmp_path):
+    forms = {
+        "unc.md": BS + BS + "workstation" + BS + "Users" + BS + "Alice" + BS + "private" + BS + "model.3mf",
+        "filehost.md": "file://workstation/" + USERS + "/Alice/private/model.3mf",
+        "encoded.md": "C%3A%5C" + USERS + "%5CAlice%5Cprivate",
+        "encoded2.md": "C%253A%255C" + USERS + "%255CAlice",
+        "encodedfile.md": "file:///C%3A/" + USERS + "/Alice/x.3mf",
+    }
+    repo = _repo(tmp_path, {n: v.encode() + NLB for n, v in forms.items()})
+    problems, _ = _guard().scan(repo)
+    for name in forms:
+        assert _leaks(problems, name), name
+
+
+def test_an_https_url_naming_a_users_path_is_not_a_leak(tmp_path):
+    repo = _repo(tmp_path, {"docs/link.md": ("see https://example.com/" + USERS + "/guide for details").encode() + NLB})
+    problems, _ = _guard().scan(repo)
+    assert _leaks(problems, "docs/link.md") == []
 
 
 def test_case_and_separator_variants_of_a_leak_are_all_found(tmp_path):
@@ -154,20 +185,21 @@ def _mutant(tmp_path: Path, old: str, new: str):
 
 def _canaries_all_caught(mod, tmp_path: Path) -> bool:
     """True only when every canary scenario still produces its leak problem."""
-    name, token = _baselined(mod)
-    known = _win(*token.split("/")[1:])
+    name, line = _baselined(mod)
     exc = next(iter(mod.CONTENT_EXCEPTIONS))
     scenarios = {
-        name: (known + "\n" + _win("Users", "intruder", "x")).encode(),
+        name: (line + NL + _win("Users", "intruder", "x") + NL + line + " OtherClient/model.3mf").encode(),
         "case.md": _win("USERS", "Someone", "x").encode(),
         "two.md": (_win("Users", "one", "a") + " " + _win("Users", "two", "b")).encode(),
-        exc: b"credit\n" + _win("Users", "someone", "x").encode(),
+        exc: b"credit" + NLB + _win("Users", "someone", "x").encode(),
         "pic.png": bytes([0, 1]) + _win("Users", "someone", "x").encode() + bytes([0]),
+        "unc.md": (BS + BS + "host" + BS + "Users" + BS + "a" + BS + "b").encode(),
+        "url.md": ("C%3A%5C" + USERS + "%5CAlice%5Cprivate").encode(),
     }
     (tmp_path / "canary").mkdir(exist_ok=True)
     repo = _repo(tmp_path / "canary", scenarios)
     problems, _ = mod.scan(repo)
-    if len(_leaks(problems, "two.md")) != 2:
+    if len(_leaks(problems, "two.md")) != 2 or len(_leaks(problems, name)) != 2:
         return False
     return all(_leaks(problems, n) for n in scenarios)
 
@@ -180,14 +212,18 @@ import pytest  # noqa: E402
 
 MUTATIONS = {
     "case-sensitive leak rules": ("_TAIL, re.IGNORECASE)", "_TAIL)"),
-    "baseline keyed by file name only": ("if (name, token) not in LEAK_BASELINE:",
+    "baseline keyed by file name only": ("if (name, key) not in LEAK_BASELINE:",
                                          "if name not in {f for f, _ in LEAK_BASELINE}:"),
-    "content exception skips the leak scan": ("for line, token in leak_hits(leak_text):",
-                                              "for line, token in ([] if name in CONTENT_EXCEPTIONS else leak_hits(leak_text)):"),
-    "binary-suffix files skip the leak scan": ("for line, token in leak_hits(leak_text):",
-                                               "for line, token in (leak_hits(leak_text) if is_text else []):"),
-    "only the first hit per rule is reported": ("for rule in LEAK_RULES for m in rule.finditer(text))",
-                                                "for rule in LEAK_RULES for m in list(rule.finditer(text))[:1])"),
+    "baseline matched by prefix": ("if (name, key) not in LEAK_BASELINE:",
+                                   "if not any(f == name and key.startswith(k) for f, k in LEAK_BASELINE):"),
+    "content exception skips the leak scan": ("for line, token, key in leak_hits(leak_text):",
+                                              "for line, token, key in ([] if name in CONTENT_EXCEPTIONS else leak_hits(leak_text)):"),
+    "binary-suffix files skip the leak scan": ("for line, token, key in leak_hits(leak_text):",
+                                               "for line, token, key in (leak_hits(leak_text) if is_text else []):"),
+    "only the first hit per rule is reported": ("for m in rule.finditer(line):",
+                                                "for m in list(rule.finditer(line))[:1]:"),
+    "url-encoded paths are not decoded": ("decoded = unquote(line)", "decoded = line"),
+    "UNC and file-host rule removed": ("    re.compile(_UNC + _USERS + _TAIL, re.IGNORECASE)," + NL, ""),
 }
 
 

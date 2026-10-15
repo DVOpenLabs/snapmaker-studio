@@ -10,9 +10,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import hashlib
 import re
 import subprocess
 import sys
+from urllib.parse import unquote
 
 
 # These definitions alone may contain the references they prohibit.
@@ -39,55 +41,78 @@ ARTIFACT_SUFFIXES = frozenset({".out", ".prof", ".pstats", ".dmp", ".tee"})
 # Local absolute paths and user names, built from pieces so this file does not match itself.
 # Matching is case-insensitive, accepts either separator and repeated separators, and the
 # whole path is captured so a baseline entry covers one known path, not a whole file.
-_DRIVE = r"[A-Za-z]:[\\/]+"
+_DRIVE = r"[A-Za-z]:[\x5c/]+"
 _TAIL = r"[^\s\"'`<>|*?,;)\]}]*"
+# A UNC share or a file URL with a host names the machine before the user directory.
+_UNC = r"(?:file:[\x5c/]{2}|(?<![\w:.\x5c/])[\x5c/]{2})[^\x5c/\s:]+[\x5c/]+"
+_USERS = r"(?:Users|STL Files)[\x5c/]+(?!Public\b)"
 LEAK_RULES = (
-    re.compile(_DRIVE + r"(?:Users|STL Files)[\\/]+(?!Public\b)" + _TAIL, re.IGNORECASE),
+    re.compile(_DRIVE + _USERS + _TAIL, re.IGNORECASE),
+    re.compile(_UNC + _USERS + _TAIL, re.IGNORECASE),
     re.compile("/ho" + r"me/+(?!runner\b)[A-Za-z0-9_.-]+/" + _TAIL, re.IGNORECASE),
 )
-# Known synthetic test paths and historical handoff notes, as (file, normalized path).
-# The set is closed: any other local path in ANY tracked file, including a different path
-# in a file listed here, fails. Nothing is exempt by file name alone.
+# Known synthetic test paths and historical handoff notes, as (file, line key): the whole
+# normalized line (see line_key). A longer or different path on an approved line, or a path
+# that only shares an approved prefix, is a violation. The set is closed; nothing is exempt
+# by file name, and a matched path is never compared as a prefix.
 LEAK_BASELINE: frozenset[tuple[str, str]] = frozenset({
-    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/.local/share/spoolman'),
-    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/.local/share/spoolman/backups'),
-    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '/home/app/spoolman/c:/program'),
-    ('backend/tests/test_diagnostics.py', '/home/alexmorgan/models'),
-    ('backend/tests/test_diagnostics.py', 'c:/users/alexmorgan/documents/secret'),
-    ('backend/tests/test_diagnostics.py', 'c:/users/someone/thing.3mf'),
-    ('backend/tests/test_fix_ledger.py', 'c:/users/someone'),
-    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/documents/secret'),
-    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/models/a.3mf'),
-    ('backend/tests/test_fix_ledger.py', 'c:/users/someone/models/a_snapmakeru1.3mf'),
-    ('backend/tests/test_paths.py', 'c:/users/someone/appdata/local'),
-    ('backend/tests/test_privacy_adversarial.py', 'c:/users/someone/documents/orca/exports'),
-    ('backend/tests/test_user_presets.py', '/home/p/.config'),
-    ('backend/tests/test_user_presets.py', 'c:/users/p/appdata/roaming'),
-    ('desktop/src-tauri/src/main.rs', '/home/u/apps/snapmaker-orca.appimage'),
-    ('desktop/src-tauri/src/main.rs', '/home/u/my'),
-    ('desktop/src/components/OrcaRoundTrip.tsx', 'c:/users/you/documents/snapmaker'),
-    ('desktop/src/lib/ecosystem.test.ts', 'c:/users/someone/secret/x.exe'),
-    ('desktop/src/lib/orca.test.ts', 'c:/users/secret/path.3mf'),
-    ('desktop/src/routes/AfterSlicing.tsx', 'c:/users/you/downloads/something_pla_2h13m.gcode'),
-    ('desktop/src/store/sliced.test.ts', '/home/someone/prints/job.gcode'),
-    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/downloads/job.gcode'),
-    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/downloads/job_pla_2h13m.gcode'),
-    ('desktop/src/store/sliced.test.ts', 'c:/users/someone/job.gcode'),
-    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', 'd:/stl files/sample/stock_u1_blank.3mf'),
-    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', 'd:/stl files/validation-out/'),
-    ('docs/internal/FABLE_PUBLIC_RELEASE_AUDIT.md', 'c:/users/secret/path.3mf'),
-    ('docs/internal/HANDOFF_main_contract.md', 'd:/stl files/snapmaker-studio'),
-    ('docs/internal/HANDOFF_main_ff1aef2.md', 'd:/stl files/snapmaker-studio'),
-    ('docs/internal/HANDOFF_main_overrides.md', 'd:/stl files/snapmaker-studio'),
-    ('docs/internal/HANDOFF_main_reachability.md', 'd:/stl files/snapmaker-studio'),
-    ('docs/internal/HANDOFF_main_session_restart.md', 'd:/stl files/snapmaker-studio'),
-    ('tools/harness/HarnessLauncher.Tests.ps1', '/home/zq91/private/customer.stl'),
-    ('tools/harness/HarnessLauncher.Tests.ps1', 'c:/users/some'),
-    ('tools/harness/HarnessLauncher.Tests.ps1', 'c:/users/someone'),
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '"backups_dir": "/home/app/spoolman/c:/program files/git/home/app/.local/share/spoolman/backups",'),
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '"data_dir": "/home/app/spoolman/c:/program files/git/home/app/.local/share/spoolman",'),
+    ('backend/tests/fixtures/providers/spoolman_0_26_1.json', '"logs_dir": "/home/app/spoolman/c:/program files/git/home/app/.local/share/spoolman",'),
+    ('backend/tests/test_diagnostics.py', '"nested": [{"home": "/home/alexmorgan/models"}],'),
+    ('backend/tests/test_diagnostics.py', '"path": r"c:/users/alexmorgan/documents/secret model.3mf",'),
+    ('backend/tests/test_diagnostics.py', 'original = {"path": r"c:/users/someone/thing.3mf"}'),
+    ('backend/tests/test_fix_ledger.py', 'assert "c:/users/someone" not in blob'),
+    ('backend/tests/test_fix_ledger.py', 'def entry(tmp_path, *, operation=fix_ledger.prepare, source="c:/users/someone/models/a.3mf",'),
+    ('backend/tests/test_fix_ledger.py', 'output = "c:/users/someone/documents/secret project/model_snapmakeru1.3mf"'),
+    ('backend/tests/test_fix_ledger.py', 'output="c:/users/someone/models/a_snapmakeru1.3mf", **kw):'),
+    ('backend/tests/test_fix_ledger.py', 'source = "c:/users/someone/documents/secret project/model.3mf"'),
+    ('backend/tests/test_paths.py', 'assert result == os.path.join(r"c:/users/someone/appdata/local", "snapmakerstudio")'),
+    ('backend/tests/test_paths.py', 'monkeypatch.setenv("localappdata", r"c:/users/someone/appdata/local")'),
+    ('backend/tests/test_privacy_adversarial.py', 'scrubbed = diagnostics.redact({"folder": r"c:/users/someone/documents/orca/exports"})'),
+    ('backend/tests/test_user_presets.py', '[path(r"c:/users/p/appdata/roaming") / "snapmaker_orca" / "user"]'),
+    ('backend/tests/test_user_presets.py', 'assert pc.default_user_roots({"appdata": r"c:/users/p/appdata/roaming"}, "win32") == /'),
+    ('backend/tests/test_user_presets.py', 'assert pc.default_user_roots({"home": "/home/p"}, "linux") == [path("/home/p/.config") / "snapmaker_orca" / "user"]'),
+    ('desktop/src-tauri/src/main.rs', 'let text = "[desktop entry]/nname=orcaslicer/nexec=/"/home/u/my apps/orca-slicer.appimage/" %u/n";'),
+    ('desktop/src-tauri/src/main.rs', 'let text = "[desktop entry]/nname=snapmaker orca/nexec=/home/u/apps/snapmaker-orca.appimage %f/ntype=application/n";'),
+    ('desktop/src-tauri/src/main.rs', 'some(pathbuf::from("/home/u/apps/snapmaker-orca.appimage"))'),
+    ('desktop/src-tauri/src/main.rs', 'some(pathbuf::from("/home/u/my apps/orca-slicer.appimage"))'),
+    ('desktop/src/components/OrcaRoundTrip.tsx', 'placeholder="c:/users/you/documents/snapmaker orca/output"'),
+    ('desktop/src/lib/ecosystem.test.ts', 'const msg = toolerrormessage(new error("launch-failed: c:/users/someone/secret/x.exe"), "x");'),
+    ('desktop/src/lib/orca.test.ts', 'const m = orcaerrormessage("c:/users/secret/path.3mf blew up");'),
+    ('desktop/src/routes/AfterSlicing.tsx', 'placeholder="c:/users/you/downloads/something_pla_2h13m.gcode"'),
+    ('desktop/src/store/sliced.test.ts', '/ "c:/users/someone/downloads/job.gcode" where the file name belonged —'),
+    ('desktop/src/store/sliced.test.ts', 'const full = string.raw`c:/users/someone/job.gcode`;'),
+    ('desktop/src/store/sliced.test.ts', 'usesliced.getstate().setsliced("/home/someone/prints/job.gcode");'),
+    ('desktop/src/store/sliced.test.ts', 'usesliced.getstate().setsliced(string.raw`c:/users/someone/downloads/job_pla_2h13m.gcode`);'),
+    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', '- [ ] regenerate the 4 validation outputs into `d:/stl files/validation-out/`.'),
+    ('docs/archive/2026-06-16-m1.1e-rebase-stl-template-on-stock.md', "cfg=json.loads(zipfile.zipfile(r'd:/stl files/sample/stock_u1_blank.3mf').read('metadata/project_settings.config').decode('utf-8'))"),
+    ('docs/internal/FABLE_PUBLIC_RELEASE_AUDIT.md', '| no real local user paths | — | only hit is synthetic test data (`orca.test.ts`: "c:/users/secret/path.3mf") — clearly fake | public but harmless | none |'),
+    ('docs/internal/HANDOFF_main_contract.md', 'cd "d:/stl files/snapmaker-studio"'),
+    ('docs/internal/HANDOFF_main_ff1aef2.md', 'cd "d:/stl files/snapmaker-studio"'),
+    ('docs/internal/HANDOFF_main_overrides.md', 'cd "d:/stl files/snapmaker-studio"'),
+    ('docs/internal/HANDOFF_main_reachability.md', 'cd "d:/stl files/snapmaker-studio"'),
+    ('docs/internal/HANDOFF_main_session_restart.md', 'cd "d:/stl files/snapmaker-studio"'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', '$global:ssht.uninstallthrow = "could not find file \'c:/users/someone else/my models/private-benchy-zq91.stl\'"'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', '@{ t = "could not find file \'c:/users/someone else/my models/private-benchy-zq91.stl\'."; bad = \'someone\', \'my models\', \'private\', \'zq91\', \'benchy\' }'),
+    ('tools/harness/HarnessLauncher.Tests.ps1', "@{ t = 'arbitrary text with private local data'; text = 'state dump: model customer-alpha-zq91 at /home/zq91/private/customer.stl (owner zq91person)'; segs = @('customer', 'alpha', 'zq91', 'zq91person#329f6adaec67"),
+    ('tools/harness/HarnessLauncher.Tests.ps1', "@{ t = 'forward-slash path'; text = 'c:/users/someone else/private models/customer alpha.3mf'; segs = @('someone', 'private', 'customer', 'alpha') }"),
+    ('tools/harness/HarnessLauncher.Tests.ps1', "@{ t = 'literal doubled backslashes'; text = 'c:/users/someone else/private models/customer alpha.3mf'; segs = @('someone', 'private', 'customer', 'alpha') }"),
+    ('tools/harness/HarnessLauncher.Tests.ps1', 'mock -modulename harnesslauncher write-harnesslaneevidence { throw "locked: c:/users/some one/priv dir/x.json" }'),
 })
 
 
-BASELINE_LINES = frozenset(f"    ({f!r}, {t!r})," for f, t in LEAK_BASELINE)
+BASELINE_LINES = frozenset(f"    ({f!r}, {k!r})," for f, k in LEAK_BASELINE)
+
+
+def decode_line(line: str) -> str:
+    """Undo URL encoding (also when applied twice) so encoded separators and colons match."""
+    for _ in range(3):
+        decoded = unquote(line)
+        if decoded == line:
+            break
+        line = decoded
+    return line
 
 
 def normalize_leak(token: str) -> str:
@@ -95,10 +120,23 @@ def normalize_leak(token: str) -> str:
     return re.sub(r"/+", "/", token.replace("\\", "/")).lower()
 
 
-def leak_hits(text: str) -> list[tuple[int, str]]:
-    """Every local-path match in ``text`` as (line, normalized path), not just the first."""
-    return sorted((text.count("\n", 0, m.start()) + 1, normalize_leak(m.group(0)))
-                  for rule in LEAK_RULES for m in rule.finditer(text))
+def line_key(decoded_line: str) -> str:
+    """The approved context: the whole normalized line, hashed past 200 characters."""
+    key = normalize_leak(decoded_line).strip()
+    if len(key) > 200:
+        key = key[:200] + "#" + hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:12]
+    return key
+
+
+def leak_hits(text: str) -> list[tuple[int, str, str]]:
+    """Every local-path match as (line number, normalized path, line key), not just the first."""
+    hits = set()
+    for number, raw in enumerate(text.split("\n"), start=1):
+        line = decode_line(raw)
+        for rule in LEAK_RULES:
+            for m in rule.finditer(line):
+                hits.add((number, normalize_leak(m.group(0)), line_key(line)))
+    return sorted(hits)
 
 
 def scan(root: Path) -> tuple[list[str], dict]:
@@ -131,8 +169,8 @@ def scan(root: Path) -> tuple[list[str], dict]:
         if name == SELF:
             leak_text = "\n".join("" if line in BASELINE_LINES else line
                                   for line in content.splitlines())
-        for line, token in leak_hits(leak_text):
-            if (name, token) not in LEAK_BASELINE:
+        for line, token, key in leak_hits(leak_text):
+            if (name, key) not in LEAK_BASELINE:
                 problems.append(f"{name}:{line}: local absolute path or user name ({token!r})")
         if not is_text:
             binary_files.append(name)
