@@ -82,10 +82,35 @@ def _finding(fid, severity, title, explanation, setting_path, action, evidence) 
     }
 
 
+def _unreadable_finding(tm) -> dict:
+    from .validate import REQUIRED
+    missing = [part for part in REQUIRED if not tm.has_part(part)]
+    return _finding(
+        "project.unreadable", "error",
+        "Studio cannot read this as a 3MF project",
+        "The file is missing parts every 3MF project needs, so Studio cannot say whether "
+        "Snapmaker Orca will open it, and it is not reported as compatible.",
+        "package structure",
+        "Open the original in the slicer that made it and export it again, or re-download it.",
+        "missing: " + ", ".join(missing),
+    )
+
+
 def check(path: str) -> dict:
     """Read-only compatibility check. Returns {findings, summary, recommendation}."""
     tm = ThreeMF.open(path)
+    from . import eligibility
+    eligible = eligibility.assess(tm)
     if not tm.has_part(SETTINGS):
+        if not eligible.readable:
+            # A geometry-only archive missing a required part is not a bare model: it is
+            # unreadable, and the same finding closes Prepare.
+            return {
+                "findings": [_unreadable_finding(tm)],
+                "summary": "Studio cannot read this as a 3MF project.",
+                "recommendation": "Open the original in the slicer that made it and export "
+                                  "it again, or re-download it.",
+            }
         return {
             "findings": [],
             "summary": "No project settings found to check — this looks like a bare "
@@ -133,20 +158,8 @@ def check(path: str) -> dict:
 
     # B2. the same eligibility record Prepare and the Doctor use: a readable project Studio
     # would refuse to prepare is never reported as clean.
-    from . import eligibility
-    eligible = eligibility.assess(tm)
     if not eligible.readable:
-        from .validate import REQUIRED
-        missing = [part for part in REQUIRED if not tm.has_part(part)]
-        findings.append(_finding(
-            "project.unreadable", "error",
-            "Studio cannot read this as a 3MF project",
-            "The file is missing parts every 3MF project needs, so Studio cannot say whether "
-            "Snapmaker Orca will open it, and it is not reported as compatible.",
-            "package structure",
-            "Open the original in the slicer that made it and export it again, or re-download it.",
-            "missing: " + ", ".join(missing),
-        ))
+        findings.append(_unreadable_finding(tm))
     elif not eligible.preparable:
         findings.append(_finding(
             "prepare.blocked", "warning",

@@ -97,6 +97,12 @@ def test_unc_file_host_and_url_encoded_paths_are_found(tmp_path):
         "encoded.md": "C%3A%5C" + USERS + "%5CAlice%5Cprivate",
         "encoded2.md": "C%253A%255C" + USERS + "%255CAlice",
         "encodedfile.md": "file:///C%3A/" + USERS + "/Alice/x.3mf",
+        "admin.md": BS + BS + "workstation" + BS + "C$" + BS + "Users" + BS + "Alice" + BS + "private" + BS + "model.3mf",
+        "adminfile.md": "file://workstation/C$/" + USERS + "/Alice/private/model.3mf",
+        "adminencoded.md": "file://workstation/C%24/" + USERS + "/Alice/x.3mf",
+        "adminencodedunc.md": "%5C%5Cworkstation%5CC%24%5C" + USERS + "%5CAlice%5Cx",
+        "adminlower.md": BS + BS + "WORKSTATION" + BS + "d$" + BS + "users" + BS + "alice" + BS + "x",
+        "namedshare.md": BS + BS + "nas" + BS + "home" + BS + "STL Files" + BS + "private",
     }
     repo = _repo(tmp_path, {n: v.encode() + NLB for n, v in forms.items()})
     problems, _ = _guard().scan(repo)
@@ -195,6 +201,8 @@ def _canaries_all_caught(mod, tmp_path: Path) -> bool:
         "pic.png": bytes([0, 1]) + _win("Users", "someone", "x").encode() + bytes([0]),
         "unc.md": (BS + BS + "host" + BS + "Users" + BS + "a" + BS + "b").encode(),
         "url.md": ("C%3A%5C" + USERS + "%5CAlice%5Cprivate").encode(),
+        "admin.md": (BS + BS + "host" + BS + "C$" + BS + "Users" + BS + "a" + BS + "b").encode(),
+        "adminurl.md": ("file://host/C$/" + USERS + "/a/b").encode(),
     }
     (tmp_path / "canary").mkdir(exist_ok=True)
     repo = _repo(tmp_path / "canary", scenarios)
@@ -223,6 +231,7 @@ MUTATIONS = {
     "only the first hit per rule is reported": ("for m in rule.finditer(line):",
                                                 "for m in list(rule.finditer(line))[:1]:"),
     "url-encoded paths are not decoded": ("decoded = unquote(line)", "decoded = line"),
+    "administrative-share segments not allowed": ("){0,2}?", "){0}?"),
     "UNC and file-host rule removed": ("    re.compile(_UNC + _USERS + _TAIL, re.IGNORECASE)," + NL, ""),
 }
 
@@ -231,3 +240,14 @@ MUTATIONS = {
 def test_a_weakened_guard_is_detected(tmp_path, label):
     old, new = MUTATIONS[label]
     assert not _canaries_all_caught(_mutant(tmp_path, old, new), tmp_path), label
+
+
+def test_https_and_plain_unc_negatives_stay_clean(tmp_path):
+    lines = {
+        "https.md": "see https://host/C$/" + USERS + "/guide and //cdn.example/assets/a.js",
+        "bare.md": BS + BS + "host" + BS + "share" + BS + "docs" + BS + "readme.txt",
+    }
+    repo = _repo(tmp_path, {n: v.encode() + NLB for n, v in lines.items()})
+    problems, _ = _guard().scan(repo)
+    for name in lines:
+        assert _leaks(problems, name) == [], name
