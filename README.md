@@ -597,6 +597,11 @@ Recommended action: Run `u1convert repair <file> --mode u1` to prepare a U1 prof
 Read-only check - no files were modified.
 ```
 
+If Studio reads the file but cannot prepare a copy of it (for example it carries per-object
+settings Studio has not verified Snapmaker Orca reads), `doctor` says so in plain language,
+does not report READY, and `repair` refuses the same file with the same reason. The original
+is never changed.
+
 Verdicts: **READY** (loads as-is) · **REPAIRABLE** (run `repair`) · **CONVERTIBLE** (an STL — run `repair`) · **HIGH_RISK** (not a usable project). Add `--json` for machine-readable output.
 
 ## What changed between two projects?

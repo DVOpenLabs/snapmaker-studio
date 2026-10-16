@@ -77,7 +77,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   runConvert: async (mode) => {
     const file = get().file;
-    if (!file) return;
+    if (!file || get().doctor.data?.prepare_blocked) return;
     const p = file.path;
     const generation = ++requestGeneration;
     const prepareMode = mode ?? get().prepareMode;
@@ -97,7 +97,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   previewConvert: async () => {
     const file = get().file;
-    if (!file) return;
+    if (!file || get().doctor.data?.prepare_blocked) return;
     const p = file.path;
     const generation = ++requestGeneration;
     set({ preview: { status: "loading", data: null, error: null } });

@@ -202,7 +202,13 @@ def _make_handler(token: str):
             (with its traceback) in the local engine log and answered as 500 with only its class name, so a report can say
             what failed without anything private leaving the machine."""
             if isinstance(exc, SnapStudioError):
-                self._send(422, {"error": str(exc), "refusal": type(exc).__name__})
+                body = {"error": str(exc), "refusal": type(exc).__name__}
+                # A refusal may carry its raw technical wording separately, so the
+                # `error` stays a sentence a person can act on.
+                details = getattr(exc, "details", None)
+                if isinstance(details, str) and details:
+                    body["details"] = details
+                self._send(422, body)
                 return
             _log_unexpected(exc)
             self._send(500, {"error": "internal error", "kind": type(exc).__name__})

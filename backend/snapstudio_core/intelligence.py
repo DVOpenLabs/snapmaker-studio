@@ -117,6 +117,7 @@ def project_info(path: str) -> dict:
         "readiness_score": diag.get("score"),
         "is_compatible": diag.get("verdict") == READY,
         "recommended_action": diag.get("recommended_action"),
+        "prepare_blocked": bool(diag.get("prepare_blocked")),
         "objects": diag.get("object_count"),
         "plates": diag.get("plate_count"),
         "colors": diag.get("filament_count"),

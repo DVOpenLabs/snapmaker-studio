@@ -95,7 +95,7 @@ export default function Dashboard() {
   const { data, status, error, refetch } = useQuery({ queryKey: ["library"], queryFn: () => library() });
   const projects = data ?? [];
   const recent = projects.slice(0, 3);
-  const ready = projects.filter((p) => p.verdict === "READY").length;
+  const ready = projects.filter((p) => p.verdict === "READY" && !p.prepare_blocked).length;
   const needsWork = projects.length - ready;
 
   const openProject = (p: LibraryProject) => { setFile(p.source_path); nav("/workspace"); };
@@ -236,7 +236,7 @@ export default function Dashboard() {
                         </span>
                         <span className="truncate font-medium">{p.name}</span>
                       </div>
-                      {p.verdict && <StatusBadge verdict={p.verdict as Verdict} />}
+                      {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{(p.source_family ?? "project")}{p.filament_count != null ? ` · ${p.filament_count} ${unit}${p.filament_count === 1 ? "" : "s"}` : ""}</span>

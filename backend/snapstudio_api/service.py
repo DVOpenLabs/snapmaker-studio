@@ -2346,6 +2346,8 @@ def record_diagnosis(path: str, result: dict) -> None:
                 verdict=result.get("verdict"), score=result.get("score"),
                 filament_count=result.get("filament_count"),
                 last_action="doctor", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(result.get("prepare_blocked")),
+                                    result.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "doctor",
                                 f"Checked — {result.get('verdict', '')}".strip(" —"), _now())
         finally:
@@ -2477,7 +2479,9 @@ def register_downloaded_model(path: str, site: str, page_url: str | None = None)
             "sha256": digest.hexdigest(), "size_bytes": total,
             "source_family": result.get("family"), "verdict": verdict,
             "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
-            "ready_hint": "check" if verdict == "READY" else "prepare"}
+            "prepare_blocked": bool(result.get("prepare_blocked")),
+            "ready_hint": ("review" if result.get("prepare_blocked")
+                           else "check" if verdict == "READY" else "prepare")}
 
 
 def record_conversion(path: str, result: dict) -> None:
@@ -2496,6 +2500,8 @@ def record_conversion(path: str, result: dict) -> None:
                 verdict=diag.get("verdict"), score=diag.get("score"),
                 filament_count=diag.get("filament_count"),
                 last_action="convert", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(diag.get("prepare_blocked")),
+                                    diag.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "convert",
                                 f"Made U1-ready — {result.get('output_name', '')}".strip(" —"), _now())
         finally:

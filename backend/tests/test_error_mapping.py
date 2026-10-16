@@ -36,8 +36,10 @@ def test_a_file_studio_refuses_to_prepare_says_why_instead_of_internal_error(tmp
         httpd.shutdown()
     assert status == 422
     assert body["refusal"] == "UnsoundOutput"
-    assert "cannot vouch for" in body["error"]
     assert body["error"] != "internal error"
+    # plain sentence first; the raw wording is a separate, secondary field
+    assert "UnsoundOutput" not in body["error"] and "original file was not changed" in body["error"]
+    assert "cannot vouch for" in body["details"]
 
 
 @pytest.mark.parametrize("exc", [UnsoundOutput(["x differs from y"]), PreservationError("a setting could not be carried"),
