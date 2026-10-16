@@ -1,7 +1,7 @@
 """The test helper that writes support paint into a project must leave the mesh well-formed.
 
 The helper once replaced the whole ``<triangle .../>`` tag with a bare attribute, so a project built with
-``supports="paint"`` carried malformed XML; Snapmaker Orca refused it ("Loading of model file failed") while the
+``supports="paint"`` lost a triangle and carried an invalid mesh; Snapmaker Orca refused it ("Loading of model file failed") while the
 engine, which never parses the mesh for this, still reported it valid. This is a test-fixture defect, not an engine one.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from tests import regrid_fixtures as rf
 
 def _triangles(path):
     part = rf.read(path)[rf.OBJECT_PART]
-    root = etree.fromstring(part)                         # raises on malformed XML
+    root = etree.fromstring(part)                         # must parse
     return [el for el in root.iter() if etree.QName(el).localname == "triangle"]
 
 

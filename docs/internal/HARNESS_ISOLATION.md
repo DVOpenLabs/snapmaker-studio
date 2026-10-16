@@ -295,11 +295,11 @@ probe servers cannot start and every provider check fails with "did not answer" 
 product defect and is not one. Before a run, check who owns the ports (`Get-NetTCPConnection -State Listen -LocalPort
 9401,9402,9403`, then the owning process's name, start time and owner). Never stop a process the run did not start. Move
 the lane instead: `-ProbePort 9411 -RedirectPort 9412 -SpoolEasePort 9413` (any free ports). The ports go only to the
-lane's own child processes; nothing global changes. The overrides are part of the run's record.
+lane's own child processes; nothing global changes. The probe and redirect ports are part of the run's record.
 
 **Ownership checks that stay in force.** Every process the lane starts is tracked by pid and start time, and only those
-are stopped. The probe servers are stopped in the lane's `finally` block by their tracked pid. A listener the lane did not
-start is reported, never touched.
+are stopped. The probe servers are stopped in the lane's `finally` block by their tracked pid. A probe that fails to start is
+reported as a failed check; a listener the lane did not start is never touched.
 
 **Launch-path refusal.** After launching the app the lane refuses, fail-closed, unless the launched process image is inside
 the harness install dir. A refusal stops the launched tree, uninstalls, runs the tripwire and reports `APP_LAUNCH_FAILED`.

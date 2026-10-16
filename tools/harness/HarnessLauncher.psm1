@@ -1255,7 +1255,7 @@ function Start-HarnessApp {
     try { Register-HarnessChildren -Lane $Lane -ParentPid $proc.Id }
     catch { Add-LaneWarning -Lane $Lane -Text "launch: descendant registration failed: $($_.Exception.Message)" -Code APP_LAUNCH_FAILED }
     if (-not $entry) { & $fail "Refused: the launched app (pid $($proc.Id)) was not found alive; it cannot be tracked." APP_LAUNCH_FAILED }
-    if (-not $entry.Path -or -not (Test-PathContainedNoReparse -Path $entry.Path -Root $Lane.InstallDir)) { & $fail ('Refused: the launched process image is not inside the harness install dir ({0}).' -f $(if (-not $entry.Path) { 'image path unreadable at registration' } else { 'image path resolved outside the install dir' })) APP_LAUNCH_FAILED }
+    if (-not $entry.Path -or -not (Test-PathContainedNoReparse -Path $entry.Path -Root $Lane.InstallDir)) { & $fail ('Refused: the launched process image is not inside the harness install dir ({0}).' -f $(if (-not $entry.Path) { 'image path unreadable at registration' } else { 'image path outside the install dir or behind a reparse point' })) APP_LAUNCH_FAILED }
 
     $wvWait = [double](Get-Hook 'WebViewWaitSeconds' 30)
     # S1 / N2: exactly <profile>\EBWebView. No alternative layout is accepted.
