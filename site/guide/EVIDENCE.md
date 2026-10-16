@@ -1,7 +1,9 @@
 # Evidence record — what each page rests on
 
-The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
-same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
+The `orca` evidence kind is advice to verify; it makes no claim about Snapmaker Orca behavior.
+
+The guide describes **Snapmaker Studio v1.5.1** (tag `v1.5.1`). Its screenshots were captured from the installed v1.5.0
+release and have not been recaptured; the interface changed in v1.5.1 where the release notes say so. Every button label in the lessons was read from the
 running interface or from the source that renders it. "UI" below means the label or behaviour was observed in the running
 app during capture (`tools/capture.mjs`, a real Studio engine with disposable data and example files); "Source" means it
 was read from the named file because it cannot be reached without a printer or the installed shell.
@@ -123,7 +125,7 @@ All English text was reviewed in two independent passes, then reread after the c
 3. Unresolved plural placeholders: "1 object(s) moved…", "Found 5 invalid-value issue(s) and 2 warning(s).", "1 thing(s) are worth settling…".
 4. "Moving the objects as one piece would not bring them all on…" lacks a destination ("onto the plate").
 5. "Upload sliced gcode" should read "G-code" like the rest of the app.
-6. Cost Doctor says "true cost to make" for an estimate built on user assumptions.
+6. Fixed in the app (`BusinessDoctors.tsx`): Cost Doctor now says "estimated cost". The committed screenshot still shows the old wording until it is recaptured.
 7. "Not proven separable — reserve a toolhead each" is jargon for beginners.
 8. Capitalization varies for one feature ("This print"/"This Print", "Batch prepare"/"Batch Prepare", "After slicing"/"After Slicing").
 9. The page text for a missing file starts in lowercase and has no final period ("that file does not exist").
@@ -144,3 +146,15 @@ Before publishing the corrected copy, Astra (`gpt-6-astra`) checked the guide's 
 Two further notes from that review were also applied: the watch-folder wording now says it looks only while **After Slicing** or **This print** is open (the poll has no focus or visibility gate, `desktop/src/components/OrcaRoundTrip.tsx`), and the exercise record above now states that the printer name in the header is the confirmed fact while the mismatch finding is *likely*.
 
 New regression checks: `backend/tests/test_guide_claims.py` (engine-derived placement and printer-name facts), `desktop/src/lib/guideClaims.test.ts` (printer-action policy, prompt text and fidelity labels from app code), and a wording tripwire in `tools/build.mjs`. They establish that the guide agrees with current engine and app code on those points. They do not establish prose quality, physical printer behavior, Snapmaker Orca behavior, or that a paraphrase of a past overclaim cannot return. They were checked to fail against the earlier wording.
+
+## Source-backed guidance review (2026-10-08)
+
+The guidance manifest records seven questions, the code-derived facts behind each answer, and forbidden overclaims.
+Page sources are checked offline against repository paths or the guide's allowlisted links.
+The build checks only the shape and file existence of each fact's `derive` reference; the real symbol resolution happens in the tests.
+The reviewed field is metadata for maintainers; the build and renderer do not treat it as proof of current behavior.
+Automated checks cannot judge prose clarity or whether a cited source is the right one. They cannot verify review dates, physical printer behavior, Snapmaker Orca behavior, paraphrased overclaims, or screen-reader experience.
+
+The **Print readiness (estimate)** percentage is treated as risk-signal output, not a probability of print success.
+The percentage's mathematical validity remains unproven and needs a maintainer decision.
+The app's verdict line "Likely to print (N%)" (`success_predict.py`) is an open maintainer decision: issue #92.

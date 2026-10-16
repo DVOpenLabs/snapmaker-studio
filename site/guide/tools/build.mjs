@@ -7,24 +7,48 @@
 // interactive examples are rendered as worked examples, and search is replaced by the lists you can scroll.
 // guide.js then shows one page at a time and adds search, the interactive examples, hotspots and the viewer.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const { inline, esc, plain } = await import(pathToFileURL(join(root, "public/assets/md.js")).href);
 const draft = process.argv.includes("--draft");
-const read = (p) => JSON.parse(readFileSync(join(root, p), "utf8"));
+const contentRoot = process.env.SNAPSTUDIO_GUIDE_CONTENT || join(root, "content");
+const outputPath = process.env.SNAPSTUDIO_GUIDE_OUTPUT || join(root, "public/index.html");
+const read = (p) => JSON.parse(readFileSync(join(contentRoot, p.replace(/^content[\\/]/, "")), "utf8"));
 const G = read("content/guide.json");
 const stages = read("content/path.json");
 const { groups: taskGroups, tasks } = read("content/tasks.json");
 const problems = read("content/problems.json");
+const answers = read("content/answers.json");
 const examples = read("content/examples.json");
 const shots = read("content/shots.json");
-const geometry = existsSync(join(root, "content/geometry.json")) ? read("content/geometry.json") : {};
+const geometry = existsSync(join(contentRoot, "geometry.json")) ? read("content/geometry.json") : {};
 const bad = [];
 const warn = [];
 const fail = (m) => bad.push(m);
 const md = (t) => inline(t, (k) => G.links[k]);
+const SOURCE_KINDS = new Set(["file", "engine", "estimate", "orca"]);
+const repoRoot = join(root, "..", "..");
+const releaseVersion = `v${G.site.version}`;
+const repoPathExists = (ref) => {
+  if (!ref || isAbsolute(ref) || ref.startsWith("/") || ref.includes("\\") || ref.split("/").includes("..")) return false;
+  return existsSync(join(repoRoot, ref));
+};
+const resolveSourceRef = (ref) => {
+  if (ref.startsWith("@")) return Boolean(G.links[ref.slice(1)]);
+  if (ref.includes("/../") || ref.includes("\\..")) return false;
+  let url;
+  try { url = new URL(ref); } catch { return false; }
+  if (url.origin !== "https://github.com" || url.pathname.startsWith("/DVOpenLabs/snapmaker-studio/blob/main/")) return false;
+  const prefix = `/DVOpenLabs/snapmaker-studio/blob/${releaseVersion}/`;
+  if (!url.pathname.startsWith(prefix)) return false;
+  const path = url.pathname.slice(prefix.length);
+  if (!repoPathExists(path)) return false;
+  if (!url.hash) return true;
+  const text = readFileSync(join(repoRoot, path), "utf8");
+  return text.includes(url.hash.slice(1));
+};
 
 /* ---------- page registry ---------- */
 const pageId = {
@@ -49,6 +73,13 @@ const need = (obj, fields, where) => {
 };
 const seen = new Set();
 const unique = (id, where) => { if (seen.has(id)) fail(`${where}: duplicate page id "${id}"`); seen.add(id); };
+const validatePageEvidence = (page, where) => {
+  if (page.checked !== undefined && typeof page.checked !== "string") fail(`${where}: checked must be a version string`);
+  for (const source of page.sources || []) {
+    if (!source.label || !source.ref || !SOURCE_KINDS.has(source.kind)) fail(`${where}: invalid source`);
+    if (!resolveSourceRef(source.ref)) fail(`${where}: source ref does not resolve to this release: ${source.ref}`);
+  }
+};
 for (const s of stages) {
   const w = `stage ${s.id}`;
   need(s, ["id", "page", "n", "lane", "label", "title", "question", "lead", "evidence", "means", "steps", "success", "keywords", "next"], w);
@@ -59,6 +90,7 @@ for (const s of stages) {
   for (const id of s.tasks || []) if (!byTask[id]) fail(`${w}: unknown task "${id}"`);
   for (const id of s.examples || []) if (!examples[id]) fail(`${w}: unknown example "${id}"`);
   if (!pages.has(s.next.page)) fail(`${w}: next page "${s.next.page}" does not exist`);
+  validatePageEvidence(s, w);
 }
 const groupIds = new Set(taskGroups.map((g) => g.id));
 for (const t of tasks) {
@@ -68,6 +100,7 @@ for (const t of tasks) {
   if (!groupIds.has(t.group)) fail(`${w}: unknown group "${t.group}"`);
   useShot(t.shot, w);
   for (const id of t.problems || []) if (!byProblem[id]) fail(`${w}: unknown problem "${id}"`);
+  validatePageEvidence(t, w);
 }
 for (const p of problems) {
   const w = `problem ${p.id}`;
@@ -77,6 +110,48 @@ for (const p of problems) {
   useShot(p.shot, w);
   for (const id of p.tasks || []) if (!byTask[id]) fail(`${w}: unknown task "${id}"`);
   for (const sId of p.seen) if (!byStage[sId]) fail(`${w}: unknown stage "${sId}"`);
+  validatePageEvidence(p, w);
+}
+const pageObjects = [...stages, ...tasks, ...problems];
+const pageFor = (id) => pageObjects.find((x) => x.page === id || pageId.task(x) === id || pageId.problem(x) === id);
+if (answers.schema !== "answers/1" || !Array.isArray(answers.answers) || answers.answers.length !== 7) fail("answers: expected answers/1 with seven entries");
+const answerKeys = new Set();
+const factKeys = new Set();
+const keysExactly = (obj, keys) => Object.keys(obj).length === keys.length && keys.every((key) => Object.hasOwn(obj, key));
+// Shape only: valid prefix, target file exists inside the repo, symbol is an identifier. This build does NOT look
+// inside source files; the real symbol resolution happens in backend/tests/test_guide_claims.py and
+// desktop/src/lib/guideClaims.test.ts.
+const isIdentifier = (value) => /^[A-Za-z_]\w*$/.test(value);
+const resolveDerive = (derive) => {
+  const match = /^(backend|app|test):(.+)$/.exec(derive);
+  if (!match) return false;
+  const [, kind, value] = match;
+  if (kind === "backend") {
+    const dot = value.lastIndexOf("."); if (dot < 1) return false;
+    const path = value.slice(0, dot).replaceAll(".", "/");
+    const symbol = value.slice(dot + 1);
+    const file = join(repoRoot, "backend", "snapstudio_core", `${path}.py`);
+    return isIdentifier(symbol) && existsSync(file);
+  }
+  const [testPath, testName] = value.split("::");
+  const [filePath, fragment] = kind === "test" ? [testPath, testName] : value.split("#");
+  if (!repoPathExists(filePath)) return false;
+  if (kind === "test") return isIdentifier(testName || "");
+  return isIdentifier(fragment || "");
+};
+for (const a of answers.answers || []) {
+  const w = `answer ${a.id}`;
+  const page = pageFor(a.page);
+  if (!keysExactly(a, ["id", "question", "page", "requiredFacts", "forbidden", "nextAction"]) || !a.id || !a.question || !page || !Array.isArray(a.requiredFacts) || !a.requiredFacts.length || !Array.isArray(a.forbidden) || !keysExactly(a.nextAction || {}, ["label", "ref"]) || !a.nextAction.label || !a.nextAction.ref) fail(`${w}: incomplete or unknown manifest fields`);
+  if (answerKeys.has(a.id)) fail(`${w}: duplicate answer id`); answerKeys.add(a.id);
+  for (const fact of a.requiredFacts || []) {
+    if (!keysExactly(fact, ["id", "derive", "tokens"]) || !fact.id || !fact.derive || !Array.isArray(fact.tokens) || !fact.tokens.length || fact.tokens.some((token) => typeof token !== "string" || !token || !JSON.stringify(page).includes(token)) || !resolveDerive(fact.derive)) fail(`${w}: invalid or unsupported required fact: ${fact.id}`);
+    if (factKeys.has(fact.id)) fail(`${w}: duplicate fact id: ${fact.id}`); factKeys.add(fact.id);
+  }
+  const pageContent = JSON.stringify(pageObjects).toLowerCase();
+  for (const phrase of a.forbidden || []) if (pageContent.includes(String(phrase).toLowerCase())) fail(`${w}: forbidden phrase appears in guide content: ${phrase}`);
+  if (a.nextAction.ref.startsWith("@") && !G.links[a.nextAction.ref.slice(1)]) fail(`${w}: unknown next-action link`);
+  if (a.nextAction.ref.startsWith("#") && !pages.has(a.nextAction.ref.slice(1))) fail(`${w}: unknown next-action page`);
 }
 for (const m of G.map) if (!pages.has(m.page)) fail(`map ${m.id}: page "${m.page}" does not exist`);
 for (const [from, to] of Object.entries(G.redirects)) if (!pages.has(to)) fail(`redirect ${from}: target "${to}" does not exist`);
@@ -111,7 +186,8 @@ for (const id of usedShots) {
 }
 
 /* text lint */
-const allText = JSON.stringify([G, stages, tasks, problems, examples, shots]);
+const answerLintText = (answers.answers || []).map(({ forbidden, ...rest }) => rest);
+const allText = JSON.stringify([G, stages, tasks, problems, examples, shots, answerLintText]);
 if (/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(allText)) fail("content contains something that looks like an IP address");
 if (/[A-Za-z]:\\\\Users\\\\(?!you\\\\)/i.test(allText) || /\/home\/[a-z]/i.test(allText)) fail("content contains a local path");
 if (/\b(octo|codex|sonnet|opus|fable|gemini|antigravity)\b/i.test(allText)) fail("content contains an internal tooling term");
@@ -151,6 +227,13 @@ const notesHtml = (notes = []) => notes.map((n) => `<div class="note note-${n.ki
 function differsHtml(items = []) {
   if (!items.length) return "";
   return `<section class="block differs"><h3>If something is different</h3>${items.map((h) => `<details><summary>${md(h.if)}</summary><div><p>${md(h.then)}</p></div></details>`).join("")}</section>`;
+}
+function sourcesHtml(page) {
+  if (!page.sources?.length) return "";
+  const labels = { file: "Read from your file", engine: "Studio's check", estimate: "Estimate", orca: "Verify in Snapmaker Orca" };
+  const rows = (page.sources || []).map((s) => `<li><a href="${esc(s.ref)}" target="_blank" rel="noopener noreferrer">${esc(s.label)}</a> — ${labels[s.kind]}; source code on GitHub.</li>`).join("");
+  const checked = page.checked ? `<p class="checked-version">Checked against Snapmaker Studio v${esc(page.checked)}.</p>` : "";
+  return `<details class="sources"><summary>Where this comes from</summary><div>${checked}${rows ? `<ul>${rows}</ul>` : ""}</div></details>`;
 }
 function figureHtml(shotId, label) {
   const s = shots[shotId];
@@ -269,6 +352,7 @@ function stageHtml(s, i) {
       <section class="block done" id="${s.page}--done" aria-labelledby="${s.page}-dn"><h3 id="${s.page}-dn">You are done when</h3><ul class="checks">${s.success.map((x) => `<li>${md(x)}</li>`).join("")}</ul></section>
       ${differsHtml(s.differs)}
       ${notesHtml(s.notes)}
+      ${sourcesHtml(s)}
       <nav class="stage-nav" aria-label="Next and previous stage">
         ${prev ? `<a class="btn js-nav" href="${href(prev.page)}" rel="prev">← Stage ${prev.n}: ${esc(prev.label)}</a>` : `<a class="btn js-nav" href="#home">← Guide home</a>`}
         <a class="btn btn-primary js-nav" href="${href(s.next.page)}"${next ? ' rel="next"' : ""}>${esc(s.next.why)} →</a>
@@ -298,6 +382,7 @@ function taskHtml(t) {
       <section class="block done"><h3>You are done when</h3><ul class="checks">${t.success.map((x) => `<li>${md(x)}</li>`).join("")}</ul></section>
       ${differsHtml(t.differs)}
       ${notesHtml(t.notes)}
+      ${sourcesHtml(t)}
     </div>
     <aside class="task-aside" aria-label="Related">
       ${t.shot ? figureHtml(t.shot) : ""}
@@ -324,6 +409,7 @@ function problemHtml(p) {
       <section class="block"><h3>Why you see this</h3><p>${md(p.why)}</p></section>
       <section class="block do"><h3>What to do</h3><ol class="steps">${p.do.map((x) => `<li>${md(x)}</li>`).join("")}</ol></section>
       <section class="block dont"><h3>What not to conclude</h3><p>${md(p.dont)}</p></section>
+      ${sourcesHtml(p)}
     </div>
     <aside class="problem-aside" aria-label="Related">
       ${p.shot ? figureHtml(p.shot) : ""}
@@ -489,5 +575,5 @@ ${orderedPages.join("\n")}
 </body>
 </html>
 `;
-writeFileSync(join(root, "public/index.html"), html);
+writeFileSync(outputPath, html.replace(/^[ \t]+$/gm, ""));
 console.log(`built public/index.html — ${stages.length} stages, ${tasks.length} tasks, ${problems.length} warnings, ${Object.keys(examples).length} examples, ${usedShots.size} screenshots, ${index.length} searchable pages${warn.length ? `, ${warn.length} warning(s)` : ""}`);

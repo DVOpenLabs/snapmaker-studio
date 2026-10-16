@@ -23,7 +23,9 @@ def test_exclude_object_is_enabled_when_off():
     assert cfg["exclude_object"] == "1"
     change = next(c for c in changes if c["key"] == "exclude_object")
     assert change["old"] == "0"
-    assert "adaptive" in change["explanation"].lower() or "cancel" in change["explanation"].lower()
+    # the explanation describes only Studio's operation, not external slicer behavior
+    assert change["explanation"] == "Studio's import rule turns Exclude Object on for every U1 copy; the original had it off."
+    assert change["kind"] == "engine"
 
 
 def test_exclude_object_already_on_is_not_reported_as_a_change():

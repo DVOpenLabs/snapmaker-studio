@@ -8,7 +8,7 @@ import SourceCompatibility from "@/routes/SourceCompatibility";
 // as two tabs. /source still resolves on its own for any deep links.
 export default function CompatibilityHub() {
   return (
-    <ToolTabs tabs={[
+    <ToolTabs label="Compatibility tools" tabs={[
       { id: "compatibility", label: "Compatibility", icon: ShieldCheck, el: <Compatibility /> },
       { id: "source", label: "Source Check", icon: FileSearch, el: <SourceCompatibility /> },
     ]} />

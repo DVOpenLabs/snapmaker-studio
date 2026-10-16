@@ -40,7 +40,7 @@
     "next": { "page": "path-check", "why": "Next question: what needs attention before I slice?" }
   },
   {
-    "id": "check", "page": "path-check", "n": 2, "lane": "studio", "label": "Check",
+    "id": "check", "page": "path-check", "n": 2, "lane": "studio", "label": "Check", "checked": "1.5.1", "sources": [{"label":"Readiness estimate","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/success_predict.py","kind":"estimate"},{"label":"Readiness card","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/desktop/src/routes/DesignInsights.tsx","kind":"engine"}],
     "title": "Read the checks",
     "question": "What needs attention before slicing?",
     "lead": "Studio compares the project with the U1 and with Snapmaker Orca's expectations. You do not need to read every line. What matters is telling a confirmed problem from a heads-up, and both from something Studio cannot know.",
@@ -54,6 +54,7 @@
     "means": [
       { "seen": "**1 object is outside the U1's printable area.**", "meaning": "An object hangs off the plate. Studio names the object, the edge and the distance.", "certainty": "confirmed", "action": "Decide whether it is misplaced or too big (next stage)." },
       { "seen": "**NEEDS ATTENTION** — “Invalid value for …”", "meaning": "Likely to cause trouble in Orca. For a downloaded 3MF it usually means settings from another printer; the text says the model itself may be fine.", "certainty": "check", "action": "Read the **Do this:** line. Preparing a U1 copy is designed to handle this." },
+      { "seen": "**Print readiness (estimate)**", "meaning": "Studio starts at 100 and takes points off for each risk signal it found. The percentage is not a probability of print success. **Few risks** means the score is at least 75, so a signal may still have cost points. The line under it shows the percentage; the bullet list of signals appears only below 75.", "certainty": "info", "action": "Review any listed signals before printing." },
       { "seen": "**HEADS UP**", "meaning": "Worth knowing, often something Studio cannot verify, such as spacing between objects.", "certainty": "check", "action": "Check it in Orca (**Arrange**, collision warnings)." },
       { "seen": "**STUDIO CAN’T TELL** / **STUDIO CAN’T CHECK THIS**", "meaning": "Studio lacks information it needs for this check. It is not a problem found; it is a gap.", "certainty": "unknown", "action": "Connect the printer, or check it yourself. See the unknown-versus-confirmed example in stage 6." },
       { "seen": "**LOOKS RIGHT**", "meaning": "Studio checked and found nothing wrong.", "certainty": "ok", "action": "Read any action listed on the card. It is advice, not a guarantee." }
@@ -83,7 +84,7 @@
     "next": { "page": "path-prepare", "why": "Next question: what can Studio fix, and how should I prepare my copy?" }
   },
   {
-    "id": "prepare", "page": "path-prepare", "n": 3, "lane": "studio", "label": "Prepare",
+  "id": "prepare", "page": "path-prepare", "n": 3, "lane": "studio", "label": "Prepare", "checked": "1.5.1",
     "title": "Fix and prepare",
     "question": "What can Studio fix, and how should I prepare my copy?",
     "lead": "Studio can write a repositioned copy and a U1 copy. It fixes only what one safe action can fix, and it tells you when it will not. Both actions write new files; your original stays as it is.",
@@ -128,7 +129,7 @@
     "next": { "page": "path-review", "why": "Next question: what changed in the prepared copy?" }
   },
   {
-    "id": "review", "page": "path-review", "n": 4, "lane": "studio", "label": "Review",
+  "id": "review", "page": "path-review", "n": 4, "lane": "studio", "label": "Review", "checked": "1.5.1", "sources": [{"label":"Fidelity report","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/desktop/src/lib/fidelity.ts","kind":"engine"}],
     "title": "Review what changed",
     "question": "What changed in the prepared copy?",
     "lead": "Studio does not ask you to trust the copy. It lists what it kept, what it changed, what it could not carry over and what it could not check, and you can always return to your original.",
@@ -137,8 +138,8 @@
       "note": "These cards appear on the Workspace right after preparing, and on **This print** under **2. Prepared**."
     },
     "means": [
-      { "seen": "**What survived preparing this copy** — 14 kept · 2 changed", "meaning": "A comparison of what Studio can identify in both files.", "certainty": "info", "action": "Expand **What Studio changed** and look at each line." },
-      { "seen": "**Adjusted for U1 project compatibility**", "meaning": "Settings changed only so the project suits the U1, for example the printer identity.", "certainty": "info", "action": "Skim **Before and after**; flag anything that surprises you." },
+        { "seen": "**What survived preparing this copy** — 14 kept · 2 changed", "meaning": "A comparison of what Studio can identify in both files. Kept means the value reached the copy, not that Orca uses it: read any note on the row.", "certainty": "info", "action": "Expand **What Studio changed** and look at each line." },
+        { "seen": "**Adjusted for U1 project compatibility**", "meaning": "Settings changed only so the project suits the U1, for example the printer identity. Where a setting was outside its valid range, Studio used the U1 default.", "certainty": "info", "action": "Skim **Before and after**; flag anything that surprises you." },
       { "seen": "**Optional recommendations (not applied)**", "meaning": "Suggestions Studio did not apply.", "certainty": "info", "action": "Nothing changes unless you choose **Prepare another copy with recommended settings**." },
       { "seen": "**What Studio could not carry over**", "meaning": "Something in the original was left behind, or Studio could not establish what happened to it. Read each row's reason.", "certainty": "check", "action": "Check that setting in Orca." },
       { "seen": "**What Studio could not check**", "meaning": "Studio could not verify this item: it may be an unexplained change, or something it could not compare.", "certainty": "unknown", "action": "Compare that setting with your original in Orca before slicing, and report it." }

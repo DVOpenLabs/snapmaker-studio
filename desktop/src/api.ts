@@ -127,6 +127,9 @@ export interface SettingsChange {
   reason?: string;
   /** Plain-language explanation some steps add next to the reason. */
   explanation?: string;
+  /** Evidence provenance for the explanation, replaced or cleared with it. */
+  source?: string;
+  kind?: "file" | "engine" | "estimate" | "orca";
 }
 
 export interface SettingsSummary {

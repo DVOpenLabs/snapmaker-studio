@@ -1,0 +1,250 @@
+{
+  "browser": "Microsoft Edge (Chromium), headless",
+  "uiStartedByThisRun": true,
+  "uiUrl": "http://localhost:55063",
+  "baseCommit": "b01f7d049dc04c32df36489cf6ad5bd27d5c6b7e",
+  "worktreeDirty": true,
+  "diffHash": "7c46b2f8900f549c76b1b79eb04e2671c85cff9ddb7a94f6c63cff86164ef9ab",
+  "note": "Run on the uncommitted change on top of baseCommit; diffHash covers git diff HEAD plus untracked files (excluding this folder).",
+  "backendNetworkNotObserved": true,
+  "knownBlockedFontHosts": [
+    "fonts.googleapis.com"
+  ],
+  "ignoredConsoleMessages": [
+    "Failed to load resource: net::ERR_FAILED",
+    "Warning: Invalid DOM property `%s`. Did you mean `%s`?%s stroke-width strokeWidth \n    at g\n    at svg\n    at div\n    at div\n    at aside\n    at Sidebar (http://localhost:55063/src/components/shell/Si",
+    "Warning: Invalid DOM property `%s`. Did you mean `%s`?%s stroke-linecap strokeLinecap \n    at g\n    at svg\n    at div\n    at div\n    at aside\n    at Sidebar (http://localhost:55063/src/components/shel"
+  ],
+  "results": [
+    {
+      "name": "compatibility: the tab row is named \"Compatibility tools\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compatibility: exactly one tab is in the Tab order and it is the selected one",
+      "ok": true,
+      "detail": "[\"Compatibility\"]"
+    },
+    {
+      "name": "compatibility: Tab, pressed 120 times through the page, lands on the selected tab and never on the other",
+      "ok": true,
+      "detail": "tabs reached: Compatibility"
+    },
+    {
+      "name": "compatibility: ArrowRight moves focus to \"Source Check\"",
+      "ok": true,
+      "detail": "Source Check"
+    },
+    {
+      "name": "compatibility: ArrowRight did not switch the panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compatibility: the tab stop moved with focus",
+      "ok": true,
+      "detail": "[\"Source Check\"]"
+    },
+    {
+      "name": "compatibility: the panel has a first focusable control",
+      "ok": true,
+      "detail": "Open a 3MF project"
+    },
+    {
+      "name": "compatibility: after arrowing to \"Source Check\" and leaving the row, the tab stop is back on the selected tab \"Compatibility\"",
+      "ok": true,
+      "detail": "[\"Compatibility\"]"
+    },
+    {
+      "name": "compatibility: Shift+Tab from the first focusable control in the panel (\"Open a 3MF project\") lands on the selected tab (\"Compatibility\"), not the one that was arrowed to",
+      "ok": true,
+      "detail": "Compatibility"
+    },
+    {
+      "name": "compatibility: ArrowLeft wraps from the first tab to the last",
+      "ok": true,
+      "detail": "Source Check"
+    },
+    {
+      "name": "compatibility: ArrowRight wraps from the last tab to the first",
+      "ok": true,
+      "detail": "Compatibility"
+    },
+    {
+      "name": "compatibility: Home moves focus to the first tab",
+      "ok": true,
+      "detail": "Compatibility"
+    },
+    {
+      "name": "compatibility: End moves focus to the last tab",
+      "ok": true,
+      "detail": "Source Check"
+    },
+    {
+      "name": "compatibility: Home, End and the arrow keys never switched the panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compatibility: Enter on \"Source Check\" switches the panel and its heading \"Source Check\" appears",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compatibility: focus stays on the tab after Enter",
+      "ok": true,
+      "detail": "Source Check"
+    },
+    {
+      "name": "compatibility: the panel is labeled by the selected tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compatibility: Space on \"Compatibility\" switches back and its heading \"Compatibility Doctor\" appears",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: the tab row is named \"Print quality tools\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: exactly one tab is in the Tab order and it is the selected one",
+      "ok": true,
+      "detail": "[\"Print Quality\"]"
+    },
+    {
+      "name": "print-quality: Tab, pressed 120 times through the page, lands on the selected tab and never on the other",
+      "ok": true,
+      "detail": "tabs reached: Print Quality"
+    },
+    {
+      "name": "print-quality: ArrowRight moves focus to \"First Layer\"",
+      "ok": true,
+      "detail": "First Layer"
+    },
+    {
+      "name": "print-quality: ArrowRight did not switch the panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: the tab stop moved with focus",
+      "ok": true,
+      "detail": "[\"First Layer\"]"
+    },
+    {
+      "name": "print-quality: the panel has a first focusable control",
+      "ok": true,
+      "detail": "Stringing / wisps"
+    },
+    {
+      "name": "print-quality: after arrowing to \"First Layer\" and leaving the row, the tab stop is back on the selected tab \"Print Quality\"",
+      "ok": true,
+      "detail": "[\"Print Quality\"]"
+    },
+    {
+      "name": "print-quality: Shift+Tab from the first focusable control in the panel (\"Stringing / wisps\") lands on the selected tab (\"Print Quality\"), not the one that was arrowed to",
+      "ok": true,
+      "detail": "Print Quality"
+    },
+    {
+      "name": "print-quality: ArrowLeft wraps from the first tab to the last",
+      "ok": true,
+      "detail": "First Layer"
+    },
+    {
+      "name": "print-quality: ArrowRight wraps from the last tab to the first",
+      "ok": true,
+      "detail": "Print Quality"
+    },
+    {
+      "name": "print-quality: Home moves focus to the first tab",
+      "ok": true,
+      "detail": "Print Quality"
+    },
+    {
+      "name": "print-quality: End moves focus to the last tab",
+      "ok": true,
+      "detail": "First Layer"
+    },
+    {
+      "name": "print-quality: Home, End and the arrow keys never switched the panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: Enter on \"First Layer\" switches the panel and its heading \"First Layer Doctor\" appears",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: focus stays on the tab after Enter",
+      "ok": true,
+      "detail": "First Layer"
+    },
+    {
+      "name": "print-quality: the panel is labeled by the selected tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "print-quality: Space on \"Print Quality\" switches back and its heading \"Print Quality Doctor\" appears",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus ring (dark): the keyboard-focused tab shows a visible ring",
+      "ok": true,
+      "detail": "{\"box\":\"rgb(15, 17, 26) 0px 0px 0px 2px, rgb(0, 225, 255) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px\",\"outline\":\"solid\",\"focusVisible\":true}"
+    },
+    {
+      "name": "focus ring (light): the keyboard-focused tab shows a visible ring",
+      "ok": true,
+      "detail": "{\"box\":\"rgb(255, 255, 255) 0px 0px 0px 2px, rgb(0, 149, 230) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px\",\"outline\":\"solid\",\"focusVisible\":true}"
+    },
+    {
+      "name": "compatibility at 600 px: no horizontal page scroll",
+      "ok": true,
+      "detail": "{\"page\":0,\"body\":0}"
+    },
+    {
+      "name": "compatibility at 600 px: tab labels are not truncated and sit inside the viewport",
+      "ok": true,
+      "detail": "{\"pageOverflow\":0,\"bodyOverflow\":0,\"truncated\":[],\"outside\":[],\"heights\":[38,38],\"barRight\":568,\"width\":600}"
+    },
+    {
+      "name": "compatibility at 600 px: both labels are present in full",
+      "ok": true,
+      "detail": "Compatibility | Source Check"
+    },
+    {
+      "name": "print-quality at 600 px: no horizontal page scroll",
+      "ok": true,
+      "detail": "{\"page\":0,\"body\":0}"
+    },
+    {
+      "name": "print-quality at 600 px: tab labels are not truncated and sit inside the viewport",
+      "ok": true,
+      "detail": "{\"pageOverflow\":0,\"bodyOverflow\":0,\"truncated\":[],\"outside\":[],\"heights\":[38,38],\"barRight\":568,\"width\":600}"
+    },
+    {
+      "name": "print-quality at 600 px: both labels are present in full",
+      "ok": true,
+      "detail": "Print Quality | First Layer"
+    },
+    {
+      "name": "no request reached another host, a printer, or discovery",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no unexpected console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

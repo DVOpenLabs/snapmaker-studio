@@ -49,7 +49,7 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 ## 3. What is being submitted
 
-**Release:** [v1.5.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0)
+**Release:** [v1.5.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1)
 — the current stable build; v0.4.0 was the first verified against a real Snapmaker
 U1, and every release since has been. Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
@@ -72,18 +72,18 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the v1.3.1 release-candidate build (the same application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
+Verified against the v1.5.1 release-candidate build (the same application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 45/45 |
+| Installed-application acceptance, through the real UI | 50/50 |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | 49/49 each |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
+| Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | 76/76 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2804 passed, 13 skipped |
-| Desktop tests | 725 passed |
+| Backend tests | 2927 passed, 49 skipped |
+| Desktop tests | 852 passed |
 | TypeScript · production build · Rust | clean |
 
 Reproduce any of it: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).

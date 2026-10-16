@@ -196,7 +196,7 @@ export const SHOTS = [
   },
   {
     id: "cost", file: "cost.png", open: DEMO, route: "/doctor/cost",
-    setup: waitText(/true cost to make/),
+    setup: waitText(/estimated cost/),
     targets: { "cost": T("Cost Doctor"), "price": T(/Pricing Doctor/i), "profit": T(/Profit Doctor/i), "details": T("Show details & assumptions") },
   },
   {

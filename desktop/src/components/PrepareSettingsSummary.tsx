@@ -2,6 +2,7 @@ import type { SettingsChange, SettingsSummary } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { settingNote } from "@/lib/settingNotes";
+import { evidenceKindLabel } from "@/lib/evidenceKind";
 
 function value(value: unknown) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
@@ -16,7 +17,7 @@ function Changes({ changes, explain = false }: { changes: SettingsChange[]; expl
         return (
           <li key={change.key} className="space-y-0.5">
             <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-1"><span className="truncate font-mono">{change.key}</span><span>:</span><span className="truncate">{value(change.old)} → {value(change.new)}</span></div>
-            {note && <p className="pl-2 leading-snug">{note}</p>}
+            {note && <p className="pl-2 leading-snug">{note.kind && <strong>{evidenceKindLabel(note.kind)}</strong>}{note.kind && note.source ? ` — ${note.source}. ` : note.kind ? ". " : note.source ? `${note.source}. ` : ""}{note.note}</p>}
           </li>
         );
       })}

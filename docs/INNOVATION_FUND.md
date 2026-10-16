@@ -170,7 +170,7 @@ guessing in the direction that looks better.
   to end and prints a 27-check pass/fail table, so the claims can be verified
   without reading the source. It runs in CI on every pull request.
 - **An acceptance harness that drives the installed application**, not a dev
-  server: 45 checks over the real window and the frozen engine, including that the
+  server: 50 checks over the real window and the frozen engine, including that the
   input file is byte-identical afterwards and that uninstalling leaves nothing
   behind.
 - **Regression tests against genuine slicer output** — real OrcaSlicer,
@@ -208,19 +208,19 @@ simply the machine it is verified against.
 
 ## Evidence
 
-Everything below was verified against the **v1.5.0 release-candidate build** (the same
+Everything below was verified against the **v1.5.1 release-candidate build** (the same
 application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 45/45 |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
+| Installed-application acceptance, through the real UI | 50/50 |
+| Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | 76/76 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2804 passed, 13 skipped |
-| Desktop tests | 725 passed |
+| Backend tests | 2927 passed, 49 skipped |
+| Desktop tests | 852 passed |
 | TypeScript, Rust, production build | clean |
 
 Demo: [`docs/media/snapmaker-studio-demo.mp4`](media/snapmaker-studio-demo.mp4) —

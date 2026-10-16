@@ -237,18 +237,24 @@ Menu and Desktop shortcut) and never the production keys or the shared publisher
   therefore still refuses to launch unless the production file is absent or `auto_check` is `false`, and the tripwire
   still detects a change. **These protections stay in place until override support is verified in the acceptance
   artifact; do not relax them on the strength of the source change alone.**
-  - *Product side (done in source, unreleased):* a build that includes the override reads and writes
+  - *Product side (in the v1.5.1 build and later):* a build that includes the override reads and writes
     `update_check.json` under `SNAPSTUDIO_DATA_DIR` when it is set. An explicit value that is empty, not valid text or
     not absolute is treated as unusable, never as "unset": the preference reads as off, saving fails, and no automatic
     check runs, so a bad value cannot select production state. Covered by temp-directory tests in `main.rs`.
   - *Harness side (already in place):* `Start-HarnessProcess` passes `SNAPSTUDIO_DATA_DIR = <lane>\engine-data` to the
     child only (`HarnessLauncher.psm1`, environment block next to `WEBVIEW2_USER_DATA_FOLDER`), so an override-aware
     build would write the file inside the lane with no further plumbing.
-  - *What remains:* (1) ship the override in a build and rewrap it as the acceptance artifact; (2) verify, on that
-    artifact, that `update_check.json` appears under the lane data dir and the production file is unchanged (extend the
-    tripwire to assert the lane file, and attest the build contains the override, for example by build identity);
-    (3) only then let the preflight skip the production check, and only for artifacts proven override-aware, keeping
-    it for older ones. Full harness integration is **not** claimed yet.
+  - *Verified on the v1.5.1 release candidate:* the override is in the v1.5.1 build. On the acceptance-identity copy
+    of that exact release candidate (installer SHA256 `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3`,
+    clean local account), turning "Automatically check for updates" on in the installed Help screen wrote
+    `update_check.json` inside the lane data directory (`auto_check` true, then false when turned off), and the
+    production paths stayed absent before and after; the lane's production-state tripwire reported 0 violations. The
+    probe is a one-off script run against that artifact; it is not part of `tools/acceptance/run.ps1`.
+  - *What remains:* extend the tripwire to assert the lane file and attest that a build contains the override (for
+    example by build identity), and only then let the preflight skip the production check, and only for artifacts
+    proven override-aware, keeping it for older ones. The preflight and tripwire protections therefore **stay as they
+    are**: the upgrade lane first installs an older, non-override build, and full harness integration is **not**
+    claimed.
 - **Manual interference.** Launching the production exe by hand after the preflight, or using the auto-check UI during a
   harness session, is a detection-only case.
 - **Journal content** is validated on read, not on save, and the TEMP-misconfiguration case widens the override allowlist

@@ -94,7 +94,7 @@ export function renderSearch(container, q) {
   if (!results.length) {
     const box = el("div", { class: "empty", role: "status" });
     box.innerHTML = `<h3>Nothing matched “${escapeHtml(query)}”</h3>
-      <p>This guide describes Studio v1.5.0. Try fewer or different words, or browse:</p>
+      <p>This guide describes Studio v1.5.1. Try fewer or different words, or browse:</p>
       <ul><li><a href="#tasks">Find help for my current task</a></li><li><a href="#problems">Understand a warning or problem</a></li><li><a href="#path-open">Follow the example project from the start</a></li></ul>
       <p>Something missing from the guide? <a href="${DATA.links.issues}" rel="noopener noreferrer" target="_blank">Tell us on GitHub<span class="vh"> (opens in a new tab)</span></a>.</p>`;
     container.appendChild(box);

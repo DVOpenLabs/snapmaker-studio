@@ -17,15 +17,15 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.5.0 |
-| Installer | `Snapmaker.Studio_1.5.0_x64-setup.exe` |
-| Size (bytes) | 21,944,474 |
-| SHA256 | `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82` |
-| Linux installer | `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` |
-| Linux size (bytes) | 25,944,098 |
-| Linux SHA256 | `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37533259845 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0 |
+| Version | v1.5.1 |
+| Installer | `Snapmaker.Studio_1.5.1_x64-setup.exe` |
+| Size (bytes) | 21,962,736 |
+| SHA256 | `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3` |
+| Linux installer | `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb` |
+| Linux size (bytes) | 25,954,272 |
+| Linux SHA256 | `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.
@@ -35,6 +35,19 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 `sha256sum <file>.deb` (Linux).
 
 ## Previous release
+
+| Field | Value |
+|---|---|
+| Version | v1.5.0 |
+| Installer | `Snapmaker.Studio_1.5.0_x64-setup.exe` |
+| Size (bytes) | 21,944,474 |
+| SHA256 | `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82` |
+| Linux installer | `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` |
+| Linux size (bytes) | 25,944,098 |
+| Linux SHA256 | `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a` |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0 |
+
+## Superseded
 
 | Field | Value |
 |---|---|
