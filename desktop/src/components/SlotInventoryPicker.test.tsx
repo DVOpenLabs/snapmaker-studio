@@ -4,7 +4,7 @@ import { useReducer } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { candidate, mapping, slot } from "@/lib/projectMaterials.fixtures";
 import {
-  KEEP_OWN_NOTICE, KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
+  KEEP_OWN_NOTICE, KEEP_OWN_NOTICE_NONE_EXISTING, SPOOL_FOREIGN_PRESET_HINT, SPOOL_PRESET_CAVEAT, SPOOL_WITHOUT_PRESET, SPOOL_WITHOUT_PRESET_NONE_EXISTING, buildSelections, choiceReduce, type Choices, type MaterialInventory, type ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
 import { useProvider } from "@/store/provider";
 
@@ -215,10 +215,17 @@ describe("a spool with no Orca preset", () => {
     render(<Harness a={analysis()} />);
     fireEvent.click(screen.getByRole("button", { name: /Yoopai PLA Matte/ }));
     // the maintainer's sentence first, then what Studio did not establish about the preset it leaves alone
-    expect(screen.getByTestId("spool-without-preset").textContent).toBe(`${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}`);
+    // the fixture's own preset is a Bambu one, so the sentence about choosing a Snapmaker preset follows the caveat
+    expect(screen.getByTestId("spool-without-preset").textContent).toBe(`${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT} ${SPOOL_FOREIGN_PRESET_HINT}`);
     expect(SPOOL_PRESET_CAVEAT).toContain("does not check how Snapmaker Orca will treat it");
     expect(SPOOL_WITHOUT_PRESET).toBe("Spool selected, but no Orca preset selected. The project's existing filament preset will remain.");
     expect(request()).toEqual([expect.objectContaining({ slot: 0, preset: null, colour: "#FF0000" })]);   // colour only
+  });
+
+  it("does not add the foreign-preset sentence when the project's own preset is a Snapmaker one", () => {
+    render(<Harness a={analysis({ slots: [slot({ settings_id: "Snapmaker PLA Matte @U1" })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Yoopai PLA Matte/ }));
+    expect(screen.getByTestId("spool-without-preset").textContent).toBe(`${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}`);
   });
 
   it("is not shown once a preset is chosen, or when the project's filament is kept on purpose", () => {
