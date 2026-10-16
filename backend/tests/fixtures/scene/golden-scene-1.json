@@ -1,0 +1,166 @@
+{
+  "schema": "scene/1",
+  "revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "status": "complete",
+  "units": "mm",
+  "axes": "right-handed-z-up",
+  "sources": [
+    {
+      "part": "3D/3dmodel.model",
+      "unit": "millimeter",
+      "mm_per_unit": 1.0
+    }
+  ],
+  "bed": {
+    "polygon_mm": [
+      [
+        0.5,
+        1.0
+      ],
+      [
+        270.5,
+        1.0
+      ],
+      [
+        270.5,
+        271.0
+      ],
+      [
+        0.5,
+        271.0
+      ]
+    ],
+    "height_mm": 270.05,
+    "edge_margin_mm": 0.5,
+    "policy": "u1_template"
+  },
+  "meshes": [
+    {
+      "key": {
+        "part": "3D/3dmodel.model",
+        "object_id": "1"
+      },
+      "vertex_count": 8,
+      "triangle_count": 12,
+      "positions_f32le_base64": "AAAAAAAAAAAAAAAAAAAgQQAAAAAAAAAAAAAgQQAAIEEAAAAAAAAAAAAAIEEAAAAAAAAAAAAAAAAAACBBAAAgQQAAAAAAACBBAAAgQQAAIEEAACBBAAAAAAAAIEEAACBB",
+      "indices_u32le_base64": "AAAAAAEAAAACAAAAAAAAAAIAAAADAAAABAAAAAUAAAAGAAAABAAAAAYAAAAHAAAAAAAAAAEAAAAFAAAAAAAAAAUAAAAEAAAAAQAAAAIAAAAGAAAAAQAAAAYAAAAFAAAAAgAAAAMAAAAHAAAAAgAAAAcAAAAGAAAAAwAAAAAAAAAEAAAAAwAAAAQAAAAHAAAA",
+      "volumes": [
+        {
+          "id": "v0",
+          "triangle_start": 0,
+          "triangle_count": 12,
+          "role": "part",
+          "source": "object"
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "b0",
+      "parent_id": null,
+      "resource": {
+        "part": "3D/3dmodel.model",
+        "object_id": "1"
+      },
+      "mesh_key": {
+        "part": "3D/3dmodel.model",
+        "object_id": "1"
+      },
+      "local_to_parent_mm": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        50.0,
+        60.0,
+        0.0,
+        1.0
+      ],
+      "world_mm": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        50.0,
+        60.0,
+        0.0,
+        1.0
+      ],
+      "mirrored": false,
+      "role_context": null,
+      "build_index": 0,
+      "instance_ref": {
+        "build_index": 0,
+        "component_path": []
+      },
+      "plate": {
+        "state": "unknown",
+        "plate_id": null,
+        "source": null
+      },
+      "placement_state": "known",
+      "printable": true,
+      "has_non_part_volumes": false,
+      "bounds_mm": {
+        "min": [
+          50.0,
+          60.0,
+          0.0
+        ],
+        "max": [
+          60.0,
+          70.0,
+          10.0
+        ]
+      },
+      "finding_ids": []
+    }
+  ],
+  "plates": [],
+  "findings": [],
+  "limitations": [
+    {
+      "code": "PLATES_UNAVAILABLE",
+      "target_ids": []
+    }
+  ],
+  "counts": {
+    "nodes": 1,
+    "meshes": 1,
+    "vertices": 8,
+    "triangles": 12,
+    "rendered_triangles": 12,
+    "plates": 0,
+    "findings": 0,
+    "limitations": 1
+  },
+  "limits": {
+    "max_archive_bytes": 134217728,
+    "max_model_xml_bytes": 33554432,
+    "max_rendered_triangles": 250000,
+    "max_vertices": 300000,
+    "max_nodes": 2000,
+    "max_depth": 64,
+    "max_response_bytes": 8388608,
+    "max_findings": 500,
+    "max_limitations": 50,
+    "max_id_length": 128
+  }
+}

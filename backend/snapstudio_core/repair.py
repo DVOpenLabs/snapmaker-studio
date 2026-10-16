@@ -22,7 +22,8 @@ SLICE_INFO = "Metadata/slice_info.config"
 def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
            dry_run: bool = False, profile_name: str = "snapmaker_u1",
            opt_profile: str | None = None, confirmed_presets: dict | None = None,
-           filament_catalog=None, confirmed_colours: dict | None = None) -> RepairOutcome:
+           filament_catalog=None, confirmed_colours: dict | None = None,
+           source_path: str | None = None) -> RepairOutcome:
     assert mode in ("safe", "preserve", "u1", "optimize")
     remap = remap or {}
     source = detect_source(tm)
@@ -124,6 +125,26 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         report["orca_compatibility"] = orca_import.apply_compatibility(
             work, filament_count(work))
 
+    # Where things sit is not a creator's setting, so the plate grid and the prime tower are corrected in
+    # both modes (see ``regrid``): translation of build items and one tower position per plate, nothing else.
+    # It reads the original file for geometry, so it runs only when the caller says where that is.
+    layout = None
+    if mode in ("preserve", "u1", "optimize") and source_path:
+        from . import regrid
+        layout = regrid.correct(tm, work, cfg, source_path)
+        report["layout"] = layout
+        report["placement_corrections"] = layout["setting_changes"]
+
+    # A model's own statement of where it needs support survives the starter settings (Recommended only;
+    # Preserve keeps the creator's declarations as they are). See ``support_intent``.
+    support_keys: set[str] = set()
+    if mode in ("u1", "optimize"):
+        from . import support_intent
+        intent = support_intent.detect(tm, cfg)
+        report["support_intent"] = intent
+        if intent["explicit"]:
+            support_keys = set(intent["keys"])
+
     # Everything above states values. This says which of them Snapmaker Orca is
     # not to take from the preset the project names.
     #
@@ -148,7 +169,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 report.get("preserved_value_changes"),
                 report.get("optimizations"),
                 report.get("orca_compatibility"),
-            ),
+                report.get("placement_corrections"),
+            ) | support_keys,
             filaments=filament_count(work),
         )
         if declared:
