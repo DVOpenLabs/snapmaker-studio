@@ -21,8 +21,9 @@ export default {
       },
       borderRadius: { lg: "12px", md: "8px", sm: "6px" },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        // System stacks only: Studio is local-first, so no font is fetched from a remote host (issue #94).
+        sans: ["ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Cascadia Mono", "Consolas", "Menlo", "monospace"],
       },
     },
   },
