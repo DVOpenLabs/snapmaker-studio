@@ -25,15 +25,36 @@ earlier v1.5.1 release candidate, built from different source; none of those res
 | Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
 | Linux clean-environment validation, `ubuntu:22.04`, against this candidate's `.deb` | **49/49** |
 | Linux clean-environment validation, `ubuntu:24.04`, against this candidate's `.deb` | **49/49** |
-| Windows installed-application acceptance (acceptance-identity copy, clean local account) | **not run yet** |
-| Snapmaker Orca validation of outputs prepared by this candidate (loading, plate membership, observed settings, Recommended tower retention) | **not run yet** — see the validation checklist; opening a file in Orca is not a slice and a slice is not a print |
+| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; production-state tripwire passed, no orphan processes) | **50/50**, with two test-setup deviations listed below |
+| Snapmaker Orca 2.4.1 validation of copies prepared from this candidate's source (loading, plate membership, observed settings, Recommended tower retention) | **partial** — 6 synthetic outputs loaded; tower position consistent with retained in the 3D view but its numbers were not read; see below. Opening a file in Orca is not a slice and a slice is not a print |
 | Real Snapmaker U1, read-only | **not run** — needs the maintainer's separate authorization for printer contact |
 | Publish dry run | **not run** |
 
+### Test-setup deviations and findings in the candidate gates
+
+- **The committed acceptance harness fails one check against this candidate.** Its generated "painted project" test file lacks `[Content_Types].xml` and `_rels/.rels`; since the Prepare-reliability change, a project missing required parts is unreadable by design, so the painted-colour route check fails. The 50/50 run used a copy of the harness with those two parts added to the test file (staged copy only; the product and the repository are unchanged). Fixing the committed harness is a tooling change.
+- The run also used probe ports 9411–9413 because another program on the test machine held the harness default port 9401. An earlier run on the default ports scored 44/50 for those two reasons, and one run was refused at launch by a harness safety check; none of these is a product result, and all three are kept as records.
+- The generated user guide, rebuilt from this source, is byte-identical to the committed one.
+
+### Snapmaker Orca observations (Orca 2.4.1, isolated profile, copies of anonymous synthetic projects)
+
+Outputs were prepared from the candidate's source code with `convert_to_u1`, not by the installed application. Each was opened once in a fresh Orca instance with its own data directory; originals and the user's Orca profile were unchanged (checked before and after).
+
+| Output | Loaded | What the screen showed |
+|---|---|---|
+| Two-plate project from a larger bed, Preserve and Recommended | yes, both | printer U1, 0.4 mm nozzle; one object inside each plate outline; the prime-tower ghost at the top right of plate 1, the project's own position rather than the starter default |
+| Single-plate project, tower start outside the plate, Preserve and Recommended | yes, both | object inside the plate; the tower was not drawn, so the outside-tower case was not observed |
+| Single-plate project with a painted support enforcer, Preserve and Recommended | yes, both | object inside the plate; the prime-tower ghost at the top left, the project's own position |
+
+Each load showed Orca's information notice that a configuration may come from a newer version and that `nozzle_volume_type` was replaced; only that notice was acknowledged. No "Customized Preset" prompt appeared.
+
+**Not observed:** the prime-tower X and Y values themselves (read them in Orca under Process, Multimaterial, Prime tower); whether any object is listed under the object list's "Outside" group (the groups were not expanded); the Support tab values; any slice; any print. So retention of the declared tower coordinates in Recommended mode is **supported by the 3D view, not measured**.
+
 ### What is not verified for this candidate
 
-Whether Snapmaker Orca keeps the project's `wipe_tower_x` / `wipe_tower_y` when it imports a copy prepared in
-Recommended mode. Studio writes and declares those values; the outcome in Orca has not been observed.
+The numeric prime-tower coordinates Snapmaker Orca holds after importing a copy prepared in Recommended mode
+(see the observations above), any slice, any print, and the real-printer checks. Studio writes and declares the
+tower values; the 3D view in Orca is consistent with them being kept.
 Multi-plate placement beyond the per-plate fit is not checked by Studio. The user guide's screenshots were
 captured from v1.5.0.
 

@@ -167,9 +167,9 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 ## Evidence
 
 The v1.5.1 candidate named above has been built. It has passed the build, the Windows upgrade smoke test
-and the Linux clean-image checks (49 of 49 on each of Ubuntu 22.04 and 24.04). The tests that drive the installed
-app, the Snapmaker Orca validation of the copies it prepares, and the real-printer checks have **not** been run
-on it yet.
+and the Linux clean-image checks (49 of 49 on each of Ubuntu 22.04 and 24.04), and the tests that drive the installed
+app (50 of 50, with two test-setup deviations recorded in the trust status). Six prepared copies opened in Snapmaker
+Orca 2.4.1; opening a copy is not a slice. The real-printer checks have **not** been run on it.
 
 The table and the two paragraphs after it are results from an **earlier v1.5.1 release candidate** — a different
 build, never published, made before the Prepare, plate and prime-tower changes in this one. They show how the checks

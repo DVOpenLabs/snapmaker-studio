@@ -20,7 +20,7 @@
     "report": "hardware-1.5.1.json",
     "total": 76
   },
-  "provenance": "Installer, backend and desktop counts: current v1.5.1 candidate (source f0c0cd5, run 38913728391). Acceptance and hardware counts: earlier v1.5.1 release candidate (run 37947895421, commit abf20bf); replaced when this build's gates are recorded.",
+  "provenance": "Installer, backend, desktop and acceptance counts: current v1.5.1 candidate (source f0c0cd5, run 38913728391; acceptance 50/50 with two test-setup deviations recorded in TRUST_STATUS). Hardware and self-check counts: earlier v1.5.1 release candidate (run 37947895421, commit abf20bf); the real-printer check has not been run on the candidate.",
   "schema_version": "evidence/1",
   "screenshots_dir": "docs/screenshots/v1.5.1",
   "selfcheck": {

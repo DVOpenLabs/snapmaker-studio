@@ -26,7 +26,7 @@ Every *other* document must link here rather than restate these values.
 | Linux SHA256 | `d7f7671e9acfaa861f31e6c9f0cbdad1f05a1c334825d95aef1d949b49593c53` |
 | Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38913728391 (source commit `f0c0cd533627300fdadb47f20c60726ca634b740`, branch `integ/v1.5.1-candidate`) |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 (does not exist until the release is published) |
-| Trust status | CANDIDATE, NOT ACCEPTED: the gates for this build are pending. See [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Trust status | CANDIDATE, NOT ACCEPTED: build, upgrade smoke, Linux clean-image, installed-app acceptance and a partial Orca check are recorded; the real-printer check has not been run. See [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 This is a release candidate that has not been published. An earlier v1.5.1 release candidate (run 37947895421, commit abf20bf0f74d) was built from a different source tree, never published, and is superseded by this one; its acceptance results belong to that artifact only. v1.5.1 is intended to be a stable release, not a prerelease, so GitHub's "latest release" would point at it once published.
 Hashes for both files are also published as `SHA256SUMS` on the release.
