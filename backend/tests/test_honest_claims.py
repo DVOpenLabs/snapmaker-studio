@@ -220,13 +220,14 @@ def test_doctor_ready_for_a_single_plate_project_is_unchanged(tmp_path):
 # --- 4. Recommended mode and the creator's supports ---------------------------------
 
 def test_recommended_says_it_does_not_keep_the_creators_supports(tmp_path):
-    src = build(tmp_path, supports=True, painted_supports=True)
+    # Painted support enforcers are positive intent and are kept (see test_support_intent); the note is for
+    # supports the creator turned on without any such data, which the starter reset still drops.
+    src = build(tmp_path, supports=True)
     summary = convert(src, "recommended", tmp_path)["settings_summary"]
     note = summary["supports_note"]
     assert note.startswith("Supports: the creator turned supports on. This mode does not keep them;")
     assert "Snapmaker Orca will open with supports off" in note
     assert "Support tab" in note and "Preserve creator settings" in note
-    assert "painted support areas" in note
 
 
 def test_recommended_does_not_mention_painted_supports_that_do_not_exist(tmp_path):
@@ -280,15 +281,18 @@ def test_validation_report_only_says_values_are_kept_where_that_is_true(tmp_path
 # --- 5. the prime tower, computed from the project's own settings -------------------
 
 # A 330 x 320 source bed's tower position and width, as the C11 project carried them.
-SOURCE_TOWER = (["236.895", "165"], ["233.729", "250"], "60")
+# Plate 1's start corner (x 296.9) is itself outside the 270.5 mm edge; plate 2 (165, 250) is inside.
+SOURCE_TOWER = (["296.9", "165"], ["233.729", "250"], "60")
+# The C11 project's real values: the corner is inside and the width is not an extent, so nothing is proven.
+C11_TOWER = (["236.895", "165"], ["233.729", "250"], "60")
 
 
 def test_preserve_reports_the_inherited_tower_outside_the_u1_area(tmp_path):
     r = convert(build(tmp_path, tower=SOURCE_TOWER), "preserve", tmp_path)
     note = r["settings_summary"]["prime_tower_note"]
     assert note.startswith("The prime tower (plate 1) sits outside the")
-    assert "printable area" in note and "X 236.895, Y 233.729" in note
-    assert "at least 60 mm wide" in note
+    assert "printable area" in note and "X 296.9, Y 233.729" in note
+    assert "wide" not in note and "review it in Snapmaker Orca" in note
     with zipfile.ZipFile(r["output_path"]) as z:      # detection only: nothing moved
         cfg = json.loads(z.read(SETTINGS))
     assert cfg["wipe_tower_x"] == SOURCE_TOWER[0]
@@ -370,3 +374,20 @@ def test_a_rotated_tower_is_not_judged(tmp_path):
     bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
     assert prime_tower.findings(cfg, 1, bed) == []
     assert prime_tower.unverified_note(cfg, []) is not None
+
+
+def test_recommended_keeps_supports_the_model_itself_marks_and_says_nothing_about_dropping_them(tmp_path):
+    # Positive support intent (painted enforcers) survives Recommended, so no "does not keep" note.
+    src = build(tmp_path, "painted.3mf", supports=True, painted_supports=True)
+    r = convert(src, "recommended", tmp_path)
+    assert "supports_note" not in r["settings_summary"]
+    with zipfile.ZipFile(r["output_path"]) as z:
+        cfg = json.loads(z.read(SETTINGS))
+    assert cfg["enable_support"] == "1"
+
+
+def test_a_tower_whose_corner_is_inside_is_not_proven_outside_by_its_width(tmp_path):
+    r = convert(build(tmp_path, "c11.3mf", plates=1, tower=C11_TOWER), "preserve", tmp_path)
+    assert "prime_tower_note" not in r["settings_summary"]
+    tower = service.placement_check(r["output_path"])["prime_tower"]
+    assert tower["outside"] == [] and tower["note"].startswith("Studio could not verify")

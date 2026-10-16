@@ -385,7 +385,7 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                       "cannot say whether everything is on the plate"),
             confidence=INFORMATIONAL,
             consequence="Studio cannot confirm the objects land on this printer's plate.",
-            action="Open the project in Snapmaker Orca and use Arrange.",
+            action="Review the project in Snapmaker Orca before slicing.",
             source=f"project geometry vs {owner} printable area")
     if not off and tall:
         return _check(

@@ -70,8 +70,11 @@ processes** on graceful close, crash, or force-kill.
   `int(bed) * 1.2`, `cols = compute_colum_count`, origin `(col*sx, -row*sy)`) only
   when every item's footprint lies in the cell its own plate record names;
   otherwise nothing moves and it says why. Translation tokens only. Prime towers
-  are assessed (proven outside / on an object / unknown) and never moved, because
-  their depth is decided by Orca at slice time.
+  are assessed by one rule (`prime_tower.assess`: `outside_proven` only when the start
+  corner is outside the printable area, otherwise `unknown`; first-entry fallback for
+  a plate with no value of its own) and never moved. Width is not an extent and no
+  depth, rectangle or clearance is estimated, because depth is decided by Orca at
+  slice time.
 - **`support_intent`** — the one exception to Recommended's starter-settings reset.
   Precedence: explicit disable (`enable_support` 0 in the project or on an object)
   > positive intent (painted support *enforcers*, `support_enforcer` volumes,

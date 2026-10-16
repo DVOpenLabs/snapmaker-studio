@@ -129,14 +129,15 @@ def tower_records(result):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_an_outside_tower_is_proven_and_reported_but_never_moved(tmp_path, mode):
-    cfg = {"wipe_tower_x": ["236.895", "165"], "wipe_tower_y": ["233.729", "250"], "prime_tower_width": "60"}
+    cfg = {"wipe_tower_x": ["296.9", "165"], "wipe_tower_y": ["233.729", "250"], "prime_tower_width": "60"}
     src = rf.project(tmp_path, plates=2, cfg=cfg)
     result = run(tmp_path, src, mode)
     records = tower_records(result)
     if mode == "preserve":
         # the creator's own values come through byte for byte: Studio did not move them
-        assert tower_values(result.output_path) == (["236.895", "165"], ["233.729", "250"])
-        # plate 1: x 236.9 + 60 + brim leaves the 270.5 edge, which the file proves; plate 2's depth is unknown
+        assert tower_values(result.output_path) == (["296.9", "165"], ["233.729", "250"])
+        # plate 1: the start corner (x 296.9) is itself past the 270.5 edge, which the file proves;
+        # plate 2's corner is inside, so how far it reaches is unknown
         assert [r["status"] for r in records] == ["outside_proven", "unknown"]
     assert all(r["status"] != "inside" and r["status"] != "safe" for r in records)
     assert any("prime tower is outside" in w for w in result.settings_summary["warnings"]) == (mode == "preserve")
@@ -150,29 +151,40 @@ def test_a_tower_that_looks_fine_is_unknown_not_safe(tmp_path, mode):
     result = run(tmp_path, src, mode)
     records = tower_records(result)
     assert [r["status"] for r in records] == ["unknown", "unknown"]
-    assert records[0]["estimate"]["rect"] is not None and "depth" in records[0]["estimate"]["note"]
-    assert "tower_note" in result.settings_summary["layout"]
+    assert all(set(r) == {"plate", "position", "status", "reason"} for r in records)   # no estimate, no clearances
+    assert "Orca" in records[0]["reason"] and "tower_note" in result.settings_summary["layout"]
     if mode == "preserve":
         assert tower_values(result.output_path) == (["39.25", "39.25"], ["212.1", "212.1"])   # byte-identical
 
 
-def test_a_tower_whose_corner_is_inside_an_object_is_an_overlap_proven(tmp_path):
+def test_a_tower_corner_inside_an_objects_bounding_box_is_not_proof_of_overlap(tmp_path):
+    # The footprint Studio has is a bounding box, not the part's outline: membership alone proves nothing.
     src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(165.0, 160.0),
                      cfg={"wipe_tower_x": ["165"], "wipe_tower_y": ["160"], "prime_tower_width": "30"})
     result = run(tmp_path, src, "preserve")
-    assert tower_records(result)[0]["status"] == "overlap_proven"
+    assert tower_records(result)[0]["status"] == "unknown"
     assert tower_values(result.output_path) == (["165"], ["160"])
 
 
-def test_every_tower_record_carries_the_known_extent_and_the_estimate_with_clearances(tmp_path):
+def test_the_width_is_not_an_extent_and_no_depth_is_inferred_from_it(tmp_path):
+    # x 236.895 with a 60 mm width reaches past 270.5 only if the width were a known extent: it is not.
     src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0),
-                     cfg={"wipe_tower_x": ["39.25"], "wipe_tower_y": ["212.1"], "prime_tower_width": "30"})
+                     cfg={"wipe_tower_x": ["236.895"], "wipe_tower_y": ["233.729"], "prime_tower_width": "60"})
     record = tower_records(run(tmp_path, src, "preserve"))[0]
-    assert record["known_x_extent"] == [34.25, 74.25] and record["known_y_min"] == 207.1
-    est = record["estimate"]
-    assert est["rect"] == [34.25, 207.1, 74.25, 247.1]
-    assert est["clearance_to_edges"] == {"left": 33.75, "right": 196.25, "front": 206.1, "back": 23.9}
-    assert est["clearance_to_objects"] is not None and est["clearance_to_objects"] > 0
+    assert record["status"] == "unknown" and record["position"] == [236.895, 233.729]
+    assert not {"estimate", "known_x_extent", "known_y_min"} & set(record)
+
+
+def test_regrid_and_the_placement_assessment_share_one_rule_and_first_entry_fallback():
+    from snapstudio_core import prime_tower
+    bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
+    cfg = {"enable_prime_tower": "1", "wipe_tower_x": ["100", "300"], "wipe_tower_y": ["50"],
+           "prime_tower_width": "30"}
+    rows = prime_tower.assess(cfg, 3, bed)
+    # plate 3 has no entry of its own: Orca uses the FIRST entry (100), not the last (300)
+    assert [(r["plate"], r["x"], r["y"], r["status"]) for r in rows] == [
+        (1, 100.0, 50.0, "unknown"), (2, 300.0, 50.0, "outside_proven"), (3, 100.0, 50.0, "unknown")]
+    assert [r["plate"] for r in prime_tower.findings(cfg, 3, bed)] == [2]
 
 
 @pytest.mark.parametrize("mode", MODES)

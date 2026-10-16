@@ -83,7 +83,9 @@ def write_zip(path, entries: dict, order=None) -> Path:
 
 
 def three_mf(path, root_model: str, extra: dict | None = None, rels: str | None = None) -> Path:
-    entries = {"_rels/.rels": rels or rels_xml(), "3D/3dmodel.model": root_model}
+    # A project Studio reads needs its package parts; without them it is (rightly) unreadable.
+    entries = {"[Content_Types].xml": "<Types/>", "_rels/.rels": rels or rels_xml(),
+               "3D/3dmodel.model": root_model}
     entries.update(extra or {})
     return write_zip(path, entries)
 

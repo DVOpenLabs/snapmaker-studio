@@ -538,7 +538,7 @@ def test_b8_a_failed_move_says_it_kept_no_copy(tmp_path, monkeypatch):
     res = plate_placement.prepare_placed_copy(path, out_dir=str(tmp_path / "out"))
     assert res["ok"] is False
     assert res["reason"] == ("Studio could not move the objects onto the plate, so it did not keep a copy. "
-                             "Open the original in Snapmaker Orca and use Arrange.")
+                             "Review the original in Snapmaker Orca before slicing.")
 
 
 # ------------------------------------------------------------------ B9: id collisions are detected
