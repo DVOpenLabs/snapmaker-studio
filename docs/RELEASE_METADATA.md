@@ -19,16 +19,16 @@ Every *other* document must link here rather than restate these values.
 |---|---|
 | Version | v1.5.1 |
 | Installer | `Snapmaker.Studio_1.5.1_x64-setup.exe` |
-| Size (bytes) | 22,558,688 |
-| SHA256 | `736469c9d3c6a08e2e01908027e39586730ce3b96830503f38d45f5f05b693fc` |
-| Linux installer | `snapmaker-studio_1.5.1_amd64_f0c0cd533627.deb` |
-| Linux size (bytes) | 26,119,328 |
-| Linux SHA256 | `d7f7671e9acfaa861f31e6c9f0cbdad1f05a1c334825d95aef1d949b49593c53` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38913728391 (source commit `f0c0cd533627300fdadb47f20c60726ca634b740`, branch `integ/v1.5.1-candidate`) |
+| Size (bytes) | 22,561,382 |
+| SHA256 | `860b0b0a28c42e7796136f31561e82bb079036f6479334f142a6a84980a8b4a0` |
+| Linux installer | `snapmaker-studio_1.5.1_amd64_e40a50ffa08c.deb` |
+| Linux size (bytes) | 26,119,372 |
+| Linux SHA256 | `29587842cfbf1ed5e0e0451f498af84693377bad4200a28c322e359c4a817b16` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38929429440 (source commit `e40a50ffa08cff03f55efd304b6ce498af789081`, branch `integ/v1.5.1-candidate`) |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 (does not exist until the release is published) |
 | Trust status | CANDIDATE, NOT ACCEPTED: build, upgrade smoke, Linux clean-image, installed-app acceptance and a partial Orca check are recorded; the real-printer check has not been run. See [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-This is a release candidate that has not been published. An earlier v1.5.1 release candidate (run 37947895421, commit abf20bf0f74d) was built from a different source tree, never published, and is superseded by this one; its acceptance results belong to that artifact only. v1.5.1 is intended to be a stable release, not a prerelease, so GitHub's "latest release" would point at it once published.
+This is a release candidate that has not been published. An earlier v1.5.1 release candidate (run 37947895421, commit abf20bf0f74d) was built from a different source tree, never published, and is superseded by this one; its acceptance results belong to that artifact only. A second candidate (run 38913728391, commit f0c0cd533627) was replaced by this one after its acceptance harness fixture and a test helper were corrected; its results are historical and are not reused. v1.5.1 is intended to be a stable release, not a prerelease, so GitHub's "latest release" would point at it once published.
 Hashes for both files are also published as `SHA256SUMS` on the release.
 
 Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or

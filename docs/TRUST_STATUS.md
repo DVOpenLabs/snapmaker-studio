@@ -12,49 +12,53 @@ real Snapmaker U1 have all passed and are recorded here.
 ## v1.5.1 — CANDIDATE, NOT ACCEPTED
 
 **Status: built, not accepted.** This section records only what has been run against the candidate build named in
-[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `f0c0cd533627300fdadb47f20c60726ca634b740`, build
-[run 38913728391](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38913728391)). It becomes **ACCEPTED**
-only when every gate below has passed and is recorded here. The section after this one holds the results of an
-earlier v1.5.1 release candidate, built from different source; none of those results transfers to this build.
+[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `e40a50ffa08cff03f55efd304b6ce498af789081`, build
+[run 38929429440](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38929429440)). It becomes **ACCEPTED**
+only when every gate below has passed and is recorded here. An earlier candidate (run 38913728391, commit `f0c0cd533627`)
+was replaced by this one after the acceptance harness's test file and a test helper were corrected, and the section after
+this one holds the results of an older release candidate built from different source; none of those results transfers to
+this build.
 
 | Gate | Result for this candidate |
 |---|---|
-| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** — [run 38912116840](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38912116840) |
-| Backend suite on the candidate source (local, before the documentation commit) | **3702 passed / 49 skipped** |
+| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** — runs [38927645129](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927645129), [38927644974](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927644974), [38927644980](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927644980) |
+| Backend suite on the candidate source (local, before the documentation commit) | **3706 passed / 49 skipped** |
 | Release-candidate build (Windows installer + Linux `.deb`), checked against the manifest by SHA256 | **pass** |
 | Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
 | Linux clean-environment validation, `ubuntu:22.04`, against this candidate's `.deb` | **49/49** |
 | Linux clean-environment validation, `ubuntu:24.04`, against this candidate's `.deb` | **49/49** |
-| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; production-state tripwire passed, no orphan processes) | **50/50**, with two test-setup deviations listed below |
-| Snapmaker Orca 2.4.1 validation of copies prepared from this candidate's source (loading, plate membership, observed settings, Recommended tower retention) | **partial** — 6 synthetic outputs loaded; tower position consistent with retained in the 3D view but its numbers were not read; see below. Opening a file in Orca is not a slice and a slice is not a print |
+| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; committed harness unmodified; production-state tripwire passed, no orphan processes) | **50/50**, with documented environment overrides listed below |
+| Snapmaker Orca 2.4.1 validation of copies prepared by this candidate's installed sidecar (loading, plate membership, observed settings, Recommended tower retention) | **partial** — all 6 synthetic outputs loaded; the numbers inside Orca were not read; see below. Opening a file in Orca is not a slice and a slice is not a print |
 | Real Snapmaker U1, read-only | **not run** — needs the maintainer's separate authorization for printer contact |
 | Publish dry run | **not run** |
 
-### Test-setup deviations and findings in the candidate gates
+### Environment overrides and findings in the candidate gates
 
-- **The committed acceptance harness fails one check against this candidate.** Its generated "painted project" test file lacks `[Content_Types].xml` and `_rels/.rels`; since the Prepare-reliability change, a project missing required parts is unreadable by design, so the painted-colour route check fails. The 50/50 run used a copy of the harness with those two parts added to the test file (staged copy only; the product and the repository are unchanged). Fixing the committed harness is a tooling change.
-- The run also used probe ports 9411–9413 because another program on the test machine held the harness default port 9401. An earlier run on the default ports scored 44/50 for those two reasons, and one run was refused at launch by a harness safety check; none of these is a product result, and all three are kept as records.
-- The generated user guide, rebuilt from this source, is byte-identical to the committed one.
+- **The committed harness ran unmodified.** The earlier candidate's run needed a patched copy because the harness's generated "painted project" test file lacked `[Content_Types].xml` and `_rels/.rels`, which Studio's readability rule requires. That file was corrected in the repository for this candidate, with a test that reads the fixture out of the harness and checks that a package without those parts is refused.
+- Probe ports 9411–9413 were passed to the harness (`-ProbePort 9411 -RedirectPort 9412 -SpoolEasePort 9413`) because another program on the test machine held the default port 9401 and was left alone.
+- **One launch-path refusal recurred and its cause is not established.** On the first run with this candidate the harness refused, fail-closed, to continue after launching the previous version ("the launched process image is not inside the harness install dir"); cleanup was clean and the production-state tripwire passed. The guard was not weakened. The refusal text now says whether the process image path was unreadable or fell outside the install directory; here the path had been read, so the containment or reparse-point check failed. A read-only observer in the wrapper later recorded the image path and every path component's attributes on a passing run and showed an ordinary path under the harness install directory with no reparse point. The refusal has now appeared on two launches in this environment and has not been reproduced under observation.
+- Three earlier attempts failed before the harness started because the account launcher passed this account the wrong user profile variables; they ran nothing.
+- The generated user guide, rebuilt from this candidate's source (static checks 50/50), is byte-identical to the committed one.
 
 ### Snapmaker Orca observations (Orca 2.4.1, isolated profile, copies of anonymous synthetic projects)
 
-Outputs were prepared from the candidate's source code with `convert_to_u1`, not by the installed application. Each was opened once in a fresh Orca instance with its own data directory; originals and the user's Orca profile were unchanged (checked before and after).
+The six outputs (three synthetic projects, Preserve and Recommended) were produced by the **bundled sidecar extracted from this candidate's installer** (sidecar SHA256 `1217c03d66c2b627008857fd36f7ab8ce1677e977ee761482cedc14d2ad5514b`, equal to the build manifest). Each was opened once in a fresh Orca instance with its own data directory and with `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP` redirected (the launcher refuses to start otherwise); the originals were unchanged and the real Orca profile signature was identical before and after.
 
-| Output | Loaded | What the screen showed |
+| Output | Loaded | What was observed |
 |---|---|---|
-| Two-plate project from a larger bed, Preserve and Recommended | yes, both | printer U1, 0.4 mm nozzle; one object inside each plate outline; the prime-tower ghost at the top right of plate 1, the project's own position rather than the starter default |
-| Single-plate project, tower start outside the plate, Preserve and Recommended | yes, both | object inside the plate; the tower was not drawn, so the outside-tower case was not observed |
-| Single-plate project with a painted support enforcer, Preserve and Recommended | yes, both | object inside the plate; the prime-tower ghost at the top left, the project's own position |
+| Two-plate project from a larger bed, Preserve and Recommended | yes, both | printer U1, 0.4 mm nozzle; the object list shows Plate 2 and Outside group headers (not expanded) |
+| Single-plate project, tower start outside the plate, Preserve and Recommended | yes, both | the object list shows an Outside group header (not expanded) |
+| Single-plate project with a painted support enforcer, Preserve and Recommended | yes, both | the object list shows an Outside group header (not expanded) |
 
-Each load showed Orca's information notice that a configuration may come from a newer version and that `nozzle_volume_type` was replaced; only that notice was acknowledged. No "Customized Preset" prompt appeared.
+Each load showed Orca's information notice that a configuration may come from a newer version and that `nozzle_volume_type` was replaced; only that notice was acknowledged. No "Customized Preset" prompt appeared. Closing each instance raised Orca's "unsaved changes" prompt, and only Discard was pressed.
 
-**Not observed:** the prime-tower X and Y values themselves (read them in Orca under Process, Multimaterial, Prime tower); whether any object is listed under the object list's "Outside" group (the groups were not expanded); the Support tab values; any slice; any print. So retention of the declared tower coordinates in Recommended mode is **supported by the 3D view, not measured**.
+**Not observed:** the prime-tower X and Y values, which object is listed under which plate or under Outside, and the Support tab values; any slice; any print. Automated reading of those fields is not authorized, so a manual step in the same isolated setup has been prepared and its results are not yet recorded. Retention of the declared tower coordinates in Recommended mode is therefore **not verified**.
 
 ### What is not verified for this candidate
 
-The numeric prime-tower coordinates Snapmaker Orca holds after importing a copy prepared in Recommended mode
-(see the observations above), any slice, any print, and the real-printer checks. Studio writes and declares the
-tower values; the 3D view in Orca is consistent with them being kept.
+The numeric prime-tower coordinates Snapmaker Orca holds after importing a copy prepared in Recommended mode,
+plate membership as Orca lists it, the effective support settings, any slice, any print, and the real-printer checks.
+Studio writes and declares the tower values; whether Orca keeps them has not been measured.
 Multi-plate placement beyond the per-plate fit is not checked by Studio. The user guide's screenshots were
 captured from v1.5.0.
 
