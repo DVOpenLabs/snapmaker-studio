@@ -12,6 +12,8 @@ import re
 import zipfile
 from pathlib import Path
 
+from lxml import etree
+
 from snapstudio_core import eligibility, project_traits
 from snapstudio_core.container import ThreeMF
 
@@ -22,7 +24,10 @@ def _here_string(name: str) -> str:
     text = RUN.read_text(encoding="utf-8")
     found = re.search(r"\$" + name + r" = @'\r?\n(.*?)\r?\n'@", text, re.S)
     assert found, f"{name} is not defined in the harness"
-    return found.group(1).strip()
+    body = found.group(1).strip()
+    assert body, f"{name} is empty in the harness"
+    assert "'@" not in body, f"{name} swallowed another here-string"
+    return body
 
 
 def _entries() -> dict[str, str]:
@@ -47,6 +52,11 @@ def _write(tmp_path, entries: dict[str, str], name: str) -> str:
 def test_the_harness_painted_project_is_a_readable_package(tmp_path):
     entries = _entries()
     assert {"[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"} <= set(entries)
+    types = etree.fromstring(entries["[Content_Types].xml"].encode("utf-8"))
+    assert types.tag == "{http://schemas.openxmlformats.org/package/2006/content-types}Types"
+    rels = etree.fromstring(entries["_rels/.rels"].encode("utf-8"))
+    targets = {(r.get("Type"), r.get("Target")) for r in rels}
+    assert ("http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel", "/3D/3dmodel.model") in targets
     path = _write(tmp_path, entries, "painted.3mf")
     assert eligibility.is_readable(ThreeMF.open(path))
     traits = project_traits.extract(path)
