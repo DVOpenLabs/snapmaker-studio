@@ -13,9 +13,9 @@ page is the status record only.
 
 | | |
 |---|---|
-| Version | **v1.5.1** — the current stable release |
+| Version | **v1.5.1** — release candidate, not yet published (latest published release: v1.5.0) |
 | Installer, size, SHA256 | [RELEASE_METADATA.md](RELEASE_METADATA.md) — canonical |
-| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **ACCEPTED** |
+| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **CANDIDATE, NOT ACCEPTED** |
 | Release | <https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1> |
 
 The installer is not code-signed — verify the SHA256 before installing. See

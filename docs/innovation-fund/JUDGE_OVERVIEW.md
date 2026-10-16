@@ -93,7 +93,7 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **v1.5.1 release-candidate build** — an acceptance
+Everything below ran against an **earlier v1.5.1 release candidate** (a different build, never published; the current candidate has not yet completed these checks) — an acceptance
 copy of its installer (same application files, separate install identity) was installed,
 launched, driven through the real window, then uninstalled; the real installer itself was
 exercised only on a disposable GitHub-hosted runner. Not a development
@@ -102,13 +102,13 @@ source at the release commit, not from the installer.
 
 | What | Result | How to reproduce |
 |---|---|---|
-| Installed-application acceptance (v1.5.1 release candidate, acceptance-identity copy of the installer, upgrade variant) | **50/50** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
+| Installed-application acceptance (earlier v1.5.1 release candidate, acceptance-identity copy of the installer, upgrade variant) | **50/50** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | **76/76** | see [../internal/hardware-1.5.1.json](../internal/hardware-1.5.1.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 2927 passed, 49 skipped | `pytest` |
-| Desktop | 852 passed | `npm run test` |
+| Backend | 3702 passed, 49 skipped | `pytest` |
+| Desktop | 902 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
 The installed-application acceptance count is higher than the previous

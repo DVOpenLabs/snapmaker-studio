@@ -77,24 +77,25 @@ recording, so it also shows what Studio says when it cannot reach one:
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.5.1 is the current stable release** — not a prerelease, so this is also what
-GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
-points at. Every build ever published is on the
+**v1.5.1 is a release candidate that has not been published yet.** The sizes and hashes below belong to that
+candidate build, which has not passed its acceptance gates ([docs/TRUST_STATUS.md](docs/TRUST_STATUS.md)). Until
+it is published, the [latest published release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest) is the one before it.
+Once published, v1.5.1 is intended as a stable release, not a prerelease. Every build ever published is on the
 [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
 
 Verify it before you run it:
 
 - Release: [v1.5.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1)
 - Windows installer: `Snapmaker.Studio_1.5.1_x64-setup.exe`
-  — 21,962,736 bytes — SHA256: `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3`
-- Linux package: `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb`
-  — 25,954,272 bytes — SHA256: `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b`
+  — 22,558,688 bytes — SHA256: `736469c9d3c6a08e2e01908027e39586730ce3b96830503f38d45f5f05b693fc`
+- Linux package: `snapmaker-studio_1.5.1_amd64_f0c0cd533627.deb`
+  — 26,119,328 bytes — SHA256: `d7f7671e9acfaa861f31e6c9f0cbdad1f05a1c334825d95aef1d949b49593c53`
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.5.1_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb
+sha256sum snapmaker-studio_1.5.1_amd64_f0c0cd533627.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -131,7 +132,7 @@ sliced job back**.
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
 | ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.5.1/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.5.1/what-to-load.png) |
 
-From the v1.5.1 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From an earlier v1.5.1 release candidate's installed-application run (a different build, not the current candidate): the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -165,17 +166,17 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was run against the v1.5.1 release-candidate build — the
-same application and Linux package published on the release page, checked by
-SHA256 — not against a development build. The Windows installed-application
-run used an acceptance copy of the release-candidate installer (same application
-files, separate install identity); the real installer itself was exercised only on a
-disposable GitHub-hosted runner. The installed-application
-acceptance run used an acceptance-identity copy of the Windows installer on a
-clean local account; the real installer's own upgrade and uninstall were
-exercised on a disposable GitHub-hosted runner. The backend and desktop test
-counts come from the source at the release commit, not from the installer. Commands, counts and full reports:
-[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+The v1.5.1 candidate named above has been built. It has passed the build, the Windows upgrade smoke test
+and the Linux clean-image checks (49 of 49 on each of Ubuntu 22.04 and 24.04). The tests that drive the installed
+app, the Snapmaker Orca validation of the copies it prepares, and the real-printer checks have **not** been run
+on it yet.
+
+The table and the two paragraphs after it are results from an **earlier v1.5.1 release candidate** — a different
+build, never published, made before the Prepare, plate and prime-tower changes in this one. They show how the checks
+work and what that build passed; they are not acceptance of the current candidate and will be replaced by its own
+results. The one exception is the last row (test counts), which comes from the current candidate's source. The Windows installed-application run used an acceptance copy of that earlier installer on a clean local
+account; the real installer's own upgrade and uninstall were exercised on a disposable GitHub-hosted runner. Commands,
+counts and full reports: [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
@@ -184,15 +185,15 @@ counts come from the source at the release commit, not from the installer. Comma
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 2927 · 852 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 3702 · 902 · clean · clean |
 
 The installed-application acceptance count (50/50) is a different total from
-the previous release's: this run is the upgrade variant, started from the previous
+the previous release's: that run was the upgrade variant, started from the previous
 release's installer, and adds five checks that the previous version installs, leaves its state
 to migrate, and that the upgrade keeps your data and registers the new version — see
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
-The real-U1 verification for this release ran read-only through the
+The real-U1 verification for that earlier release candidate ran read-only through the
 Windows-installed application itself, 76/76, with no printer-control action
 called. Both Spoolman (0.27.0) and Bambuddy (1.2.5.7) took part, as disposable
 local containers seeded with anonymous spools, and the provider-on-hardware checks
@@ -212,8 +213,15 @@ stronger evidence.
 
 ## What's new in v1.5.1
 
-**Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**
+**Clearer Prepare, safer plate and tower reporting, easier spool choices, and controls that work from the keyboard and with a screen reader.**
 
+- **More Bambu Studio projects prepare, and refusals are in plain language.** Six more per-object settings are kept
+  (infill pattern, skeleton and skin infill density, top and bottom shell layers, brim type); anything Studio cannot
+  confirm is still refused rather than guessed, and files it will not prepare say "Review in Orca first" everywhere.
+- **Honest plate and prime-tower checks.** Multi-plate projects from a larger bed are laid out on the U1 plate grid
+  only when every footprint lies in its recorded plate; Studio no longer shows a green placement for plates it
+  cannot check, reports a tower outside the printable area without moving it, and no longer recommends Arrange.
+  Whether Snapmaker Orca keeps a project's tower position in the starter-settings mode has not been verified.
 - **Choose any spool from your inventory.** Each slot can open your provider's whole spool list,
   searchable by vendor, material, colour or id. If you pick a spool but no Orca preset, the slot and
   the review say the project's existing filament preset will remain.

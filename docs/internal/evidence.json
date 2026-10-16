@@ -5,7 +5,7 @@
     "total": 50
   },
   "backend": {
-    "passed": 2927,
+    "passed": 3702,
     "skipped": 49
   },
   "demo": {
@@ -13,13 +13,14 @@
     "seconds": 66
   },
   "desktop": {
-    "passed": 852
+    "passed": 902
   },
   "hardware": {
     "passed": 76,
     "report": "hardware-1.5.1.json",
     "total": 76
   },
+  "provenance": "Installer, backend and desktop counts: current v1.5.1 candidate (source f0c0cd5, run 38913728391). Acceptance and hardware counts: earlier v1.5.1 release candidate (run 37947895421, commit abf20bf); replaced when this build's gates are recorded.",
   "schema_version": "evidence/1",
   "screenshots_dir": "docs/screenshots/v1.5.1",
   "selfcheck": {

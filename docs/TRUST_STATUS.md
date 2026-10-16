@@ -9,13 +9,40 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
-## v1.5.1 — ACCEPTED
+## v1.5.1 — CANDIDATE, NOT ACCEPTED
 
-**Clearer Prepare, easier spool choices, accessible controls.** The Windows installer and Linux `.deb`
-named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here, verified by SHA256. Build:
-[run 37947895421](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421), commit
-`abf20bf0f74d44eb66b793c317fd303d518e5828`. This release's immutable snapshot: [internal/evidence/1.5.1.json](internal/evidence/1.5.1.json).
+**Status: built, not accepted.** This section records only what has been run against the candidate build named in
+[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `f0c0cd533627300fdadb47f20c60726ca634b740`, build
+[run 38913728391](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38913728391)). It becomes **ACCEPTED**
+only when every gate below has passed and is recorded here. The section after this one holds the results of an
+earlier v1.5.1 release candidate, built from different source; none of those results transfers to this build.
 
+| Gate | Result for this candidate |
+|---|---|
+| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** — [run 38912116840](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38912116840) |
+| Backend suite on the candidate source (local, before the documentation commit) | **3702 passed / 49 skipped** |
+| Release-candidate build (Windows installer + Linux `.deb`), checked against the manifest by SHA256 | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
+| Linux clean-environment validation, `ubuntu:22.04`, against this candidate's `.deb` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04`, against this candidate's `.deb` | **49/49** |
+| Windows installed-application acceptance (acceptance-identity copy, clean local account) | **not run yet** |
+| Snapmaker Orca validation of outputs prepared by this candidate (loading, plate membership, observed settings, Recommended tower retention) | **not run yet** — see the validation checklist; opening a file in Orca is not a slice and a slice is not a print |
+| Real Snapmaker U1, read-only | **not run** — needs the maintainer's separate authorization for printer contact |
+| Publish dry run | **not run** |
+
+### What is not verified for this candidate
+
+Whether Snapmaker Orca keeps the project's `wipe_tower_x` / `wipe_tower_y` when it imports a copy prepared in
+Recommended mode. Studio writes and declares those values; the outcome in Orca has not been observed.
+Multi-plate placement beyond the per-plate fit is not checked by Studio. The user guide's screenshots were
+captured from v1.5.0.
+
+## v1.5.1 earlier release candidate — evidence for a different build
+
+The results below belong to an **earlier** v1.5.1 release candidate: [run 37947895421](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421),
+commit `abf20bf0f74d44eb66b793c317fd303d518e5828`, which did not contain the Prepare, plate and prime-tower changes in
+the current candidate and was never published. They are kept as a record of that artifact and are **not** acceptance of
+the current candidate. Its immutable snapshot: [internal/evidence/1.5.1.json](internal/evidence/1.5.1.json).
 | Gate | Result |
 |---|---|
 | Backend / desktop suites | backend **2927 passed / 49 skipped**, desktop **852**, Rust **49** |

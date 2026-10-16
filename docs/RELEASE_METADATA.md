@@ -19,16 +19,16 @@ Every *other* document must link here rather than restate these values.
 |---|---|
 | Version | v1.5.1 |
 | Installer | `Snapmaker.Studio_1.5.1_x64-setup.exe` |
-| Size (bytes) | 21,962,736 |
-| SHA256 | `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3` |
-| Linux installer | `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb` |
-| Linux size (bytes) | 25,954,272 |
-| Linux SHA256 | `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 |
-| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Size (bytes) | 22,558,688 |
+| SHA256 | `736469c9d3c6a08e2e01908027e39586730ce3b96830503f38d45f5f05b693fc` |
+| Linux installer | `snapmaker-studio_1.5.1_amd64_f0c0cd533627.deb` |
+| Linux size (bytes) | 26,119,328 |
+| Linux SHA256 | `d7f7671e9acfaa861f31e6c9f0cbdad1f05a1c334825d95aef1d949b49593c53` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38913728391 (source commit `f0c0cd533627300fdadb47f20c60726ca634b740`, branch `integ/v1.5.1-candidate`) |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 (does not exist until the release is published) |
+| Trust status | CANDIDATE, NOT ACCEPTED: the gates for this build are pending. See [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-A stable release, not a prerelease, so GitHub's "latest release" points at it.
+This is a release candidate that has not been published. An earlier v1.5.1 release candidate (run 37947895421, commit abf20bf0f74d) was built from a different source tree, never published, and is superseded by this one; its acceptance results belong to that artifact only. v1.5.1 is intended to be a stable release, not a prerelease, so GitHub's "latest release" would point at it once published.
 Hashes for both files are also published as `SHA256SUMS` on the release.
 
 Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or

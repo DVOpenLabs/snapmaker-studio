@@ -72,7 +72,7 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the v1.5.1 release-candidate build (the same application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
+Verified against an earlier v1.5.1 release candidate (a different build, never published; the current candidate has not yet completed its installed-application, Orca or real-printer checks; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 
 | What | Result |
@@ -82,8 +82,8 @@ source at the release commit, not from the installer.
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | 76/76 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2927 passed, 49 skipped |
-| Desktop tests | 852 passed |
+| Backend tests | 3702 passed, 49 skipped |
+| Desktop tests | 902 passed |
 | TypeScript · production build · Rust | clean |
 
 Reproduce any of it: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).

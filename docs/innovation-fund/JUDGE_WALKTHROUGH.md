@@ -141,9 +141,9 @@ builds real decompression bombs and asserts the reader refuses them.
 ## Run the tests
 
 ```bash
-cd backend  && pytest          # 2927 passed, 49 skipped
+cd backend  && pytest          # 3702 passed, 49 skipped
 cd backend  && u1convert selfcheck   # 27/27 over production code paths
-cd desktop  && npm run test    # 852 passed
+cd desktop  && npm run test    # 902 passed
 cd desktop  && npm run build   # tsc + vite
 ```
 
@@ -174,7 +174,7 @@ It installs the rewrapped build into an isolated directory with its own WebView2
 profile and engine data directory, drives the real application window over the
 Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
 is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
-only processes it started. For the v1.5.1 release candidate (upgrade variant, started from the previous release's installer), this harness scored **50/50** —
+only processes it started. For an earlier v1.5.1 release candidate (a different build; upgrade variant, started from the previous release's installer), this harness scored **50/50** —
 [../internal/acceptance-1.5.1.json](../internal/acceptance-1.5.1.json).
 
 **A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
@@ -187,7 +187,7 @@ Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no
 temperature, motion, homing, pause, resume, cancel, emergency-stop or configuration
 call is made. The printer's address is replaced with a placeholder before anything
-reaches the evidence file. This release's real-U1 check ran through the
+reaches the evidence file. That earlier release candidate's real-U1 check ran through the
 Windows-installed application itself — last result: **76/76**, with disposable Spoolman and Bambuddy containers seeded with anonymous spools —
 [../internal/hardware-1.5.1.json](../internal/hardware-1.5.1.json).
 
