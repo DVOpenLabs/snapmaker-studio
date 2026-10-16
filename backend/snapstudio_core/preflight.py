@@ -407,6 +407,21 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
             consequence="A slicer prints what is above the plate; Studio cannot confirm this prints as modelled.",
             action="Check the height of these objects in Snapmaker Orca.",
             source="project geometry vs the build plane")
+    multi_plate = (placement.get("plate_count") or 1) > 1
+    if not off and multi_plate:
+        # Each plate may fit, but where the plates sit on the slicer's grid is not
+        # something Studio establishes. Not OK, and not an error either: unknown.
+        return _check(
+            "bed.fit", "Fits the printer's bed", UNKNOWN,
+            evidence=(f"printable area is {area}; the project has {placement.get('plate_count')} "
+                      "plates and each fits on its own, but Studio does not check where the "
+                      "plates sit"),
+            confidence=INFORMATIONAL,
+            consequence=("Snapmaker Orca can list an object as Outside even when its plate "
+                         "fits, so Studio cannot confirm the objects land on this printer's plates."),
+            action=("Review the project in Snapmaker Orca before slicing; an object may be "
+                    "listed as Outside."),
+            source="project geometry vs printer bed")
     if not off:
         if tops and height:
             return _check(
@@ -431,8 +446,23 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                      "plate."),
         action=("Use Studio's object-placement fix to move them on — it saves a copy and "
                 "leaves your original alone." if placement.get("fixable")
-                else "Open the project in Snapmaker Orca and use Arrange."),
+                else "Review the project in Snapmaker Orca before slicing; Studio could not "
+                     "bring every object onto the plate."),
         source="project geometry vs printer bed")
+
+
+def _prime_tower(placement: dict | None) -> dict | None:
+    """Only reported when the project's own settings put the tower outside the area."""
+    tower = (placement or {}).get("prime_tower") or {}
+    if not tower.get("outside"):
+        return None
+    return _check(
+        "prime_tower.fit", "Prime tower sits outside the printable area", ATTENTION,
+        evidence=tower.get("message"), confidence=CONFIRMED,
+        consequence=("Snapmaker Orca can refuse to slice a plate whose prime tower reaches "
+                     "past the printable area."),
+        action="Move the prime tower in Snapmaker Orca before slicing.",
+        source="project settings vs printable area")
 
 
 def _object_exclusion(project: dict, printer: dict) -> dict:
@@ -560,6 +590,7 @@ def evaluate(project: dict, printer: dict, placement: dict | None = None) -> dic
     checks = [
         _printer_found(printer),
         _bed(project, printer, placement),
+        _prime_tower(placement),
         _toolheads_vs_filaments(project, printer),
         _nozzle(project, printer),
         _nozzle_conflict(printer),

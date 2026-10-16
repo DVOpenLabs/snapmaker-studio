@@ -26,7 +26,7 @@
         "shot": "placement-oversized",
         "facts": [
           "**Object 1 · 320 × 20 × 20 mm** — *Hangs 1.0 mm past the left edge and 50.0 mm past the right edge.*",
-          "Studio says: *Moving the objects as one piece would not bring them all on, so Studio will not guess. Open the project in Snapmaker Orca and use Arrange.*",
+          "Studio says: *Moving the objects as one piece would not bring them all on, so Studio will not guess. Review the project in Snapmaker Orca before slicing.*",
           "There is *no* Move button."
         ],
         "question": "Why is there no Move button, and what do you do?",
@@ -47,7 +47,7 @@
         ],
         "question": "Each cube is tiny. What is the real problem?",
         "options": [
-          { "label": "The objects are too far apart: together they are wider than the plate. One shift cannot bring both onto the plate, so rearrange them in Orca with Arrange.", "verdict": "best", "feedback": "Right. Neither cube is big; the layout is. Moving them as one piece would push one off the other side, so Studio stops. Arrange in Snapmaker Orca can bring the objects closer together." },
+          { "label": "The objects are too far apart: together they are wider than the plate. One shift cannot bring both onto the plate, so review the layout in Snapmaker Orca.", "verdict": "best", "feedback": "Right. Neither cube is big; the layout is. Moving them as one piece would push one off the other side, so Studio stops. Studio cannot place them for you; review the layout in Snapmaker Orca." },
           { "label": "The cube is too big for the U1.", "verdict": "wrong", "feedback": "The cube is 10 mm. The problem is the distance between the two objects, not the size of either one." },
           { "label": "Press Move onto the plate anyway.", "verdict": "wrong", "feedback": "The button is not offered here, on purpose: moving the whole layout could not bring both cubes onto the plate." }
         ]

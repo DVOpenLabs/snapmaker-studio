@@ -71,8 +71,8 @@ export function buildFixPlan(p: FixPlanProps): FixAction[] {
   }
   if (!p.isStl && (p.doctor?.object_count ?? 0) > 1) {
     issues.push({
-      title: "Arrange the plate and check spacing",
-      detail: "Studio can't verify object-to-object spacing for multi-part layouts. In Orca, use Arrange and watch for too-close / collision warnings.",
+      title: "Check object spacing",
+      detail: "Studio can't verify object-to-object spacing for multi-part layouts. Review the project in Snapmaker Orca and watch for too-close / collision warnings.",
       where: "Orca",
       level: "warn",
     });

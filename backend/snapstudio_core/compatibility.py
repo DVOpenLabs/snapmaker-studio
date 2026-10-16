@@ -202,8 +202,8 @@ def check(path: str) -> dict:
             "Studio does not yet check object-to-object spacing for multi-part 3MF "
             "layouts, so it cannot confirm objects aren't too close or colliding.",
             "Object layout (plate)",
-            "Open in Snapmaker Orca and check for too-close / collision warnings; use "
-            "Arrange or move objects before slicing.",
+            "Review the project in Snapmaker Orca and look for too-close / collision "
+            "warnings before slicing.",
             f"{oc} object(s) on the plate; spacing unchecked by Studio",
         ))
 

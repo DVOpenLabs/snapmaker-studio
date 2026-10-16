@@ -102,7 +102,7 @@ def preview(path: str, scale_percent: float) -> dict:
 
     risks = [
         "Fit by SIZE only — Snapmaker Orca can still reject a scale because where the object "
-        "sits on the plate also matters. Confirm placement in Orca (Arrange all plates) after scaling.",
+        "sits on the plate also matters. Check placement in Snapmaker Orca after scaling.",
         "Holes, threads, snap-fits, joints and tolerances may not scale correctly — "
         "check fit-critical features after scaling.",
         "Thin-wall safety check is not available here — verify wall thickness after scaling (approximate).",
@@ -335,7 +335,7 @@ def scale_options(path: str, printer: str = "snapmaker_u1", margin_mm: float = 5
     if not verified:
         warnings.append("Sizes below are a theoretical fit BY SIZE only. Snapmaker Orca can still "
                         "reject a scale because where the object sits on the plate also matters. "
-                        "After scaling, open in Orca and use Arrange all plates to confirm it fits.")
+                        "After scaling, check in Snapmaker Orca that it fits.")
     if multi:
         warnings.append("Use the same scale on all related parts — do not scale plates "
                         "differently if they need to fit together.")
@@ -343,7 +343,7 @@ def scale_options(path: str, printer: str = "snapmaker_u1", margin_mm: float = 5
     headline = (f"Largest verified scale that stays on the plate: {safe_pct:.0f}%."
                 if verified else
                 f"Largest size-only fit is {safe_pct:.0f}% — verify placement in Snapmaker Orca "
-                "(Arrange all plates) after scaling.")
+                "after scaling.")
     next_steps = [
         headline,
         "Apply the same scale to all related parts in your slicer.",
