@@ -45,8 +45,9 @@ _DRIVE = r"[A-Za-z]:[\x5c/]+"
 _TAIL = r"[^\s\"'`<>|*?,;)\]}]*"
 # A UNC share or a file URL with a host names the machine before the user directory.
 # Up to two share segments (an administrative share such as a drive share, or a named share)
-# may sit between the host and the protected directory.
-_UNC = (r"(?:file:[\x5c/]{2}|(?<![\w:.\x5c/])[\x5c/]{2})[^\x5c/\s:]+[\x5c/]+"
+# may sit between the host and the protected directory. The leading separators may be
+# doubled (an escaped string literal), so two or more are accepted.
+_UNC = (r"(?:file:[\x5c/]{2,}|(?<![\w:.\x5c/])[\x5c/]{2,})[^\x5c/\s:]+[\x5c/]+"
         r"(?:[^\x5c/\s:]+[\x5c/]+){0,2}?")
 _USERS = r"(?:Users|STL Files)[\x5c/]+(?!Public\b)"
 LEAK_RULES = (

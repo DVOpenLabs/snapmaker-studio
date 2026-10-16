@@ -102,6 +102,9 @@ def test_unc_file_host_and_url_encoded_paths_are_found(tmp_path):
         "adminencoded.md": "file://workstation/C%24/" + USERS + "/Alice/x.3mf",
         "adminencodedunc.md": "%5C%5Cworkstation%5CC%24%5C" + USERS + "%5CAlice%5Cx",
         "adminlower.md": BS + BS + "WORKSTATION" + BS + "d$" + BS + "users" + BS + "alice" + BS + "x",
+        "escunc.md": BS * 4 + "workstation" + BS * 2 + "Users" + BS * 2 + "Alice" + BS * 2 + "x.3mf",
+        "escadmin.md": BS * 4 + "workstation" + BS * 2 + "C$" + BS * 2 + "Users" + BS * 2 + "Alice",
+        "escfile.md": "file:" + BS * 4 + "workstation" + BS * 2 + "Users" + BS * 2 + "Alice",
         "namedshare.md": BS + BS + "nas" + BS + "home" + BS + "STL Files" + BS + "private",
     }
     repo = _repo(tmp_path, {n: v.encode() + NLB for n, v in forms.items()})
@@ -202,6 +205,9 @@ def _canaries_all_caught(mod, tmp_path: Path) -> bool:
         "unc.md": (BS + BS + "host" + BS + "Users" + BS + "a" + BS + "b").encode(),
         "url.md": ("C%3A%5C" + USERS + "%5CAlice%5Cprivate").encode(),
         "admin.md": (BS + BS + "host" + BS + "C$" + BS + "Users" + BS + "a" + BS + "b").encode(),
+        "escunc.md": (BS * 4 + "host" + BS * 2 + "Users" + BS * 2 + "a" + BS * 2 + "b").encode(),
+        "escadmin.md": (BS * 4 + "host" + BS * 2 + "C$" + BS * 2 + "Users" + BS * 2 + "a").encode(),
+        "escfile.md": ("file:" + BS * 4 + "host" + BS * 2 + "Users" + BS * 2 + "a").encode(),
         "adminurl.md": ("file://host/C$/" + USERS + "/a/b").encode(),
     }
     (tmp_path / "canary").mkdir(exist_ok=True)
@@ -232,6 +238,8 @@ MUTATIONS = {
                                                 "for m in list(rule.finditer(line))[:1]:"),
     "url-encoded paths are not decoded": ("decoded = unquote(line)", "decoded = line"),
     "administrative-share segments not allowed": ("){0,2}?", "){0}?"),
+    "UNC prefix limited to exactly two separators": ("(?<![\\w:.\\x5c/])[\\x5c/]{2,})", "(?<![\\w:.\\x5c/])[\\x5c/]{2})"),
+    "file-host prefix limited to exactly two separators": ("(?:file:[\\x5c/]{2,}|", "(?:file:[\\x5c/]{2}|"),
     "UNC and file-host rule removed": ("    re.compile(_UNC + _USERS + _TAIL, re.IGNORECASE)," + NL, ""),
 }
 
