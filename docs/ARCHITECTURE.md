@@ -72,7 +72,9 @@ processes** on graceful close, crash, or force-kill.
   otherwise nothing moves and it says why. Translation tokens only. Prime towers
   are assessed by one rule (`prime_tower.assess`: `outside_proven` only when the start
   corner is outside the printable area, otherwise `unknown`; first-entry fallback for
-  a plate with no value of its own) and never moved. Width is not an extent and no
+  a plate with no value of its own) and never moved: `profile.apply_swap` leaves a
+  project's own `wipe_tower_x/y` in place in both modes, and Recommended declares them
+  in `different_settings_to_system` so Orca does not reset them. Width is not an extent and no
   depth, rectangle or clearance is estimated, because depth is decided by Orca at
   slice time.
 - **`support_intent`** — the one exception to Recommended's starter-settings reset.

@@ -3,7 +3,7 @@ import copy
 from .container import ThreeMF
 from .config_io import load_project_settings, dump_project_settings
 from .rules import load_rules, apply_clamps
-from .profile import load_profile, apply_swap
+from .profile import load_profile, apply_swap, kept_placement_keys
 from .filaments import apply_remap, filament_count, conform_filament_arrays
 from .preserve import machine_compat_keys, prepare_preserved_values
 from .detect import detect_source
@@ -53,6 +53,10 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         profile = load_profile(profile_name)
         compat_keys = machine_compat_keys(profile)
         preserve_creator_settings = mode == "preserve"
+        # The project's own prime tower position survives the starter swap; Orca resets an undeclared
+        # value to the preset it names, so Recommended declares it (Preserve leaves the creator's
+        # declarations as they are).
+        tower_keys = set() if preserve_creator_settings else kept_placement_keys(work, profile)
         report["profile_changes"] = apply_swap(
             work, profile, preserve_creator_settings=preserve_creator_settings)
         # Foreign projects often carry per-filament arrays longer than the real
@@ -125,8 +129,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         report["orca_compatibility"] = orca_import.apply_compatibility(
             work, filament_count(work))
 
-    # Where things sit is not a creator's setting, so the plate grid and the prime tower are corrected in
-    # both modes (see ``regrid``): translation of build items and one tower position per plate, nothing else.
+    # Where things sit is not a creator's setting, so the plate grid is corrected in both modes (see
+    # ``regrid``): translation of build items only. The prime tower is assessed and reported, never moved.
     # It reads the original file for geometry, so it runs only when the caller says where that is.
     layout = None
     if mode in ("preserve", "u1", "optimize") and source_path:
@@ -170,7 +174,7 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 report.get("optimizations"),
                 report.get("orca_compatibility"),
                 report.get("placement_corrections"),
-            ) | support_keys,
+            ) | support_keys | tower_keys,
             filaments=filament_count(work),
         )
         if declared:

@@ -1377,7 +1377,7 @@ export interface PlacementCheck {
   /** False when positions across plates are not established by Studio (multi-plate projects). */
   placement_established?: boolean;
   /** Prime tower judged against the printable area, from the project's own settings. */
-  prime_tower?: { outside: { plate: number; x: number; y: number; width: number }[]; message: string | null; note?: string | null };
+  prime_tower?: { outside: { plate: number; x: number; y: number }[]; message: string | null; note?: string | null };
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];

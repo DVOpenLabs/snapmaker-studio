@@ -68,7 +68,12 @@ def enabled(cfg: dict) -> bool:
 
 def _stated_on(cfg: dict) -> bool:
     """The project explicitly says the tower is on (a missing key proves nothing)."""
-    return "enable_prime_tower" in (cfg or {}) and enabled(cfg)
+    value = (cfg or {}).get("enable_prime_tower")
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    if value is None or str(value).strip().lower() in ("", "none", "nil"):
+        return False
+    return enabled(cfg)
 
 
 def assess(cfg: dict, plate_count: int, bed: dict) -> list[dict]:

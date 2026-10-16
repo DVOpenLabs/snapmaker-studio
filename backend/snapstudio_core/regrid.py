@@ -5,9 +5,10 @@ Orca rebuilds plate membership from geometry when it opens a file, so an item th
 cell for its plate is listed under *Outside* and the plate will not slice. The same project carries a prime
 (wipe) tower position written for the source bed, which can lie outside the U1 plate.
 
-Both are corrected here, in BOTH prepare modes (where things sit is not a creator's setting), by
-translating build items (the tower is only assessed, never moved). Nothing else changes: not a mesh, not a paint attribute, not a
-part transform, not a rotation or scale token.
+The plate grid is corrected here, in BOTH prepare modes (where things sit is not a creator's setting), by
+translating build items. The tower is only assessed, never moved: ``profile.apply_swap`` leaves the
+project's own ``wipe_tower_x/y`` in place in every mode. Nothing else changes: not a mesh, not a paint
+attribute, not a part transform, not a rotation or scale token.
 
 The grid rule (Orca 2.4.0 ``PartPlate.cpp``; confirmed on 24 of 24 build items of the four multi-plate
 benchmark projects, and by the creator's own Orca-made U1 file):
@@ -24,12 +25,11 @@ The tower is NOT moved and its footprint is NOT estimated. The depth of a prime 
 Snapmaker Orca when it plans the tool changes (purge volumes, wall type, brim, rotation), so from the file
 Studio can prove one thing only: a tower whose start corner already lies outside the printable area
 (``outside_proven``). Everything else is ``unknown`` and needs review in Snapmaker Orca. A tower is never
-reported as inside or clear, and ``wipe_tower_x/y`` are never written. The judgement is
+reported as inside or clear, and Studio never writes a tower position of its own. The judgement is
 ``prime_tower.assess``.
 """
 from __future__ import annotations
 
-import copy
 import math
 import re
 
@@ -121,7 +121,7 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
     if source is None or target is None:
         unresolved.append("the source or the U1 printable area is not a rectangle Studio can read")
 
-    # --- cross-check: the item's footprint centre is inside the cell its own record names ---------
+    # --- cross-check: the item's whole footprint is inside the cell its own record names ---------
     check = {"items": 0, "matched": 0, "mismatches": []}
     cells_ok = source is not None and not unresolved
     if multi and source is not None:
@@ -132,14 +132,13 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
             check["items"] += 1
             ox, oy = origin(plate_index[index], cols, source)
             lo, hi = item["bounds"]["min"], item["bounds"]["max"]
-            cx, cy = (lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0
-            if ox + left - _TOLERANCE <= cx <= ox + right + _TOLERANCE \
-                    and oy + front - _TOLERANCE <= cy <= oy + back + _TOLERANCE:
+            if ox + left - _TOLERANCE <= lo[0] and hi[0] <= ox + right + _TOLERANCE \
+                    and oy + front - _TOLERANCE <= lo[1] and hi[1] <= oy + back + _TOLERANCE:
                 check["matched"] += 1
             else:
                 check["mismatches"].append(
                     {"item_index": index, "plate": plate_index[index] + 1,
-                     "centre": [round(cx, 2), round(cy, 2)],
+                     "footprint": [round(lo[0], 2), round(lo[1], 2), round(hi[0], 2), round(hi[1], 2)],
                      "cell": [round(ox + left, 2), round(oy + front, 2), round(ox + right, 2),
                               round(oy + back, 2)]})
         report["formula_check"] = check
@@ -176,17 +175,6 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
                 item["bounds"] = {
                     "min": (item["bounds"]["min"][0] + dx, item["bounds"]["min"][1] + dy, item["bounds"]["min"][2]),
                     "max": (item["bounds"]["max"][0] + dx, item["bounds"]["max"][1] + dy, item["bounds"]["max"][2])}
-
-    # --- a project already authored on THIS U1 plate keeps the tower where its creator put it ----
-    # The starter profile owns a tower position (a constant written for no particular model). A project
-    # whose bed IS the U1's printable area was laid out in Orca for this very plate, tower included, so its
-    # position is placement, not tuning, and is kept in every mode.
-    src_polygon, dst_polygon = placement.polygon_of(source_cfg), placement.polygon_of(work)
-    if src_polygon and dst_polygon and sorted(src_polygon) == sorted(dst_polygon):
-        for key in ("wipe_tower_x", "wipe_tower_y"):
-            if key in source_cfg and work.get(key) != source_cfg[key]:
-                work[key] = copy.deepcopy(source_cfg[key])
-                report.setdefault("tower_kept_from_source", []).append(key)
 
     # --- the prime tower, per plate, against the footprints as they now are ----------------------
     _assess_towers(work, by_index, plate_index, multi, cols, target if target else None, report,

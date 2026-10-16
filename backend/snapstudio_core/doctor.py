@@ -154,6 +154,11 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
             action += MULTI_PLATE_READY_NOTE
         tower = _prime_tower_note(cfg, fp.plate_count)
         if tower:
+            # The verdict stays a profile-compatibility verdict (setup readiness is the printer
+            # check's job, which says ATTENTION), but the line must not say "slice" and then warn
+            # that Orca can refuse to.
+            action = action.replace("open it in Snapmaker Orca and slice.",
+                                    "open it in Snapmaker Orca and review it before slicing.")
             action += " " + tower
     else:
         verdict = REPAIRABLE

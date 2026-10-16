@@ -32,7 +32,7 @@ describe("PlacementCard", () => {
 
 describe("PlacementCard prime tower", () => {
   it("shows the tower finding without turning the card green", () => {
-    const html = render(check({ prime_tower: { outside: [{ plate: 1, x: 236.9, y: 233.7, width: 60 }], message: "The prime tower (plate 1) sits outside the U1's printable area." } }));
+    const html = render(check({ prime_tower: { outside: [{ plate: 1, x: 236.9, y: 233.7 }], message: "The prime tower (plate 1) sits outside the U1's printable area." } }));
     expect(html).toContain("The prime tower (plate 1) sits outside");
   });
 });

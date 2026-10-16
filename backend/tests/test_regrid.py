@@ -87,6 +87,18 @@ def test_an_item_outside_its_recorded_cell_is_never_guessed(tmp_path, mode):
 
 
 @pytest.mark.parametrize("mode", MODES)
+def test_an_item_straddling_its_cell_edge_is_never_guessed(tmp_path, mode):
+    # item 2's CENTRE is inside plate 2's 330 mm cell (x 325) but its 20 mm footprint reaches 335
+    ox, oy = rf.source_origin(1, 2, (330.0, 320.0))
+    src = rf.project(tmp_path, plates=2, transforms={1: f"{rf.IDENT} {ox + 325:g} {oy + 160:g} 10"})
+    before = tokens(src)
+    result = run(tmp_path, src, mode)
+    assert tokens(result.output_path) == before                                   # nothing moved
+    layout = result.settings_summary["layout"]
+    assert layout["status"] == "unresolved" and layout["formula_check"]["mismatches"][0]["item_index"] == 1
+
+
+@pytest.mark.parametrize("mode", MODES)
 def test_the_same_grid_is_left_alone(tmp_path, mode):
     src = rf.project(tmp_path, plates=2, bed=(270.0, 270.0), local=(135.5, 136.0))
     before = tokens(src)
@@ -133,14 +145,13 @@ def test_an_outside_tower_is_proven_and_reported_but_never_moved(tmp_path, mode)
     src = rf.project(tmp_path, plates=2, cfg=cfg)
     result = run(tmp_path, src, mode)
     records = tower_records(result)
-    if mode == "preserve":
-        # the creator's own values come through byte for byte: Studio did not move them
-        assert tower_values(result.output_path) == (["296.9", "165"], ["233.729", "250"])
-        # plate 1: the start corner (x 296.9) is itself past the 270.5 edge, which the file proves;
-        # plate 2's corner is inside, so how far it reaches is unknown
-        assert [r["status"] for r in records] == ["outside_proven", "unknown"]
+    # the creator's own values come through byte for byte in BOTH modes: Studio did not move them
+    assert tower_values(result.output_path) == (["296.9", "165"], ["233.729", "250"])
+    # plate 1: the start corner (x 296.9) is itself past the 270.5 edge, which the file proves;
+    # plate 2's corner is inside, so how far it reaches is unknown
+    assert [r["status"] for r in records] == ["outside_proven", "unknown"]
     assert all(r["status"] != "inside" and r["status"] != "safe" for r in records)
-    assert any("prime tower is outside" in w for w in result.settings_summary["warnings"]) == (mode == "preserve")
+    assert any("prime tower is outside" in w for w in result.settings_summary["warnings"])
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -187,14 +198,38 @@ def test_regrid_and_the_placement_assessment_share_one_rule_and_first_entry_fall
     assert [r["plate"] for r in prime_tower.findings(cfg, 3, bed)] == [2]
 
 
+@pytest.mark.parametrize("flag", ["", "none", "nil"])
+def test_a_blank_enable_flag_does_not_prove_an_outside_tower(flag):
+    from snapstudio_core import prime_tower
+    bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
+    cfg = {"enable_prime_tower": flag, "wipe_tower_x": ["900"], "wipe_tower_y": ["50"]}
+    assert [r["status"] for r in prime_tower.assess(cfg, 1, bed)] == ["unknown"]
+
+
 @pytest.mark.parametrize("mode", MODES)
 def test_towers_are_never_written(tmp_path, mode):
     src = rf.project(tmp_path, plates=2, cfg={"wipe_tower_x": ["236.895", "165"],
                                                 "wipe_tower_y": ["233.729", "250"]})
     before = rf.settings_of(src)
     after = rf.settings_of(run(tmp_path, src, mode).output_path)
-    if mode == "preserve":
-        assert (after["wipe_tower_x"], after["wipe_tower_y"]) == (before["wipe_tower_x"], before["wipe_tower_y"])
+    # both modes: the creator's positions come through byte for byte, never replaced by the starter constants
+    assert (after["wipe_tower_x"], after["wipe_tower_y"]) == (before["wipe_tower_x"], before["wipe_tower_y"])
+    if mode == "recommended":
+        # ...and Recommended declares them, or Snapmaker Orca resets an undeclared value to its preset
+        declared = rf.settings_of(run(tmp_path, src, mode).output_path)["different_settings_to_system"][0].split(";")
+        assert "wipe_tower_x" in declared and "wipe_tower_y" in declared
+
+
+def test_a_project_stating_no_tower_position_gets_the_starter_one(tmp_path):
+    src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(135.5, 136.0))
+    cfg = rf.settings_of(src)
+    cfg.pop("wipe_tower_x", None), cfg.pop("wipe_tower_y", None)
+    entries = rf.read(src)
+    import json
+    entries[rf.SETTINGS] = json.dumps(cfg).encode("utf-8")
+    bare = rf.write(tmp_path / "bare.3mf", entries)
+    after = rf.settings_of(run(tmp_path, bare, "recommended").output_path)
+    assert after["wipe_tower_x"] == ["165"] and after["wipe_tower_y"] == ["200.821"]
 
 
 def test_a_disabled_tower_is_not_assessed(tmp_path):
