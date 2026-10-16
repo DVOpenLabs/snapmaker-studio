@@ -286,3 +286,28 @@ child only. The file also parse-checks the module and the four scripts, and asse
 that none contains a wildcard registration lookup, installer globbing, a session-environment assignment of an isolation
 variable, a name-based process stop, a raw `Start-Process`, a production uninstall-key export or import, or an absolute
 local path.
+
+## Environment overrides and known environment conflicts (recorded 2026-10-16)
+
+**Probe ports.** The acceptance lane starts two throwaway local servers (a "count" probe and a "redirect" probe) and a
+SpoolEase stand-in. Their default ports are 9401, 9402 and 9403. If another program already listens on one of them the
+probe servers cannot start and every provider check fails with "did not answer" or "Unauthorized", which reads like a
+product defect and is not one. Before a run, check who owns the ports (`Get-NetTCPConnection -State Listen -LocalPort
+9401,9402,9403`, then the owning process's name, start time and owner). Never stop a process the run did not start. Move
+the lane instead: `-ProbePort 9411 -RedirectPort 9412 -SpoolEasePort 9413` (any free ports). The ports go only to the
+lane's own child processes; nothing global changes. The overrides are part of the run's record.
+
+**Ownership checks that stay in force.** Every process the lane starts is tracked by pid and start time, and only those
+are stopped. The probe servers are stopped in the lane's `finally` block by their tracked pid. A listener the lane did not
+start is reported, never touched.
+
+**Launch-path refusal.** After launching the app the lane refuses, fail-closed, unless the launched process image is inside
+the harness install dir. A refusal stops the launched tree, uninstalls, runs the tripwire and reports `APP_LAUNCH_FAILED`.
+This is the guard doing its job; do not relax it. One such refusal happened on 2026-10-16 right after a clean run and
+did not repeat on an identical retry; the retained evidence did not record why the image path failed the check, so the
+cause is not established. The refusal text now says whether the image path was unreadable at registration or resolved
+outside the install dir, so the next occurrence can be diagnosed without weakening the guard.
+
+**Test file.** The painted project the acceptance lane builds at run time must be a valid 3MF package
+(`[Content_Types].xml`, `_rels/.rels`, model and config parts). `backend/tests/test_acceptance_fixture.py` reads the
+fixture out of `tools/acceptance/run.ps1` and fails if it stops being readable by the same rule Prepare uses.

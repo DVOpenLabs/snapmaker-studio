@@ -123,7 +123,7 @@ def project(tmp_path, name="multi.3mf", *, plates=2, bed=(330.0, 320.0), local=(
     for flag, state in (("paint", "4"), ("paint_blocker", "8")):
         if flag in wanted:
             part = entries[OBJECT_PART].decode("utf-8")
-            part = re.sub(r'(<triangle [^>]*?)(/>)', rf' paint_supports="{state}"', part, count=1)
+            part = re.sub(r'<triangle ([^>]*?)/>', rf'<triangle \g<1> paint_supports="{state}"/>', part, count=1)
             assert "paint_supports" in part
             entries[OBJECT_PART] = part.encode("utf-8")
 
