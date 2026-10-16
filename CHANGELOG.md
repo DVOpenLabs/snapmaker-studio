@@ -38,49 +38,6 @@ All notable changes to this project are documented here. The format is based on
   guide page that told you to use it now says to review the project in Snapmaker Orca before slicing.
 - Bed fit now reports each object's size and the instances' placement as separate facts; several small, separated objects are no longer summed into one "too big" object (#91).
 - Object placement judges each placed copy of a repeated object on its own, so a copy that hangs off the plate is no longer hidden by one that does not (#93).
-
-### Known limits (not changed)
-- Studio does not move objects between plates, does not move the prime tower, and does not rearrange
-  a project's plates beyond the translation above. For a project made for a printer with a larger bed
-  that Studio cannot re-grid (an object's footprint does not match its recorded plate, or the project
-  has a single plate), the objects keep the creator's positions, so Snapmaker Orca can list an object as
-  Outside even when its plate fits, and in our test Arrange all plates did not fix it; the object had
-  to be moved by hand.
-- The starter-settings mode resets a multi-nozzle flush table to zeros. Check the tower in Orca's
-  preview and open Flushing volumes if you use them.
-- Both modes keep the creator's wipe-tower position, which can lie outside the U1's printable area for
-  a project made for a larger bed; Studio says so but does not move it.
-
-## [1.5.1] - 2026-10-09
-
-**Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**
-
-### Added
-- **Choose any spool from your inventory** (Project Materials). Each slot can open the provider's
-  whole spool list, searchable by vendor, material, colour or id, showing colour, vendor, material,
-  spool id, weight status and the status of the mapped Orca preset. When a spool is picked with no
-  Orca preset, the slot and the review say the project's existing filament preset will remain.
-- **Forget saved mapping.** A mapping Studio remembered for one spool, or for similar spools, can be
-  forgotten from the slot. The confirmation says what is forgotten and what is not changed (your
-  inventory, your Orca presets and the project).
-- **Why a setting changed.** The Prepare summary shows a short reason under each setting Studio
-  changed for the U1 and labels where the statement comes from: "Studio's check" or "Verify in
-  Snapmaker Orca". Lists Studio had to repair say exactly what was done.
-- **User guide links.** Help and Get Started link to the task-first user guide, which shows where
-  each statement comes from and which Studio version it was checked against. Its screenshots were
-  captured from v1.5.0 and have not been retaken.
-
-### Fixed
-- **A saved-mappings file Studio could not read is no longer treated as damaged.** If another
-  program briefly holds the file, Studio waits and retries; if it still cannot read it, it changes
-  nothing and asks you to try again.
-- **Printer-action confirmation is an accessible dialog.** Start, Cancel print and Emergency stop
-  now open a named, described dialog that starts on Cancel, is dismissed only by Escape or Cancel,
-  names the printer (and the file for Start), and is withdrawn if the printer changes or can no
-  longer take the action.
-- **Tool tabs work from the keyboard.** The Compatibility / Source Check and Print Quality / First
-  Layer tab rows respond to the arrow keys, Home and End, show a focus outline and wrap on narrow
-  windows. Moving along the row does not open or re-run a tool.
 - **More Bambu Studio projects now prepare.** Studio keeps six more per-object settings that
   Snapmaker Orca 2.4.0 reads in the same words: infill pattern, skeleton and skin infill
   density, top and bottom shell layers, and brim type (`no_brim`, `outer_only`, `inner_only`,
@@ -112,6 +69,49 @@ All notable changes to this project are documented here. The format is based on
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
+
+### Known limits (not changed)
+- Studio does not move objects between plates, does not move the prime tower, and does not rearrange
+  a project's plates beyond the translation above. For a project made for a printer with a larger bed
+  that Studio cannot re-grid (an object's footprint does not match its recorded plate, or the project
+  has a single plate), the objects keep the creator's positions, so Snapmaker Orca can list an object as
+  Outside even when its plate fits, and in our test Arrange all plates did not fix it; the object had
+  to be moved by hand.
+- The starter-settings mode resets a multi-nozzle flush table to zeros. Check the tower in Orca's
+  preview and open Flushing volumes if you use them.
+- Both modes keep the creator's wipe-tower position, which can lie outside the U1's printable area for
+  a project made for a larger bed; Studio says so but does not move it.
+
+## [1.5.1] - not yet released (the date is set when the release is assembled)
+
+**Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**
+
+### Added
+- **Choose any spool from your inventory** (Project Materials). Each slot can open the provider's
+  whole spool list, searchable by vendor, material, colour or id, showing colour, vendor, material,
+  spool id, weight status and the status of the mapped Orca preset. When a spool is picked with no
+  Orca preset, the slot and the review say the project's existing filament preset will remain.
+- **Forget saved mapping.** A mapping Studio remembered for one spool, or for similar spools, can be
+  forgotten from the slot. The confirmation says what is forgotten and what is not changed (your
+  inventory, your Orca presets and the project).
+- **Why a setting changed.** The Prepare summary shows a short reason under each setting Studio
+  changed for the U1 and labels where the statement comes from: "Studio's check" or "Verify in
+  Snapmaker Orca". Lists Studio had to repair say exactly what was done.
+- **User guide links.** Help and Get Started link to the task-first user guide, which shows where
+  each statement comes from and which Studio version it was checked against. Its screenshots were
+  captured from v1.5.0 and have not been retaken.
+
+### Fixed
+- **A saved-mappings file Studio could not read is no longer treated as damaged.** If another
+  program briefly holds the file, Studio waits and retries; if it still cannot read it, it changes
+  nothing and asks you to try again.
+- **Printer-action confirmation is an accessible dialog.** Start, Cancel print and Emergency stop
+  now open a named, described dialog that starts on Cancel, is dismissed only by Escape or Cancel,
+  names the printer (and the file for Start), and is withdrawn if the printer changes or can no
+  longer take the action.
+- **Tool tabs work from the keyboard.** The Compatibility / Source Check and Print Quality / First
+  Layer tab rows respond to the arrow keys, Home and End, show a focus outline and wrap on narrow
+  windows. Moving along the row does not open or re-run a tool.
 
 ## [1.5.0] - 2026-10-06
 

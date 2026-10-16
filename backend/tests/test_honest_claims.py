@@ -204,7 +204,7 @@ def test_doctor_ready_carries_the_unresolved_placement_note_for_multi_plate(tmp_
     d = service.doctor(prepared)
     assert d["verdict"] == "READY" and d["plate_count"] == 2
     assert d["recommended_action"].startswith(
-        "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice.")
+        "Ready for Snapmaker U1 - open it in Snapmaker Orca and review it before slicing.")
     assert "has not checked where they sit" in d["recommended_action"]
     assert "Review it in Snapmaker Orca before slicing" in d["recommended_action"]
     assert "use Arrange" not in d["recommended_action"]

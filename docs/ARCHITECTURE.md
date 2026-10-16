@@ -74,7 +74,9 @@ processes** on graceful close, crash, or force-kill.
   corner is outside the printable area, otherwise `unknown`; first-entry fallback for
   a plate with no value of its own) and never moved: `profile.apply_swap` leaves a
   project's own `wipe_tower_x/y` in place in both modes, and Recommended declares them
-  in `different_settings_to_system` so Orca does not reset them. Width is not an extent and no
+  in `different_settings_to_system`, following the measured declaration pattern, so that
+  Orca keeps them. That is the file-level behaviour; whether Orca retains the declared
+  position on import is not yet verified in Orca. Width is not an extent and no
   depth, rectangle or clearance is estimated, because depth is decided by Orca at
   slice time.
 - **`support_intent`** — the one exception to Recommended's starter-settings reset.
