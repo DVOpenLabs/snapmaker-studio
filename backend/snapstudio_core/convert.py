@@ -515,8 +515,9 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     from . import prime_tower
     from .plate_placement import u1_bed_rect
     bed = u1_bed_rect()
-    tower_note = prime_tower.message(
-        prime_tower.findings(after, compute_fingerprint(tm).plate_count, bed), bed)
+    tower_found = prime_tower.findings(after, compute_fingerprint(tm).plate_count, bed)
+    # A proven-outside message wins; otherwise say the reach is unknown rather than stay silent.
+    tower_note = prime_tower.message(tower_found, bed) or prime_tower.summary_note(after, tower_found)
     if tower_note:
         summary["prime_tower_note"] = tower_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:

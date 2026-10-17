@@ -26,6 +26,7 @@ All notable changes to this project are documented here. The format is based on
   captured from v1.5.0 and have not been retaken.
 
 ### Fixed
+- **Recommended now keeps the prime-tower shape it lists.** Wall type, purge-line spacing, rib length and cone angle were written but not declared, so Snapmaker Orca reset them to its own preset. Prepare also now says plainly, for every tower it cannot prove outside the plate, that the tower's reach is only known when Orca slices and that Orca may refuse paths beyond the plate.
 - **Preparing a multi-plate project from a printer with a different plate size now lays each plate's
   objects out on the U1's plate grid** (translation only; rotation, scale and painting untouched), in
   both modes, so Snapmaker Orca no longer lists the objects on later plates as outside. Studio only does

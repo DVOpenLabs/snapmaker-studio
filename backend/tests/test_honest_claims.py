@@ -306,14 +306,57 @@ def test_recommended_tower_is_judged_on_what_it_wrote_not_on_the_source(tmp_path
     from snapstudio_core.plate_placement import u1_bed_rect
     bed = u1_bed_rect()
     expected = prime_tower.message(prime_tower.findings(cfg, 2, bed), bed)
-    assert r["settings_summary"].get("prime_tower_note") == expected
+    assert expected and r["settings_summary"].get("prime_tower_note") == expected   # proven-outside wins
 
 
-def test_a_tower_inside_the_area_says_nothing(tmp_path):
+def test_a_tower_inside_the_area_is_not_called_safe(tmp_path):
     src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
-    r = convert(src, "preserve", tmp_path)
-    assert "prime_tower_note" not in r["settings_summary"]
-    assert service.placement_check(r["output_path"])["prime_tower"]["message"] is None
+    for mode in ("preserve", "recommended"):
+        note = convert(src, mode, tmp_path)["settings_summary"]["prime_tower_note"]
+        assert "cannot tell how far the tower extends" in note
+        assert "A G-code path goes beyond plate boundaries" in note
+        assert "Studio does not claim any tower position is safe" in note
+        low = note.lower()
+        assert not any(w in low for w in ("ready", "guarantee", "fits", "will fit", "safe to"))
+    out = convert(src, "preserve", tmp_path)["output_path"]
+    assert service.placement_check(out)["prime_tower"]["message"] is None
+
+
+def _entry0(r):
+    with zipfile.ZipFile(r["output_path"]) as z:
+        cfg = json.loads(z.read(SETTINGS))
+    return cfg, set(str(cfg["different_settings_to_system"][0]).split(";"))
+
+
+TOWER_SHAPE = {"wipe_tower_wall_type", "wipe_tower_extra_spacing",
+               "wipe_tower_extra_rib_length", "wipe_tower_cone_angle"}
+
+
+def test_recommended_declares_the_tower_shape_it_lists(tmp_path):
+    src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
+    cfg, declared = _entry0(convert(src, "recommended", tmp_path))
+    assert TOWER_SHAPE <= declared
+    assert cfg["wipe_tower_wall_type"] == "rectangle" and cfg["wipe_tower_extra_spacing"] == "100%"
+    assert "z_hop_when_prime" not in declared
+
+
+def test_preserve_does_not_declare_tower_shape(tmp_path):
+    src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
+    _, declared = _entry0(convert(src, "preserve", tmp_path))
+    assert not (TOWER_SHAPE & declared)
+
+
+def test_ordinary_supports_are_still_a_starter_reset(tmp_path):
+    src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
+    _, declared = _entry0(convert(src, "recommended", tmp_path))
+    assert "enable_support" not in declared
+
+
+def test_no_tower_note_when_the_tower_is_disabled(tmp_path):
+    from snapstudio_core import prime_tower
+    assert prime_tower.summary_note({"enable_prime_tower": "0", "wipe_tower_x": ["1"],
+                                     "wipe_tower_y": ["1"]}, []) is None
+    assert prime_tower.summary_note({"enable_prime_tower": "1"}, []) is None
 
 
 def test_placement_card_data_names_the_tower(tmp_path):
@@ -388,6 +431,6 @@ def test_recommended_keeps_supports_the_model_itself_marks_and_says_nothing_abou
 
 def test_a_tower_whose_corner_is_inside_is_not_proven_outside_by_its_width(tmp_path):
     r = convert(build(tmp_path, "c11.3mf", plates=1, tower=C11_TOWER), "preserve", tmp_path)
-    assert "prime_tower_note" not in r["settings_summary"]
+    assert "sits outside" not in r["settings_summary"]["prime_tower_note"]   # not proven outside; unknown reach is said
     tower = service.placement_check(r["output_path"])["prime_tower"]
     assert tower["outside"] == [] and tower["note"].startswith("Studio could not verify")

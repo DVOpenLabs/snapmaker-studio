@@ -132,6 +132,20 @@ UNVERIFIED_NOTE = (
 )
 
 
+SUMMARY_NOTE = (
+    "Prime tower: Studio keeps the tower position from the original file and cannot tell how far the "
+    "tower extends - that is only decided when Snapmaker Orca slices. Orca can refuse paths that leave "
+    "the plate (\"A G-code path goes beyond plate boundaries\"). If that happens, or the tower looks "
+    "close to an edge in Orca's preview, review and adjust the tower's position or size in Orca before "
+    "slicing again. Studio does not claim any tower position is safe."
+)
+
+
+def summary_note(cfg: dict, found: list[dict]) -> str | None:
+    """Prepare-summary warning: a tower is stated and none was proven outside."""
+    return SUMMARY_NOTE if unverified_note(cfg, found) else None
+
+
 def unverified_note(cfg: dict, found: list[dict]) -> str | None:
     """Informational: a tower exists in the settings and none was proven outside."""
     cfg = cfg or {}

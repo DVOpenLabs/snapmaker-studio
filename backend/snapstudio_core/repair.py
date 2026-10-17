@@ -3,7 +3,7 @@ import copy
 from .container import ThreeMF
 from .config_io import load_project_settings, dump_project_settings
 from .rules import load_rules, apply_clamps
-from .profile import load_profile, apply_swap, kept_placement_keys
+from .profile import load_profile, apply_swap, kept_placement_keys, tower_shape_keys
 from .filaments import apply_remap, filament_count, conform_filament_arrays
 from .preserve import machine_compat_keys, prepare_preserved_values
 from .detect import detect_source
@@ -59,6 +59,10 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         tower_keys = set() if preserve_creator_settings else kept_placement_keys(work, profile)
         report["profile_changes"] = apply_swap(
             work, profile, preserve_creator_settings=preserve_creator_settings)
+        # Tower shape written from the starter profile is declared too (Recommended only), or Orca
+        # would reset it to its preset and the change Studio lists would never take effect.
+        if not preserve_creator_settings:
+            tower_keys = tower_keys | tower_shape_keys(report["profile_changes"])
         # Foreign projects often carry per-filament arrays longer than the real
         # colour count (e.g. 10 slots, 5 colours). Per-extruder vectors are
         # explicitly excluded by conform_filament_arrays and are resized later

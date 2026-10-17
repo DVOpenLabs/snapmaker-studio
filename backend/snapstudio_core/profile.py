@@ -11,6 +11,17 @@ _PROTECTED_PREFIXES = ("filament_colour", "filament_type", "filament_settings_id
 _PLACEMENT_KEYS = frozenset({"wipe_tower_x", "wipe_tower_y"})
 
 
+# The tower's shape settings Studio writes from the starter profile. Orca resets an undeclared value to its
+# own preset, so Recommended declares these (and only these) so the values it lists are the ones Orca opens with.
+TOWER_SHAPE_KEYS = frozenset({"wipe_tower_wall_type", "wipe_tower_extra_spacing",
+                              "wipe_tower_extra_rib_length", "wipe_tower_cone_angle"})
+
+
+def tower_shape_keys(profile_changes) -> set[str]:
+    """Tower-shape keys apply_swap actually changed, for Recommended to declare."""
+    return {c["key"] for c in profile_changes or () if isinstance(c, dict) and c.get("key") in TOWER_SHAPE_KEYS}
+
+
 def kept_placement_keys(cfg: dict, profile: dict) -> set[str]:
     """Placement keys the project states itself that differ from the profile's constant."""
     return {k for k in _PLACEMENT_KEYS
