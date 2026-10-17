@@ -82,7 +82,7 @@ source at the release commit, not from the installer.
 | Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | 76/76 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 3706 passed, 49 skipped |
+| Backend tests | 3716 passed, 49 skipped |
 | Desktop tests | 902 passed |
 | TypeScript · production build · Rust | clean |
 

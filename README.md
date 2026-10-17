@@ -87,15 +87,15 @@ Verify it before you run it:
 
 - Release: [v1.5.1](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1)
 - Windows installer: `Snapmaker.Studio_1.5.1_x64-setup.exe`
-  — 22,561,382 bytes — SHA256: `860b0b0a28c42e7796136f31561e82bb079036f6479334f142a6a84980a8b4a0`
-- Linux package: `snapmaker-studio_1.5.1_amd64_e40a50ffa08c.deb`
-  — 26,119,372 bytes — SHA256: `29587842cfbf1ed5e0e0451f498af84693377bad4200a28c322e359c4a817b16`
+  — 22,563,613 bytes — SHA256: `703eac4f394ab92bc30c1eaa67733f1a7b274c23e2900089980fc2a1b59e4082`
+- Linux package: `snapmaker-studio_1.5.1_amd64_b83e236148dc.deb`
+  — 26,119,758 bytes — SHA256: `75d88a0d64a67c89ad7ded45865359b1b6642309ace14cb9945f5f55863766ff`
 
 ```powershell
 Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.5.1_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.5.1_amd64_e40a50ffa08c.deb
+sha256sum snapmaker-studio_1.5.1_amd64_b83e236148dc.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -185,7 +185,7 @@ counts and full reports: [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 3706 · 902 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 3716 · 902 · clean · clean |
 
 The installed-application acceptance count (50/50) is a different total from
 the previous release's: that run was the upgrade variant, started from the previous

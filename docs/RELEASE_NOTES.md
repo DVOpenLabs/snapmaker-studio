@@ -92,8 +92,8 @@ Studio prepares still needs a look in Snapmaker Orca before you slice, and none 
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.5.1_x64-setup.exe` — 22,561,382 bytes — SHA256 `860b0b0a28c42e7796136f31561e82bb079036f6479334f142a6a84980a8b4a0`
-- Linux: `snapmaker-studio_1.5.1_amd64_e40a50ffa08c.deb` — 26,119,372 bytes — SHA256 `29587842cfbf1ed5e0e0451f498af84693377bad4200a28c322e359c4a817b16`
+- Windows: `Snapmaker.Studio_1.5.1_x64-setup.exe` — 22,563,613 bytes — SHA256 `703eac4f394ab92bc30c1eaa67733f1a7b274c23e2900089980fc2a1b59e4082`
+- Linux: `snapmaker-studio_1.5.1_amd64_b83e236148dc.deb` — 26,119,758 bytes — SHA256 `75d88a0d64a67c89ad7ded45865359b1b6642309ace14cb9945f5f55863766ff`
 
 Neither installer is code-signed yet; verify the hash before you run it. Verification for this
 release is in

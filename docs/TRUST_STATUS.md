@@ -12,23 +12,24 @@ real Snapmaker U1 have all passed and are recorded here.
 ## v1.5.1 — CANDIDATE, NOT ACCEPTED
 
 **Status: built, not accepted.** This section records only what has been run against the candidate build named in
-[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `e40a50ffa08cff03f55efd304b6ce498af789081`, build
-[run 38929429440](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38929429440)). It becomes **ACCEPTED**
-only when every gate below has passed and is recorded here. An earlier candidate (run 38913728391, commit `f0c0cd533627`)
-was replaced by this one after the acceptance harness's test file and a test helper were corrected, and the section after
+[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `b83e236148dcdfa2cc0c72bc9658df70d9df97f9`, build
+[run 39055393052](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39055393052)). It becomes **ACCEPTED**
+only when every gate below has passed and is recorded here. Earlier candidates (run 38913728391, commit `f0c0cd533627`; run 38929429440, commit `e40a50ffa08c`)
+were replaced, the first after the acceptance harness's test file and a test helper were corrected, the second after Recommended mode
+was changed to declare the tower shape it writes, and the section after
 this one holds the results of an older release candidate built from different source; none of those results transfers to
 this build.
 
 | Gate | Result for this candidate |
 |---|---|
-| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** — runs [38927645129](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927645129), [38927644974](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927644974), [38927644980](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/38927644980) |
-| Backend suite on the candidate source (local, before the documentation commit) | **3706 passed / 49 skipped** |
+| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** (9/9) — runs [39054656948](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054656948), [39054659490](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054659490), [39054656940](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054656940) |
+| Backend suite on the candidate source (local, before the documentation commit) | **3716 passed / 49 skipped**; desktop **902 passed**, TypeScript clean |
 | Release-candidate build (Windows installer + Linux `.deb`), checked against the manifest by SHA256 | **pass** |
 | Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
 | Linux clean-environment validation, `ubuntu:22.04`, against this candidate's `.deb` | **49/49** |
 | Linux clean-environment validation, `ubuntu:24.04`, against this candidate's `.deb` | **49/49** |
-| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; committed harness unmodified; production-state tripwire passed, no orphan processes) | **50/50**, with documented environment overrides listed below |
-| Snapmaker Orca 2.4.1 validation of copies prepared by this candidate's installed sidecar (loading, plate membership, observed settings, Recommended tower retention) | **partial** — all 6 synthetic outputs loaded; the numbers inside Orca were not read; see below. Opening a file in Orca is not a slice and a slice is not a print |
+| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; committed harness unmodified; production-state tripwire passed, no orphan processes) | **50/50** on the first launch, with only the probe-port override listed below |
+| Snapmaker Orca 2.4.1, one slice of this candidate's Recommended copy of the synthetic two-plate project, Plate 1 only | **sliced; Orca still reports "A G-code path goes beyond plate boundaries."** The tower is much smaller than for the previous candidate's copy, but one first-layer extent still leaves the area; see below. Not a pass, not a print |
 | Real Snapmaker U1, read-only | **not run** — needs the maintainer's separate authorization for printer contact |
 | Publish dry run | **not run** |
 
@@ -40,7 +41,16 @@ this build.
 - Three earlier attempts failed before the harness started because the account launcher passed this account the wrong user profile variables; they ran nothing.
 - The generated user guide, rebuilt from this candidate's source (static checks 50/50), is byte-identical to the committed one.
 
-### Snapmaker Orca observations (Orca 2.4.1, isolated profile, copies of anonymous synthetic projects)
+### Snapmaker Orca slice of this candidate's Recommended copy (Orca 2.4.1, isolated profile, anonymous synthetic project)
+
+The copy was produced by the **bundled sidecar extracted from this candidate's installer** (sidecar SHA256 `e23f7f070c55dbb6680f297f30f3cf5f92e19e28684a7201e4d8badad11ea9ec`); the copy's SHA256 is `2fb023af5cf967fea2c1d460ca101c7c5c00632ebd71e4b4c0e0517d17bbbf8e` and the original was unchanged. It was opened in a fresh Orca instance with its own data directory and with `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP` redirected, with first-run setup completed before the import. The real Orca profile signature was identical before and after.
+
+- **Settings Orca held before slicing, read from Orca:** U1, 0.4 mm nozzle, process "0.20mm Standard @Snapmaker U1 (0.4 nozzle)", layer 0.2 mm; tower width 30, prime volume 45, brim width 5; wall type Rectangle, purge-line spacing 100%, extra rib length 0, cone apex 30 (Orca's own unsaved-changes list showed all four as changed from its preset to the values Studio wrote, so the declaration took effect); brim type No-brim; supports off, Tree (auto) - the documented starter reset, which Prepare discloses. The slice's G-code header repeats these values.
+- **Result:** one slice of Plate 1 (100 layers, 193 filament changes, 1 h 11 m). Orca showed the error "A G-code path goes beyond plate boundaries."
+- **Own parse of the saved G-code** (endpoint-only parser; it ignores extrusion width, arcs and machine limits, so it is not a safety assessment): the object and all non-tower moves are inside the area. Prime-tower extrusion spans X 231.985 to 271.805, Y 228.819 to 269.139 against an area of X 0.5 to 270.5, Y 1 to 271. Only layer 0 leaves the area (6 segments, X over by up to 1.305 mm); layers 1 to 98 stay inside, at 30 mm wide. The previous candidate's Recommended copy produced a tower reaching X 284.9, Y 281.1, with extrusion outside the area on every tower layer.
+- **What this does and does not show:** declaring the tower shape made the tower smaller, and a first-layer extent still crosses the plate edge for this project's stated tower position. Studio keeps that position and does not move it; Prepare says the tower's reach is only known when Orca slices. This is one project, one plate, one slice; it does not establish that any other project fits or fails.
+
+### Earlier Snapmaker Orca observations (previous candidate e40a50ffa08c, copies of anonymous synthetic projects; historical)
 
 The six outputs (three synthetic projects, Preserve and Recommended) were produced by the **bundled sidecar extracted from this candidate's installer** (sidecar SHA256 `1217c03d66c2b627008857fd36f7ab8ce1677e977ee761482cedc14d2ad5514b`, equal to the build manifest). Each was opened once in a fresh Orca instance with its own data directory and with `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP` redirected (the launcher refuses to start otherwise); the originals were unchanged and the real Orca profile signature was identical before and after.
 
@@ -56,9 +66,8 @@ Each load showed Orca's information notice that a configuration may come from a 
 
 ### What is not verified for this candidate
 
-The numeric prime-tower coordinates Snapmaker Orca holds after importing a copy prepared in Recommended mode,
-plate membership as Orca lists it, the effective support settings, any slice, any print, and the real-printer checks.
-Studio writes and declares the tower values; whether Orca keeps them has not been measured.
+Plate 2 and Preserve-mode slices of this candidate, plate membership as Orca lists it, any print, and the real-printer checks.
+One Recommended Plate 1 slice was run (above); it ended with Orca's plate-boundary error.
 Multi-plate placement beyond the per-plate fit is not checked by Studio. The user guide's screenshots were
 captured from v1.5.0.
 
