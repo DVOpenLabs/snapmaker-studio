@@ -6,7 +6,58 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.1] - not yet released (the date is set when the release is published)
+
+**Clearer Prepare, safer plate and tower reporting, easier spool choices, and controls that work from the keyboard and with a screen reader.**
+
+### Added
+- **Choose any spool from your inventory** (Project Materials). Each slot can open the provider's
+  whole spool list, searchable by vendor, material, colour or id, showing colour, vendor, material,
+  spool id, weight status and the status of the mapped Orca preset. When a spool is picked with no
+  Orca preset, the slot and the review say the project's existing filament preset will remain.
+- **Forget saved mapping.** A mapping Studio remembered for one spool, or for similar spools, can be
+  forgotten from the slot. The confirmation says what is forgotten and what is not changed (your
+  inventory, your Orca presets and the project).
+- **Why a setting changed.** The Prepare summary shows a short reason under each setting Studio
+  changed for the U1 and labels where the statement comes from: "Studio's check" or "Verify in
+  Snapmaker Orca". Lists Studio had to repair say exactly what was done.
+- **User guide links.** Help and Get Started link to the task-first user guide, which shows where
+  each statement comes from and which Studio version it was checked against. Its screenshots were
+  captured from v1.5.0 and have not been retaken.
+
 ### Fixed
+- **Recommended now keeps the prime-tower shape it lists.** Wall type, purge-line spacing, rib length and cone angle are written from the U1 starter and now always declared, including when the source already held the same values, so Snapmaker Orca no longer resets them to its own preset. Prepare and the placement card share one prime-tower note: Studio cannot tell how far a tower reaches, Orca only builds one when the print needs it, and Orca can refuse paths beyond the plate if it does. The `z_hop_when_prime` value Studio writes is labelled as unverified in the settings list.
+- **Preparing a multi-plate project from a printer with a different plate size now lays each plate's
+  objects out on the U1's plate grid** (translation only; rotation, scale and painting untouched), in
+  both modes, so Snapmaker Orca no longer lists the objects on later plates as outside. Studio only does
+  this when every object's whole footprint lies inside the plate area its project record names for it;
+  otherwise nothing is moved and the prepared copy says why.
+- **Projects with more than one plate no longer show a green "every object is inside" when Studio
+  cannot check where the plates sit.** Studio checks that each plate fits the U1 on its own. The Object
+  placement card says that Orca can still list an object as Outside and to review the project in
+  Snapmaker Orca; the printer bed check reports "unknown" instead of a pass, so Ready Now does not count
+  such a project as ready; and the Project Doctor's "ready" line carries the same note.
+- **A prime tower outside the printable area is reported, and never moved.** When the tower's own start
+  position is already outside the U1's printable area, the Object placement card, the Prepare summary,
+  the Project Doctor and the printer checks say so, because Snapmaker Orca can refuse to slice that
+  plate. In both modes Studio keeps the project's own tower position (the starter settings no longer
+  replace it); it does not estimate how far the tower reaches (that depends on the tool changes Snapmaker
+  Orca plans). Any other tower is "not verified": review it in Snapmaker Orca.
+- **The plate count now comes from the plates the project declares**, not from slice-cache files, so
+  a project with several plates is no longer counted as one.
+- **"Use Studio's U1 starter settings instead" keeps the support settings** (`enable_support`, support
+  type, support filament, interface filament) **when the model itself marks where it needs support**
+  (painted support enforcers, support-enforcer volumes, or support switched on for an object).
+  Explicitly disabled supports stay off, and blocker-only data does not turn supports on. When the
+  model marks nothing, the Prepare summary says before you open the copy that Snapmaker Orca will open
+  with supports off (and that painted support areas then do nothing). The summary no longer describes
+  the written settings as "kept" in that case, and the Validation Center only says your setting values
+  are kept for a copy prepared with Preserve creator settings.
+- **Studio no longer recommends Arrange as a remedy.** Arrange was only ever observed failing to fix
+  an Outside object or an inherited prime tower, and was never tested otherwise, so every message and
+  guide page that told you to use it now says to review the project in Snapmaker Orca before slicing.
+- Bed fit now reports each object's size and the instances' placement as separate facts; several small, separated objects are no longer summed into one "too big" object (#91).
+- Object placement judges each placed copy of a repeated object on its own, so a copy that hangs off the plate is no longer hidden by one that does not (#93).
 - **More Bambu Studio projects now prepare.** Studio keeps six more per-object settings that
   Snapmaker Orca 2.4.0 reads in the same words: infill pattern, skeleton and skin infill
   density, top and bottom shell layers, and brim type (`no_brim`, `outer_only`, `inner_only`,
@@ -38,6 +89,28 @@ All notable changes to this project are documented here. The format is based on
 - Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
   was never modified; the extra copy was only a leftover. The command-line `repair` and
   `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
+- **A saved-mappings file Studio could not read is no longer treated as damaged.** If another
+  program briefly holds the file, Studio waits and retries; if it still cannot read it, it changes
+  nothing and asks you to try again.
+- **Printer-action confirmation is an accessible dialog.** Start, Cancel print and Emergency stop
+  now open a named, described dialog that starts on Cancel, is dismissed only by Escape or Cancel,
+  names the printer (and the file for Start), and is withdrawn if the printer changes or can no
+  longer take the action.
+- **Tool tabs work from the keyboard.** The Compatibility / Source Check and Print Quality / First
+  Layer tab rows respond to the arrow keys, Home and End, show a focus outline and wrap on narrow
+  windows. Moving along the row does not open or re-run a tool.
+
+### Known limits (not changed)
+- Studio does not move objects between plates, does not move the prime tower, and does not rearrange
+  a project's plates beyond the translation above. For a project made for a printer with a larger bed
+  that Studio cannot re-grid (an object's footprint does not match its recorded plate, or the project
+  has a single plate), the objects keep the creator's positions, so Snapmaker Orca can list an object as
+  Outside even when its plate fits, and in our test Arrange all plates did not fix it; the object had
+  to be moved by hand.
+- The starter-settings mode resets a multi-nozzle flush table to zeros. Check the tower in Orca's
+  preview and open Flushing volumes if you use them.
+- Both modes keep the creator's wipe-tower position, which can lie outside the U1's printable area for
+  a project made for a larger bed; Studio says so but does not move it.
 
 ## [1.5.0] - 2026-10-06
 

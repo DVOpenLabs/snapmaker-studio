@@ -9,6 +9,95 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.5.1 — CANDIDATE, NOT ACCEPTED
+
+**Status: built, not accepted.** This section records only what has been run against the candidate build named in
+[RELEASE_METADATA.md](RELEASE_METADATA.md) (source commit `b83e236148dcdfa2cc0c72bc9658df70d9df97f9`, build
+[run 39055393052](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39055393052)). It becomes **ACCEPTED**
+only when every gate below has passed and is recorded here. Earlier candidates (run 38913728391, commit `f0c0cd533627`; run 38929429440, commit `e40a50ffa08c`)
+were replaced, the first after the acceptance harness's test file and a test helper were corrected, the second after Recommended mode
+was changed to declare the tower shape it writes, and the section after
+this one holds the results of an older release candidate built from different source; none of those results transfers to
+this build.
+
+| Gate | Result for this candidate |
+|---|---|
+| Required pull-request CI on the exact source commit (9 checks: backend on Windows and Linux, frontend, cargo check, guide, Linux build, two Linux clean-environment jobs) | **pass** (9/9) — runs [39054656948](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054656948), [39054659490](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054659490), [39054656940](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39054656940) |
+| Backend suite on the candidate source (local, before the documentation commit) | **3716 passed / 49 skipped**; desktop **902 passed**, TypeScript clean |
+| Release-candidate build (Windows installer + Linux `.deb`), checked against the manifest by SHA256 | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
+| Linux clean-environment validation, `ubuntu:22.04`, against this candidate's `.deb` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04`, against this candidate's `.deb` | **49/49** |
+| Windows installed-application acceptance (acceptance-identity copy of this candidate's installer, clean local account, upgrade variant from the published v1.5.0 installer; committed harness unmodified; production-state tripwire passed, no orphan processes) | **50/50** on the first launch, with only the probe-port override listed below |
+| Snapmaker Orca 2.4.1, one slice of this candidate's Recommended copy of the synthetic two-plate project, Plate 1 only | **sliced; Orca still reports "A G-code path goes beyond plate boundaries."** The tower is much smaller than for the previous candidate's copy, but one first-layer extent still leaves the area; see below. Not a pass, not a print |
+| Real Snapmaker U1, read-only | **not run** — needs the maintainer's separate authorization for printer contact |
+| Publish dry run | **not run** |
+
+### Environment overrides and findings in the candidate gates
+
+- **The committed harness ran unmodified.** The earlier candidate's run needed a patched copy because the harness's generated "painted project" test file lacked `[Content_Types].xml` and `_rels/.rels`, which Studio's readability rule requires. That file was corrected in the repository for this candidate, with a test that reads the fixture out of the harness and checks that a package without those parts is refused.
+- Probe ports 9411–9413 were passed to the harness (`-ProbePort 9411 -RedirectPort 9412 -SpoolEasePort 9413`) because another program on the test machine held the default port 9401 and was left alone.
+- **One launch-path refusal recurred and its cause is not established.** On the first run with this candidate the harness refused, fail-closed, to continue after launching the previous version ("the launched process image is not inside the harness install dir"); cleanup was clean and the production-state tripwire passed. The guard was not weakened. The refusal text now says whether the process image path was unreadable or fell outside the install directory; here the path had been read, so the containment or reparse-point check failed. A read-only observer in the wrapper later recorded the image path and every path component's attributes on a passing run and showed an ordinary path under the harness install directory with no reparse point. The refusal has now appeared on two launches in this environment and has not been reproduced under observation.
+- Three earlier attempts failed before the harness started because the account launcher passed this account the wrong user profile variables; they ran nothing.
+- The generated user guide, rebuilt from this candidate's source (static checks 50/50), is byte-identical to the committed one.
+
+### Snapmaker Orca slice of this candidate's Recommended copy (Orca 2.4.1, isolated profile, anonymous synthetic project)
+
+The copy was produced by the **bundled sidecar extracted from this candidate's installer** (sidecar SHA256 `e23f7f070c55dbb6680f297f30f3cf5f92e19e28684a7201e4d8badad11ea9ec`); the copy's SHA256 is `2fb023af5cf967fea2c1d460ca101c7c5c00632ebd71e4b4c0e0517d17bbbf8e` and the original was unchanged. It was opened in a fresh Orca instance with its own data directory and with `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP` redirected, with first-run setup completed before the import. The real Orca profile signature was identical before and after.
+
+- **Settings Orca held before slicing, read from Orca:** U1, 0.4 mm nozzle, process "0.20mm Standard @Snapmaker U1 (0.4 nozzle)", layer 0.2 mm; tower width 30, prime volume 45, brim width 5; wall type Rectangle, purge-line spacing 100%, extra rib length 0, cone apex 30 (Orca's own unsaved-changes list showed all four as changed from its preset to the values Studio wrote, so the declaration took effect); brim type No-brim; supports off, Tree (auto) - the documented starter reset, which Prepare discloses. The slice's G-code header repeats these values.
+- **Result:** one slice of Plate 1 (100 layers, 193 filament changes, 1 h 11 m). Orca showed the error "A G-code path goes beyond plate boundaries."
+- **Own parse of the saved G-code** (endpoint-only parser; it ignores extrusion width, arcs and machine limits, so it is not a safety assessment): the object and all non-tower moves are inside the area. Prime-tower extrusion spans X 231.985 to 271.805, Y 228.819 to 269.139 against an area of X 0.5 to 270.5, Y 1 to 271. Only layer 0 leaves the area (6 segments, X over by up to 1.305 mm); layers 1 to 98 stay inside, at 30 mm wide. The previous candidate's Recommended copy produced a tower reaching X 284.9, Y 281.1, with extrusion outside the area on every tower layer.
+- **What this does and does not show:** declaring the tower shape made the tower smaller, and a first-layer extent still crosses the plate edge for this project's stated tower position. Studio keeps that position and does not move it; Prepare says the tower's reach is only known when Orca slices. This is one project, one plate, one slice; it does not establish that any other project fits or fails.
+
+### Earlier Snapmaker Orca observations (previous candidate e40a50ffa08c, copies of anonymous synthetic projects; historical)
+
+The six outputs (three synthetic projects, Preserve and Recommended) were produced by the **bundled sidecar extracted from this candidate's installer** (sidecar SHA256 `1217c03d66c2b627008857fd36f7ab8ce1677e977ee761482cedc14d2ad5514b`, equal to the build manifest). Each was opened once in a fresh Orca instance with its own data directory and with `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP` redirected (the launcher refuses to start otherwise); the originals were unchanged and the real Orca profile signature was identical before and after.
+
+| Output | Loaded | What was observed |
+|---|---|---|
+| Two-plate project from a larger bed, Preserve and Recommended | yes, both | printer U1, 0.4 mm nozzle; the object list shows Plate 2 and Outside group headers (not expanded) |
+| Single-plate project, tower start outside the plate, Preserve and Recommended | yes, both | the object list shows an Outside group header (not expanded) |
+| Single-plate project with a painted support enforcer, Preserve and Recommended | yes, both | the object list shows an Outside group header (not expanded) |
+
+Each load showed Orca's information notice that a configuration may come from a newer version and that `nozzle_volume_type` was replaced; only that notice was acknowledged. No "Customized Preset" prompt appeared. Closing each instance raised Orca's "unsaved changes" prompt, and only Discard was pressed.
+
+**Not observed:** the prime-tower X and Y values, which object is listed under which plate or under Outside, and the Support tab values; any slice; any print. Automated reading of those fields is not authorized, so a manual step in the same isolated setup has been prepared and its results are not yet recorded. Retention of the declared tower coordinates in Recommended mode is therefore **not verified**.
+
+### What is not verified for this candidate
+
+Plate 2 and Preserve-mode slices of this candidate, plate membership as Orca lists it, any print, and the real-printer checks.
+One Recommended Plate 1 slice was run (above); it ended with Orca's plate-boundary error.
+Multi-plate placement beyond the per-plate fit is not checked by Studio. The user guide's screenshots were
+captured from v1.5.0.
+
+## v1.5.1 earlier release candidate — evidence for a different build
+
+The results below belong to an **earlier** v1.5.1 release candidate: [run 37947895421](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421),
+commit `abf20bf0f74d44eb66b793c317fd303d518e5828`, which did not contain the Prepare, plate and prime-tower changes in
+the current candidate and was never published. They are kept as a record of that artifact and are **not** acceptance of
+the current candidate. Its immutable snapshot: [internal/evidence/1.5.1.json](internal/evidence/1.5.1.json).
+| Gate | Result |
+|---|---|
+| Backend / desktop suites | backend **2927 passed / 49 skipped**, desktop **852**, Rust **49** |
+| Release-candidate build (Windows installer + Linux `.deb`) | **pass** |
+| Windows default-path upgrade smoke (disposable GitHub-hosted runner, upgrading from the published v1.5.0 installer) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account, upgrade variant from the published v1.5.0 installer; production-state tripwire 0 violations, no orphan processes) | **50/50** — [internal/acceptance-1.5.1.json](internal/acceptance-1.5.1.json) |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, Windows-installed app, with both providers (Spoolman 0.27.0 and Bambuddy 1.2.5.7 as disposable local containers seeded with anonymous spools; six provider-on-hardware checks each, none skipped) | **76/76** — [internal/hardware-1.5.1.json](internal/hardware-1.5.1.json) |
+| Update-check state stays in the lane's own data directory: turning the preference on in the installed release candidate (acceptance-identity copy, not the production identity) wrote `update_check.json` inside the lane's data directory and left the production path absent before and after | **pass** |
+| Publish dry run | **pass** |
+| `tsc`, `cargo test`, production build, `u1convert selfcheck` (27/27) | clean |
+
+### What is verified, and what is not
+
+The acceptance run is the acceptance-identity copy of the release candidate, not the production
+installation; the real installer's upgrade was exercised on a disposable GitHub-hosted runner. The user
+guide's screenshots were captured from v1.5.0 and were not retaken. The limit on presets a person made in
+Snapmaker Orca is unchanged from v1.5.0 (below). No real SpoolEase device was tested, and nothing was
+written to a spool provider.
+
 ## v1.5.0 — ACCEPTED
 
 **Project Materials (#39).** The Windows installer and Linux `.deb` named in

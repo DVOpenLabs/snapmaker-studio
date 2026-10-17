@@ -120,7 +120,7 @@ export function BusinessDoctors({ filePath, host }: { filePath: string; host?: s
           <div className="flex flex-col gap-2 sm:flex-row">
             <Pillar icon={Coins} name="Cost Doctor" token="--doctor-cost"
                     value={c?.available ? `${cur}${c.true_cost}` : "—"}
-                    sub="true cost to make" />
+                    sub="estimated cost" />
             <Pillar icon={Tag} name="Pricing Doctor" token="--stage-validate"
                     value={mk ? `${cur}${mk.price}` : "—"}
                     sub="suggested marketplace price" />

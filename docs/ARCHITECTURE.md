@@ -65,6 +65,27 @@ processes** on graceful close, crash, or force-kill.
   recommend a Prepare the engine would refuse.
 - **`repair`** — clamp rules -> profile swap -> conform filament arrays ->
   **`u1_identity`** normalize -> scrub foreign tokens -> blank slice_info version.
+- **`regrid`** — prepare-time layout correction, both modes: a multi-plate project's
+  build items are translated onto the U1 plate grid (Orca's rule: stride =
+  `int(bed) * 1.2`, `cols = compute_colum_count`, origin `(col*sx, -row*sy)`) only
+  when every item's footprint lies in the cell its own plate record names;
+  otherwise nothing moves and it says why. Translation tokens only. Prime towers
+  are assessed by one rule (`prime_tower.assess`: `outside_proven` only when the start
+  corner is outside the printable area, otherwise `unknown`; first-entry fallback for
+  a plate with no value of its own) and never moved. Studio preserves the project's
+  `wipe_tower_x` and `wipe_tower_y` values in both modes (`profile.apply_swap`).
+  Recommended also declares these keys in `different_settings_to_system`. Tests cover
+  the written values and declarations. Whether Snapmaker Orca retains these coordinates
+  on import in Recommended mode has not been verified. Width is not an extent and no
+  depth, rectangle or clearance is estimated, because depth is decided by Orca at
+  slice time.
+- **`support_intent`** — the one exception to Recommended's starter-settings reset.
+  Precedence: explicit disable (`enable_support` 0 in the project or on an object)
+  > positive intent (painted support *enforcers*, `support_enforcer` volumes,
+  `enable_support` 1 on an object) > starter reset (no data, or blocker-only data)
+  > the creator's values. Positive intent keeps and declares `enable_support`,
+  `support_type`, `support_filament`, `support_interface_filament`; Preserve never
+  reaches it.
 - **`u1_identity`** — the authoritative U1 identity layer: preset ids, version,
   filament identity (from the known-good reference), foreign Bambu/BBL/H2D scrub,
   newer-schema value normalization, and `is_u1_clean()` (the validation gate).

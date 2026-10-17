@@ -1,0 +1,38 @@
+{
+  "acceptance": {
+    "passed": 50,
+    "report": "acceptance-1.5.1.json",
+    "total": 50
+  },
+  "backend": {
+    "passed": 3716,
+    "skipped": 49
+  },
+  "demo": {
+    "file": "docs/media/snapmaker-studio-demo.mp4",
+    "seconds": 66
+  },
+  "desktop": {
+    "passed": 902
+  },
+  "hardware": {
+    "passed": 76,
+    "report": "hardware-1.5.1.json",
+    "total": 76
+  },
+  "installer": {
+    "name": "Snapmaker.Studio_1.5.1_x64-setup.exe",
+    "sha256": "703eac4f394ab92bc30c1eaa67733f1a7b274c23e2900089980fc2a1b59e4082",
+    "size_bytes": 22563613,
+    "url": "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1"
+  },
+  "provenance": "Installer, backend, desktop and acceptance counts: current v1.5.1 candidate (source b83e236, run 39055393052; acceptance 50/50 from the committed harness, see TRUST_STATUS). Hardware and self-check counts: earlier v1.5.1 release candidate (run 37947895421, commit abf20bf); the real-printer check has not been run on the candidate.",
+  "schema_version": "evidence-snapshot/1",
+  "screenshots_dir": "docs/screenshots/v1.5.1",
+  "selfcheck": {
+    "passed": 27,
+    "total": 27
+  },
+  "source": "candidate build, not yet published; replaced when this release is published",
+  "version": "1.5.1"
+}

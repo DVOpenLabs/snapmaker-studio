@@ -18,6 +18,12 @@ REPAIRABLE = "REPAIRABLE"      # well-formed project, fixable with `repair`
 HIGH_RISK = "HIGH_RISK"        # not a usable project (broken / not a 3MF)
 CONVERTIBLE = "CONVERTIBLE"    # an STL - convert it with `repair`
 
+# Appended to the READY action of a project with more than one plate.
+MULTI_PLATE_READY_NOTE = (
+    " This project has several plates and Studio has not checked where they sit; "
+    "Snapmaker Orca may list an object as Outside. Review it in Snapmaker Orca before slicing."
+)
+
 
 @dataclass
 class Diagnosis:
@@ -74,6 +80,15 @@ def _filament_inconsistencies(cfg: dict) -> list[str]:
     if isinstance(m, list) and len(m) != n * n:
         out.append(f"flush_volumes_matrix length {len(m)} != {n * n}")
     return out
+
+
+def _prime_tower_note(cfg: dict, plate_count: int) -> str | None:
+    """Computed from the project's own tower settings against the U1 printable area."""
+    from . import prime_tower
+    from .plate_placement import u1_bed_rect
+
+    bed = u1_bed_rect()
+    return prime_tower.message(prime_tower.findings(cfg, plate_count, bed), bed)
 
 
 def diagnose(tm: ThreeMF) -> Diagnosis:
@@ -134,6 +149,19 @@ def diagnose(tm: ThreeMF) -> Diagnosis:
     elif score == 100 and not compatibility_issues:
         verdict = READY
         action = "Ready for Snapmaker U1 - open it in Snapmaker Orca and slice."
+        review = "open it in Snapmaker Orca and review it before slicing."
+        if fp.plate_count > 1:
+            # The profile is ready; where the plates sit is not something Studio checks, so the
+            # line must not say "slice" and then warn that Orca may list an object as Outside.
+            action = action.replace("open it in Snapmaker Orca and slice.", review)
+            action += MULTI_PLATE_READY_NOTE
+        tower = _prime_tower_note(cfg, fp.plate_count)
+        if tower:
+            # The verdict stays a profile-compatibility verdict (setup readiness is the printer
+            # check's job, which says ATTENTION), but the line must not say "slice" and then warn
+            # that Orca can refuse to.
+            action = action.replace("open it in Snapmaker Orca and slice.", review)
+            action += " " + tower
     else:
         verdict = REPAIRABLE
         action = "Prepare a U1 profile copy, then review it in Snapmaker Orca before slicing."

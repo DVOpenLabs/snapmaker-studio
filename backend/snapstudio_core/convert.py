@@ -94,12 +94,12 @@ def _starter_summary(*, geometry_only: bool) -> dict:
     }
 
 
-def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], dict[str, str]]:
+def _action_reasons(report: dict) -> tuple[dict[str, dict], set[str], set[str]]:
     """Consume RepairOutcome detail while the independent diff remains authoritative.
 
-    The last item is the plain-language explanation some pipeline steps write next to their reason."""
-    reasons: dict[str, str] = {}
-    explanations: dict[str, str] = {}
+    Each key has one atomic record. A later record replaces or clears all four
+    provenance fields together, so an explanation can never retain old source data."""
+    records: dict[str, dict] = {}
     cleared: set[str] = set()
     mapped: set[str] = set()
     groups = [report.get("normalizations", []), report.get("profile_changes", []),
@@ -113,25 +113,34 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], d
               [report["preset_deviations_declared"]]
               if report.get("preset_deviations_declared") else []]
     groups.append(report.get("project_materials_changes", []))
+    # the prime tower keys the layout correction moved: reported with their own reason
+    groups.append(report.get("placement_corrections", []))
     identity = report.get("identity", {})
     groups.append(identity.get("changed", []) if isinstance(identity, dict) else [])
     for group in groups:
         for item in group:
             if not isinstance(item, dict) or "key" not in item:
                 continue
+            key = item["key"]
             reason = item.get("reason")
             if isinstance(reason, str) and reason:
-                reasons[item["key"]] = reason
-                explanations.pop(item["key"], None)  # an explanation belongs to the reason it came with
-                explanation = item.get("explanation")
-                if isinstance(explanation, str) and explanation:
-                    explanations[item["key"]] = explanation
+                # reason always; the other three only when this step supplied them, so a
+                # later record never inherits an earlier explanation, source or kind.
+                records[key] = {"reason": reason, **{field: item[field] for field in ("explanation", "source", "kind")
+                                                      if isinstance(item.get(field), str) and item[field]}}
+            elif reason == "":
+                # An explicit empty reason clears the complete atomic record.
+                records.pop(key, None)
+            else:
+                # A later report item without a reason is not a clear marker.
+                # Preserve the prior complete record.
+                pass
             if item.get("category") == "mapped":
                 mapped.add(item["key"])
     for item in report.get("foreign_cleared", []):
         if isinstance(item, dict):
             cleared.add(item["key"])
-    return reasons, cleared, mapped, explanations
+    return records, cleared, mapped
 
 
 def _strict_value_equal(a, b) -> bool:
@@ -169,12 +178,49 @@ def _is_preserved_value_mapping(old, new) -> bool:
     return _strict_value_equal(new, expected)
 
 
+def _is_on(value) -> bool:
+    """Whether a project-settings switch such as `enable_support` is on."""
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return str(value).strip().lower() in ("1", "true")
+
+
+def _supports_note(tm: ThreeMF, before: dict, after: dict, prepare_mode: str) -> str | None:
+    """Say so when the creator's supports will not be in effect in Snapmaker Orca.
+
+    Orca resets every process value the project does not declare in
+    `different_settings_to_system` to the U1 preset, where supports are off.
+    Recommended blanks the source's declaration and re-declares only what Studio
+    itself changed, so a creator's `enable_support=1` stays in the file but is not
+    used. Computed from the source and the written config, never asserted; Preserve
+    keeps the declaration, so it has nothing to say.
+    """
+    from .preset_deviation import declared_process_keys
+
+    if prepare_mode == "preserve" or not _is_on(before.get("enable_support")):
+        return None
+    if "enable_support" in declared_process_keys(after) and _is_on(after.get("enable_support")):
+        return None
+    note = ("Supports: the creator turned supports on. This mode does not keep them; "
+            "Snapmaker Orca will open with supports off. Turn them on in Orca's Support tab "
+            "or prepare with Preserve creator settings.")
+    try:
+        painted = sum(tm.read_part(p).count(b"paint_supports")
+                      for p in tm.list_parts() if p.endswith(".model"))
+    except Exception:
+        painted = 0
+    if painted:
+        note += (" The painted support areas stay in the file but do nothing while "
+                 "supports are off.")
+    return note
+
+
 def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                       prepare_mode: str, profile_name: str = "snapmaker_u1",
                       recommended_after: dict | None = None) -> dict:
     profile = load_profile(profile_name)
     diffs = config_diff(before, after)  # independent source of truth (A13)
-    reasons, cleared, mapped_keys, explanations = _action_reasons(outcome.report)
+    records, cleared, mapped_keys = _action_reasons(outcome.report)
     allowlist = machine_compat_keys(profile)
     slice_info = {
         item["key"]: item["reason"]
@@ -189,19 +235,16 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         if key in cleared:
             # Values in this category were deliberately discarded.  They may
             # be credentials or arbitrary creator G-code, so never echo them.
-            could_not_carry.append({"key": key, "reason": reasons[key]})
+            could_not_carry.append({"key": key, "reason": records[key]["reason"]})
         elif key in mapped_keys and _is_preserved_value_mapping(item["old"], item["new"]):
             mapped_to_u1.append({
                 "key": key, "old": display_value(item["old"], key=key),
                 "new": display_value(item["new"], key=key),
                 "reason": "carried over to U1 toolheads (values preserved)",
             })
-        elif key in reasons:
+        elif key in records:
             entry = {"key": key, "old": display_value(item["old"], key=key),
-                     "new": display_value(item["new"], key=key),
-                     "reason": reasons[key]}
-            if key in explanations:
-                entry["explanation"] = explanations[key]
+                     "new": display_value(item["new"], key=key), **records[key]}
             compat.append(entry)
         elif key in allowlist:
             compat.append({"key": key, "old": display_value(item["old"], key=key),
@@ -246,6 +289,25 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         "recommendations_available": prepare_mode == "preserve",
         "recommended_changes": recommended_changes if prepare_mode == "preserve" else [],
     }
+    layout = outcome.report.get("layout")
+    if layout:
+        summary["layout"] = {k: layout.get(k) for k in (
+            "status", "plates", "formula_check", "tower", "tower_note", "stride_source", "stride_target",
+            "cols", "items_moved", "unresolved")}
+        summary["placement_changes"] = list(layout.get("disclosure") or [])
+        summary["warnings"] = summary["warnings"] + [
+            line for line in layout.get("disclosure") or []
+            if line.startswith("Plate positions were left")
+            or ("prime tower is outside" in line) or ("prime tower sits on an object" in line)]
+    intent = outcome.report.get("support_intent")
+    if intent:
+        from . import support_intent as _support_intent
+
+        summary["support_intent"] = {
+            "decision": intent["decision"], "kept": bool(intent["explicit"]),
+            "evidence": intent["evidence"], "blocker_evidence": intent["blocker_evidence"],
+            "disable_evidence": intent["disable_evidence"], "keys": intent["keys"],
+            "statement": _support_intent.statement(intent)}
     # Preservation invariant: every changed source setting needs a specific
     # repair-pipeline reason, a deliberate foreign-value clear, or the
     # profile-owned machine/compat allowlist.  The independent diff is the
@@ -425,7 +487,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                        confirmed_colours=confirmed_colours)
+                        confirmed_colours=confirmed_colours, source_path=str(src))
     after = load_project_settings(tm.read_part(SETTINGS))
     if confirmed_presets:
         # Judged on what this mode will actually write, not on what the source declared:
@@ -443,10 +505,21 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # results cannot diverge from a real recommended conversion or write.
         do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
                   confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                  confirmed_colours=confirmed_colours)
+                  confirmed_colours=confirmed_colours, source_path=str(src))
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    supports_note = _supports_note(tm, before, after, prepare_mode)
+    if supports_note:
+        summary["supports_note"] = supports_note
+    from . import prime_tower
+    from .plate_placement import u1_bed_rect
+    bed = u1_bed_rect()
+    tower_found = prime_tower.findings(after, compute_fingerprint(tm).plate_count, bed)
+    # A proven-outside message wins; otherwise say the reach is unknown rather than stay silent.
+    tower_note = prime_tower.message(tower_found, bed) or prime_tower.summary_note(after, tower_found)
+    if tower_note:
+        summary["prime_tower_note"] = tower_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:
         # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
         summary["project_materials"] = {

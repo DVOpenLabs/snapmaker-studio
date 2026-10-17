@@ -127,6 +127,9 @@ export interface SettingsChange {
   reason?: string;
   /** Plain-language explanation some steps add next to the reason. */
   explanation?: string;
+  /** Evidence provenance for the explanation, replaced or cleared with it. */
+  source?: string;
+  kind?: "file" | "engine" | "estimate" | "orca";
 }
 
 export interface SettingsSummary {
@@ -138,6 +141,10 @@ export interface SettingsSummary {
   warnings: string[];
   recommendations_available: boolean;
   recommended_changes: SettingsChange[];
+  /** Present only when the creator's supports will not be in effect in Orca (Recommended mode). */
+  supports_note?: string;
+  /** Present only when the project's prime tower sits outside the printable area. */
+  prime_tower_note?: string;
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
 }
@@ -357,7 +364,15 @@ export interface Insights {
   colors: number | null;
   painted: boolean;
   materials: { color: string; type: string | null }[];
+  // Overall extents of all the mesh data together: a size-only figure, not one object's size and not a position.
   dimensions_mm: { x: number; y: number; z: number } | null;
+  dimensions_basis?: string;
+  // Per-object size (mm), before any build item moves, turns or scales it.
+  object_sizes_mm?: ObjectSize[];
+  // Build items whose object could not be found, so they have no size above.
+  objects_unmeasured?: number;
+  // Where each instance sits and on which plate (placed bounds), kept apart from the sizes above.
+  placed?: PlacedInstances;
   triangles: number | null;
   complexity: string | null;
   issues: string[];
@@ -1315,8 +1330,37 @@ export async function ecosystemAdvice(
 // while passing every size check. These read where each object sits and, when a
 // single honest move fixes it, write a NEW copy — the original is never touched.
 
+export interface ObjectSize {
+  object_id: string | null;
+  part?: string;
+  instance_count: number;
+  dimensions_mm: { x: number; y: number; z: number };
+}
+
+export interface PlacedInstances {
+  available: boolean;
+  basis: string;
+  reason?: string | null;
+  plate_count: number;
+  instances: {
+    item_index: number | null;
+    object_id: string;
+    instance_index: number;
+    instance_count: number;
+    plate: number | null;
+    bounds_mm: { min: number[]; max: number[] };
+    dimensions_mm: { x: number; y: number; z: number };
+  }[];
+  plate_extents: { plate: number; instances: number; x: number; y: number }[];
+  combined_extent_mm: { x: number; y: number } | null;
+}
+
 export interface PlacementItem {
   object_id: string;
+  // One object can be used by several build items; these tell the instances apart.
+  item_index?: number;
+  instance_index?: number;
+  instance_count?: number;
   dimensions: { x: number; y: number; z: number };
   position: { x: number; y: number };
   off_plate: boolean;
@@ -1330,11 +1374,17 @@ export interface PlacementCheck {
   reason?: string;
   source_printer?: string | null;
   plate_count?: number;
+  /** False when positions across plates are not established by Studio (multi-plate projects). */
+  placement_established?: boolean;
+  /** Prime tower judged against the printable area, from the project's own settings. */
+  prime_tower?: { outside: { plate: number; x: number; y: number }[]; message: string | null; note?: string | null };
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];
   skipped_plates?: { plate: number; reason: string }[];
-  unresolved_objects?: { object_id: string }[];
+  unresolved_objects?: { object_id: string; item_index?: number; reason?: string }[];
+  // Placed instances Studio could not judge (not found, or on no plate record).
+  not_judged?: number;
   fixable: boolean;
   summary?: string;
 }

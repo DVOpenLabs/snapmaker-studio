@@ -192,7 +192,9 @@ def _model_part_row(part: str, before: bytes, after: bytes,
     if placement_applied:
         return _row(_human(part), CHANGED, part=part,
                     detail="the same geometry, moved to different coordinates",
-                    reason="a placement fix moved the objects onto the U1 plate")
+                    reason=("the objects were repositioned for the U1 (a placement fix, or the plate "
+                            "layout corrected for the U1's plate grid): translation only, the "
+                            "geometry itself is unchanged"))
     if moved_after and not moved_before:
         return _row(_human(part), PRESERVED_SEMANTIC, part=part,
                     detail="the same geometry, split into one mesh per part",
@@ -747,10 +749,26 @@ def _placement_report(prepared: str) -> dict | None:
     from . import placement
 
     try:
+        if _plate_count(prepared) > 1:
+            # This report judges every object against ONE plate. A multi-plate project sits on a grid of
+            # plates (the second plate starts a plate-stride to the right), so it would call every object
+            # on plate 2 onward "outside" by hundreds of millimetres. The layout check Studio makes while
+            # preparing (per plate, against the U1's own cell) is the statement about those projects.
+            return None
         report = placement.assess(prepared)
     except Exception:  # noqa: BLE001 — a report, never a crash
         return None
     return report if report.get("available") else None
+
+
+def _plate_count(path: str) -> int:
+    """How many plates a prepared project records (0 when it cannot be read)."""
+    try:
+        from . import plate_placement
+
+        return len(plate_placement._plates_from_model_settings(ThreeMF.open(path)))
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _settings_rows(a: ThreeMF, b: ThreeMF) -> list[dict]:

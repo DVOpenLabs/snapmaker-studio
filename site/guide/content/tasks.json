@@ -20,11 +20,11 @@
         "**Windows:** run the installer. It is not code-signed yet, so SmartScreen may say **Unknown publisher**. Once the hash matches, choose **More info → Run anyway**, then start **Snapmaker Studio** from the Start menu. More: [Windows install guide](@windows_install).",
         "**Linux:** `sudo apt install ./<the .deb file name exactly as shown on the Releases page>`, then start **Snapmaker Studio** from your application menu or run `snapmaker-studio-desktop`. More: [Linux install guide](@linux_install)."
       ],
-      "success": ["Studio opens on **Home**, with the version **v1.5.0** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
+      "success": ["Studio opens on **Home**, with the version **v1.5.1** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
       "differs": [
         { "if": "Windows says “Windows protected your PC”.", "then": "This is expected for an installer that is not code-signed yet. Continue only if the SHA256 matches and you downloaded the file from Studio's Releases page." },
         { "if": "The hash does not match.", "then": "Do not run the installer. Delete it and download it again from Studio's Releases page." },
-        { "if": "Studio looks different from this guide.", "then": "This guide describes **v1.5.0**. Check the version at the bottom of the Studio window; the [release notes](@releases) say what changed." }
+        { "if": "Studio looks different from this guide.", "then": "This guide describes **v1.5.1**. Check the version at the bottom of the Studio window; the [release notes](@releases) say what changed." }
       ],
       "notes": [
         { "kind": "limit", "text": "Linux support is verified by automated installs on clean Ubuntu 22.04 and 24.04 systems. Other distributions and installs on a physical desktop have not been verified yet; see the [Linux install guide](@linux_install)." },
@@ -100,7 +100,7 @@
       "problems": ["studio-cant-tell"], "keywords": ["colours", "colors", "toolheads", "four", "painted", "swap", "multi-colour", "filament", "reserve", "color"]
     },
     {
-      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate",
+      "id": "move-onto-plate", "page": "task-move-onto-plate", "group": "prepare", "title": "Move an object that hangs off the plate", "checked": "1.5.1", "sources": [{"label":"Placement check","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/plate_placement.py","kind":"engine"}],
       "when": "**Object placement** says an object is outside the U1's printable area.",
       "prereq": ["The project open in Studio."],
       "steps": [
@@ -110,13 +110,13 @@
         "Open that copy (**Open a model**) and prepare it (**Prepare U1 copy**)."
       ],
       "success": ["A new `…_placed_U1.3mf` beside your original, and the card says **The object sits inside the U1's printable area.**"],
-      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Open the project in Orca and use **Arrange**; see the placement example." }],
+      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Review the project in Snapmaker Orca before slicing; see the placement example." }],
       "notes": [{ "kind": "safe", "text": "The moved copy shifts the whole layout as one piece; the spacing between objects, their rotation, scale and height stay as the creator set them." }],
       "shot": "move-result",
-      "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
+      "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed"]
     },
     {
-      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode",
+      "id": "prepare-u1-copy", "page": "task-prepare-u1-copy", "group": "prepare", "title": "Prepare a U1 copy and choose a mode", "checked": "1.5.1", "sources": [{"label":"Copy writer","ref":"https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/backend/snapstudio_core/convert.py","kind":"engine"}],
       "when": "You want a copy Orca can open with U1-compatible settings.",
       "prereq": ["The project open in Studio."],
       "steps": [
@@ -221,7 +221,7 @@
       "steps": [
         "Check that the printer is **Snapmaker U1**.",
         "Check that the filaments and colors match what you will load, toolhead by toolhead.",
-        "Check that every object is on the plate. Use **Arrange** if unsure; Studio does not verify spacing between objects.",
+        "Check that every object is on the plate. Review the layout if unsure; Studio does not verify spacing between objects.",
         "Check that supports are set the way you want. Studio's fix plan marks these as **Do this in Orca**.",
         "If a preset you made is named in the copy, check its values in Orca (**Manual check in Orca required**).",
         "Slice (**Slice plate**), then export the G-code with Orca's own export command."
@@ -229,7 +229,7 @@
       "success": ["You have an exported `.gcode` file and know what you checked."],
       "differs": [{ "if": "Orca shows a “Customized Preset” notice.", "then": "That can happen when the creator's tuned settings are kept. Review the settings before slicing." }],
       "notes": [{ "kind": "limit", "text": "Orca's own screens are not shown in this guide, and its menu wording can differ between versions." }],
-      "shot": null, "problems": ["customized-preset", "manual-check-in-orca"], "keywords": ["orca", "review", "arrange", "supports", "slice", "export", "checklist", "gcode"]
+      "shot": null, "problems": ["customized-preset", "manual-check-in-orca"], "keywords": ["orca", "review", "supports", "slice", "export", "checklist", "gcode"]
     },
     {
       "id": "check-sliced-job", "page": "task-check-sliced-job", "group": "job", "title": "Check a sliced job",
@@ -360,7 +360,7 @@
       "when": "You want to know whether a newer Studio exists.",
       "prereq": [],
       "steps": [
-        "Your version is at the bottom of the window (**v1.5.0** for this guide).",
+        "Your version is at the bottom of the window (**v1.5.1** for this guide).",
         "Open **Help → Check for a newer version** and press **Check GitHub now**. The update check does not download or install anything; it only shows a version number and a link.",
         "To update, download the new installer from Studio's Releases page, verify its hash, and run it over your install. Your data is kept."
       ],

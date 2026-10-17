@@ -2,8 +2,8 @@ from __future__ import annotations
 import copy
 from .container import ThreeMF
 from .config_io import load_project_settings, dump_project_settings
-from .rules import load_rules, apply_clamps, clamp_explanation
-from .profile import load_profile, apply_swap
+from .rules import load_rules, apply_clamps
+from .profile import load_profile, apply_swap, kept_placement_keys, tower_shape_keys
 from .filaments import apply_remap, filament_count, conform_filament_arrays
 from .preserve import machine_compat_keys, prepare_preserved_values
 from .detect import detect_source
@@ -22,7 +22,8 @@ SLICE_INFO = "Metadata/slice_info.config"
 def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
            dry_run: bool = False, profile_name: str = "snapmaker_u1",
            opt_profile: str | None = None, confirmed_presets: dict | None = None,
-           filament_catalog=None, confirmed_colours: dict | None = None) -> RepairOutcome:
+           filament_catalog=None, confirmed_colours: dict | None = None,
+           source_path: str | None = None) -> RepairOutcome:
     assert mode in ("safe", "preserve", "u1", "optimize")
     remap = remap or {}
     source = detect_source(tm)
@@ -39,7 +40,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         change["reason"] = (
             orca_import.RAFT_EXPANSION_REASON if change["key"] == "raft_first_layer_expansion"
             else f"U1 compatibility clamp: {change['old']} → {change['new']}")
-        change["explanation"] = clamp_explanation(change)
+        # Explanation and provenance are one record. apply_clamps creates the
+        # complete evidence pair before this step adds the action reason.
 
     # U1 supports >4 filament colours (verified: real U1 files carry 8 colours
     # with 4 toolheads). Never auto-cap; preserve all filament arrays in every
@@ -51,8 +53,16 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         profile = load_profile(profile_name)
         compat_keys = machine_compat_keys(profile)
         preserve_creator_settings = mode == "preserve"
+        # The project's own prime tower position survives the starter swap; Orca resets an undeclared
+        # value to the preset it names, so Recommended declares it (Preserve leaves the creator's
+        # declarations as they are).
+        tower_keys = set() if preserve_creator_settings else kept_placement_keys(work, profile)
         report["profile_changes"] = apply_swap(
             work, profile, preserve_creator_settings=preserve_creator_settings)
+        # Tower shape written from the starter profile is declared too (Recommended only), whether or not
+        # the source already matched it, or Orca would reset it to its preset.
+        if not preserve_creator_settings:
+            tower_keys = tower_keys | tower_shape_keys(profile)
         # Foreign projects often carry per-filament arrays longer than the real
         # colour count (e.g. 10 slots, 5 colours). Per-extruder vectors are
         # explicitly excluded by conform_filament_arrays and are resized later
@@ -123,6 +133,26 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         report["orca_compatibility"] = orca_import.apply_compatibility(
             work, filament_count(work))
 
+    # Where things sit is not a creator's setting, so the plate grid is corrected in both modes (see
+    # ``regrid``): translation of build items only. The prime tower is assessed and reported, never moved.
+    # It reads the original file for geometry, so it runs only when the caller says where that is.
+    layout = None
+    if mode in ("preserve", "u1", "optimize") and source_path:
+        from . import regrid
+        layout = regrid.correct(tm, work, cfg, source_path)
+        report["layout"] = layout
+        report["placement_corrections"] = layout["setting_changes"]
+
+    # A model's own statement of where it needs support survives the starter settings (Recommended only;
+    # Preserve keeps the creator's declarations as they are). See ``support_intent``.
+    support_keys: set[str] = set()
+    if mode in ("u1", "optimize"):
+        from . import support_intent
+        intent = support_intent.detect(tm, cfg)
+        report["support_intent"] = intent
+        if intent["explicit"]:
+            support_keys = set(intent["keys"])
+
     # Everything above states values. This says which of them Snapmaker Orca is
     # not to take from the preset the project names.
     #
@@ -147,7 +177,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 report.get("preserved_value_changes"),
                 report.get("optimizations"),
                 report.get("orca_compatibility"),
-            ),
+                report.get("placement_corrections"),
+            ) | support_keys | tower_keys,
             filaments=filament_count(work),
         )
         if declared:

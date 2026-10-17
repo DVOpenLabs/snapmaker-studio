@@ -1,6 +1,6 @@
 # Snapmaker Studio — user guide
 
-A static, task-oriented guide for **Snapmaker Studio v1.5.0**. It is organized around the decisions a person makes before a
+A static, task-oriented guide for **Snapmaker Studio v1.5.1**. It is organized around the decisions a person makes before a
 print, not around the order of the app's menus:
 
 1. **Learn with an example project** — six stages (Open → Check → Prepare → Review → Slice in Orca → Check the sliced job),
@@ -42,6 +42,7 @@ site/guide/
     examples.json          ← the interactive examples and their feedback
     shots.json             ← each screenshot's alt text, caption and control explanations
     geometry.json          ← GENERATED: where each control sits, as percentages of the picture
+    answers.json           ← frozen seven-question manifest for code-backed golden answers
   tools/                   ← build, preview, capture and verification scripts (Node, no runtime dependencies)
   deploy/                  ← sample deployment files (nothing here runs automatically)
   evidence/redesign/       ← screenshots of the finished redesign (desktop and phone, both themes)
@@ -54,6 +55,11 @@ land on the right page). With JavaScript the guide shows one page at a time and 
 ## Preview and build
 
 Requires Node 18 or newer. No packages are needed to build or preview.
+
+Stages, tasks and warnings may include a checked version and repository-backed sources. The build validates source paths,
+link keys and the shape of the seven golden answers; it checks only the shape and file existence of each `derive`
+reference, and the real symbol resolution happens in the tests. Each source appears in a collapsed **Where this comes from** block. The offline
+check compares the guide version with the desktop configuration and warns on drift without failing.
 
 ```bash
 cd site/guide
@@ -132,5 +138,8 @@ The capture scripts never connect to a printer, a slicer or the internet; they s
 screenshot they replace any local path with `<folder>`. Each run rewrites `content/geometry.json` for the shots it
 captured, so hotspots stay aligned. Review new screenshots for private data before committing (this guide's captures use
 only synthetic example files and made-up spools).
+
+Evidence kinds use `file` for values read from a file, `engine` for a Studio check, `estimate` for a derived estimate, and
+`orca` only for advice to verify in Snapmaker Orca. The last kind makes no claim about Orca behavior.
 
 Studio's own window is captured in its dark theme. The guide itself has both themes. Screenshots of the finished guide are in `evidence/redesign/`.

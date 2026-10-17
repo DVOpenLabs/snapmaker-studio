@@ -159,8 +159,9 @@ export default function Compatibility() {
           </p>
           <p className="flex items-start gap-1.5 rounded-md border border-doctor-cost/40 bg-doctor-cost/5 p-2 text-[11px] text-muted-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-doctor-cost" />
-            Layout is not verified — this checks the U1 profile copy, not object placement. Open in
-            Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
+            Layout is not verified — this checks the U1 profile copy, not object placement. Review the
+            project in Snapmaker Orca before slicing; for a project made for a larger printer an object
+            or the prime tower may sit outside a plate, and Arrange all plates did not fix that in our test.
           </p>
           <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
           {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("recommended"); startPrepare(path, "recommended"); } }} />}

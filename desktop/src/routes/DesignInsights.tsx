@@ -164,7 +164,7 @@ export default function DesignInsights() {
               <p className="mt-1 text-sm text-muted-foreground">
                 We made a U1 copy of <b>{file.name}</b>. Your original file is not modified.
                 {setupRisk
-                  ? " Print-setup risks remain (see the checks) — open in Snapmaker Orca, arrange plates and review supports/colours before slicing."
+                  ? " Print-setup risks remain (see the checks) — open in Snapmaker Orca and review the plates, supports and colours before slicing."
                   : " This is an advisory check, not a guarantee — slice in Snapmaker Orca to confirm."}
               </p>
             </div>
@@ -430,7 +430,7 @@ export default function DesignInsights() {
             <Card>
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Design Health</div>
-                <DesignHealth mesh={meshData} dims={dims} bed={caps?.bed_mm} mode="simple" />
+                <DesignHealth mesh={meshData} dims={dims} objects={ins?.object_sizes_mm} unmeasured={ins?.objects_unmeasured} bed={caps?.bed_mm} mode="simple" />
               </CardContent>
             </Card>
           )}

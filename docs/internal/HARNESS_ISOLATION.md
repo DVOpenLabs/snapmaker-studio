@@ -237,18 +237,24 @@ Menu and Desktop shortcut) and never the production keys or the shared publisher
   therefore still refuses to launch unless the production file is absent or `auto_check` is `false`, and the tripwire
   still detects a change. **These protections stay in place until override support is verified in the acceptance
   artifact; do not relax them on the strength of the source change alone.**
-  - *Product side (done in source, unreleased):* a build that includes the override reads and writes
+  - *Product side (in the v1.5.1 build and later):* a build that includes the override reads and writes
     `update_check.json` under `SNAPSTUDIO_DATA_DIR` when it is set. An explicit value that is empty, not valid text or
     not absolute is treated as unusable, never as "unset": the preference reads as off, saving fails, and no automatic
     check runs, so a bad value cannot select production state. Covered by temp-directory tests in `main.rs`.
   - *Harness side (already in place):* `Start-HarnessProcess` passes `SNAPSTUDIO_DATA_DIR = <lane>\engine-data` to the
     child only (`HarnessLauncher.psm1`, environment block next to `WEBVIEW2_USER_DATA_FOLDER`), so an override-aware
     build would write the file inside the lane with no further plumbing.
-  - *What remains:* (1) ship the override in a build and rewrap it as the acceptance artifact; (2) verify, on that
-    artifact, that `update_check.json` appears under the lane data dir and the production file is unchanged (extend the
-    tripwire to assert the lane file, and attest the build contains the override, for example by build identity);
-    (3) only then let the preflight skip the production check, and only for artifacts proven override-aware, keeping
-    it for older ones. Full harness integration is **not** claimed yet.
+  - *Verified on the v1.5.1 release candidate:* the override is in the v1.5.1 build. On the acceptance-identity copy
+    of that exact release candidate (installer SHA256 `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3`,
+    clean local account), turning "Automatically check for updates" on in the installed Help screen wrote
+    `update_check.json` inside the lane data directory (`auto_check` true, then false when turned off), and the
+    production paths stayed absent before and after; the lane's production-state tripwire reported 0 violations. The
+    probe is a one-off script run against that artifact; it is not part of `tools/acceptance/run.ps1`.
+  - *What remains:* extend the tripwire to assert the lane file and attest that a build contains the override (for
+    example by build identity), and only then let the preflight skip the production check, and only for artifacts
+    proven override-aware, keeping it for older ones. The preflight and tripwire protections therefore **stay as they
+    are**: the upgrade lane first installs an older, non-override build, and full harness integration is **not**
+    claimed.
 - **Manual interference.** Launching the production exe by hand after the preflight, or using the auto-check UI during a
   harness session, is a detection-only case.
 - **Journal content** is validated on read, not on save, and the TEMP-misconfiguration case widens the override allowlist
@@ -280,3 +286,28 @@ child only. The file also parse-checks the module and the four scripts, and asse
 that none contains a wildcard registration lookup, installer globbing, a session-environment assignment of an isolation
 variable, a name-based process stop, a raw `Start-Process`, a production uninstall-key export or import, or an absolute
 local path.
+
+## Environment overrides and known environment conflicts (recorded 2026-10-16)
+
+**Probe ports.** The acceptance lane starts two throwaway local servers (a "count" probe and a "redirect" probe) and a
+SpoolEase stand-in. Their default ports are 9401, 9402 and 9403. If another program already listens on one of them the
+probe servers cannot start and every provider check fails with "did not answer" or "Unauthorized", which reads like a
+product defect and is not one. Before a run, check who owns the ports (`Get-NetTCPConnection -State Listen -LocalPort
+9401,9402,9403`, then the owning process's name, start time and owner). Never stop a process the run did not start. Move
+the lane instead: `-ProbePort 9411 -RedirectPort 9412 -SpoolEasePort 9413` (any free ports). The ports go only to the
+lane's own child processes; nothing global changes. The probe and redirect ports are part of the run's record.
+
+**Ownership checks that stay in force.** Every process the lane starts is tracked by pid and start time, and only those
+are stopped. The probe servers are stopped in the lane's `finally` block by their tracked pid. A probe that fails to start is
+reported as a failed check; a listener the lane did not start is never touched.
+
+**Launch-path refusal.** After launching the app the lane refuses, fail-closed, unless the launched process image is inside
+the harness install dir. A refusal stops the launched tree, uninstalls, runs the tripwire and reports `APP_LAUNCH_FAILED`.
+This is the guard doing its job; do not relax it. One such refusal happened on 2026-10-16 right after a clean run and
+did not repeat on an identical retry; the retained evidence did not record why the image path failed the check, so the
+cause is not established. The refusal text now says whether the image path was unreadable at registration or resolved
+outside the install dir, so the next occurrence can be diagnosed without weakening the guard.
+
+**Test file.** The painted project the acceptance lane builds at run time must be a valid 3MF package
+(`[Content_Types].xml`, `_rels/.rels`, model and config parts). `backend/tests/test_acceptance_fixture.py` reads the
+fixture out of `tools/acceptance/run.ps1` and fails if it stops being readable by the same rule Prepare uses.

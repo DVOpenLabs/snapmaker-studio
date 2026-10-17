@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/store/toast";
 import { placementCheck, preparePlaced } from "@/api";
 import type { PlacementCheck, PlacementFix } from "@/api";
-import { blockedReason, overhangText, placementVerdict } from "@/lib/placement";
+import { blockedReason, itemLabel, overhangText, placementVerdict } from "@/lib/placement";
 
 /**
  * Where the objects actually sit.
@@ -39,9 +39,6 @@ export function PlacementCard({ path }: { path: string }) {
   // route still have something to say.
   if (failed) return null;
 
-  const verdict = placementVerdict(check);
-  const blocked = blockedReason(check);
-
   const runFix = async () => {
     setFixing(true);
     try {
@@ -52,11 +49,25 @@ export function PlacementCard({ path }: { path: string }) {
         : "Studio did not move anything — see the reason on the card.");
       if (result.ok) setCheck(result.after ?? check);
     } catch {
-      showToast("Couldn't reposition this project — open it in Snapmaker Orca and use Arrange.");
+      showToast("Couldn't reposition this project — review it in Snapmaker Orca before slicing.");
     } finally {
       setFixing(false);
     }
   };
+
+  return <PlacementView check={check} fix={fix} fixing={fixing} onFix={runFix} />;
+}
+
+/** What the card shows for a given check. Separate from the fetching so it can be rendered on its own. */
+export function PlacementView({ check, fix, fixing, onFix }: {
+  check: PlacementCheck | null;
+  fix: PlacementFix | null;
+  fixing: boolean;
+  onFix: () => void;
+}) {
+  const showToast = useToast((s) => s.show);
+  const verdict = placementVerdict(check);
+  const blocked = blockedReason(check);
 
   return (
     <Card>
@@ -77,9 +88,9 @@ export function PlacementCard({ path }: { path: string }) {
         {check?.available && check.off_plate.length > 0 && (
           <ul className="space-y-1.5">
             {check.off_plate.map((item) => (
-              <li key={item.object_id} className="rounded-md border border-risk/40 p-2.5">
+              <li key={item.item_index ?? item.object_id} className="rounded-md border border-risk/40 p-2.5">
                 <p className="text-xs font-medium">
-                  Object {item.object_id} · {item.dimensions.x} × {item.dimensions.y} ×{" "}
+                  {itemLabel(item)} · {item.dimensions.x} × {item.dimensions.y} ×{" "}
                   {item.dimensions.z} mm
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{overhangText(item)}</p>
@@ -88,15 +99,25 @@ export function PlacementCard({ path }: { path: string }) {
           </ul>
         )}
 
+        {check?.available && check.prime_tower?.message && (
+          <p className="rounded-md border border-risk/40 p-2.5 text-xs text-muted-foreground">
+            {check.prime_tower.message}
+          </p>
+        )}
+
+        {check?.available && !check.prime_tower?.message && check.prime_tower?.note && (
+          <p className="text-[11px] text-muted-foreground">{check.prime_tower.note}</p>
+        )}
+
         {blocked && (
           <p className="rounded-md border border-border bg-muted/20 p-2.5 text-xs text-muted-foreground">
-            {blocked} Open the project in Snapmaker Orca and use Arrange.
+            {blocked} Review the project in Snapmaker Orca before slicing.
           </p>
         )}
 
         {verdict.canFix && !fix?.ok && (
           <div className="space-y-1.5">
-            <Button size="sm" onClick={runFix} disabled={fixing}>
+            <Button size="sm" onClick={onFix} disabled={fixing}>
               {fixing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Move className="h-3.5 w-3.5" />}
               {fixing ? "Repositioning…" : "Move onto the plate (saves a copy)"}
             </Button>

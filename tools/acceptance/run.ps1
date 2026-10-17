@@ -164,10 +164,21 @@ $paintedSettings = @'
 $paintedParts = @'
 <config><object id="1"><part id="1" subtype="normal_part"><metadata key="extruder" value="2"/></part></object><object id="2"><part id="2" subtype="normal_part"><metadata key="extruder" value="3"/></part></object><plate><metadata key="plater_id" value="1"/></plate></config>
 '@
+# The two parts every 3MF package requires. Studio's readability rule (the Doctor, the traits behind Ready Now,
+# Compatibility and Prepare all use one) treats an archive without them as not a project, so a test file built
+# without them is refused before any painting is read.
+$paintedContentTypes = @'
+<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>
+'@
+$paintedRels = @'
+<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>
+'@
 if (Test-Path $paintedWork) { Remove-Item $paintedWork -Force }
 Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
 $zip = [System.IO.Compression.ZipFile]::Open($paintedWork, "Create")
 foreach ($entry in @(
+    @{ name = "[Content_Types].xml"; body = $paintedContentTypes },
+    @{ name = "_rels/.rels"; body = $paintedRels },
     @{ name = "3D/3dmodel.model"; body = $paintedModel },
     @{ name = "Metadata/project_settings.config"; body = $paintedSettings },
     @{ name = "Metadata/model_settings.config"; body = $paintedParts })) {
