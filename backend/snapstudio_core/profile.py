@@ -17,9 +17,17 @@ TOWER_SHAPE_KEYS = frozenset({"wipe_tower_wall_type", "wipe_tower_extra_spacing"
                               "wipe_tower_extra_rib_length", "wipe_tower_cone_angle"})
 
 
-def tower_shape_keys(profile_changes) -> set[str]:
-    """Tower-shape keys apply_swap actually changed, for Recommended to declare."""
-    return {c["key"] for c in profile_changes or () if isinstance(c, dict) and c.get("key") in TOWER_SHAPE_KEYS}
+def tower_shape_keys(profile: dict) -> set[str]:
+    """Tower-shape keys the starter profile writes, for Recommended to declare.
+
+    Taken from the profile, not from the changed-values report: a source that already equals the starter
+    still needs the declaration, or Orca resets the value to its preset."""
+    return TOWER_SHAPE_KEYS & set(profile["keys"])
+
+
+# Written from the starter, but Studio has not verified that Orca takes them from the project file.
+UNVERIFIED_KEYS = {"z_hop_when_prime": (
+    "Studio wrote the U1 value; whether Snapmaker Orca applies it from the project file is unverified")}
 
 
 def kept_placement_keys(cfg: dict, profile: dict) -> set[str]:
@@ -47,6 +55,6 @@ def apply_swap(cfg: dict, profile: dict, *, preserve_creator_settings: bool = Fa
             continue
         if cfg.get(k) != v:
             changes.append({"key": k, "old": cfg.get(k), "new": v,
-                            "reason": "U1 machine profile setting applied"})
+                            "reason": UNVERIFIED_KEYS.get(k, "U1 machine profile setting applied")})
             cfg[k] = v
     return changes

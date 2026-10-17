@@ -47,7 +47,7 @@ NOTE = ("Each plate fits on its own, but Studio cannot check where the plates si
 
 
 def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=False,
-          painted_supports=False, source_declares_supports=True, tower=None):
+          painted_supports=False, source_declares_supports=True, tower=None, settings=None):
     """The base project with `plates` plates, one slab each, at Bambu-stride offsets."""
     out = tmp_path / name
     with zipfile.ZipFile(BASE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
@@ -92,6 +92,7 @@ def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=Fa
                 if tower:   # (x list, y list, width): values of the source's own bed
                     cfg["enable_prime_tower"] = "1"
                     cfg["wipe_tower_x"], cfg["wipe_tower_y"], cfg["prime_tower_width"] = tower
+                cfg.update(settings or {})
                 cfg["printable_area"] = ["0x0", f"{BED_W}x0", f"{BED_W}x{BED_D}", f"0x{BED_D}"]
                 if supports:
                     cfg["enable_support"] = "1"
@@ -313,13 +314,17 @@ def test_a_tower_inside_the_area_is_not_called_safe(tmp_path):
     src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
     for mode in ("preserve", "recommended"):
         note = convert(src, mode, tmp_path)["settings_summary"]["prime_tower_note"]
-        assert "cannot tell how far the tower extends" in note
+        assert "could not verify how far the prime tower reaches" in note
+        assert "only builds a tower when the print needs one" in note     # not claimed to exist
+        assert "at the position stated in this project" in note           # not claimed to come from the source
         assert "A G-code path goes beyond plate boundaries" in note
         assert "Studio does not claim any tower position is safe" in note
         low = note.lower()
         assert not any(w in low for w in ("ready", "guarantee", "fits", "will fit", "safe to"))
     out = convert(src, "preserve", tmp_path)["output_path"]
     assert service.placement_check(out)["prime_tower"]["message"] is None
+    # Prepare and the placement card share one wording.
+    assert service.placement_check(out)["prime_tower"]["note"] == note
 
 
 def _entry0(r):
@@ -344,6 +349,56 @@ def test_preserve_does_not_declare_tower_shape(tmp_path):
     src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
     _, declared = _entry0(convert(src, "preserve", tmp_path))
     assert not (TOWER_SHAPE & declared)
+
+
+STARTER_SHAPE = {"wipe_tower_wall_type": "rectangle", "wipe_tower_extra_spacing": "100%",
+                 "wipe_tower_extra_rib_length": "0", "wipe_tower_cone_angle": "30"}
+OTHER_SHAPE = {"wipe_tower_wall_type": "rib", "wipe_tower_extra_spacing": "120%",
+               "wipe_tower_extra_rib_length": "10", "wipe_tower_cone_angle": "45"}
+
+
+def _tower_source(tmp_path, shape, **kw):
+    return build(tmp_path, "shape.3mf", plates=1, tower=(["13"], ["211"], "30"), settings=shape, **kw)
+
+
+@pytest.mark.parametrize("shape", [OTHER_SHAPE, STARTER_SHAPE], ids=["source-differs", "source-already-matches"])
+def test_recommended_declares_the_tower_shape_whatever_the_source_held(tmp_path, shape):
+    # The declaration is for the values Recommended writes, not for the values it happened to change.
+    cfg, declared = _entry0(convert(_tower_source(tmp_path, shape), "recommended", tmp_path))
+    assert TOWER_SHAPE <= declared
+    assert {k: cfg[k] for k in TOWER_SHAPE} == STARTER_SHAPE
+
+
+def test_recommended_declares_the_tower_shape_again_on_an_already_prepared_copy(tmp_path):
+    first = convert(_tower_source(tmp_path, OTHER_SHAPE), "recommended", tmp_path)["output_path"]
+    again = tmp_path / "again"
+    r = service.convert(first, out_dir=str(again), prepare_mode="recommended")
+    assert r["validated_ok"], r["errors"]
+    cfg, declared = _entry0(r)
+    assert TOWER_SHAPE <= declared and {k: cfg[k] for k in TOWER_SHAPE} == STARTER_SHAPE
+
+
+def test_tower_shape_is_declared_beside_ordinary_global_supports(tmp_path):
+    cfg, declared = _entry0(convert(_tower_source(tmp_path, STARTER_SHAPE, supports=True),
+                                    "recommended", tmp_path))
+    assert TOWER_SHAPE <= declared
+    assert cfg["enable_support"] == "1" and "enable_support" not in declared   # starter reset unchanged
+
+
+def test_tower_shape_is_declared_beside_explicit_positive_support_intent(tmp_path):
+    cfg, declared = _entry0(convert(
+        _tower_source(tmp_path, STARTER_SHAPE, supports=True, painted_supports=True), "recommended", tmp_path))
+    assert TOWER_SHAPE <= declared
+    assert "enable_support" in declared          # positive intent kept, as before
+
+
+def test_z_hop_when_prime_is_labelled_unverified_not_established(tmp_path):
+    r = convert(build(
+        tmp_path, "z.3mf", plates=1, settings={"z_hop_when_prime": ["1"] * 4}), "recommended", tmp_path)
+    change = next(c for c in r["settings_summary"]["compat_changed"] if c["key"] == "z_hop_when_prime")
+    assert "unverified" in change["reason"]
+    _, declared = _entry0(r)
+    assert "z_hop_when_prime" not in declared
 
 
 def test_ordinary_supports_are_still_a_starter_reset(tmp_path):

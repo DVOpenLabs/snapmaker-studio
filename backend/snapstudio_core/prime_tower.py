@@ -127,18 +127,15 @@ def message(found: list[dict], bed: dict, whose: str = "the U1's") -> str | None
 
 
 UNVERIFIED_NOTE = (
-    "Studio could not verify how far the prime tower reaches: its depth, wall type, brim "
-    "and rotation are only known when Snapmaker Orca slices. Check the tower in Orca's preview."
+    "Studio could not verify how far the prime tower reaches: its depth, wall type, brim and rotation "
+    "are only known when Snapmaker Orca slices, and Orca only builds a tower when the print needs one. "
+    "If it builds one at the position stated in this project, Orca can refuse paths that leave the plate "
+    "(\"A G-code path goes beyond plate boundaries\"). Check the tower in Orca's preview, and adjust its "
+    "position or size there if needed. Studio does not claim any tower position is safe."
 )
 
-
-SUMMARY_NOTE = (
-    "Prime tower: Studio keeps the tower position from the original file and cannot tell how far the "
-    "tower extends - that is only decided when Snapmaker Orca slices. Orca can refuse paths that leave "
-    "the plate (\"A G-code path goes beyond plate boundaries\"). If that happens, or the tower looks "
-    "close to an edge in Orca's preview, review and adjust the tower's position or size in Orca before "
-    "slicing again. Studio does not claim any tower position is safe."
-)
+# One wording for the Prepare summary and the placement card, so the two never disagree.
+SUMMARY_NOTE = UNVERIFIED_NOTE
 
 
 def summary_note(cfg: dict, found: list[dict]) -> str | None:
