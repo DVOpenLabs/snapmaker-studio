@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SlicedJobCards } from "@/components/SlicedJobCards";
 import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
 import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
+import { SettingsReceiptCard } from "@/components/SettingsReceiptCard";
 import { useSliced } from "@/store/sliced";
 import { useSession } from "@/store/session";
 import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
@@ -24,7 +25,12 @@ export default function AfterSlicing() {
   const name = useSliced((s) => s.name);
   const setSliced = useSliced((s) => s.setSliced);
   const clear = useSliced((s) => s.clear);
+  const revision = useSliced((s) => s.revision);
   const project = useSession((s) => s.file);
+  const convert = useSession((s) => s.convert);
+  // A prepared copy counts only if Studio wrote and validated it in this session.
+  const prepared = convert.status === "done" && convert.data && !convert.data.blocked && convert.data.validated_ok
+    ? convert.data.output_path : null;
   const [typed, setTyped] = useState("");
 
   return (
@@ -95,6 +101,7 @@ export default function AfterSlicing() {
             </p>
             <Button variant="secondary" size="sm" onClick={clear}>Choose another file</Button>
           </div>
+          {project && <SettingsReceiptCard key={`receipt-${path}#${revision}`} original={project.path} prepared={prepared} sliced={path} />}
           <SlicedJobCards path={path} projectPath={project?.path} />
         </>
       )}

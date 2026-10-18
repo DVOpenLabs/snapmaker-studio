@@ -1520,6 +1520,41 @@ export function jobCheck(files: JobCheckEntry[]): Promise<{ schema_version: stri
   return post("/job_check", { files }, "job check");
 }
 
+export type ReceiptStatus = "unchanged" | "changed" | "missing" | "not_checked";
+export type ReceiptStage = "original" | "prepared" | "sliced";
+
+export interface ReceiptStep {
+  from: ReceiptStage;
+  to: ReceiptStage;
+  from_value: number | boolean | number[] | null;
+  to_value: number | boolean | number[] | null;
+  status: ReceiptStatus;
+  detail: string;
+  next_action: string | null;
+}
+
+export interface ReceiptFact {
+  id: "nozzles" | "layer_height" | "supports" | "prime_tower";
+  label: string;
+  status: ReceiptStatus;
+  steps: ReceiptStep[];
+}
+
+export interface SettingsReceipt {
+  schema_version: string;
+  scope: "project";
+  scope_note: string;
+  stages: Record<ReceiptStage, { state: "read" | "unreadable" | "not_provided"; reason?: string; note?: string }>;
+  facts: ReceiptFact[];
+  summary: string;
+  separate_from: string;
+}
+
+/** Read-only: the declared settings of the project, its prepared copy and the sliced G-code, side by side. */
+export function settingsReceipt(originalPath: string, preparedPath?: string | null, slicedPath?: string | null): Promise<SettingsReceipt> {
+  return post("/settings_receipt", { original_path: originalPath, prepared_path: preparedPath ?? "", sliced_path: slicedPath ?? "" }, "settings receipt");
+}
+
 export function sliceProvenance(projectPath: string, gcodePath: string): Promise<ProvenanceResult> {
   return post("/slice_provenance", { project_path: projectPath, gcode_path: gcodePath },
     "provenance");
