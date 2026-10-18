@@ -1,5 +1,7 @@
 # Evidence record — what each page rests on
 
+CANDIDATE NOTE: the screenshots `home`, `this-print-top`, `nav-advanced` and `job-other-printer` and the labels "This job" / "Open a project" come from an unreleased candidate build (branch `integ/phase2-ab`, local only, captured with `tools/capture.mjs` against synthetic fixtures), not from the published v1.5.0 interface. Do not publish until the matching app release.
+
 The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
 same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
 running interface or from the source that renders it. "UI" below means the label or behaviour was observed in the running

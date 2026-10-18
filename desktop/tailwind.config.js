@@ -19,6 +19,12 @@ export default {
         convertible: "hsl(var(--convertible))",
         risk: "hsl(var(--risk))",
       },
+      textColor: {
+        primary: { DEFAULT: "hsl(var(--primary-text))", foreground: "hsl(var(--primary-foreground))" },
+        ready: "hsl(var(--ready-text))",
+        repairable: "hsl(var(--repairable-text))",
+        risk: "hsl(var(--risk-text))",
+      },
       borderRadius: { lg: "12px", md: "8px", sm: "6px" },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

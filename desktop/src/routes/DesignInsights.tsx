@@ -565,7 +565,7 @@ export default function DesignInsights() {
 
               <div className="border-t border-border pt-3">
                 <button onClick={() => setShowStrategy((v) => !v)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="opacity-70">(optional)</span>
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="font-normal">(optional)</span>
                 </button>
                 {showStrategy
                   ? <div className="pt-3"><StrategyPicker filePath={file.path} mode="simple" value={strategy} onChange={setStrategy} /></div>

@@ -67,7 +67,7 @@
       "when": "You want one page that follows a job from opening the file to checking the sliced job.",
       "prereq": ["A project open in Studio."],
       "steps": [
-        "Open **This job** (**This Job** in Advanced view). The title names your open file.",
+        "Open **This job** in the sidebar (Simple and Advanced view). The title names your open file.",
         "Stage **1. Before slicing**: **Object placement**, **Before you slice**, **Colours and toolheads**.",
         "Stage **2. Prepared** shows **Nothing prepared yet.** until you prepare a copy, then shows what changed.",
         "Stage **3. After slicing**: where the sliced job comes back for checking."
@@ -78,7 +78,7 @@
         { "if": "Cards show “Checking…” for a while.", "then": "Studio is trying to reach a printer. When none answers, the cards switch to **Printer not found** and **Studio can’t tell**." }
       ],
       "notes": [], "shot": "this-print-top",
-      "problems": ["studio-cant-tell"], "keywords": ["this print", "stages", "overview", "job", "cockpit", "before slicing", "prepared"]
+      "problems": ["studio-cant-tell"], "keywords": ["this job", "this print", "stages", "overview", "job", "cockpit", "before slicing", "prepared"]
     },
     {
       "id": "colours-toolheads", "page": "task-colours-toolheads", "group": "check", "title": "Check colors against the four toolheads",

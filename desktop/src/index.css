@@ -28,6 +28,12 @@
     --accent-foreground: 0 0% 100%;
     --ready: 120 61% 30%;
     --repairable: 41 100% 37%;
+    /* Text colours for the status hues: >= 4.5:1 on the page, card, muted panel and the /5-/15 tints of the same hue.
+       Fills (bg-*, borders, icons) keep the plain tokens above; only text-* utilities read these (tailwind.config.js). */
+    --repairable-text: 41 100% 26%;
+    --primary-text: 201 100% 32%;
+    --ready-text: 120 61% 28%;
+    --risk-text: 302 90% 36%;
     --convertible: 201 100% 35%;
     --risk: 302 90% 38%;
 
@@ -62,6 +68,10 @@
     --accent-foreground: 228 28% 8%;
     --ready: 120 61% 50%;             /* green #32CD32 */
     --repairable: 54 100% 55%;        /* yellow — legible on dark */
+    --repairable-text: 54 100% 55%;
+    --primary-text: 201 100% 50%;
+    --ready-text: 120 61% 50%;
+    --risk-text: 302 100% 62%;
     --convertible: 201 100% 50%;      /* accent #00A6FF */
     --risk: 302 100% 62%;             /* magenta #FF3DF9 */
 

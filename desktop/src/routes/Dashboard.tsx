@@ -110,7 +110,8 @@ export default function Dashboard() {
       {/* Open a project first: the one thing Home is for. */}
       <Card className="surface-raised overflow-hidden">
         <CardContent className="p-0">
-          <button onClick={openFile} className="flex w-full items-center gap-4 p-5 text-left transition-colors hover:bg-muted/40">
+          {/* The card clips its children, so the keyboard ring is drawn inside the button instead of outside it. */}
+          <button onClick={openFile} className="flex w-full items-center gap-4 rounded-lg p-5 text-left transition-colors hover:bg-muted/40 focus-visible:[outline-offset:-3px]">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
               <UploadCloud className="h-6 w-6" aria-hidden="true" />
             </div>

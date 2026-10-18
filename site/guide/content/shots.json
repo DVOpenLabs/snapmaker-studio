@@ -3,7 +3,7 @@
     "file": "home.png",
     "title": "Studio's Home screen",
     "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This job, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a project button, and a footer reading Local-only, nothing leaves your network.",
-    "caption": "Home, as it looks the first time you open Studio (Simple view).",
+    "caption": "Home, as it looks the first time you open Studio (Simple view). *Candidate interface, not yet in a released version.*",
     "hotspots": [
       {
         "key": "open-main",
@@ -97,7 +97,7 @@
     "file": "this-print-top.png",
     "title": "This job, stage 1: Before slicing",
     "alt": "Studio's This job page for demo_offplate_foreign.3mf. Stage 1, Before slicing, shows an Object placement card with a Move onto the plate button, then a Before you slice card listing checks marked Studio can't tell, then the start of a Colours and toolheads card.",
-    "caption": "**This job** for the example project, with no printer connected.",
+    "caption": "**This job** for the example project, with no printer connected. *Candidate interface, not yet in a released version.*",
     "hotspots": [
       {
         "key": "header",
@@ -130,7 +130,7 @@
     "file": "nav-advanced.png",
     "title": "Advanced view",
     "alt": "Studio with the Advanced view switched on. The sidebar now lists every tool: Dashboard, This Job, Get Started, Project Doctor, Projects, Ready now, Compatibility, After Slicing, Scale Doctor, Print Quality, Colors and Materials, Cost and Pricing Doctor, Printer Hub, Find Models and Batch Prepare.",
-    "caption": "The sidebar in **Advanced** view.",
+    "caption": "The sidebar in **Advanced** view. *Candidate interface, not yet in a released version.*",
     "hotspots": [
       {
         "key": "view-toggle",
@@ -755,7 +755,7 @@
     "file": "job-other-printer.png",
     "title": "An example job whose header names a different printer",
     "alt": "Studio's After slicing page checking an example G-code file that names a different printer. A Ready to send card says nothing blocks the job but two things are worth settling. The first finding, Sliced for a different printer, is marked worth settling first and says to re-slice the model in Snapmaker Orca with a U1 profile. Below it, other findings are marked Studio can't check this.",
-    "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected.",
+    "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected. *Candidate interface, not yet in a released version.*",
     "hotspots": [
       {
         "key": "ready",
