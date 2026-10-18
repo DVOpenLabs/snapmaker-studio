@@ -41,20 +41,26 @@ export function OrcaRoundTrip() {
   // newest, so a slow answer about project A, a folder since changed, or a page
   // since left can never be applied to whatever is open now.
   const ticket = useRef(0);
+  // The question currently being asked, so the timer does not stack a second scan on
+  // a slow first one (and starve it of ever being the newest).
+  const inFlight = useRef<string | null>(null);
 
-  const look = useCallback(() => {
+  const look = useCallback((fromTimer = false) => {
     if (!folder) return;
+    const key = `${folder}|${project?.path ?? ""}`;
+    if (fromTimer && inFlight.current === key) return;
+    inFlight.current = key;
     const mine = ++ticket.current;
     const asked = { folder, project: project?.path };
     setBusy(true);
     watchFolder(folder, project?.path)
       .then((data) => { if (ticket.current === mine) setAnswer({ ...asked, data }); })
       .catch(() => { if (ticket.current === mine) setAnswer(null); })
-      .finally(() => { if (ticket.current === mine) setBusy(false); });
+      .finally(() => { if (ticket.current === mine) { setBusy(false); inFlight.current = null; } });
   }, [folder, project?.path]);
 
   // Invalidate whatever is in flight when the question changes or the page goes.
-  useEffect(() => () => { ticket.current += 1; }, [folder, project?.path]);
+  useEffect(() => () => { ticket.current += 1; inFlight.current = null; setAnswer(null); }, [folder, project?.path]);
 
   // An answer is shown only while it is still about the current folder and project.
   const result = answer && answer.folder === folder && answer.project === project?.path ? answer.data : null;
@@ -62,7 +68,7 @@ export function OrcaRoundTrip() {
   useEffect(() => {
     if (!folder) return;
     look();
-    const timer = window.setInterval(look, POLL_MS);
+    const timer = window.setInterval(() => look(true), POLL_MS);
     return () => window.clearInterval(timer);
   }, [folder, look]);
 
@@ -127,7 +133,7 @@ export function OrcaRoundTrip() {
             <p className="mt-0.5 break-all text-xs text-muted-foreground">{folder}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={look} disabled={busy}>
+            <Button variant="secondary" size="sm" onClick={() => look()} disabled={busy}>
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
               Look now
             </Button>

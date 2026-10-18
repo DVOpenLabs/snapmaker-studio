@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useJob } from "@/store/job";
 import { useSession } from "@/store/session";
-import { restorable, JOB_ROLES, type FileState, type JobRole, type LinkedFile } from "@/lib/jobRecord";
+import { planFor, JOB_ROLES, type FileState, type JobRole, type LinkedFile } from "@/lib/jobRecord";
 
 const LABEL: Record<JobRole, string> = {
   original: "Project",
@@ -34,6 +34,7 @@ export function JobWorkspaceCard() {
   const record = useJob((s) => s.record);
   const phase = useJob((s) => s.phase);
   const check = useJob((s) => s.check);
+  const verified = useJob((s) => s.verified);
   const error = useJob((s) => s.error);
   const runCheck = useJob((s) => s.runCheck);
   const restore = useJob((s) => s.restore);
@@ -53,9 +54,9 @@ export function JobWorkspaceCard() {
     setNamed(next);
   };
 
-  // The prepared copy is shown for reference; there is nothing to reopen for it.
-  const plan = phase === "done" ? restorable(check, named).filter((role) => role !== "prepared") : [];
-  const rows = JOB_ROLES.flatMap((role) => (record[role] ? [{ role, file: record[role] as LinkedFile }] : []));
+  const plan = phase === "done" ? planFor(check, named) : [];
+  // What was made from the project is listed as its results only once the project is confirmed.
+  const rows = JOB_ROLES.flatMap((role) => (record[role] && (resuming || verified || role === "original") ? [{ role, file: record[role] as LinkedFile }] : []));
 
   return (
     <Card>
@@ -117,6 +118,10 @@ export function JobWorkspaceCard() {
             );
           })}
         </ul>
+
+        {!resuming && !verified && (record.prepared || record.sliced) && (
+          <p className="text-xs text-muted-foreground">Checking that the project is unchanged before listing its earlier prepared copy and G-code…</p>
+        )}
 
         {error && <p className="text-xs text-risk">{error}</p>}
 

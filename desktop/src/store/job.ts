@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { jobCheck, type JobCheckEntry } from "@/api";
 import {
-  classify, clearSliced, linkPrepared, linkSliced, openProject, parseRecord, restorable, withFingerprint,
+  classify, clearSliced, linkPrepared, linkSliced, openProject, parseRecord, planFor, withFingerprint,
   JOB_SCHEMA, linked, type JobCheck, type JobRecord, type JobRole,
 } from "@/lib/jobRecord";
 import { useSession } from "@/store/session";
@@ -37,6 +37,12 @@ export type CheckPhase = "idle" | "checking" | "done" | "error";
  */
 interface JobState {
   record: JobRecord | null;
+  /**
+   * True once the project is known to be what the record says (made this session,
+   * or checked against its fingerprint). Until then its earlier prepared copy and
+   * G-code are not presented as its results.
+   */
+  verified: boolean;
   phase: CheckPhase;
   check: JobCheck;
   error: string | null;
@@ -52,6 +58,7 @@ let checkGeneration = 0;
 
 export const useJob = create<JobState>((set, get) => ({
   record: read(),
+  verified: false,
   ...idle,
 
   runCheck: async () => {
@@ -66,10 +73,13 @@ export const useJob = create<JobState>((set, get) => ({
     try {
       const report = await jobCheck(entries);
       // The saved job may have been replaced or forgotten while the engine read its files.
-      if (checkGeneration !== generation || get().record !== record) return;
+      if (checkGeneration !== generation) return;
+      // The job changed under the check (a file was linked or adopted): its answer is stale.
+      if (get().record !== record) { set({ ...idle }); return; }
       set({ phase: "done", check: classify(record, report.files), error: null });
     } catch (e: any) {
-      if (checkGeneration !== generation || get().record !== record) return;
+      if (checkGeneration !== generation) return;
+      if (get().record !== record) { set({ ...idle }); return; }
       set({ phase: "error", check: {}, error: String(e?.message ?? e) });
     }
   },
@@ -77,15 +87,17 @@ export const useJob = create<JobState>((set, get) => ({
   restore: (accepted) => {
     const { record, check, phase } = get();
     if (!record || phase !== "done") return;
-    let plan = restorable(check, accepted);
+    let plan = planFor(check, accepted);
     let next = record;
     // A changed original means the prepared copy and sliced job were not made from
     // what is on disk now. Reopen the file, but do not present them as its results.
     if (plan.includes("original") && check.original !== "same") {
       next = { schema: JOB_SCHEMA, savedAt: new Date().toISOString(), original: linked(record.original.path), prepared: null, sliced: null };
-      plan = plan.filter((role) => role === "original");
-      set({ record: next });
+      invalidateFingerprints();
+      set({ record: next, verified: true });
       write(next);
+      // A G-code already open belongs to the old file, not to the one being reopened.
+      useSliced.getState().clear();
       void fingerprint("original", next.original.path);
     }
     // Naming a changed G-code adopts what is on disk now as the sliced identity.
@@ -95,7 +107,10 @@ export const useJob = create<JobState>((set, get) => ({
       set({ record: next });
       write(next);
     }
-    if (plan.includes("original")) useSession.getState().setFile(record.original.path);
+    if (plan.includes("original")) {
+      if (check.original === "same") set({ verified: true });
+      useSession.getState().setFile(record.original.path);
+    }
     if (plan.includes("sliced") && next.sliced) useSliced.getState().setSliced(next.sliced.path);
     if (adoptSliced && next.sliced) void fingerprint("sliced", next.sliced.path);
     set({ ...idle });
@@ -103,21 +118,34 @@ export const useJob = create<JobState>((set, get) => ({
 
   forget: () => {
     checkGeneration++;
+    invalidateFingerprints();
     write(null);
-    set({ record: null, ...idle });
+    set({ record: null, verified: false, ...idle });
   },
 }));
 
-function update(next: JobRecord | null) {
+function update(next: JobRecord | null, verified?: boolean) {
   if (next === useJob.getState().record) return;
   write(next);
-  useJob.setState({ record: next, ...idle });
+  useJob.setState({ record: next, ...(verified === undefined ? {} : { verified }), ...idle });
+}
+
+/**
+ * Each fingerprint request is bound to the moment it was asked: when the file it
+ * was reading is replaced, adopted or forgotten, its late answer is discarded
+ * even if the same path is linked again.
+ */
+const fingerprintSeq: Record<JobRole, number> = { original: 0, prepared: 0, sliced: 0 };
+function invalidateFingerprints() {
+  for (const role of Object.keys(fingerprintSeq) as JobRole[]) fingerprintSeq[role]++;
 }
 
 /** Read the file's size and hash; it applies only if that file is still the one linked. */
 async function fingerprint(role: JobRole, path: string) {
+  const seq = ++fingerprintSeq[role];
   try {
     const report = await jobCheck([{ role, path }]);
+    if (fingerprintSeq[role] !== seq) return;
     const observed = report.files[0]?.observed;
     if (report.files[0]?.status !== "recorded" || !observed) return;
     const next = withFingerprint(useJob.getState().record, role, path, observed);
@@ -140,8 +168,13 @@ export function trackJob(): () => void {
     if (s.file && s.file.path !== prev.file?.path) {
       const before = useJob.getState().record;
       const next = openProject(before, s.file.path, now());
-      update(next);
-      if (next !== before) void fingerprint("original", s.file.path);
+      if (next !== before) {
+        invalidateFingerprints();
+        update(next, true);
+        void fingerprint("original", s.file.path);
+      } else if (next && !useJob.getState().verified) {
+        void verifyOpened(next);
+      }
     }
     const out = s.convert.status === "done" && s.convert.data && !s.convert.data.blocked && s.convert.data.validated_ok
       ? s.convert.data.output_path : null;
@@ -168,4 +201,33 @@ export function trackJob(): () => void {
     }
   });
   return () => { offSession(); offSliced(); };
+}
+
+/**
+ * The same project was opened by hand after a restart, bypassing the card. Its
+ * earlier prepared copy and G-code count as its results only if the project is
+ * still the file that was recorded; otherwise the job starts over.
+ */
+async function verifyOpened(record: JobRecord) {
+  const path = record.original.path;
+  const fresh = () => {
+    if (useJob.getState().record !== record) return;
+    invalidateFingerprints();
+    update({ ...openProject(null, path, new Date().toISOString()) }, true);
+    void fingerprint("original", path);
+  };
+  if (!record.prepared && !record.sliced) {
+    useJob.setState({ verified: true });
+    if (!record.original.fingerprint) void fingerprint("original", path);
+    return;
+  }
+  if (!record.original.fingerprint) return fresh();
+  try {
+    const report = await jobCheck([{ role: "original", path, expected: record.original.fingerprint }]);
+    if (useJob.getState().record !== record || useSession.getState().file?.path !== path) return;
+    if (report.files[0]?.status === "same") useJob.setState({ verified: true });
+    else fresh();
+  } catch {
+    if (useSession.getState().file?.path === path) fresh();
+  }
 }

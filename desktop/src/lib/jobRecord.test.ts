@@ -129,3 +129,22 @@ describe("re-linking the same file", () => {
     expect(linkPrepared(r, A, "C:\\work\\A_U1.3mf", "preserve", NOW)).toBe(r);
   });
 });
+
+describe("review repair round (lib)", () => {
+  const report = (...pairs: Array<[JobRole, string]>) => pairs.map(([role, status]) => ({ role, status }));
+  it("missing and unreadable survive a missing fingerprint", () => {
+    const r = openProject(null, A, NOW);
+    expect(classify(r, report(["original", "unreadable"])).original).toBe("unreadable");
+    expect(classify(r, report(["original", "missing"])).original).toBe("missing");
+    expect(classify(r, []).original).toBe("unreadable");
+  });
+  it("naming a changed original plans only the original", async () => {
+    const { planFor } = await import("./jobRecord");
+    const check = classify(fullJob(), report(["original", "changed"], ["prepared", "same"], ["sliced", "changed"]));
+    expect(planFor(check, new Set<JobRole>(["original", "sliced"]))).toEqual(["original"]);
+  });
+  it("a non-integer recorded size is dropped, not trusted", () => {
+    const raw = JSON.stringify({ ...fullJob(), original: { path: A, name: "x", fingerprint: { size_bytes: 1.5, sha256: null } } });
+    expect(parseRecord(raw)?.original.fingerprint).toBeNull();
+  });
+});

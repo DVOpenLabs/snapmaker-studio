@@ -215,3 +215,116 @@ describe("after a restart", () => {
     expect(m.useSliced.getState().path).toBeNull();
   });
 });
+
+describe("review repair round", () => {
+  it("F1: opening the same project by hand after it changed does not present the old prepared copy and G-code as its results", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine({ ...DISK(), [A]: { size_bytes: 11, sha256: hex("e") } });
+    const m = await fresh();
+    m.trackJob();
+    m.useSession.getState().setFile(A);
+    await settle();
+    const r = m.useJob.getState().record!;
+    expect(r.original.path).toBe(A);
+    expect(r.prepared).toBeNull();
+    expect(r.sliced).toBeNull();
+    expect(m.useJob.getState().verified).toBe(true);
+  });
+
+  it("F1: opening the same unchanged project by hand verifies it and keeps the links", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine(DISK());
+    const m = await fresh();
+    m.trackJob();
+    expect(m.useJob.getState().verified).toBe(false);
+    m.useSession.getState().setFile(A);
+    await settle();
+    expect(m.useJob.getState().verified).toBe(true);
+    expect(m.useJob.getState().record?.prepared?.path).toBe(P);
+    expect(m.useJob.getState().record?.sliced?.path).toBe(G);
+  });
+
+  it("F1: if the project cannot be checked, the old links are dropped, not trusted", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    vi.mocked(api.jobCheck).mockRejectedValue(new Error("engine down"));
+    const m = await fresh();
+    m.trackJob();
+    m.useSession.getState().setFile(A);
+    await settle();
+    expect(m.useJob.getState().record?.prepared).toBeNull();
+  });
+
+  it("R1: a late fingerprint for an earlier link of the same path cannot overwrite the newer one", async () => {
+    const releases: Array<(v: any) => void> = [];
+    vi.mocked(api.jobCheck).mockImplementation(() => new Promise((resolve) => { releases.push(resolve); }));
+    const m = await fresh();
+    m.trackJob();
+    m.useSession.getState().setFile(A);          // request 0 for A
+    await settle();
+    m.useSession.getState().setFile("C:\work\B.3mf");
+    await settle();
+    m.useSession.getState().setFile(A);          // request 2 for A again
+    await settle();
+    const rec = (n: number) => ({ schema_version: "job-check/1", files: [{ role: "original", path: A, status: "recorded", observed: { size_bytes: n, sha256: hex("a") } }] });
+    releases[2](rec(222));                        // newer answer lands first
+    await settle();
+    releases[0](rec(111));                        // stale answer lands last
+    await settle();
+    expect(m.useJob.getState().record?.original.fingerprint?.size_bytes).toBe(222);
+  });
+
+  it("R2: a file the engine calls unreadable or missing is never eligible, with or without a recorded fingerprint", async () => {
+    vi.mocked(api.jobCheck).mockRejectedValue(new Error("down"));
+    const first = await fresh();
+    first.trackJob();
+    first.useSession.getState().setFile(A);
+    await settle();
+    vi.mocked(api.jobCheck).mockResolvedValue({ schema_version: "job-check/1", files: [{ role: "original", path: A, status: "unreadable" }] });
+    const m = await fresh();
+    await m.useJob.getState().runCheck();
+    expect(m.useJob.getState().check.original).toBe("unreadable");
+    m.useJob.getState().restore(new Set(["original"]));
+    expect(m.useSession.getState().file).toBeNull();
+  });
+
+  it("R4: reopening a changed original also clears a G-code that was already open", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine({ ...DISK(), [A]: { size_bytes: 11, sha256: hex("e") } });
+    const m = await fresh();
+    m.trackJob();
+    m.useSliced.getState().setSliced(G);
+    await m.useJob.getState().runCheck();
+    m.useJob.getState().restore(new Set(["original"]));
+    await settle();
+    expect(m.useSession.getState().file?.path).toBe(A);
+    expect(m.useSliced.getState().path).toBeNull();
+  });
+
+  it("F4: a check overtaken by a record change returns to idle instead of sticking on checking", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    let release!: (v: any) => void;
+    vi.mocked(api.jobCheck).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const m = await fresh();
+    const pending = m.useJob.getState().runCheck();
+    m.useJob.setState({ record: { ...m.useJob.getState().record!, savedAt: "later" } });
+    release({ schema_version: "job-check/1", files: [] });
+    await pending;
+    expect(m.useJob.getState().phase).toBe("idle");
+  });
+
+  it("F6: an unnamed G-code is not reopened when its prepared copy changed", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine({ ...DISK(), [P]: { size_bytes: 21, sha256: hex("f") } });
+    const m = await fresh();
+    await m.useJob.getState().runCheck();
+    m.useJob.getState().restore(new Set());
+    expect(m.useSession.getState().file?.path).toBe(A);
+    expect(m.useSliced.getState().path).toBeNull();
+  });
+});

@@ -89,8 +89,11 @@ export function classify(record: JobRecord, files: Array<{ role: JobRole; status
     const entry = record[role];
     if (!entry) continue;
     const report = files.find((f) => f.role === role);
-    if (!entry.fingerprint) { out[role] = report?.status === "missing" ? "missing" : "unverified"; continue; }
-    switch (report?.status) {
+    // A file that is gone or cannot be read is never eligible, fingerprint or not.
+    if (report?.status === "missing") { out[role] = "missing"; continue; }
+    if (!report || report.status === "unreadable") { out[role] = "unreadable"; continue; }
+    if (!entry.fingerprint) { out[role] = "unverified"; continue; }
+    switch (report.status) {
       case "same": out[role] = "same"; break;
       case "changed": out[role] = "changed"; break;
       case "missing": out[role] = "missing"; break;
@@ -110,9 +113,24 @@ export function restorable(check: JobCheck, accepted: ReadonlySet<JobRole>): Job
     const state = check[role];
     // What was made from the project is offered back only while the project is
     // provably what it was; otherwise only if the person names it.
-    if (state === "same") return role === "original" || check.original === "same" || accepted.has(role);
+    if (state === "same") {
+      if (role === "original" || accepted.has(role)) return true;
+      if (check.original !== "same") return false;
+      // The G-code came from the prepared copy: unnamed, it needs that copy intact too.
+      return role !== "sliced" || check.prepared === undefined || check.prepared === "same";
+    }
     return (state === "changed" || state === "unverified") && accepted.has(role);
   });
+}
+
+/**
+ * The one answer to "what would Reopen do?", shared by the card and the store.
+ * Naming a changed original reopens only the original: what was made from the
+ * old file is not presented as the result of the new one.
+ */
+export function planFor(check: JobCheck, accepted: ReadonlySet<JobRole>): JobRole[] {
+  const plan = restorable(check, accepted).filter((role) => role !== "prepared");
+  return plan.includes("original") && check.original !== "same" ? ["original"] : plan;
 }
 
 /** Defensive parse of what local storage holds: anything off-shape is "no saved job". */
@@ -125,7 +143,7 @@ export function parseRecord(raw: string | null): JobRecord | null {
       const f = x as LinkedFile | null;
       if (!f || typeof f.path !== "string" || !f.path) return null;
       const fp = f.fingerprint;
-      const ok = fp && typeof fp.size_bytes === "number" && fp.size_bytes >= 0 &&
+      const ok = fp && Number.isInteger(fp.size_bytes) && fp.size_bytes >= 0 &&
         (fp.sha256 === null || (typeof fp.sha256 === "string" && fp.sha256.length === 64));
       return { path: f.path, name: nameOf(f.path), fingerprint: ok ? { size_bytes: fp.size_bytes, sha256: fp.sha256 } : null };
     };

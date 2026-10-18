@@ -81,17 +81,30 @@ describe("the watch response only ever applies to the job it was asked about", (
     expect(useSliced.getState().path).toBeNull();
   });
 
-  it("an answer that was superseded by a newer poll for the same job is dropped", async () => {
+  it("a slow scan is not starved: the timer does not stack a second scan on it", async () => {
     let calls = 0;
     const settle: Array<(value: any) => void> = [];
     vi.mocked(watchFolder).mockImplementation(() => new Promise((resolve) => { calls += 1; settle.push(resolve); }));
     render(<OrcaRoundTrip />);
     await act(async () => {});
-    await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(calls).toBe(2);
-    await act(async () => settle[1](reply("C:\\exports\\newer.gcode")));
-    await act(async () => settle[0](reply("C:\\exports\\older.gcode")));
-    expect(useSliced.getState().path).toBe("C:\\exports\\newer.gcode");
+    await act(async () => { vi.advanceTimersByTime(15000); });
+    expect(calls).toBe(1);
+    await act(async () => settle[0](reply("C:\exports\slow.gcode")));
+    expect(useSliced.getState().path).toBe("C:\exports\slow.gcode");
+  });
+
+  it("switching A to B and back does not reuse A's old answer", async () => {
+    const settle: Record<string, Array<(value: any) => void>> = {};
+    vi.mocked(watchFolder).mockImplementation((_f, project) => new Promise((resolve) => { (settle[project as string] ||= []).push(resolve); }));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    await act(async () => settle[file("A").path][0](reply(null)));
+    act(() => useSession.setState({ file: file("B") }));
+    await act(async () => {});
+    act(() => useSession.setState({ file: file("A") }));
+    await act(async () => {});
+    expect(useSliced.getState().path).toBeNull();
+    expect(settle[file("A").path].length).toBe(2);
   });
 
   it("auto-open off: a matched job is listed, never opened", async () => {

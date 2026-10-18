@@ -147,3 +147,34 @@ def test_the_http_route_answers_and_refuses_a_bad_request(tmp_path):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_a_file_that_cannot_be_opened_is_unreadable_even_when_its_size_differs(tmp_path, monkeypatch):
+    f = tmp_path / "a.3mf"
+    expected = _write(f, b"abc")
+    f.write_bytes(b"abcd")
+    real_open = open
+
+    def denied(path, *a, **k):
+        if str(path) == str(f):
+            raise PermissionError("denied")
+        return real_open(path, *a, **k)
+
+    monkeypatch.setattr("builtins.open", denied)
+    item = _one(job_identity.check([{"role": "original", "path": str(f), "expected": expected}]))
+    assert item["status"] == "unreadable"
+
+
+def test_an_oversize_file_that_cannot_be_opened_is_unreadable_not_unverified(tmp_path, monkeypatch):
+    f = tmp_path / "big.gcode"
+    f.write_bytes(b"0123456789")
+    monkeypatch.setattr(job_identity, "MAX_HASH_BYTES", 4)
+    real_open = open
+    monkeypatch.setattr("builtins.open", lambda p, *a, **k: (_ for _ in ()).throw(PermissionError()) if str(p) == str(f) else real_open(p, *a, **k))
+    item = _one(job_identity.check([{"role": "sliced", "path": str(f), "expected": {"size_bytes": 10, "sha256": None}}]), "sliced")
+    assert item["status"] == "unreadable"
+
+
+def test_a_missing_files_key_is_named_plainly():
+    with pytest.raises(ValueError, match="list"):
+        job_identity.check(None)

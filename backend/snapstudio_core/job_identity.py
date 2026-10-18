@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 
 SCHEMA_VERSION = "job-check/1"
 
@@ -26,14 +27,13 @@ MAX_HASH_BYTES = 1024 * 1024 * 1024
 _CHUNK = 1024 * 1024
 
 
-def _sha256(path: str) -> str:
+def _sha256(handle) -> str:
     digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        while True:
-            block = handle.read(_CHUNK)
-            if not block:
-                break
-            digest.update(block)
+    while True:
+        block = handle.read(_CHUNK)
+        if not block:
+            break
+        digest.update(block)
     return digest.hexdigest()
 
 
@@ -53,19 +53,24 @@ def _expectation(raw) -> dict | None:
 def _check_one(role: str, path: str, expected: dict | None) -> dict:
     out = {"role": role, "path": path}
     try:
-        if not os.path.exists(path):
-            return {**out, "status": "missing"}
-        if not os.path.isfile(path):
-            return {**out, "status": "unreadable", "reason": "not a regular file"}
-        size = os.stat(path).st_size
-        # A size that differs is already a different file; no need to read it.
-        if expected is not None and size != expected["size_bytes"]:
-            return {**out, "status": "changed", "observed": {"size_bytes": size, "sha256": None}}
-        sha = _sha256(path) if size <= MAX_HASH_BYTES else None
-        observed = {"size_bytes": size, "sha256": sha}
+        # Opening the file is what proves it can be read; every verdict that lets a
+        # file be reopened (same, changed, recorded, unverified) comes after it.
+        with open(path, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                return {**out, "status": "unreadable", "reason": "not a regular file"}
+            size = info.st_size
+            # A size that differs is already a different file; no need to hash it.
+            if expected is not None and size != expected["size_bytes"]:
+                return {**out, "status": "changed", "observed": {"size_bytes": size, "sha256": None}}
+            sha = _sha256(handle) if size <= MAX_HASH_BYTES else None
+    except FileNotFoundError:
+        return {**out, "status": "missing"}
+    except IsADirectoryError:
+        return {**out, "status": "unreadable", "reason": "not a regular file"}
     except OSError as exc:
         return {**out, "status": "unreadable", "reason": exc.__class__.__name__}
-
+    observed = {"size_bytes": size, "sha256": sha}
     if expected is None:
         return {**out, "status": "recorded", "observed": observed}
     if sha is None or expected["sha256"] is None:
@@ -79,7 +84,9 @@ def check(entries: list[dict]) -> dict:
     Each entry is `{role, path, expected?}` with `expected = {size_bytes, sha256}`.
     Without `expected` the file is only fingerprinted (status `recorded`).
     """
-    if not isinstance(entries, list) or len(entries) > MAX_ENTRIES:
+    if not isinstance(entries, list):
+        raise ValueError("files must be a list")
+    if len(entries) > MAX_ENTRIES:
         raise ValueError(f"at most {MAX_ENTRIES} files can be checked")
     files = []
     for entry in entries:
