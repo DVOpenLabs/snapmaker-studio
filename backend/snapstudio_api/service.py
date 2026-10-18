@@ -986,6 +986,12 @@ def watch_folder(folder: str, project_path: str | None = None) -> dict:
     return wf.match_project(folder, project_path)
 
 
+def job_check(files) -> dict:
+    """Are the files of a saved job still the files it was made from? Read-only."""
+    from snapstudio_core import job_identity
+    return job_identity.check(files)
+
+
 def slice_provenance(project_path: str, gcode_path: str) -> dict:
     """Is this G-code the slice of that project?"""
     from snapstudio_core import gcode, project_traits, provenance
