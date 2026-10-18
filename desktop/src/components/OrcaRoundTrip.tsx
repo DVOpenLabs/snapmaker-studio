@@ -7,6 +7,7 @@ import type { WatchCandidate, WatchResult } from "@/api";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 import { useWatch } from "@/store/watch";
+import { observeSliced } from "@/store/job";
 import { ProvenanceNote, verdictLabel, verdictTone } from "@/components/ProvenanceNote";
 
 const POLL_MS = 5000;
@@ -79,6 +80,16 @@ export function OrcaRoundTrip() {
     opened.current = result.best;
     setSliced(result.best);
   }, [autoOpen, result, openPath, setSliced]);
+
+  // The open job's path may now hold a different, finished export.
+  useEffect(() => {
+    if (!openPath || !result) return;
+    for (const c of result.candidates ?? []) {
+      if (c.path === openPath) {
+        void observeSliced({ path: c.path, size_bytes: c.size_bytes, age_seconds: c.age_seconds, complete: c.complete, verdict: c.provenance?.verdict });
+      }
+    }
+  }, [result, openPath]);
 
   if (!folder) {
     return (

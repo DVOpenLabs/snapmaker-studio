@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { jobCheck, type JobCheckEntry } from "@/api";
 import {
   classify, clearSliced, linkPrepared, linkSliced, openProject, parseRecord, planFor, withFingerprint,
-  JOB_SCHEMA, linked, type JobCheck, type JobRecord, type JobRole,
+  JOB_SCHEMA, linked, type Fingerprint, type JobCheck, type JobRecord, type JobRole,
 } from "@/lib/jobRecord";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
@@ -191,9 +191,11 @@ export function trackJob(): () => void {
     if (s.path === prev.path) return;
     const before = useJob.getState().record;
     if (!s.path) {
+      sliceView = null;
       update(clearSliced(before));
       return;
     }
+    watchSliceView(s.path);
     const next = linkSliced(before, useSession.getState().file?.path ?? null, s.path, now());
     if (next !== before) {
       update(next);
@@ -229,5 +231,69 @@ async function verifyOpened(record: JobRecord) {
     else fresh();
   } catch {
     if (useSession.getState().file?.path === path) fresh();
+  }
+}
+
+/**
+ * What Studio last read from the open G-code: its identity and when. A path alone
+ * is not an identity — Orca writes each new export over the same name — so the
+ * watcher's sightings of this path are compared with this.
+ */
+let sliceView: { path: string; fp: Fingerprint | null; at: number; seq: number } | null = null;
+let viewSeq = 0;
+/** Clock slack between the file system's timestamps and ours. */
+const TIMESTAMP_SLACK_MS = 2000;
+
+function watchSliceView(path: string) {
+  const seq = ++viewSeq;
+  sliceView = { path, fp: null, at: Date.now(), seq };
+  jobCheck([{ role: "sliced", path }]).then((report) => {
+    const observed = report.files[0]?.observed;
+    if (sliceView?.seq === seq && report.files[0]?.status === "recorded" && observed) sliceView.fp = observed;
+  }).catch(() => { /* no identity yet: the next sighting cannot be compared, so nothing is claimed */ });
+}
+
+export interface SightedExport {
+  path: string;
+  size_bytes: number;
+  age_seconds: number;
+  complete: boolean;
+  /** Provenance verdict against the open project, when the watcher computed one. */
+  verdict?: string;
+}
+
+/**
+ * The folder watcher saw a file at the path that is open. Only a completed file
+ * (the watcher's own settle check) that is a different size, or was written after
+ * the open copy was read, is re-read; nothing is hashed on a routine poll. When
+ * the bytes really differ, the saved identity is replaced and everything shown
+ * from the old bytes is read again. A late answer never replaces a newer one.
+ */
+export async function observeSliced(sighting: SightedExport, now = Date.now()) {
+  const view = sliceView;
+  if (!view || view.path !== sighting.path || !sighting.complete || !view.fp) return;
+  const wroteAt = now - sighting.age_seconds * 1000;
+  if (sighting.size_bytes === view.fp.size_bytes && wroteAt <= view.at + TIMESTAMP_SLACK_MS) return;
+  const seq = ++viewSeq;
+  view.seq = seq;
+  view.at = now;
+  try {
+    const report = await jobCheck([{ role: "sliced", path: sighting.path }]);
+    const observed = report.files[0]?.observed;
+    if (sliceView?.seq !== seq || useSliced.getState().path !== sighting.path) return;
+    if (report.files[0]?.status !== "recorded" || !observed) return;
+    const before = sliceView.fp;
+    sliceView.fp = observed;
+    if (before && observed.size_bytes === before.size_bytes && observed.sha256 === before.sha256) return;
+    const record = useJob.getState().record;
+    if (record?.sliced && record.sliced.path === sighting.path) {
+      // A replacement that is another project's slice is not this job's result.
+      update(sighting.verdict === "no_match"
+        ? clearSliced(record)
+        : { ...record, sliced: { ...record.sliced, fingerprint: observed } });
+    }
+    useSliced.getState().refresh();
+  } catch {
+    /* unreadable now: keep what is shown; the next sighting tries again */
   }
 }

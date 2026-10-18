@@ -23,6 +23,7 @@ import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
 export default function AfterSlicing() {
   const path = useSliced((s) => s.path);
   const name = useSliced((s) => s.name);
+  const revision = useSliced((s) => s.revision);
   const setSliced = useSliced((s) => s.setSliced);
   const clear = useSliced((s) => s.clear);
   const project = useSession((s) => s.file);
@@ -96,10 +97,10 @@ export default function AfterSlicing() {
             </p>
             <Button variant="secondary" size="sm" onClick={clear}>Choose another file</Button>
           </div>
-          <SendReadyCard path={path} projectPath={project?.path} />
-          <PostSliceCard path={path} projectPath={project?.path} />
-          <MaterialPlanCard path={path} />
-          <PrintPlanCard path={path} />
+          <SendReadyCard key={`${path}#${revision}`} path={path} projectPath={project?.path} />
+          <PostSliceCard key={`${path}#${revision}`} path={path} projectPath={project?.path} />
+          <MaterialPlanCard key={`${path}#${revision}`} path={path} />
+          <PrintPlanCard key={`${path}#${revision}`} path={path} />
         </>
       )}
     </div>
