@@ -74,7 +74,8 @@ describe("the job header", () => {
   it("an unvalidated copy is not offered to Orca", () => {
     useSession.setState({ convert: { status: "done", error: null, data: { validated_ok: false, blocked: false, output_name: "x_U1.3mf" } } as any });
     view();
-    expect(screen.getByRole("status").textContent).not.toMatch(/Orca/);
+    expect(screen.getByRole("status").textContent).not.toMatch(/Open .* in Snapmaker Orca/);
+    expect(screen.queryByRole("button", { name: "Go to the Orca step" })).toBeNull();
   });
 
   it("a failed check can be retried", () => {
@@ -82,6 +83,12 @@ describe("the job header", () => {
     view();
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Check again" })); });
     expect(runDoctor).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer a retry that would drop an in-flight prepare", () => {
+    useSession.setState({ doctor: { status: "error", data: null, error: "x" } as any, convert: { status: "loading", data: null, error: null } as any });
+    view();
+    expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("while checking it says so and offers no button", () => {

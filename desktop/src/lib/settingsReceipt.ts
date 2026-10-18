@@ -62,7 +62,9 @@ export function stageCell(receipt: SettingsReceipt, fact: ReceiptFact, stage: Re
   const state = receipt.stages[stage].state;
   if (state === "not_provided") return { kind: "not_included" };
   if (state === "unreadable") return { kind: "not_checked" };
-  const step = fact.steps.find((s) => s.from === stage || s.to === stage);
+  // A transition that was checked beats one that could not be: it may carry this file's value.
+  const touching = fact.steps.filter((s) => s.from === stage || s.to === stage);
+  const step = touching.find((s) => s.status !== "not_checked") ?? touching[0];
   if (!step || step.status === "not_checked") return { kind: "not_checked" };
   const value = step.from === stage ? step.from_value : step.to_value;
   return value === null || value === undefined ? { kind: "not_stated" } : { kind: "value", lines: valueLines(fact.id, value) };

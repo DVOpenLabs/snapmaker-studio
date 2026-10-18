@@ -59,6 +59,9 @@ const problem = (verdict: string | null) => verdict !== null && verdict.toUpperC
 export const preparedReady = (f: JobFacts) =>
   f.convert.status === "done" && !f.convert.blocked && f.convert.validatedOk;
 
+/** A copy was written but its own validation did not pass: neither "prepared" nor "nothing happened". */
+export const unvalidated = (f: JobFacts) => f.convert.status === "done" && !f.convert.blocked && !f.convert.validatedOk;
+
 export function deriveSteps(f: JobFacts): JobStep[] {
   const open: StepState = f.hasProject ? "done" : "current";
 
@@ -74,6 +77,7 @@ export function deriveSteps(f: JobFacts): JobStep[] {
   else if (preparedReady(f)) prepare = "done";
   else if (f.convert.status === "loading") prepare = "current";
   else if (f.convert.status === "error" || f.convert.blocked) prepare = "error";
+  else if (unvalidated(f)) prepare = "review";
   else if (f.hasProject && (check === "done" || check === "review")) prepare = "current";
 
   let slice: StepState = "todo";
@@ -128,11 +132,25 @@ export function nextAction(f: JobFacts): NextAction {
   if (f.convert.status === "loading") {
     return { headline: "Preparing a copy…", detail: "Your original is never changed.", action: null };
   }
-  if (f.convert.status === "error" || f.convert.blocked) {
+  if (f.convert.blocked) {
     return {
-      headline: "The copy could not be prepared",
+      headline: "Studio refused to prepare this project",
       detail: "Nothing was written. Open the full checks to see why.",
       action: { kind: "link", label: "Open the full checks", to: "/compatibility" },
+    };
+  }
+  if (f.convert.status === "error") {
+    return {
+      headline: "Studio could not confirm a prepared copy",
+      detail: "Nothing is offered to Orca. Open the workspace to see what happened and try again.",
+      action: { kind: "link", label: "Open the workspace", to: "/workspace" },
+    };
+  }
+  if (unvalidated(f)) {
+    return {
+      headline: "A copy was written, but its check found issues",
+      detail: "Studio did not confirm it, so it is not offered to Orca. Open the workspace to see what remains.",
+      action: { kind: "link", label: "Open the workspace", to: "/workspace" },
     };
   }
   return {

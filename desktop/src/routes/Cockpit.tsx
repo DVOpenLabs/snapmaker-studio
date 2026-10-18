@@ -38,6 +38,10 @@ export default function Cockpit() {
   const prepared: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && convert.data.validated_ok
     ? (convert.data.output_path || convert.data.output) : undefined;
 
+  // A copy was written but its own validation did not pass: say so, keep the record of what was written.
+  const unvalidatedPath: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && !convert.data.validated_ok
+    ? (convert.data.output_path || convert.data.output) : undefined;
+
   if (!project) {
     return (
       <div className="flex flex-col gap-5">
@@ -75,6 +79,19 @@ export default function Cockpit() {
             <FidelityCard original={project.path} prepared={prepared} />
             <FixLedgerCard source={project.path} output={prepared} />
             <OrcaHandoff outputPath={prepared} />
+          </>
+        ) : unvalidatedPath ? (
+          <>
+            <Card>
+              <CardContent className="space-y-2 p-5">
+                <p className="text-sm font-medium">A copy was written, but its check found issues.</p>
+                <p className="text-sm text-muted-foreground">
+                  Studio did not confirm it, so it is not offered to Snapmaker Orca. Your original was not changed.
+                  See what remains in <Link className="underline" to="/workspace">the workspace</Link>.
+                </p>
+              </CardContent>
+            </Card>
+            <FixLedgerCard source={project.path} output={unvalidatedPath} />
           </>
         ) : (
           <Card>

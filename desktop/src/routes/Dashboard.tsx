@@ -115,7 +115,7 @@ export default function Dashboard() {
               <UploadCloud className="h-6 w-6" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold">Open a project</h2>
+              <span className="block text-base font-semibold">Open a project</span>
               <p className="text-sm text-muted-foreground">Choose a <b>.stl</b> or <b>.3mf</b>, or drop one on this window. Studio reads it on this computer.</p>
             </div>
             <span className="hidden shrink-0 sm:block">

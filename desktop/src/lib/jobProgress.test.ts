@@ -81,6 +81,23 @@ describe("the one next action", () => {
     expect(blocked.action?.label).not.toMatch(/^Prepare/);
   });
 
+  it("a copy that was written but failed its own check is not \"nothing prepared\" and is not offered to Orca", () => {
+    const f = facts({ convert: { status: "done", validatedOk: false, blocked: false, outputName: "x_U1.3mf" } });
+    expect(states(f).prepare).toBe("review");
+    expect(states(f).slice).toBe("todo");
+    const next = nextAction(f);
+    expect(next.headline).toBe("A copy was written, but its check found issues");
+    expect(next.headline).not.toMatch(/Prepare a U1 copy|Orca/);
+    expect(next.action).toMatchObject({ to: "/workspace" });
+  });
+
+  it("a failed request does not claim that nothing was written; a refusal does", () => {
+    const failed = nextAction(facts({ convert: { status: "error" } }));
+    expect(failed.headline).toBe("Studio could not confirm a prepared copy");
+    expect(failed.detail).not.toMatch(/Nothing was written/);
+    expect(nextAction(facts({ convert: { status: "done", blocked: true } })).detail).toMatch(/Nothing was written/);
+  });
+
   it("an open slice points at comparing it", () => {
     expect(nextAction(facts({ hasSliced: true })).action).toMatchObject({ to: "/after-slicing" });
   });

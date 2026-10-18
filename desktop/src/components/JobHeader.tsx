@@ -103,7 +103,7 @@ export function JobHeader() {
           <Button size="sm" onClick={() => goTo(next.action!.target!)}>{next.action.label}</Button>
         )}
         {next.action?.kind === "retry" && (
-          <Button size="sm" onClick={() => void runDoctor()}>{next.action.label}</Button>
+          <Button size="sm" disabled={facts.convert.status === "loading"} onClick={() => void runDoctor()}>{next.action.label}</Button>
         )}
       </div>
     </section>

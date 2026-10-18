@@ -52,6 +52,17 @@ describe("receipt cells keep changed, unchanged, missing and not checked apart",
     expect(stageCell(receipt({}), skipped, "original")).toEqual({ kind: "not_checked" });
   });
 
+  it("a read prepared copy keeps its value when the project could not be read", () => {
+    const f3 = fact("layer_height", [
+      step({ from: "original", to: "prepared", status: "not_checked" }),
+      step({ from: "prepared", to: "sliced", from_value: 0.16, to_value: 0.16, status: "unchanged" }),
+    ]);
+    const r = receipt({ original: "unreadable", prepared: "read" });
+    expect(stageCell(r, f3, "original")).toEqual({ kind: "not_checked" });
+    expect(stageCell(r, f3, "prepared")).toEqual({ kind: "value", lines: ["0.16 mm"] });
+    expect(stageCell(r, f3, "sliced")).toEqual({ kind: "value", lines: ["0.16 mm"] });
+  });
+
   it("a receipt with no steps checks nothing", () => {
     expect(stageCell(receipt({}), fact("supports", []), "original")).toEqual({ kind: "not_checked" });
   });

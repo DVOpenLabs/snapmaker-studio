@@ -49,7 +49,7 @@ afterEach(cleanup);
 describe("Home", () => {
   it("empty: Open a project comes first and the empty state says what to do", async () => {
     await mount();
-    const open = screen.getByRole("heading", { name: "Open a project" });
+    const open = screen.getByText("Open a project", { selector: "span.block" });
     expect(before(open, screen.getByText("Recent projects"))).toBe(true);
     expect(await screen.findByText("No projects yet")).toBeTruthy();
     expect(screen.getByText(/Studio reads it on this computer/)).toBeTruthy();
@@ -59,7 +59,7 @@ describe("Home", () => {
     vi.mocked(api.library).mockResolvedValue([PROJECT] as any);
     useJob.setState({ record: RECORD as any });
     await mount();
-    const open = screen.getByRole("heading", { name: "Open a project" });
+    const open = screen.getByText("Open a project", { selector: "span.block" });
     const restore = screen.getByText("Pick up your last job");
     const recent = screen.getByText("Recent projects");
     expect(before(open, restore)).toBe(true);
@@ -79,14 +79,14 @@ describe("Home", () => {
   it("a library that cannot load says so, with a retry, without losing the open-a-project action", async () => {
     vi.mocked(api.library).mockRejectedValue(new Error("down"));
     await mount();
-    expect(screen.getByRole("heading", { name: "Open a project" })).toBeTruthy();
+    expect(screen.getByText("Open a project", { selector: "span.block" })).toBeTruthy();
     expect(await screen.findByText(/Couldn’t load your library/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
   });
 
   it("keeps every other Home surface, below the action", async () => {
     await mount();
-    expect(before(screen.getByRole("heading", { name: "Open a project" }), screen.getByTestId("mock-DoctorsGrid"))).toBe(true);
+    expect(before(screen.getByText("Open a project", { selector: "span.block" }), screen.getByTestId("mock-DoctorsGrid"))).toBe(true);
     expect(screen.getByTestId("mock-FirstPrintCard")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
   });

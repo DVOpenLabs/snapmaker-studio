@@ -75,6 +75,8 @@ describe("narrow navigation", () => {
     act(() => { fireEvent.click(link); });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("This job");
+    // The link that held focus is gone: focus follows the page, not <body>.
+    expect(document.activeElement).toBe(screen.getByRole("main"));
   });
 
   it("Tab wraps inside the open drawer", () => {

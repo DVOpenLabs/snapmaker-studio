@@ -30,12 +30,18 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLElement>(null);
+  const focusPage = useRef(false);
   const closeMenu = useCallback((returnFocus = true) => {
     setMenuOpen(false);
     if (returnFocus) menuButton.current?.focus();
+    else focusPage.current = true;     // chose a destination: focus goes to the page, not the Menu button
   }, []);
   // A navigation (or a wider window) ends the drawer; focus follows the page, not the button.
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMenuOpen(false);
+    if (focusPage.current) { focusPage.current = false; main.current?.focus({ preventScroll: true }); }
+  }, [pathname]);
   useEffect(() => {
     if (!menuOpen) return;
     // First real destination, not the scrim.
@@ -95,7 +101,7 @@ export function AppShell() {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar ref={menuButton} title={titleFor(pathname)} menuOpen={menuOpen} onMenu={() => setMenuOpen((o) => !o)} />
-        <main className="flex-1 overflow-y-auto">
+        <main ref={main} tabIndex={-1} className="flex-1 overflow-y-auto outline-none">
           <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8 2xl:px-12">
             <Outlet />
           </div>
