@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,6 +60,23 @@ describe("This job", () => {
     useSession.setState({ convert: convert(data) });
     view();
     expect(screen.queryByTestId("handoff")).toBeNull();
+  });
+
+  it("a written but unvalidated copy is named as such, never as nothing prepared", () => {
+    useSession.setState({ convert: convert({ validated_ok: false, blocked: false, output_path: "C:\work\p_U1.3mf", output_name: "p_U1.3mf" }) });
+    view();
+    const stage = screen.getByRole("region", { name: "2. Prepared" });
+    expect(within(stage).getByText(/A copy was written, but its check found issues./)).toBeTruthy();
+    expect(within(stage).getByText(/not offered to Snapmaker Orca/)).toBeTruthy();
+    expect(within(stage).queryByText("Nothing prepared yet.")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("A copy was written, but its check found issues");
+  });
+
+  it("a refused prepare is not shown as an unvalidated copy", () => {
+    useSession.setState({ convert: convert({ validated_ok: true, blocked: true, output_path: null }) });
+    view();
+    const stage = screen.getByRole("region", { name: "2. Prepared" });
+    expect(within(stage).queryByText(/A copy was written/)).toBeNull();
   });
 
   it("keeps the stages and the full-checks route reachable, once", () => {

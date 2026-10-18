@@ -2,18 +2,18 @@
   "home": {
     "file": "home.png",
     "title": "Studio's Home screen",
-    "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This print, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a model button, and a footer reading Local-only, nothing leaves your network.",
+    "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This job, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a project button, and a footer reading Local-only, nothing leaves your network.",
     "caption": "Home, as it looks the first time you open Studio (Simple view).",
     "hotspots": [
       {
         "key": "open-main",
-        "title": "Open a model",
-        "text": "Press **Open a model** to pick an `.stl` or `.3mf` file. You can also drag a file onto the window."
+        "title": "Open a project",
+        "text": "Press **Open a project** to pick an `.stl` or `.3mf` file. You can also drag a file onto the window."
       },
       {
         "key": "open-sidebar",
         "title": "Open a model (sidebar)",
-        "text": "The same button lives at the top of the sidebar, so it is always one click away."
+        "text": "A matching **Open a model** button lives at the top of the sidebar, so it is always one click away."
       },
       {
         "key": "view-toggle",
@@ -95,9 +95,9 @@
   },
   "this-print-top": {
     "file": "this-print-top.png",
-    "title": "This print, stage 1: Before slicing",
-    "alt": "Studio's This print page for demo_offplate_foreign.3mf. Stage 1, Before slicing, shows an Object placement card with a Move onto the plate button, then a Before you slice card listing checks marked Studio can't tell, then the start of a Colours and toolheads card.",
-    "caption": "**This print** for the example project, with no printer connected.",
+    "title": "This job, stage 1: Before slicing",
+    "alt": "Studio's This job page for demo_offplate_foreign.3mf. Stage 1, Before slicing, shows an Object placement card with a Move onto the plate button, then a Before you slice card listing checks marked Studio can't tell, then the start of a Colours and toolheads card.",
+    "caption": "**This job** for the example project, with no printer connected.",
     "hotspots": [
       {
         "key": "header",
@@ -129,7 +129,7 @@
   "nav-advanced": {
     "file": "nav-advanced.png",
     "title": "Advanced view",
-    "alt": "Studio with the Advanced view switched on. The sidebar now lists every tool: Dashboard, This Print, Get Started, Project Doctor, Projects, Ready now, Compatibility, After Slicing, Scale Doctor, Print Quality, Colors and Materials, Cost and Pricing Doctor, Printer Hub, Find Models and Batch Prepare.",
+    "alt": "Studio with the Advanced view switched on. The sidebar now lists every tool: Dashboard, This Job, Get Started, Project Doctor, Projects, Ready now, Compatibility, After Slicing, Scale Doctor, Print Quality, Colors and Materials, Cost and Pricing Doctor, Printer Hub, Find Models and Batch Prepare.",
     "caption": "The sidebar in **Advanced** view.",
     "hotspots": [
       {
@@ -334,7 +334,7 @@
       {
         "key": "watch-btn",
         "title": "Watch this folder",
-        "text": "Studio looks in that folder only while **After Slicing** or **This print** is open; it does not keep watching after you leave them."
+        "text": "Studio looks in that folder only while **After Slicing** or **This job** is open; it does not keep watching after you leave them."
       },
       {
         "key": "open-gcode",

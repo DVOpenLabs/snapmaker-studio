@@ -21,7 +21,7 @@ const steps = () => within(screen.getByRole("list", { name: "Job progress" })).g
 
 beforeEach(() => {
   runDoctor.mockReset();
-  useSession.setState({ file: FILE as any, doctor: doctorDone() as any, convert: idle as any, runDoctor: runDoctor as any });
+  useSession.setState({ file: FILE as any, doctor: doctorDone() as any, convert: idle as any, preview: { status: "idle", data: null, error: null } as any, runDoctor: runDoctor as any });
   useSliced.setState({ path: null, name: null });
 });
 afterEach(cleanup);
@@ -87,6 +87,12 @@ describe("the job header", () => {
 
   it("does not offer a retry that would drop an in-flight prepare", () => {
     useSession.setState({ doctor: { status: "error", data: null, error: "x" } as any, convert: { status: "loading", data: null, error: null } as any });
+    view();
+    expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not offer a retry that would drop an in-flight preview", () => {
+    useSession.setState({ doctor: { status: "error", data: null, error: "x" } as any, preview: { status: "loading", data: null, error: null } as any });
     view();
     expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(true);
   });

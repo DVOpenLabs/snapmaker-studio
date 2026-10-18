@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,8 @@ vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => { throw new
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 1, token: "t" }) }));
 vi.mock("@/api", () => ({ library: vi.fn().mockResolvedValue([]), health: vi.fn().mockResolvedValue({}) }));
 import * as api from "@/api";
-vi.mock("@/hooks/useOpenFile", () => ({ useOpenFile: () => vi.fn() }));
+const openFile = vi.hoisted(() => vi.fn());
+vi.mock("@/hooks/useOpenFile", () => ({ useOpenFile: () => openFile }));
 declare const __APP_VERSION__: string;
 (globalThis as any).__APP_VERSION__ = "test";
 
@@ -17,12 +18,13 @@ import { AppShell } from "@/components/shell/AppShell";
 
 function GoThis() {
   const nav = useNavigate();
-  return <button onClick={() => nav("/this-print")}>go</button>;
+  const { pathname } = useLocation();
+  return <><button onClick={() => nav("/this-print")}>go</button><output data-testid="path">{pathname}</output></>;
 }
 
-const mount = () => render(
+const mount = (start = "/") => render(
   <QueryClientProvider client={new QueryClient()}>
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[start]}>
       <Routes><Route element={<AppShell />}><Route path="*" element={<GoThis />} /></Route></Routes>
     </MemoryRouter>
   </QueryClientProvider>,
@@ -94,13 +96,28 @@ describe("narrow navigation", () => {
 
   it("choosing a recent project closes the drawer and focuses the page, even when the route does not change", async () => {
     vi.mocked(api.library).mockResolvedValue([{ id: 1, name: "Bracket.3mf", source_path: "C:\w\Bracket.3mf" }] as any);
-    mount();
+    mount("/workspace");
     await act(async () => {});
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Menu" })); });
     await act(async () => {});
     const recent = within(screen.getByRole("dialog")).getByRole("button", { name: "Bracket.3mf" });
     act(() => { fireEvent.click(recent); });
-    // the test route table has no /workspace page, so this also proves it works without a pathname change
+    // Started on /workspace and the recent opens /workspace: the pathname does not change.
+    expect(screen.getByTestId("path").textContent).toBe("/workspace");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+  });
+
+  it.each([
+    ["a file is chosen", () => Promise.resolve()],
+    ["the picker is cancelled", () => Promise.resolve(undefined)],
+  ])("Open a model in the drawer closes it and focuses the page when %s", async (_label, impl) => {
+    openFile.mockReset(); openFile.mockImplementation(impl);
+    mount();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Menu" })); });
+    act(() => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Open a model/ })); });
+    await act(async () => {});
+    expect(openFile).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("main"));
   });

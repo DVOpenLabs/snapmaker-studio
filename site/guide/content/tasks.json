@@ -54,7 +54,7 @@
       "prereq": [],
       "steps": [
         "Use the **View** toggle at the bottom of the sidebar, or **Settings → Mode**.",
-        "**Simple** lists Home, This print, My designs, Ready now, Printer and Help, with everything else under **More tools**.",
+        "**Simple** lists Home, This job, My designs, Ready now, Printer and Help, with everything else under **More tools**.",
         "**Advanced** lists every tool: Compatibility, After Slicing, Colors & Materials, Printer Hub and more."
       ],
       "success": ["The sidebar shows the tools you expected. Nothing is lost when you switch."],
@@ -63,11 +63,11 @@
       "problems": [], "keywords": ["simple", "advanced", "sidebar", "more tools", "view", "navigation", "mode"]
     },
     {
-      "id": "this-print", "page": "task-this-print", "group": "check", "title": "Use “This print” to follow one job",
+      "id": "this-print", "page": "task-this-print", "group": "check", "title": "Use “This job” to follow one job",
       "when": "You want one page that follows a job from opening the file to checking the sliced job.",
       "prereq": ["A project open in Studio."],
       "steps": [
-        "Open **This print** (**This Print** in Advanced view). The title names your open file.",
+        "Open **This job** (**This Job** in Advanced view). The title names your open file.",
         "Stage **1. Before slicing**: **Object placement**, **Before you slice**, **Colours and toolheads**.",
         "Stage **2. Prepared** shows **Nothing prepared yet.** until you prepare a copy, then shows what changed.",
         "Stage **3. After slicing**: where the sliced job comes back for checking."
@@ -104,7 +104,7 @@
       "when": "**Object placement** says an object is outside the U1's printable area.",
       "prereq": ["The project open in Studio."],
       "steps": [
-        "Find **Object placement** (Compatibility, This print or the Workspace): *Hangs 55.0 mm past the right edge.*",
+        "Find **Object placement** (Compatibility, This job or the Workspace): *Hangs 55.0 mm past the right edge.*",
         "If it offers **Move onto the plate (saves a copy)**, press it. If there is no such button, see the placement example in the guide.",
         "The card turns green: *1 object(s) moved onto the U1 plate in a new copy — demo_offplate_foreign_placed_U1.3mf. Your original file was not changed.*",
         "Open that copy (**Open a model**) and prepare it (**Prepare U1 copy**)."
@@ -236,7 +236,7 @@
       "when": "Orca has exported a `.gcode` file.",
       "prereq": ["An exported `.gcode` file."],
       "steps": [
-        "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This print**).",
+        "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This job**).",
         "Drag the `.gcode` onto the window, or paste its full path under **Open the G-code your slicer produced**.",
         "Press **Check this job**.",
         "Read **Ready to send?**, then each finding, then **What the printer will actually do** and **What to load**."
@@ -254,8 +254,8 @@
       "when": "You do not want to paste a path every time.",
       "prereq": [],
       "steps": ["Open **After Slicing**.", "Type the folder where Orca saves exports and press **Watch this folder**."],
-      "success": ["New sliced jobs in that folder appear while **After Slicing** or **This print** is open."],
-      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that **After Slicing** or **This print** is open. Studio looks only while one of them is open; it does not keep watching after you leave them." }],
+      "success": ["New sliced jobs in that folder appear while **After Slicing** or **This job** is open."],
+      "differs": [{ "if": "Nothing appears.", "then": "Check it is the right folder and that **After Slicing** or **This job** is open. Studio looks only while one of them is open; it does not keep watching after you leave them." }],
       "notes": [], "shot": "after-empty", "problems": [], "keywords": ["watch folder", "export folder", "automatic", "pick up", "gcode"]
     },
     {

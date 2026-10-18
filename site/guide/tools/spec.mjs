@@ -38,7 +38,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "this-print-top", file: "this-print-top.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 1480 },
+    id: "this-print-top", file: "this-print-top.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 1700 },
     setup: waitText(/Printer not found/),
     targets: {
       "header": (p) => p.locator("#job-title"), "stage-one": T("1. Before slicing"), "placement": T("Object placement"),
@@ -261,7 +261,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "job-other-printer", file: "job-other-printer.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 1000 },
+    id: "job-other-printer", file: "job-other-printer.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 2200 },
     setup: async (p, env) => {
       await p.locator("input").last().fill(env.inputs + "\\example_other_printer.gcode");
       await p.getByRole("button", { name: "Check this job" }).click();

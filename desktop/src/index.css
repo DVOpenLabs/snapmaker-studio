@@ -22,14 +22,14 @@
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 201 100% 45%;
-    --primary: 201 100% 45%;
+    --primary: 201 100% 35%;
     --primary-foreground: 0 0% 100%;
-    --accent: 201 100% 45%;
+    --accent: 201 100% 35%;
     --accent-foreground: 0 0% 100%;
-    --ready: 120 61% 34%;
+    --ready: 120 61% 30%;
     --repairable: 41 100% 37%;
-    --convertible: 201 100% 45%;
-    --risk: 302 90% 45%;
+    --convertible: 201 100% 35%;
+    --risk: 302 90% 38%;
 
     /* Workflow stage colours — the spectrum flow Input → Diagnose → Transform →
        Validate → Output (mark reads left→right: ribbons → portal → cube). */

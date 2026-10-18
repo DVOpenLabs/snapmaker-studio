@@ -40,6 +40,8 @@ export function JobHeader() {
   const project = useSession((s) => s.file);
   const runDoctor = useSession((s) => s.runDoctor);
   const facts = useJobFacts();
+  // A re-check bumps the shared request generation, so it would drop an in-flight prepare or preview.
+  const previewLoading = useSession((s) => s.preview.status === "loading");
   if (!project) return null;
 
   const steps = deriveSteps(facts);
@@ -103,7 +105,7 @@ export function JobHeader() {
           <Button size="sm" onClick={() => goTo(next.action!.target!)}>{next.action.label}</Button>
         )}
         {next.action?.kind === "retry" && (
-          <Button size="sm" disabled={facts.convert.status === "loading"} onClick={() => void runDoctor()}>{next.action.label}</Button>
+          <Button size="sm" disabled={facts.convert.status === "loading" || previewLoading} onClick={() => void runDoctor()}>{next.action.label}</Button>
         )}
       </div>
     </section>

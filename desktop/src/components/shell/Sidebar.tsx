@@ -47,7 +47,7 @@ export function Sidebar({ className, id, onNavigate }: { className?: string; id?
         </div>
       </div>
 
-      <button onClick={openFile} className="mx-3 mt-3 mb-1 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground">
+      <button data-closes-menu onClick={openFile} className="mx-3 mt-3 mb-1 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground">
         <Plus className="h-4 w-4" /> Open a model
       </button>
 
