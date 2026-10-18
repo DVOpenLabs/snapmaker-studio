@@ -13,7 +13,7 @@ export const TopBar = forwardRef<HTMLButtonElement, { title: string; menuOpen?: 
     <header className="flex h-14 items-center gap-3 border-b border-border bg-background px-4">
       {onMenu && (
         <Button ref={menuRef} variant="ghost" size="icon" className="md:hidden" onClick={onMenu}
-                aria-label="Menu" aria-expanded={menuOpen} aria-controls="nav-drawer">
+                aria-label="Menu" aria-expanded={menuOpen} aria-controls={menuOpen ? "nav-drawer" : undefined}>
           <Menu className="h-4 w-4" aria-hidden="true" />
         </Button>
       )}

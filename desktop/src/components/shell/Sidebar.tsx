@@ -24,7 +24,7 @@ export function Sidebar({ className, id, onNavigate }: { className?: string; id?
   const recent = (data ?? []).slice(0, 3);
 
   return (
-    <aside id={id} onClick={(e) => { if (onNavigate && (e.target as HTMLElement).closest("a")) onNavigate(); }}
+    <aside id={id} onClick={(e) => { if (onNavigate && (e.target as HTMLElement).closest("a,[data-closes-menu]")) onNavigate(); }}
            className={cn("h-full w-[230px] flex-col border-r border-border bg-card", className ?? "flex")}>
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border">
         {/* Brand mark — ribbon stubs → core → cube (Intelligence Layer) */}
@@ -88,6 +88,7 @@ export function Sidebar({ className, id, onNavigate }: { className?: string; id?
             {recent.map((p) => (
               <button
                 key={p.id}
+                data-closes-menu
                 onClick={() => { setFile(p.source_path); nav("/workspace"); }}
                 title={p.source_path}
                 className={navClass({ isActive: false }) + " w-full text-left"}

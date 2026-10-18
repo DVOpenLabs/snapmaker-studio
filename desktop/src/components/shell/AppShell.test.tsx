@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => { throw new Error("not in Tauri"); } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 1, token: "t" }) }));
 vi.mock("@/api", () => ({ library: vi.fn().mockResolvedValue([]), health: vi.fn().mockResolvedValue({}) }));
+import * as api from "@/api";
 vi.mock("@/hooks/useOpenFile", () => ({ useOpenFile: () => vi.fn() }));
 declare const __APP_VERSION__: string;
 (globalThis as any).__APP_VERSION__ = "test";
@@ -42,7 +43,7 @@ describe("narrow navigation", () => {
     act(() => { fireEvent.click(menu); });
     expect(menu.getAttribute("aria-expanded")).toBe("true");
     const dialog = screen.getByRole("dialog", { name: "Menu" });
-    expect(within(dialog).getByRole("link", { name: /This print|This Print/ })).toBeTruthy();
+    expect(within(dialog).getByRole("link", { name: "This job" })).toBeTruthy();
     expect(dialog.contains(document.activeElement)).toBe(true);
     // Focus starts on the first destination, not the scrim.
     expect((document.activeElement as HTMLElement).getAttribute("aria-label")).not.toBe("Close menu");
@@ -76,6 +77,31 @@ describe("narrow navigation", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("This job");
     // The link that held focus is gone: focus follows the page, not <body>.
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+  });
+
+  it("aria-controls is present only while its target exists", () => {
+    mount();
+    const menu = screen.getByRole("button", { name: "Menu" });
+    expect(menu.getAttribute("aria-controls")).toBeNull();
+    act(() => { fireEvent.click(menu); });
+    const id = menu.getAttribute("aria-controls");
+    expect(id).toBe("nav-drawer");
+    expect(document.getElementById(id!)).toBeTruthy();
+    act(() => { fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" }); });
+    expect(menu.getAttribute("aria-controls")).toBeNull();
+  });
+
+  it("choosing a recent project closes the drawer and focuses the page, even when the route does not change", async () => {
+    vi.mocked(api.library).mockResolvedValue([{ id: 1, name: "Bracket.3mf", source_path: "C:\w\Bracket.3mf" }] as any);
+    mount();
+    await act(async () => {});
+    act(() => { fireEvent.click(screen.getByRole("button", { name: "Menu" })); });
+    await act(async () => {});
+    const recent = within(screen.getByRole("dialog")).getByRole("button", { name: "Bracket.3mf" });
+    act(() => { fireEvent.click(recent); });
+    // the test route table has no /workspace page, so this also proves it works without a pathname change
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("main"));
   });
 

@@ -32,6 +32,24 @@ describe("the Orca handoff", () => {
     expect(target.className).toContain("break-all");
   });
 
+  it("the next step goes through After slicing; sending stays a separate, confirmed Printer Hub step", async () => {
+    view();
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: /After slicing/ }).getAttribute("href")).toBe("/after-slicing");
+    const hub = screen.getByRole("link", { name: /Printer Hub/ });
+    expect(hub.getAttribute("href")).toBe("/printers");
+    expect(hub.closest("p")!.textContent).toMatch(/separate step you confirm/);
+    expect(hub.closest("p")!.textContent).not.toMatch(/and upload it/);
+  });
+
+  it("does not claim Orca is installed or launched when it is not detected", async () => {
+    vi.mocked(api.detectOrca).mockResolvedValue(null);
+    view();
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: /Install Snapmaker Orca/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open in Snapmaker Orca" })).toBeNull();
+  });
+
   it("opens that file, and only that file", async () => {
     view();
     await act(async () => {});

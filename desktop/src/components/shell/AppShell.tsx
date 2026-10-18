@@ -38,10 +38,11 @@ export function AppShell() {
     else focusPage.current = true;     // chose a destination: focus goes to the page, not the Menu button
   }, []);
   // A navigation (or a wider window) ends the drawer; focus follows the page, not the button.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  // After a destination is chosen the drawer closes and focus goes to the page, also when the route is unchanged.
   useEffect(() => {
-    setMenuOpen(false);
-    if (focusPage.current) { focusPage.current = false; main.current?.focus({ preventScroll: true }); }
-  }, [pathname]);
+    if (!menuOpen && focusPage.current) { focusPage.current = false; main.current?.focus({ preventScroll: true }); }
+  }, [menuOpen, pathname]);
   useEffect(() => {
     if (!menuOpen) return;
     // First real destination, not the scrim.

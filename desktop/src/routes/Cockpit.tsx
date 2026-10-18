@@ -144,7 +144,7 @@ function Header({ name }: { name?: string }) {
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <FileCheck2 className="h-5 w-5" aria-hidden="true" />
-          {name ? `This print — ${name}` : "This print"}
+          {name ? `This job — ${name}` : "This job"}
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           One job, from the file you downloaded to the moment it is ready to send. Every

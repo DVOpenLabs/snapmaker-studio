@@ -14,7 +14,7 @@ export const SHOTS = [
   {
     id: "home", file: "home.png", route: "/",
     targets: {
-      "open-main": (p) => p.getByRole("button", { name: /Open a model/ }).nth(1),
+      "open-main": (p) => p.getByRole("button", { name: /Open a project/ }).first(),
       "open-sidebar": btn(/Open a model/),
       "view-toggle": (p) => p.getByText("VIEW").locator(".."),
       "help": link("Help"),
@@ -41,7 +41,7 @@ export const SHOTS = [
     id: "this-print-top", file: "this-print-top.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 1480 },
     setup: waitText(/Printer not found/),
     targets: {
-      "header": T(/^This print — /), "stage-one": T("1. Before slicing"), "placement": T("Object placement"),
+      "header": (p) => p.locator("#job-title"), "stage-one": T("1. Before slicing"), "placement": T("Object placement"),
       "printer-check": T("Before you slice"), "colours": T("Colours and toolheads"),
     },
   },
