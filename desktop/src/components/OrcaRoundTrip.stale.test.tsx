@@ -1,0 +1,104 @@
+// @vitest-environment jsdom
+import React from "react";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/api", () => ({ watchFolder: vi.fn(), doctor: vi.fn(), convert: vi.fn(), diff: vi.fn() }));
+
+import { watchFolder } from "@/api";
+import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
+import { useSession } from "@/store/session";
+import { useSliced } from "@/store/sliced";
+import { useWatch } from "@/store/watch";
+
+const FOLDER_1 = "C:\\exports";
+const FOLDER_2 = "C:\\other-exports";
+const file = (name: string) => ({ path: `C:\\projects\\${name}.3mf`, name: `${name}.3mf`, ext: "3mf" });
+const reply = (best: string | null) =>
+  ({ schema_version: "watch/1", available: true, folder: FOLDER_1, best, best_verdict: best ? "confirmed" : null, candidates: [], summary: "" }) as any;
+
+/** A watch call the test settles by hand, keyed by the (folder, project) it was made for. */
+function deferred() {
+  const pending: Record<string, (value: any) => void> = {};
+  vi.mocked(watchFolder).mockImplementation((folder, project) =>
+    new Promise((resolve) => { pending[`${folder}|${project}`] = resolve; }));
+  return pending;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers();
+  localStorage.clear();
+  useSession.setState({ file: file("A") });
+  useSliced.setState({ path: null, name: null });
+  useWatch.setState({ folder: FOLDER_1, autoOpen: true });
+});
+afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+describe("the watch response only ever applies to the job it was asked about", () => {
+  it("control: a current response opens its matched job", async () => {
+    vi.mocked(watchFolder).mockResolvedValue(reply("C:\\exports\\A.gcode"));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    expect(useSliced.getState().path).toBe("C:\\exports\\A.gcode");
+  });
+
+  it("control: an ambiguous response chooses nothing", async () => {
+    vi.mocked(watchFolder).mockResolvedValue(reply(null));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    expect(useSliced.getState().path).toBeNull();
+  });
+
+  it("R1: a late answer for project A cannot open A's job once B is selected", async () => {
+    const pending = deferred();
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    act(() => useSession.setState({ file: file("B") }));
+    await act(async () => {});
+    await act(async () => pending[`${FOLDER_1}|${file("A").path}`](reply("C:\\exports\\A.gcode")));
+    expect(useSliced.getState().path).toBeNull();
+    await act(async () => pending[`${FOLDER_1}|${file("B").path}`](reply("C:\\exports\\B.gcode")));
+    expect(useSliced.getState().path).toBe("C:\\exports\\B.gcode");
+  });
+
+  it("a late answer for the old folder cannot open a job after the folder changes", async () => {
+    const pending = deferred();
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    act(() => useWatch.setState({ folder: FOLDER_2 }));
+    await act(async () => {});
+    await act(async () => pending[`${FOLDER_1}|${file("A").path}`](reply("C:\\exports\\A.gcode")));
+    expect(useSliced.getState().path).toBeNull();
+  });
+
+  it("a late answer after the page is left opens nothing", async () => {
+    const pending = deferred();
+    const view = render(<OrcaRoundTrip />);
+    await act(async () => {});
+    view.unmount();
+    await act(async () => pending[`${FOLDER_1}|${file("A").path}`](reply("C:\\exports\\A.gcode")));
+    expect(useSliced.getState().path).toBeNull();
+  });
+
+  it("an answer that was superseded by a newer poll for the same job is dropped", async () => {
+    let calls = 0;
+    const settle: Array<(value: any) => void> = [];
+    vi.mocked(watchFolder).mockImplementation(() => new Promise((resolve) => { calls += 1; settle.push(resolve); }));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(calls).toBe(2);
+    await act(async () => settle[1](reply("C:\\exports\\newer.gcode")));
+    await act(async () => settle[0](reply("C:\\exports\\older.gcode")));
+    expect(useSliced.getState().path).toBe("C:\\exports\\newer.gcode");
+  });
+
+  it("auto-open off: a matched job is listed, never opened", async () => {
+    useWatch.setState({ autoOpen: false });
+    vi.mocked(watchFolder).mockResolvedValue(reply("C:\\exports\\A.gcode"));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    expect(useSliced.getState().path).toBeNull();
+  });
+});

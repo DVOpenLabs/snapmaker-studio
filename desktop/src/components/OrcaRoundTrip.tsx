@@ -34,18 +34,30 @@ export function OrcaRoundTrip() {
   const openPath = useSliced((s) => s.path);
 
   const [typed, setTyped] = useState(folder ?? "");
-  const [result, setResult] = useState<WatchResult | null>(null);
+  const [answer, setAnswer] = useState<{ folder: string; project: string | undefined; data: WatchResult } | null>(null);
   const [busy, setBusy] = useState(false);
   const opened = useRef<string | null>(null);
+  // Each look takes a ticket. A reply counts only if its ticket is still the
+  // newest, so a slow answer about project A, a folder since changed, or a page
+  // since left can never be applied to whatever is open now.
+  const ticket = useRef(0);
 
   const look = useCallback(() => {
     if (!folder) return;
+    const mine = ++ticket.current;
+    const asked = { folder, project: project?.path };
     setBusy(true);
     watchFolder(folder, project?.path)
-      .then(setResult)
-      .catch(() => setResult(null))
-      .finally(() => setBusy(false));
+      .then((data) => { if (ticket.current === mine) setAnswer({ ...asked, data }); })
+      .catch(() => { if (ticket.current === mine) setAnswer(null); })
+      .finally(() => { if (ticket.current === mine) setBusy(false); });
   }, [folder, project?.path]);
+
+  // Invalidate whatever is in flight when the question changes or the page goes.
+  useEffect(() => () => { ticket.current += 1; }, [folder, project?.path]);
+
+  // An answer is shown only while it is still about the current folder and project.
+  const result = answer && answer.folder === folder && answer.project === project?.path ? answer.data : null;
 
   useEffect(() => {
     if (!folder) return;
