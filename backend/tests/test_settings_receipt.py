@@ -225,3 +225,74 @@ def test_the_http_route_returns_the_receipt_and_refuses_a_request_without_an_ori
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+# --- repair: strict G-code parsing, neutral advice, roll-up order ------------------
+
+def test_a_gcode_nozzle_list_with_an_unreadable_entry_is_missing_not_compacted(tmp_path):
+    original = project(tmp_path, nozzle_diameter=["0.4", "0.6"])
+    sliced = gcode(tmp_path, nozzle_diameter="0.4,unknown,0.6")
+    s = step(fact(sr.compare(original, None, sliced), "nozzles"), "original", "sliced")
+    assert (s["status"], s["to_value"]) == ("missing", None)
+
+
+def test_a_gcode_layer_height_list_is_missing_not_its_first_value(tmp_path):
+    original = project(tmp_path, layer_height="0.2")
+    sliced = gcode(tmp_path, layer_height="0.2,0.3")
+    s = step(fact(sr.compare(original, None, sliced), "layer_height"), "original", "sliced")
+    assert (s["status"], s["to_value"]) == ("missing", None)
+
+
+def test_a_project_layer_height_list_is_missing_not_its_first_value(tmp_path):
+    original = project(tmp_path, layer_height=["0.2", "0.3"])
+    sliced = gcode(tmp_path, layer_height="0.2")
+    s = step(fact(sr.compare(original, None, sliced), "layer_height"), "original", "sliced")
+    assert (s["status"], s["from_value"]) == ("missing", None)
+
+
+def test_a_later_changed_step_makes_the_whole_row_changed_whatever_the_step_order(tmp_path):
+    original = project(tmp_path, "o.3mf", **ASKED)
+    prepared = project(tmp_path, "p.3mf", **ASKED)                       # original -> prepared: same
+    sliced = gcode(tmp_path, nozzle_diameter="0.4,0.4,0.4,0.4", layer_height="0.08", enable_support="1", enable_prime_tower="1")
+    r = sr.compare(original, prepared, sliced)
+    row = fact(r, "layer_height")
+    assert [s["status"] for s in row["steps"]] == ["unchanged", "changed"]
+    assert row["status"] == "changed"
+    assert r["summary"].startswith("1 changed")
+
+
+def test_a_missing_step_outranks_not_checked_and_unchanged(tmp_path):
+    original = project(tmp_path, "o.3mf", **ASKED)
+    prepared = project(tmp_path, "p.3mf", **ASKED)
+    sliced = gcode(tmp_path, nozzle_diameter="0.4,0.4,0.4,0.4", layer_height="0.2")      # supports not recorded
+    row = fact(sr.compare(original, prepared, sliced), "supports")
+    assert [s["status"] for s in row["steps"]] == ["unchanged", "missing"]
+    assert row["status"] == "missing"
+
+
+@pytest.mark.parametrize("asked,recorded", [("1", "0"), ("0", "1")])
+def test_supports_advice_never_orders_a_reversal_and_says_it_may_be_intentional(tmp_path, asked, recorded):
+    original = project(tmp_path, "o.3mf", **{**ASKED, "enable_support": asked})
+    prepared = project(tmp_path, "p.3mf", **{**ASKED, "enable_support": recorded})
+    sliced = gcode(tmp_path, nozzle_diameter="0.4,0.4,0.4,0.4", layer_height="0.2", enable_support=recorded, enable_prime_tower="1")
+    row = fact(sr.compare(original, prepared, sliced), "supports")
+    actions = [s["next_action"] for s in row["steps"] if s["next_action"]]
+    assert actions
+    for text in actions:
+        low = text.lower()
+        assert "turn supports on" not in low and "turn supports off" not in low
+        assert "confirm" in low or "if it is not what you want" in low
+
+
+def test_a_slice_difference_from_supports_says_it_may_be_intentional(tmp_path):
+    sliced = gcode(tmp_path, nozzle_diameter="0.4,0.4,0.4,0.4", layer_height="0.2", enable_support="0", enable_prime_tower="1")
+    s = step(fact(sr.compare(project(tmp_path, **ASKED), None, sliced), "supports"), "original", "sliced")
+    assert "may be intentional" in s["next_action"].lower()
+
+
+def test_the_receipt_does_not_credit_studio_with_what_the_prepared_file_holds(tmp_path):
+    original = project(tmp_path, "o.3mf", **ASKED)
+    prepared = project(tmp_path, "p.3mf", **{**ASKED, "layer_height": "0.16"})
+    s = step(fact(sr.compare(original, prepared, None), "layer_height"), "original", "prepared")
+    assert s["detail"].startswith("The prepared copy differs from the project")
+    assert "studio" not in s["detail"].lower()

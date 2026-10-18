@@ -14,8 +14,10 @@ import { receiptKey, STATUS_LABEL, statusTone, stepTitle } from "@/lib/settingsR
  * the G-code belongs to the project, whether the profile fits the printer and
  * whether the print will work are separate questions answered elsewhere.
  */
-export function SettingsReceiptCard({ original, prepared, sliced, revision = 0 }: {
+export function SettingsReceiptCard({ original, prepared, sliced, revision = 0, preparedOmitted = false }: {
   original: string; prepared: string | null; sliced: string | null; revision?: number;
+  /** A saved job has a prepared copy that is not part of this comparison. */
+  preparedOmitted?: boolean;
 }) {
   const key = receiptKey(original, prepared, sliced, revision);
   const [answer, setAnswer] = useState<{ key: string; receipt: SettingsReceipt } | null>(null);
@@ -45,6 +47,13 @@ export function SettingsReceiptCard({ original, prepared, sliced, revision = 0 }
             What the project asked for, what Studio prepared, and what the slicer recorded.
           </p>
         </div>
+
+        {preparedOmitted && (
+          <p className="text-xs text-muted-foreground" data-testid="receipt-prepared-omitted">
+            This job has a saved prepared copy that was not reopened, so this compares the project with the slice
+            directly. It cannot show whether the prepared copy changed anything.
+          </p>
+        )}
 
         {!receipt && failed !== key && <p className="text-xs text-muted-foreground">Comparing…</p>}
         {failed === key && (

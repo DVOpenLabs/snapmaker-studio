@@ -103,4 +103,12 @@ describe("the settings receipt card", () => {
     await act(async () => {});
     expect(screen.getByText("Open a sliced G-code to compare.")).toBeTruthy();
   });
+it("discloses a saved prepared copy that is not part of the comparison, and only then", async () => {
+    vi.mocked(settingsReceipt).mockResolvedValue(MISMATCH);
+    const { rerender } = render(<SettingsReceiptCard original={"C:\a.3mf"} prepared={null} sliced={"C:\a.gcode"} preparedOmitted />);
+    await act(async () => {});
+    expect(screen.getByTestId("receipt-prepared-omitted").textContent).toMatch(/saved prepared copy that was not reopened/);
+    rerender(<SettingsReceiptCard original={"C:\a.3mf"} prepared={null} sliced={"C:\a.gcode"} />);
+    expect(screen.queryByTestId("receipt-prepared-omitted")).toBeNull();
+  });
 });

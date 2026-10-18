@@ -127,13 +127,10 @@ def _read_gcode(path: str) -> dict:
     facts = gcode.read_facts(path)
     if not facts.get("available"):
         return {"state": "unreadable", "reason": facts.get("error") or "not a readable G-code file"}
-    config = facts.get("config") or {}
-    values = _declared(config)
-    # The reader already parsed these two; prefer its numbers over re-parsing text.
-    values["nozzles"] = facts.get("nozzle_diameter_mm") or values["nozzles"]
-    if facts.get("layer_height_mm") is not None:
-        values["layer_height"] = facts["layer_height_mm"]
-    return {"state": "read", "values": values}
+    # Strict parse of the recorded config, the same as for a project. The G-code reader's
+    # own nozzle/layer numbers skip entries it cannot read and take the first of a list,
+    # which would turn an unreadable declaration into a plausible one.
+    return {"state": "read", "values": _declared(facts.get("config") or {})}
 
 
 # --- comparing -----------------------------------------------------------------
@@ -195,10 +192,12 @@ def _advice(fact_id: str, a, b, frm: str, to: str) -> tuple[str, str]:
                "Open the prepared copy in Snapmaker Orca and confirm the layer height before slicing.")
     elif fact_id == "supports":
         turned_off = bool(a) and not b
-        why = ("Overhangs the project expected to be supported are not supported in the slice." if turned_off else
-               "The slice adds support material the project did not ask for, which changes material use and time.")
-        act = (f"In Snapmaker Orca, turn supports {'on' if turned_off else 'off'} in the process profile, slice again "
-               "and open the new G-code here." if slicer else
+        why = ("Supports hold up overhangs and change material use and print time, so turning them off can leave "
+               "overhangs unsupported." if turned_off else
+               "Supports hold up overhangs and change material use and print time, so turning them on adds support "
+               "material the project did not ask for.")
+        act = ("This may be intentional. If it is not what you want, change the supports setting in the process "
+               "profile in Snapmaker Orca, slice again and open the new G-code here." if slicer else
                "Open the prepared copy in Snapmaker Orca and confirm the supports setting before slicing.")
     else:
         why = "Whether a prime tower is built changes how colour changes are handled and how much material is used."
@@ -235,8 +234,7 @@ def _step(fact_id: str, frm: str, to: str, stages: dict) -> dict:
         return out
     out["status"] = "changed"
     why, act = _advice(fact_id, a, b, frm, to)
-    who = "Studio’s prepared copy differs from the project" if to == "prepared" else \
-        f"{_LABEL[to].capitalize()} differs from {_LABEL[frm]}"
+    who = f"{_LABEL[to].capitalize()} differs from {_LABEL[frm]}"
     out["detail"] = f"{who}: {_difference(fact_id, a, b)}. {why}"
     out["next_action"] = act
     return out

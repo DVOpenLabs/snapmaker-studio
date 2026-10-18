@@ -8,6 +8,7 @@ import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 import { SettingsReceiptCard } from "@/components/SettingsReceiptCard";
 import { useSliced } from "@/store/sliced";
 import { useSession } from "@/store/session";
+import { useJob } from "@/store/job";
 import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
 
 /**
@@ -31,6 +32,9 @@ export default function AfterSlicing() {
   // A prepared copy counts only if Studio wrote and validated it in this session.
   const prepared = convert.status === "done" && convert.data && !convert.data.blocked && convert.data.validated_ok
     ? convert.data.output_path : null;
+  // A restored job keeps its prepared copy on record but does not reopen it, so the receipt must say so.
+  const hasSavedPrepared = useJob((s) => s.record?.prepared != null);
+  const preparedOmitted = !prepared && hasSavedPrepared;
   const [typed, setTyped] = useState("");
 
   return (
@@ -101,7 +105,8 @@ export default function AfterSlicing() {
             </p>
             <Button variant="secondary" size="sm" onClick={clear}>Choose another file</Button>
           </div>
-          {project && <SettingsReceiptCard key={`receipt-${path}#${revision}`} original={project.path} prepared={prepared} sliced={path} />}
+          {project && <SettingsReceiptCard key={`receipt-${path}#${revision}`} original={project.path} prepared={prepared} sliced={path}
+            revision={revision} preparedOmitted={preparedOmitted} />}
           <SlicedJobCards path={path} projectPath={project?.path} />
         </>
       )}
