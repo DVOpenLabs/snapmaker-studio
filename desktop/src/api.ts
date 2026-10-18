@@ -1498,6 +1498,26 @@ export function watchFolder(folder: string, projectPath?: string): Promise<Watch
   return post("/watch_folder", { folder, project_path: projectPath ?? "" }, "watch folder");
 }
 
+export interface JobCheckEntry {
+  role: "original" | "prepared" | "sliced";
+  path: string;
+  /** Without it the file is only fingerprinted. */
+  expected?: { size_bytes: number; sha256: string | null };
+}
+
+export interface JobCheckFile {
+  role: JobCheckEntry["role"];
+  path: string;
+  status: "recorded" | "same" | "changed" | "missing" | "unreadable" | "unverified";
+  observed?: { size_bytes: number; sha256: string | null };
+  reason?: string;
+}
+
+/** Read-only: size and SHA-256 of a job's files, compared with what was recorded. */
+export function jobCheck(files: JobCheckEntry[]): Promise<{ schema_version: string; files: JobCheckFile[] }> {
+  return post("/job_check", { files }, "job check");
+}
+
 export function sliceProvenance(projectPath: string, gcodePath: string): Promise<ProvenanceResult> {
   return post("/slice_provenance", { project_path: projectPath, gcode_path: gcodePath },
     "provenance");

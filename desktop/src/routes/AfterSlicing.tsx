@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PostSliceCard } from "@/components/PostSliceCard";
 import { MaterialPlanCard, PrintPlanCard, SendReadyCard } from "@/components/PostSlicePanels";
 import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
+import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 import { useSliced } from "@/store/sliced";
 import { useSession } from "@/store/session";
 import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
@@ -33,6 +34,8 @@ export default function AfterSlicing() {
         <h2 className="text-lg font-semibold">After slicing</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{POST_SLICE_EXPLAINER}</p>
       </div>
+
+      <JobWorkspaceCard />
 
       <OrcaRoundTrip />
 

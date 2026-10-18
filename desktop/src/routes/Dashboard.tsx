@@ -22,6 +22,7 @@ import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { usePrinter } from "@/store/printer";
 import { useOpenFile } from "@/hooks/useOpenFile";
+import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
@@ -119,6 +120,8 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <JobWorkspaceCard />
 
       {/* Demo Mode — full Intelligence Report, no file or printer needed */}
       {demoOn && demo.data?.available && (
