@@ -107,6 +107,88 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Open a project first: the one thing Home is for. */}
+      <Card className="surface-raised overflow-hidden">
+        <CardContent className="p-0">
+          <button onClick={openFile} className="flex w-full items-center gap-4 p-5 text-left transition-colors hover:bg-muted/40">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+              <UploadCloud className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold">Open a project</h2>
+              <p className="text-sm text-muted-foreground">Choose a <b>.stl</b> or <b>.3mf</b>, or drop one on this window. Studio reads it on this computer.</p>
+            </div>
+            <span className="hidden shrink-0 sm:block">
+              <span className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Open a project
+              </span>
+            </span>
+          </button>
+        </CardContent>
+      </Card>
+
+      <JobWorkspaceCard />
+
+      {status === "error" && (
+        <Card>
+          <CardContent className="flex items-center gap-2 p-4 text-sm">
+            <AlertTriangle className="h-4 w-4 text-risk" />
+            <span className="text-muted-foreground">Couldn’t load your library: {String((error as Error)?.message ?? error)}</span>
+            <Button variant="secondary" size="sm" className="ml-auto" onClick={() => refetch()}>
+              <RotateCw className="h-4 w-4" /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <section>
+        <SectionTitle trailing={
+          <Link to="/projects" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            All projects <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        }>Recent projects</SectionTitle>
+        {status === "pending" ? (
+          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+        ) : status === "error" ? (
+          <div className="py-6 text-sm text-muted-foreground">Library unavailable — see the error above.</div>
+        ) : recent.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {recent.map((p) => {
+              const Icon = p.name.toLowerCase().endsWith(".stl") ? FileBox : Boxes;
+              return (
+                <Card key={p.id} role="button" tabIndex={0}
+                  onClick={() => openProject(p)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProject(p); } }}
+                  className="group cursor-pointer transition-all hover:border-primary/40 hover:shadow-md">
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
+                          <Icon className="h-[18px] w-[18px]" />
+                        </span>
+                        <span className="truncate font-medium" title={p.source_path}>{p.name}</span>
+                      </div>
+                      {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{(p.source_family ?? "project")}{p.filament_count != null ? ` · ${p.filament_count} ${unit}${p.filament_count === 1 ? "" : "s"}` : ""}</span>
+                      <span>{timeAgo(p.updated_at)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center gap-1 py-10 text-center">
+              <p className="text-sm font-medium">No projects yet</p>
+              <p className="text-sm text-muted-foreground">Open a project above — it’ll appear here once you check or prepare it.</p>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
       <div className="flex items-center gap-5">
         <HeroMark className="hidden h-20 w-44 shrink-0 sm:block" />
         <div>
@@ -121,8 +203,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <JobWorkspaceCard />
-
       {/* Demo Mode — full Intelligence Report, no file or printer needed */}
       {demoOn && demo.data?.available && (
         <div className="space-y-3">
@@ -136,28 +216,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Hero: open a model + the end-to-end workflow it flows through */}
-      <Card className="surface-raised overflow-hidden">
-        <CardContent className="p-0">
-          <button onClick={openFile} className="flex w-full items-center gap-4 border-b border-border p-5 text-left transition-colors hover:bg-muted/40">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-              <UploadCloud className="h-6 w-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-base font-medium">Open a model to begin</p>
-              <p className="text-sm text-muted-foreground">Drag in or browse for a <b>.stl</b> or <b>.3mf</b> · your file stays on your computer</p>
-            </div>
-            <span className="hidden shrink-0 sm:block">
-              <span className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm">
-                <Plus className="h-4 w-4" /> Open a model
-              </span>
-            </span>
-          </button>
-          <div className="p-3 sm:p-4">
-            <Workflow />
-          </div>
+      <Card>
+        <CardContent className="p-3 sm:p-4">
+          <Workflow />
         </CardContent>
       </Card>
+
 
       {/* Beginner anchor: the whole first-print path in one card. */}
       <FirstPrintCard />
@@ -199,66 +263,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
-
-      {status === "error" && (
-        <Card>
-          <CardContent className="flex items-center gap-2 p-4 text-sm">
-            <AlertTriangle className="h-4 w-4 text-risk" />
-            <span className="text-muted-foreground">Couldn’t load your library: {String((error as Error)?.message ?? error)}</span>
-            <Button variant="secondary" size="sm" className="ml-auto" onClick={() => refetch()}>
-              <RotateCw className="h-4 w-4" /> Retry
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <section>
-        <SectionTitle trailing={
-          <Link to="/projects" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            All projects <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        }>Continue working</SectionTitle>
-        {status === "pending" ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-        ) : status === "error" ? (
-          <div className="py-6 text-sm text-muted-foreground">Library unavailable — see the error above.</div>
-        ) : recent.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {recent.map((p) => {
-              const Icon = p.name.toLowerCase().endsWith(".stl") ? FileBox : Boxes;
-              return (
-                <Card key={p.id} role="button" tabIndex={0}
-                  onClick={() => openProject(p)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProject(p); } }}
-                  className="group cursor-pointer transition-all hover:border-primary/40 hover:shadow-md">
-                  <CardContent className="space-y-3 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
-                          <Icon className="h-[18px] w-[18px]" />
-                        </span>
-                        <span className="truncate font-medium">{p.name}</span>
-                      </div>
-                      {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{(p.source_family ?? "project")}{p.filament_count != null ? ` · ${p.filament_count} ${unit}${p.filament_count === 1 ? "" : "s"}` : ""}</span>
-                      <span>{timeAgo(p.updated_at)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center gap-1 py-10 text-center">
-              <p className="text-sm font-medium">No projects yet</p>
-              <p className="text-sm text-muted-foreground">Open a model above — it’ll appear here once you check or prepare it.</p>
-            </CardContent>
-          </Card>
-        )}
-      </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

@@ -15,7 +15,7 @@ function navClass({ isActive }: { isActive: boolean }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ className, id, onNavigate }: { className?: string; id?: string; onNavigate?: () => void }) {
   const nav = useNavigate();
   const setFile = useSession((s) => s.setFile);
   const openFile = useOpenFile();
@@ -24,7 +24,8 @@ export function Sidebar() {
   const recent = (data ?? []).slice(0, 3);
 
   return (
-    <aside className="flex h-full w-[230px] flex-col border-r border-border bg-card">
+    <aside id={id} onClick={(e) => { if (onNavigate && (e.target as HTMLElement).closest("a")) onNavigate(); }}
+           className={cn("h-full w-[230px] flex-col border-r border-border bg-card", className ?? "flex")}>
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border">
         {/* Brand mark — ribbon stubs → core → cube (Intelligence Layer) */}
         <div className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm" style={{ background: "linear-gradient(135deg,#141A2C,#0A101C)" }}>
@@ -50,7 +51,7 @@ export function Sidebar() {
         <Plus className="h-4 w-4" /> Open a model
       </button>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+      <nav aria-label="Main" className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
         {mode === "simple" ? (
           <>
             {BEGINNER_NAV.map((n) => (
@@ -125,7 +126,7 @@ export function Sidebar() {
             </button>
           </div>
         </div>
-        <nav className="flex flex-col gap-1">
+        <nav aria-label="Settings and help" className="flex flex-col gap-1">
           {(mode === "simple" ? SIMPLE_SECONDARY_NAV : SECONDARY_NAV).map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
               <n.icon className="h-4 w-4" /> {n.label}

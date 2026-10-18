@@ -296,3 +296,19 @@ def test_the_receipt_does_not_credit_studio_with_what_the_prepared_file_holds(tm
     s = step(fact(sr.compare(original, prepared, None), "layer_height"), "original", "prepared")
     assert s["detail"].startswith("The prepared copy differs from the project")
     assert "studio" not in s["detail"].lower()
+
+
+def test_an_explanation_names_the_stage_that_actually_changed_not_always_the_project(tmp_path):
+    # Supports on in the project and the prepared copy, off in the slice: the prepared -> sliced step
+    # must not say "the project" turned them off, and a nozzle change after preparing must not either.
+    original = project(tmp_path, "o.3mf", **{**ASKED, "enable_support": "0"})
+    prepared = project(tmp_path, "p.3mf", **{**ASKED, "enable_support": "0"})
+    sliced = gcode(tmp_path, nozzle_diameter="0.2,0.4,0.4,0.4", layer_height="0.2", enable_support="1", enable_prime_tower="1")
+    receipt = sr.compare(original, prepared, sliced)
+    supports = step(fact(receipt, "supports"), "prepared", "sliced")["detail"]
+    nozzles = step(fact(receipt, "nozzles"), "prepared", "sliced")["detail"]
+    assert "the prepared copy did not ask for" in supports and "the project did not ask for" not in supports
+    assert "what the prepared copy was set up for" in nozzles and "the project was set up for" not in nozzles
+    # The first step still names the project.
+    first = sr.compare(project(tmp_path, "o2.3mf", **{**ASKED, "enable_support": "0"}), None, sliced)
+    assert "the project did not ask for" in step(fact(first, "supports"), "original", "sliced")["detail"]

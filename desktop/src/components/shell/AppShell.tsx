@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Sidebar } from "./Sidebar";
@@ -9,7 +9,9 @@ import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 
 function titleFor(path: string): string {
-  if (path === "/") return "Dashboard";
+  if (path === "/") return "Home";
+  if (path.startsWith("/this-print")) return "This job";
+  if (path.startsWith("/after-slicing")) return "After slicing";
   if (path.startsWith("/workspace")) return "Workspace";
   if (path.startsWith("/batch")) return "Batch prepare";
   if (path.startsWith("/projects")) return "Projects";
@@ -23,6 +25,36 @@ export function AppShell() {
   const nav = useNavigate();
   const setFile = useSession((s) => s.setFile);
   const setSliced = useSliced((s) => s.setSliced);
+
+  // Narrow windows: the sidebar becomes a drawer opened from a Menu button.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback((returnFocus = true) => {
+    setMenuOpen(false);
+    if (returnFocus) menuButton.current?.focus();
+  }, []);
+  // A navigation (or a wider window) ends the drawer; focus follows the page, not the button.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    // First real destination, not the scrim.
+    drawer.current?.querySelector<HTMLElement>("#nav-drawer button, #nav-drawer a[href]")?.focus();
+    const media = window.matchMedia?.("(min-width: 768px)");
+    const wide = () => { if (media?.matches) setMenuOpen(false); };
+    media?.addEventListener?.("change", wide);
+    return () => media?.removeEventListener?.("change", wide);
+  }, [menuOpen]);
+  const onDrawerKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { e.stopPropagation(); closeMenu(); return; }
+    if (e.key !== "Tab") return;
+    // Keep Tab inside the open drawer.
+    const items = [...(drawer.current?.querySelectorAll<HTMLElement>("a[href],button:not([disabled]):not([tabindex=\"-1\"]),summary,input") ?? [])];
+    if (items.length === 0) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
 
   // Native drag-and-drop: a dropped .stl/.3mf loads into the live workspace.
   // Guarded so the app still renders outside Tauri (e.g. a plain browser for
@@ -54,11 +86,17 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      <Sidebar />
+      <Sidebar className="hidden md:flex" />
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Menu" ref={drawer} onKeyDown={onDrawerKey}>
+          <button type="button" tabIndex={-1} aria-label="Close menu" className="absolute inset-0 bg-black/50" onClick={() => closeMenu()} />
+          <Sidebar id="nav-drawer" className="relative flex shadow-xl" onNavigate={() => closeMenu(false)} />
+        </div>
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar title={titleFor(pathname)} />
+        <TopBar ref={menuButton} title={titleFor(pathname)} menuOpen={menuOpen} onMenu={() => setMenuOpen((o) => !o)} />
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1400px] px-8 py-8 2xl:px-12">
+          <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8 2xl:px-12">
             <Outlet />
           </div>
         </main>

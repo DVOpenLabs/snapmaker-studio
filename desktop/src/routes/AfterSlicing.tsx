@@ -10,6 +10,7 @@ import { useSliced } from "@/store/sliced";
 import { useSession } from "@/store/session";
 import { useJob } from "@/store/job";
 import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
+import { Link } from "react-router-dom";
 
 /**
  * After slicing — the second half of the loop.
@@ -34,7 +35,9 @@ export default function AfterSlicing() {
     ? convert.data.output_path : null;
   // A restored job keeps its prepared copy on record but does not reopen it, so the receipt must say so.
   const hasSavedPrepared = useJob((s) => s.record?.prepared != null);
-  const preparedOmitted = !prepared && hasSavedPrepared;
+  // A re-preparation in flight is not an omission: the new copy joins the comparison once validated.
+  const preparing = convert.status === "loading";
+  const preparedOmitted = !prepared && hasSavedPrepared && !preparing;
   const [typed, setTyped] = useState("");
 
   return (
@@ -94,22 +97,50 @@ export default function AfterSlicing() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm">
               <span className="text-muted-foreground">Checking</span>{" "}
-              <span className="font-medium" title={path}>{name}</span>
+              <span className="break-all font-medium" title={path}>{name}</span>
               {project && (
                 <>
                   {" "}
                   <span className="text-muted-foreground">against the open project</span>{" "}
-                  <span className="font-medium">{project.name}</span>
+                  <span className="break-all font-medium">{project.name}</span>
                 </>
               )}
             </p>
             <Button variant="secondary" size="sm" onClick={clear}>Choose another file</Button>
           </div>
           {project && <SettingsReceiptCard key={`receipt-${path}#${revision}`} original={project.path} prepared={prepared} sliced={path}
-            revision={revision} preparedOmitted={preparedOmitted} />}
+            revision={revision} preparedOmitted={preparedOmitted} preparing={preparing} />}
+          <KeptSeparate />
           <SlicedJobCards path={path} projectPath={project?.path} />
         </>
       )}
     </div>
+  );
+}
+
+const SEPARATE: Array<{ title: string; text: string; to?: string; link?: string }> = [
+  { title: "Printer connection", text: "Not needed to read a slice. Checked in Printer Hub.", to: "/printers", link: "Printer Hub" },
+  { title: "Project compatibility", text: "Whether the G-code is this project, and whether the profile fits the U1: the cards below." },
+  { title: "Settings comparison", text: "Declared values only: the receipt above." },
+  { title: "Print readiness", text: "Not decided by the receipt. Sending is always your confirmed choice." },
+];
+
+/** Four different questions, each answered somewhere else; none of them stands in for another. */
+function KeptSeparate() {
+  return (
+    <section aria-labelledby="kept-separate" className="rounded-md border border-border p-3">
+      <h3 id="kept-separate" className="text-xs font-semibold">Four separate questions</h3>
+      <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+        {SEPARATE.map((item) => (
+          <div key={item.title} className="min-w-0">
+            <dt className="text-xs font-medium">{item.title}</dt>
+            <dd className="text-xs text-muted-foreground">
+              {item.text}{" "}
+              {item.to && <Link to={item.to} className="underline">{item.link}</Link>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

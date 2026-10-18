@@ -70,7 +70,7 @@ export function JobWorkspaceCard() {
             <p className="mt-0.5 text-xs text-muted-foreground">
               {resuming
                 ? "Studio kept which files belonged together. Check them before reopening — files can move or change."
-                : "The project, the copy Studio prepared from it and the G-code that came back, kept together."}
+                : "The project, its prepared copy and the G-code that came back, kept together."}
             </p>
           </div>
           {resuming && (
@@ -94,10 +94,10 @@ export function JobWorkspaceCard() {
                   <p className="text-sm">
                     <span className="text-muted-foreground">{LABEL[role]}</span>{" "}
                     <span className="break-all font-medium" title={file.path}>{file.name}</span>
-                    {role === "prepared" && record.prepared && (
-                      <span className="text-muted-foreground"> · {record.prepared.mode} mode</span>
-                    )}
                   </p>
+                  {role === "prepared" && record.prepared && (
+                    <p className="basis-full text-xs text-muted-foreground">{record.prepared.mode} mode</p>
+                  )}
                   {short(file) && <code className="text-[11px] text-muted-foreground" title="Start of the file's SHA-256">{short(file)}</code>}
                 </div>
                 {state && (
@@ -119,6 +119,22 @@ export function JobWorkspaceCard() {
           })}
         </ul>
 
+        {resuming && phase !== "done" && (
+          <p className="text-xs text-muted-foreground">
+            Check first: Studio then lists exactly which files it will reopen. Reopening only shows them again.
+          </p>
+        )}
+
+        {resuming && record.prepared && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer rounded-sm py-0.5">Why isn’t the prepared copy reopened?</summary>
+            <p className="mt-1">
+              It is listed so you can see it, but a saved job never reopens it: Studio would rather you prepare a
+              fresh copy from the project than trust one that may have been edited since.
+            </p>
+          </details>
+        )}
+
         {!resuming && !verified && (record.prepared || record.sliced) && (
           <p className="text-xs text-muted-foreground">Checking that the project is unchanged before listing its earlier prepared copy and G-code…</p>
         )}
@@ -131,6 +147,7 @@ export function JobWorkspaceCard() {
               {plan.length === 0 ? "Nothing to reopen" : `Reopen ${plan.map((r) => LABEL[r].toLowerCase()).join(" and ")}`}
             </Button>
             <p className="text-[11px] text-muted-foreground">
+              {plan.length > 0 && <>Will reopen: <span className="break-all font-medium text-foreground">{plan.map((r) => (record[r] as LinkedFile).name).join(", ")}</span>. </>}
               Reopening only shows these files again. It does not prepare, slice or send anything.
             </p>
           </div>

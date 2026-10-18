@@ -62,6 +62,11 @@ export function OrcaHandoff({ outputPath, originalPath }:
           </a>
         </Button>
       )}
+      {/* The exact file the button opens, so the handoff never targets something unnamed. */}
+      <p className="max-w-full text-xs">
+        <span className="text-muted-foreground">Opens the prepared copy </span>
+        <span className="break-all font-medium" title={outputPath} data-testid="orca-target">{outputPath.split(/[\\/]/).pop() || outputPath}</span>
+      </p>
       <p className="text-xs text-muted-foreground">{ORCA_HANDOFF_LINE}</p>
       <div className="mt-1 rounded-md border border-border bg-muted/20 p-2 text-xs text-muted-foreground">
         <p>

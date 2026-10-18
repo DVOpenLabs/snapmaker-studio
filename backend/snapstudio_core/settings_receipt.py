@@ -180,8 +180,8 @@ def _advice(fact_id: str, a, b, frm: str, to: str) -> tuple[str, str]:
     """(consequence, next action) for a real change between two stages."""
     slicer = to == "sliced"
     if fact_id == "nozzles":
-        why = ("Extrusion widths and flow are worked out from the nozzle, so the result no longer matches what the "
-               "project was set up for.")
+        why = ("Extrusion widths and flow are worked out from the nozzle, so the result no longer matches what "
+               f"{_LABEL[frm]} was set up for.")
         act = ("Check the printer profile in Snapmaker Orca lists the nozzles your U1 actually has, then slice the "
                "prepared copy again and open the new G-code here." if slicer else
                "Open the prepared copy in Snapmaker Orca and confirm the nozzles are the ones you intend.")
@@ -195,7 +195,7 @@ def _advice(fact_id: str, a, b, frm: str, to: str) -> tuple[str, str]:
         why = ("Supports hold up overhangs and change material use and print time, so turning them off can leave "
                "overhangs unsupported." if turned_off else
                "Supports hold up overhangs and change material use and print time, so turning them on adds support "
-               "material the project did not ask for.")
+               f"material {_LABEL[frm]} did not ask for.")
         act = ("This may be intentional. If it is not what you want, change the supports setting in the process "
                "profile in Snapmaker Orca, slice again and open the new G-code here." if slicer else
                "Open the prepared copy in Snapmaker Orca and confirm the supports setting before slicing.")

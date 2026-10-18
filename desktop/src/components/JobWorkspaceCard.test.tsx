@@ -104,6 +104,32 @@ describe("the job card", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("says which files will reopen, by name, and that nothing is prepared, sliced or sent", async () => {
+    report({ original: "same", prepared: "same", sliced: "same" });
+    render(<JobWorkspaceCard />);
+    expect(screen.getByText(/Check first: Studio then lists exactly which files it will reopen/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Check these files" })); });
+    const note = screen.getByText(/Will reopen:/);
+    expect(note.textContent).toContain("A.3mf, A.gcode");
+    expect(note.textContent).not.toContain("A_U1.3mf");
+    expect(note.textContent).toMatch(/does not prepare, slice or send anything/);
+  });
+
+  it("explains why the prepared copy is listed but never reopened", () => {
+    render(<JobWorkspaceCard />);
+    expect(screen.getByText("Why isn’t the prepared copy reopened?")).toBeTruthy();
+    expect(screen.getByText("preserve mode")).toBeTruthy();
+  });
+
+  it("keeps a long file name whole and readable, with its full path on hover", () => {
+    const long = "a-very-long-project-name-with-many-parts-and-a-version-number-v12-final-final.3mf";
+    useJob.setState({ record: { ...RECORD, original: { ...RECORD.original, name: long, path: `C:\\work\\${long}` } } });
+    render(<JobWorkspaceCard />);
+    const name = screen.getByText(long);
+    expect(name.className).toContain("break-all");
+    expect(name.getAttribute("title")).toBe(`C:\\work\\${long}`);
+  });
+
   it("forgetting the job removes it", () => {
     render(<JobWorkspaceCard />);
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Forget this job" })); });
