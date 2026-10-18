@@ -9,8 +9,7 @@ import { FidelityCard } from "@/components/FidelityCard";
 import { FixLedgerCard } from "@/components/FixLedgerCard";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
-import { PostSliceCard } from "@/components/PostSliceCard";
-import { MaterialPlanCard, PrintPlanCard, SendReadyCard } from "@/components/PostSlicePanels";
+import { SlicedJobCards } from "@/components/SlicedJobCards";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 
@@ -92,10 +91,7 @@ export default function Cockpit() {
         <OrcaRoundTrip />
         {sliced ? (
           <>
-            <SendReadyCard path={sliced} projectPath={project.path} />
-            <PostSliceCard path={sliced} projectPath={project.path} />
-            <MaterialPlanCard path={sliced} />
-            <PrintPlanCard path={sliced} />
+            <SlicedJobCards path={sliced} projectPath={project.path} />
           </>
         ) : (
           <Card>

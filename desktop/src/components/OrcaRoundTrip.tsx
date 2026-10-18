@@ -86,7 +86,7 @@ export function OrcaRoundTrip() {
     if (!openPath || !result) return;
     for (const c of result.candidates ?? []) {
       if (c.path === openPath) {
-        void observeSliced({ path: c.path, size_bytes: c.size_bytes, age_seconds: c.age_seconds, complete: c.complete, verdict: c.provenance?.verdict });
+        void observeSliced({ path: c.path, size_bytes: c.size_bytes, modified_ns: c.modified_ns, complete: c.complete, verdict: c.provenance?.verdict });
       }
     }
   }, [result, openPath]);

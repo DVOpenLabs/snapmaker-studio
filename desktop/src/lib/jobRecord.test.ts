@@ -148,3 +148,14 @@ describe("review repair round (lib)", () => {
     expect(parseRecord(raw)?.original.fingerprint).toBeNull();
   });
 });
+
+describe("re-reading the same bytes", () => {
+  it("does not make a new record", () => {
+    const r = fullJob();
+    expect(withFingerprint(r, "original", A, { ...fp(1), mtime_ns: "9" })).toBe(r);
+  });
+  it("different bytes do", () => {
+    const r = fullJob();
+    expect(withFingerprint(r, "original", A, fp(7))).not.toBe(r);
+  });
+});

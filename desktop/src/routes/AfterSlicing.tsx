@@ -2,8 +2,7 @@ import { useState } from "react";
 import { FileCheck2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PostSliceCard } from "@/components/PostSliceCard";
-import { MaterialPlanCard, PrintPlanCard, SendReadyCard } from "@/components/PostSlicePanels";
+import { SlicedJobCards } from "@/components/SlicedJobCards";
 import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
 import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 import { useSliced } from "@/store/sliced";
@@ -23,7 +22,6 @@ import { POST_SLICE_EXPLAINER } from "@/lib/postSlice";
 export default function AfterSlicing() {
   const path = useSliced((s) => s.path);
   const name = useSliced((s) => s.name);
-  const revision = useSliced((s) => s.revision);
   const setSliced = useSliced((s) => s.setSliced);
   const clear = useSliced((s) => s.clear);
   const project = useSession((s) => s.file);
@@ -97,10 +95,7 @@ export default function AfterSlicing() {
             </p>
             <Button variant="secondary" size="sm" onClick={clear}>Choose another file</Button>
           </div>
-          <SendReadyCard key={`${path}#${revision}`} path={path} projectPath={project?.path} />
-          <PostSliceCard key={`${path}#${revision}`} path={path} projectPath={project?.path} />
-          <MaterialPlanCard key={`${path}#${revision}`} path={path} />
-          <PrintPlanCard key={`${path}#${revision}`} path={path} />
+          <SlicedJobCards path={path} projectPath={project?.path} />
         </>
       )}
     </div>

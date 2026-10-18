@@ -31,7 +31,8 @@ def test_recording_a_file_returns_its_size_and_hash(tmp_path):
     out = job_identity.check([{"role": "original", "path": str(f)}])
     item = _one(out)
     assert item["status"] == "recorded"
-    assert item["observed"] == expected
+    assert {k: item["observed"][k] for k in ("size_bytes", "sha256")} == expected
+    assert item["observed"]["mtime_ns"].isdigit()
 
 
 def test_an_unchanged_file_is_same(tmp_path):
@@ -71,7 +72,7 @@ def test_a_file_too_large_to_hash_is_unverified_never_same(tmp_path, monkeypatch
     f.write_bytes(b"0123456789")
     item = _one(job_identity.check([{"role": "sliced", "path": str(f), "expected": {"size_bytes": 10, "sha256": None}}]), "sliced")
     assert item["status"] == "unverified"
-    assert item["observed"] == {"size_bytes": 10, "sha256": None}
+    assert (item["observed"]["size_bytes"], item["observed"]["sha256"]) == (10, None)
 
 
 def test_a_recorded_hash_with_a_different_size_is_changed_without_hashing(tmp_path):
@@ -178,3 +179,15 @@ def test_an_oversize_file_that_cannot_be_opened_is_unreadable_not_unverified(tmp
 def test_a_missing_files_key_is_named_plainly():
     with pytest.raises(ValueError, match="list"):
         job_identity.check(None)
+
+
+def test_a_rewrite_with_the_same_size_changes_the_modification_identity_but_not_the_name(tmp_path):
+    f = tmp_path / "a.gcode"
+    f.write_bytes(b"aaaa")
+    first = _one(job_identity.check([{"role": "sliced", "path": str(f)}]), "sliced")["observed"]
+    f.write_bytes(b"bbbb")
+    os.utime(f, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+    second = _one(job_identity.check([{"role": "sliced", "path": str(f)}]), "sliced")["observed"]
+    assert (first["size_bytes"], second["size_bytes"]) == (4, 4)
+    assert first["sha256"] != second["sha256"]
+    assert first["mtime_ns"] != second["mtime_ns"]

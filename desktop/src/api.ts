@@ -1470,6 +1470,8 @@ export interface WatchCandidate {
   name: string;
   size_bytes: number;
   age_seconds: number;
+  /** Exact modification time as text (nanoseconds). */
+  modified_ns?: string;
   complete: boolean;
   state: string;
   job?: {
@@ -1509,7 +1511,7 @@ export interface JobCheckFile {
   role: JobCheckEntry["role"];
   path: string;
   status: "recorded" | "same" | "changed" | "missing" | "unreadable" | "unverified";
-  observed?: { size_bytes: number; sha256: string | null };
+  observed?: { size_bytes: number; sha256: string | null; mtime_ns?: string };
   reason?: string;
 }
 

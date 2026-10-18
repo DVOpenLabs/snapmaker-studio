@@ -107,6 +107,34 @@ describe("the watch response only ever applies to the job it was asked about", (
     expect(settle[file("A").path].length).toBe(2);
   });
 
+  it("N5a: an older scan of the SAME project, released after a newer one was asked, opens nothing", async () => {
+    const asked: Array<(value: any) => void> = [];
+    vi.mocked(watchFolder).mockImplementation(() => new Promise((resolve) => { asked.push(resolve); }));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});                                        // A1 asked
+    act(() => useSession.setState({ file: file("B") }));
+    await act(async () => {});                                        // B asked
+    act(() => useSession.setState({ file: file("A") }));
+    await act(async () => {});                                        // A2 asked
+    expect(asked.length).toBe(3);
+    await act(async () => asked[2](reply(null)));
+    await act(async () => asked[0](reply("C:\\exports\\old-A.gcode")));   // matches folder+project: only the ticket can stop it
+    expect(useSliced.getState().path).toBeNull();
+  });
+
+  it("N5b: switching project in the same render that turns auto-open on does not open the old project's matched job", async () => {
+    useWatch.setState({ autoOpen: false });
+    const asked: Record<string, Array<(value: any) => void>> = {};
+    vi.mocked(watchFolder).mockImplementation((_f, project) => new Promise((resolve) => { (asked[project as string] ||= []).push(resolve); }));
+    render(<OrcaRoundTrip />);
+    await act(async () => {});
+    await act(async () => asked[file("A").path][0](reply("C:\\exports\\A.gcode")));   // matched, but auto-open is off
+    expect(useSliced.getState().path).toBeNull();
+    act(() => { useSession.setState({ file: file("B") }); useWatch.setState({ autoOpen: true }); });
+    await act(async () => {});
+    expect(useSliced.getState().path).toBeNull();
+  });
+
   it("auto-open off: a matched job is listed, never opened", async () => {
     useWatch.setState({ autoOpen: false });
     vi.mocked(watchFolder).mockResolvedValue(reply("C:\\exports\\A.gcode"));

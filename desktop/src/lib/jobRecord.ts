@@ -18,6 +18,8 @@ export interface Fingerprint {
   size_bytes: number;
   /** null when the file was too large to hash: identity is then size-only and never "same". */
   sha256: string | null;
+  /** Exact modification time (text), when the engine reported it. Not part of identity; used to notice a rewrite. */
+  mtime_ns?: string;
 }
 
 export interface LinkedFile {
@@ -75,6 +77,9 @@ export function withFingerprint(prev: JobRecord | null, role: JobRole, path: str
   if (!prev) return prev;
   const entry = prev[role];
   if (!entry || !same(entry.path, path)) return prev;
+  const had = entry.fingerprint;
+  // Re-reading the same bytes changes nothing worth a new record (and must not disturb a check in progress).
+  if (had && had.sha256 !== null && had.sha256 === fingerprint.sha256 && had.size_bytes === fingerprint.size_bytes) return prev;
   return { ...prev, [role]: { ...entry, fingerprint } };
 }
 

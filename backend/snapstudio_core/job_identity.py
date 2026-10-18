@@ -60,9 +60,10 @@ def _check_one(role: str, path: str, expected: dict | None) -> dict:
             if not stat.S_ISREG(info.st_mode):
                 return {**out, "status": "unreadable", "reason": "not a regular file"}
             size = info.st_size
+            mtime_ns = str(info.st_mtime_ns)
             # A size that differs is already a different file; no need to hash it.
             if expected is not None and size != expected["size_bytes"]:
-                return {**out, "status": "changed", "observed": {"size_bytes": size, "sha256": None}}
+                return {**out, "status": "changed", "observed": {"size_bytes": size, "sha256": None, "mtime_ns": mtime_ns}}
             sha = _sha256(handle) if size <= MAX_HASH_BYTES else None
     except FileNotFoundError:
         return {**out, "status": "missing"}
@@ -70,7 +71,7 @@ def _check_one(role: str, path: str, expected: dict | None) -> dict:
         return {**out, "status": "unreadable", "reason": "not a regular file"}
     except OSError as exc:
         return {**out, "status": "unreadable", "reason": exc.__class__.__name__}
-    observed = {"size_bytes": size, "sha256": sha}
+    observed = {"size_bytes": size, "sha256": sha, "mtime_ns": mtime_ns}
     if expected is None:
         return {**out, "status": "recorded", "observed": observed}
     if sha is None or expected["sha256"] is None:
