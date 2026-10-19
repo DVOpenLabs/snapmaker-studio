@@ -138,7 +138,9 @@ export const useJob = create<JobState>((set, get) => ({
 function update(next: JobRecord | null, verified?: boolean) {
   if (next === useJob.getState().record) return;
   write(next);
-  useJob.setState({ record: next, outcome: pruneOutcomes(useJob.getState().outcome, next), ...(verified === undefined ? {} : { verified }), ...idle });
+  // What was dropped belongs to the project it was dropped from; another project starts without it.
+  const sameProject = !!next && useJob.getState().record?.original.path === next.original.path;
+  useJob.setState({ record: next, outcome: pruneOutcomes(useJob.getState().outcome, next), ...(sameProject ? {} : { dropped: [] }), ...(verified === undefined ? {} : { verified }), ...idle });
 }
 
 /**

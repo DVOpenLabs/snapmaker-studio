@@ -327,4 +327,20 @@ describe("review repair round", () => {
     expect(m.useSession.getState().file?.path).toBe(A);
     expect(m.useSliced.getState().path).toBeNull();
   });
+
+  it("dropped files belong to the project they were dropped from, not the next one opened", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine({ ...DISK(), [A]: { size_bytes: 99, sha256: hex("e") } });
+    const m = await fresh();
+    await m.useJob.getState().runCheck();
+    m.useJob.getState().restore(new Set(["original"]));
+    expect(m.useJob.getState().dropped.length).toBeGreaterThan(0);
+    const stop = m.trackJob();
+    m.useSession.getState().setFile("C:\work\B.3mf");
+    await settle();
+    expect(m.useJob.getState().record?.original.path).toBe("C:\work\B.3mf");
+    expect(m.useJob.getState().dropped).toEqual([]);
+    stop();
+  });
 });
