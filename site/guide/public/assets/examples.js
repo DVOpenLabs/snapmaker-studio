@@ -15,7 +15,7 @@ function shotButton(shotId) {
   btn.addEventListener("click", () => openViewer(shotId, btn));
   frame.appendChild(btn);
   scroll.appendChild(frame);
-  fig.append(scroll, el("figcaption", {}, escapeHtml(meta.caption)));
+  fig.append(el("p", { class: `shot-iface ${meta.released ? "is-released" : "is-next"}` }, escapeHtml(meta.iface)), scroll, el("figcaption", {}, escapeHtml(meta.caption)));
   return fig;
 }
 

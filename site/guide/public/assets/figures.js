@@ -57,7 +57,7 @@ export function openViewer(shotId, opener) {
   const callout = el("div", { class: "hs-callout", "aria-live": "polite" });
   callout.textContent = meta.hotspots.length ? HINT : "";
   mountHotspots(frame, shotId, callout);
-  body.append(frame, ...(meta.hotspots.length ? [callout] : []), el("p", { class: "viewer-cap" }, escapeHtml(meta.caption)));
+  body.append(el("p", { class: `shot-iface ${meta.released ? "is-released" : "is-next"}` }, escapeHtml(meta.iface)), frame, ...(meta.hotspots.length ? [callout] : []), el("p", { class: "viewer-cap" }, escapeHtml(meta.caption)));
   dlg.showModal();
   $("#viewer-close").focus();
 }

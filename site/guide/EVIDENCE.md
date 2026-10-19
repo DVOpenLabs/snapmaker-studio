@@ -1,6 +1,6 @@
 # Evidence record — what each page rests on
 
-CANDIDATE NOTE: the screenshots `home`, `this-print-top`, `nav-advanced` and `job-other-printer` and the labels "This job" / "Open a project" come from an unreleased candidate build (branch `integ/phase2-ab`, local only, captured with `tools/capture.mjs` against synthetic fixtures), not from the published v1.5.0 interface. Do not publish until the matching app release.
+CANDIDATE NOTE: every browser-captured screenshot (all except the installed-app `handoff` shot, which still shows the released interface) was retaken from the unreleased candidate build (PR #112, branch `integ/phase2-ab`) and is tagged as such in the guide; the labels "This job" / "Open a project" and the explicit printer set-up come from that build, captured with `tools/capture.mjs` against synthetic fixtures, not from the published v1.5.0 interface. Table rows below that mention "This print", the old footer or a default-connected Printer Hub describe the released v1.5.0 and are kept as history. Do not publish until the matching app release.
 
 The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
 same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the

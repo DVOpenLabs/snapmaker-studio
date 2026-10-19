@@ -81,7 +81,7 @@
   },
   {
     "id": "controls-off", "label": "Controls are off until the printer is connected and reachable.", "certainty": "info", "seen": ["job"],
-    "means": "Printer Hub's controls are disabled because no printer is connected.",
+    "means": "Printer Hub's controls are disabled because the printer you set up cannot be reached right now. With no printer set up, the controls are not shown at all.",
     "why": "That is deliberate: nothing can move the printer until Studio can reach it.",
     "do": ["Connect the printer in Printer Hub."],
     "dont": "Do not read it as a verdict on your project: the controls are off on purpose. If the printer should be reachable, check the connection status for an error.",

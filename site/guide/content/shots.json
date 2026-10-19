@@ -27,7 +27,7 @@
       },
       {
         "key": "local-only",
-        "title": "Local only",
+        "title": "Local-first",
         "text": "Studio runs on your computer. There is no account, and your files are never uploaded to the internet; this line is always visible."
       }
     ]
@@ -418,7 +418,7 @@
       {
         "key": "connect",
         "title": "Connect",
-        "text": "Asks the printer on your own network for its state, only after you press it. Nothing is looked up before that."
+        "text": "Asks the printer on your own network for its state. With no printer set up, nothing is looked up until you press **Connect** or **Auto-detect my U1**; once an address is saved, Printer Hub reconnects to it each time you open it."
       },
       {
         "key": "auto",
@@ -430,13 +430,13 @@
   "settings-printer": {
     "file": "settings-printer.png",
     "title": "Settings: your printer",
-    "alt": "The Printer section of Studio's Settings. It shows Your Snapmaker U1, a network name or IP field with a Save and connect button, a note that no printer is set up yet, a Printer access section, a Confirmed control section, and a Nozzles card telling you to set up your printer first.",
+    "alt": "The Printer section of Studio's Settings. It shows Your Snapmaker U1, a network name or IP field with a Save and connect button, a note that no printer is set up yet, a Printer access row marked Confirmed control, and a Nozzles card telling you to set up your printer first.",
     "caption": "**Settings → Printer**.",
     "hotspots": [
       {
         "key": "address",
         "title": "Network name or IP",
-        "text": "The address Printer Hub uses to show live status. Press **Save and connect** to set it up (**Remove** forgets it). Until you do, Studio does not look for a printer."
+        "text": "The address Printer Hub uses to show live status. Press **Save and connect** to set it up (**Save** once an address is saved; **Remove** forgets it). Until you do, Studio does not look for a printer; a saved address is looked up while Studio is open."
       },
       {
         "key": "confirmed",

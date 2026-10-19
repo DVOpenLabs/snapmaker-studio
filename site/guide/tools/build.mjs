@@ -152,6 +152,11 @@ function differsHtml(items = []) {
   if (!items.length) return "";
   return `<section class="block differs"><h3>If something is different</h3>${items.map((h) => `<details><summary>${md(h.if)}</summary><div><p>${md(h.then)}</p></div></details>`).join("")}</section>`;
 }
+function ifaceNote(flags) {
+  if (flags.every(Boolean)) return "Real screenshots from the released Studio v1.5.0, as labelled.";
+  if (!flags.some(Boolean)) return "Real screenshots from the next, not yet released Studio interface (its version box still reads v1.5.0); each is labelled.";
+  return "Real screenshots, labelled one by one: some are from the released Studio v1.5.0, some from the next, not yet released interface.";
+}
 function figureHtml(shotId, label) {
   const s = shots[shotId];
   const g = geometry[shotId] || { width: 1230, height: 960 };
@@ -257,7 +262,7 @@ function stageHtml(s, i) {
   <div class="stage-grid">
     <div class="stage-main">
       <section class="block evidence" id="${s.page}--evidence" aria-labelledby="${s.page}-ev"><h3 id="${s.page}-ev">What Studio shows</h3>
-        <p class="evidence-note">Real screenshots from the next, not yet released Studio interface (its version box still reads v1.5.0); each is labelled. ${md(ev.note)}</p>
+        <p class="evidence-note">${ifaceNote(ev.shots.map((e) => !!shots[e.shot].released))} ${md(ev.note)}</p>
         <button type="button" class="btn btn-sm js-only toggle-notes" aria-pressed="false">Show numbered notes on the controls</button>
         ${ev.shots.map((e) => figureHtml(e.shot, e.label)).join("")}
       </section>
@@ -405,7 +410,7 @@ const shotData = {};
 for (const id of usedShots) {
   const s = shots[id];
   const g = geometry[id];
-  shotData[id] = { src: `assets/img/${s.file}`, alt: s.alt, title: s.title, caption: plain(s.caption), width: g?.width || 1230, height: g?.height || 960,
+  shotData[id] = { src: `assets/img/${s.file}`, iface: s.released ? "Released v1.5.0 interface" : "Next interface, not yet released", released: !!s.released, alt: s.alt, title: s.title, caption: plain(s.caption), width: g?.width || 1230, height: g?.height || 960,
     hotspots: (s.hotspots || []).map((h, i) => ({ key: h.key, n: i + 1, title: h.title, html: md(h.text) })) };
 }
 const exData = {};

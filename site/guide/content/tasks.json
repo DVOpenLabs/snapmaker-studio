@@ -265,7 +265,7 @@
       "steps": [
         "Open **Printer** (Simple) or **Printer Hub** (Advanced).",
         "Until you do this, Studio does not look for a printer. Under **Connect to your U1**, type the printer's network name (the hint in the field is `U1.local`) or IP address and press **Connect**, or press **Auto-detect my U1**.",
-        "Connecting saves the address. You can also set, change or remove it under **Settings → Printer**: type it in the *Network name or IP* field and press **Save and connect** (or **Remove**). A profile that already had a saved address keeps it.",
+        "Connecting saves the address. You can also set, change or remove it under **Settings → Printer**: type it in the *Network name or IP* field and press **Save and connect** (the button reads **Save** once an address is saved), or press **Remove** to forget it. A profile that already had a saved address keeps it and looks it up while Studio is open.",
         "Read what Printer Hub reports. Anything the printer does not report is marked as such, for example **Nozzle sizes: not reported**."
       ],
       "success": ["When the printer answers, Printer Hub shows its live status and the controls become available. Otherwise: *Controls are off until the printer is connected and reachable.*"],
