@@ -36,7 +36,7 @@ describe("Recent projects card", () => {
   it("keeps the project name wrappable on its own line and the status chip below it, so a long name cannot be overlapped", () => {
     const t = sources["./routes/Dashboard.tsx"];
     const card = t.slice(t.indexOf("recent.length > 0"));
-    expect(card).toContain("min-w-0 break-all font-medium leading-snug");
+    expect(card).toContain("min-w-0 line-clamp-3 font-medium leading-snug [overflow-wrap:anywhere]");
     expect(card).toContain("flex min-w-0 flex-col gap-2");
     expect(card).not.toContain("truncate font-medium");
     expect(card).toMatch(/sm:grid-cols-2 2xl:grid-cols-3/);

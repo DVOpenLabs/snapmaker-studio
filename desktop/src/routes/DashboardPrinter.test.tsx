@@ -50,9 +50,8 @@ describe("Home and the printer", () => {
     usePrinter.setState({ host: "u1.example" });
     vi.mocked(api.printerStatus).mockRejectedValue(new Error("offline"));
     await mount();
-    await act(async () => {});
+    expect(await screen.findByText(/Could not reach u1\.example/)).toBeTruthy();
     expect(api.printerStatus).toHaveBeenCalledWith("u1.example");
-    expect(screen.getByText(/Could not reach u1\.example/)).toBeTruthy();
     expect(screen.queryByText(/No printer is set up yet/)).toBeNull();
   });
 });

@@ -177,7 +177,7 @@ export default function Dashboard() {
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
                           <Icon className="h-[18px] w-[18px]" />
                         </span>
-                        <span className="min-w-0 break-all font-medium leading-snug" title={p.source_path}>{p.name}</span>
+                        <span className="min-w-0 line-clamp-3 font-medium leading-snug [overflow-wrap:anywhere]" title={p.source_path}>{p.name}</span>
                       </div>
                       {p.verdict && <div><StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} /></div>}
                     </div>
