@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Sidebar } from "./Sidebar";
@@ -7,6 +7,7 @@ import { StatusBar } from "./StatusBar";
 import { Toaster } from "@/components/ui/Toaster";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
+import { shouldResetScroll } from "@/lib/scrollReset";
 
 function titleFor(path: string): string {
   if (path === "/") return "Home";
@@ -21,7 +22,7 @@ function titleFor(path: string): string {
 }
 
 export function AppShell() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const nav = useNavigate();
   const setFile = useSession((s) => s.setFile);
   const setSliced = useSliced((s) => s.setSliced);
@@ -37,6 +38,12 @@ export function AppShell() {
     if (returnFocus) menuButton.current?.focus();
     else focusPage.current = true;     // chose a destination: focus goes to the page, not the Menu button
   }, []);
+  // The scrolling element is <main>, not the window, so a new page must start at its top by hand.
+  const lastPath = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (shouldResetScroll(lastPath.current, pathname, hash) && main.current) main.current.scrollTop = 0;
+    lastPath.current = pathname;
+  }, [pathname, hash]);
   // A navigation (or a wider window) ends the drawer; focus follows the page, not the button.
   useEffect(() => { setMenuOpen(false); }, [pathname]);
   // After a destination is chosen the drawer closes and focus goes to the page, also when the route is unchanged.

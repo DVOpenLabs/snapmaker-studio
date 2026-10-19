@@ -165,3 +165,96 @@ export function parseRecord(raw: string | null): JobRecord | null {
     return null;
   }
 }
+
+/**
+ * What a restore did with each recorded file. A saved fingerprint is historical
+ * evidence of what the file was; it is not proof that the file was reopened or that
+ * it still matches. This remembers, per file, the state it was checked in and whether
+ * Reopen actually brought it back, so the card can say which is which.
+ */
+export interface RestoreOutcome {
+  path: string;
+  /** The recorded hash when the restore happened; the entry stops applying if the linked file changes. */
+  sha: string | null;
+  /** How the file checked out against its record. */
+  state: FileState;
+  /** True only if Reopen brought this file back. */
+  reopened: boolean;
+  /** The person named a file that had changed, so its record now follows what is on disk. */
+  adopted: boolean;
+}
+export type RestoreOutcomes = Partial<Record<JobRole, RestoreOutcome>>;
+
+/** One outcome per recorded file that was checked. */
+export function outcomesFor(record: JobRecord, check: JobCheck, plan: readonly JobRole[], adopted: ReadonlySet<JobRole>): RestoreOutcomes {
+  const out: RestoreOutcomes = {};
+  for (const role of JOB_ROLES) {
+    const file = record[role];
+    const state = check[role];
+    if (!file || !state) continue;
+    out[role] = { path: file.path, sha: file.fingerprint?.sha256 ?? null, state, reopened: plan.includes(role), adopted: adopted.has(role) };
+  }
+  return out;
+}
+
+/** Keep only outcomes that still describe the linked file; a replaced, re-prepared or forgotten file loses its note. */
+export function pruneOutcomes(outcomes: RestoreOutcomes, record: JobRecord | null): RestoreOutcomes {
+  const next: RestoreOutcomes = {};
+  for (const role of JOB_ROLES) {
+    const o = outcomes[role];
+    const file = record?.[role];
+    if (!o || !file || file.path !== o.path) continue;
+    if (!o.adopted && (file.fingerprint?.sha256 ?? null) !== o.sha) continue;
+    next[role] = o;
+  }
+  return next;
+}
+
+export interface FileNote {
+  text: string;
+  /** True when the hash shown beside the file is only an earlier record, not a reading of the file as it is now. */
+  historical: boolean;
+  tone: "ready" | "muted";
+}
+
+const EARLIER = "The hash shown is the earlier record, not this file.";
+
+/** Why a recorded file was not reopened. */
+export function leftOutReason(role: JobRole, state: FileState): string {
+  if (role === "prepared") return state === "same" ? "a saved job never reopens a prepared copy" : `a prepared copy is never reopened (${REASON[state]})`;
+  return REASON[state];
+}
+const REASON: Record<FileState, string> = {
+  same: "its earlier files were not all intact",
+  changed: "changed since it was recorded",
+  missing: "not found where it was",
+  unreadable: "could not be read",
+  unverified: "cannot be confirmed as the same file",
+};
+
+/** The note under a file after Reopen: reopened, or left out and why. */
+export function restoredNote(role: JobRole, o: RestoreOutcome): FileNote {
+  if (o.reopened) {
+    return o.adopted
+      ? { text: "Reopened — it had changed since it was recorded, so the hash now follows the file as it is on disk", historical: false, tone: "muted" }
+      : { text: "Reopened — unchanged since it was recorded", historical: false, tone: "ready" };
+  }
+  if (role === "prepared" && o.state === "same") {
+    return { text: "Not reopened — a saved job never reopens a prepared copy. It was unchanged when last checked; this is a record only.", historical: true, tone: "muted" };
+  }
+  const lead = o.state === "missing" ? "Not reopened — not found where it was" :
+    o.state === "unreadable" ? "Not reopened — could not be read" :
+    o.state === "changed" ? "Not reopened — changed since it was recorded" :
+    o.state === "unverified" ? "Not reopened — cannot be confirmed as the same file" :
+    "Not reopened — its earlier files were not all intact";
+  return { text: `${lead}. ${EARLIER}`, historical: true, tone: "muted" };
+}
+
+/** Files the plan will not reopen, with the reason. */
+export function leftOut(record: JobRecord, check: JobCheck, plan: readonly JobRole[]): Array<{ role: JobRole; name: string; why: string }> {
+  return JOB_ROLES.flatMap((role) => {
+    const file = record[role];
+    const state = check[role];
+    return file && state && !plan.includes(role) ? [{ role, name: file.name, why: leftOutReason(role, state) }] : [];
+  });
+}

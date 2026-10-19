@@ -18,7 +18,7 @@ export const SHOTS = [
       "open-sidebar": btn(/Open a model/),
       "view-toggle": (p) => p.getByText("VIEW").locator(".."),
       "help": link("Help"),
-      "local-only": T(/Local-only · nothing leaves your network/),
+      "local-only": T(/Local-first · your files stay on this computer/),
     },
   },
   {

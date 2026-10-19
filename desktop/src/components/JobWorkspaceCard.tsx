@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useJob } from "@/store/job";
 import { useSession } from "@/store/session";
-import { planFor, JOB_ROLES, type FileState, type JobRole, type LinkedFile } from "@/lib/jobRecord";
+import { leftOut, planFor, pruneOutcomes, restoredNote, JOB_ROLES, type FileState, type JobRole, type LinkedFile } from "@/lib/jobRecord";
 
 const LABEL: Record<JobRole, string> = {
   original: "Project",
@@ -36,6 +36,8 @@ export function JobWorkspaceCard() {
   const check = useJob((s) => s.check);
   const verified = useJob((s) => s.verified);
   const error = useJob((s) => s.error);
+  const outcome = useJob((s) => s.outcome);
+  const dropped = useJob((s) => s.dropped);
   const runCheck = useJob((s) => s.runCheck);
   const restore = useJob((s) => s.restore);
   const forget = useJob((s) => s.forget);
@@ -54,7 +56,10 @@ export function JobWorkspaceCard() {
     setNamed(next);
   };
 
+  // A note describes the file it was made for: once that file is replaced it no longer applies.
+  const live = pruneOutcomes(outcome, record);
   const plan = phase === "done" ? planFor(check, named) : [];
+  const left = phase === "done" ? leftOut(record, check, plan) : [];
   // What was made from the project is listed as its results only once the project is confirmed.
   const rows = JOB_ROLES.flatMap((role) => (record[role] && (resuming || verified || role === "original") ? [{ role, file: record[role] as LinkedFile }] : []));
 
@@ -88,6 +93,7 @@ export function JobWorkspaceCard() {
             const state = phase === "done" ? check[role] : undefined;
             const canName = resuming && (state === "changed" || state === "unverified") && role !== "prepared";
             const unfinished = !file.fingerprint;
+            const note = !resuming && live[role] ? restoredNote(role, live[role]!) : null;
             return (
               <li key={role} className="rounded-md border border-border p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -98,10 +104,18 @@ export function JobWorkspaceCard() {
                   {role === "prepared" && record.prepared && (
                     <p className="basis-full text-xs text-muted-foreground">{record.prepared.mode} mode</p>
                   )}
-                  {short(file) && <code className="text-[11px] text-muted-foreground" title="Start of the file's SHA-256">{short(file)}</code>}
+                  {short(file) && (
+                    <span className="text-[11px] text-muted-foreground">recorded <code title="Start of the SHA-256 recorded for this file earlier">{short(file)}</code></span>
+                  )}
                 </div>
                 {state && (
                   <p className={`mt-1 text-xs ${state === "same" ? "text-ready" : "text-muted-foreground"}`}>{STATE_TEXT[state]}</p>
+                )}
+                {resuming && !state && (
+                  <p className="mt-1 text-xs text-muted-foreground">{phase === "checking" ? "Checking…" : "Recorded earlier — not checked yet"}</p>
+                )}
+                {note && (
+                  <p className={`mt-1 text-xs ${note.tone === "ready" ? "text-ready" : "text-muted-foreground"}`}>{note.text}</p>
                 )}
                 {!resuming && unfinished && (
                   <p className="mt-1 text-xs text-muted-foreground">Not yet recorded — it cannot be confirmed later until it is.</p>
@@ -135,6 +149,12 @@ export function JobWorkspaceCard() {
           </details>
         )}
 
+        {!resuming && dropped.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Not linked to this project: {dropped.map((d) => d.name).join(", ")}. {dropped.length === 1 ? "It was" : "They were"} made from the earlier version of the project. Prepare again from this one.
+          </p>
+        )}
+
         {!resuming && !verified && (record.prepared || record.sliced) && (
           <p className="text-xs text-muted-foreground">Checking that the project is unchanged before listing its earlier prepared copy and G-code…</p>
         )}
@@ -148,6 +168,7 @@ export function JobWorkspaceCard() {
             </Button>
             <p className="text-[11px] text-muted-foreground">
               {plan.length > 0 && <>Will reopen: <span className="break-all font-medium text-foreground">{plan.map((r) => (record[r] as LinkedFile).name).join(", ")}</span>. </>}
+              {left.length > 0 && <>Left out: {left.map((l) => `${l.name} (${l.why})`).join("; ")}. </>}
               Reopening only shows these files again. It does not prepare, slice or send anything.
             </p>
           </div>

@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { jobCheck, type JobCheckEntry } from "@/api";
 import {
-  classify, clearSliced, linkPrepared, linkSliced, openProject, parseRecord, planFor, withFingerprint,
-  JOB_SCHEMA, linked, type Fingerprint, type JobCheck, type JobRecord, type JobRole,
+  classify, clearSliced, linkPrepared, linkSliced, openProject, outcomesFor, parseRecord, planFor, pruneOutcomes, withFingerprint,
+  JOB_SCHEMA, linked, type Fingerprint, type JobCheck, type JobRecord, type JobRole, type RestoreOutcomes,
 } from "@/lib/jobRecord";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
@@ -46,6 +46,10 @@ interface JobState {
   phase: CheckPhase;
   check: JobCheck;
   error: string | null;
+  /** What the last Reopen did with each recorded file (reopened, or left out and why). Empty until a restore. */
+  outcome: RestoreOutcomes;
+  /** Earlier files that were unlinked because the project changed and was reopened anyway. */
+  dropped: Array<{ role: JobRole; name: string }>;
   /** Compare the saved job's files with what was recorded. Read-only. */
   runCheck: () => Promise<void>;
   /** Reopen the unchanged files, plus any changed one the person named. */
@@ -59,6 +63,8 @@ let checkGeneration = 0;
 export const useJob = create<JobState>((set, get) => ({
   record: read(),
   verified: false,
+  outcome: {},
+  dropped: [],
   ...idle,
 
   runCheck: async () => {
@@ -87,11 +93,13 @@ export const useJob = create<JobState>((set, get) => ({
   restore: (accepted) => {
     const { record, check, phase } = get();
     if (!record || phase !== "done") return;
-    let plan = planFor(check, accepted);
+    const plan = planFor(check, accepted);
     let next = record;
+    const dropped: Array<{ role: JobRole; name: string }> = [];
     // A changed original means the prepared copy and sliced job were not made from
     // what is on disk now. Reopen the file, but do not present them as its results.
     if (plan.includes("original") && check.original !== "same") {
+      for (const role of ["prepared", "sliced"] as const) { const f = record[role]; if (f) dropped.push({ role, name: f.name }); }
       next = { schema: JOB_SCHEMA, savedAt: new Date().toISOString(), original: linked(record.original.path), prepared: null, sliced: null };
       invalidateFingerprints();
       set({ record: next, verified: true });
@@ -113,21 +121,24 @@ export const useJob = create<JobState>((set, get) => ({
     }
     if (plan.includes("sliced") && next.sliced) useSliced.getState().setSliced(next.sliced.path);
     if (adoptSliced && next.sliced) rebaselineSliced(next.sliced.path);
-    set({ ...idle });
+    const adopted = new Set<JobRole>();
+    if (adoptSliced) adopted.add("sliced");
+    if (plan.includes("original") && check.original !== "same") adopted.add("original");
+    set({ ...idle, outcome: pruneOutcomes(outcomesFor(record, check, plan, adopted), get().record), dropped });
   },
 
   forget: () => {
     checkGeneration++;
     invalidateFingerprints();
     write(null);
-    set({ record: null, verified: false, ...idle });
+    set({ record: null, verified: false, outcome: {}, dropped: [], ...idle });
   },
 }));
 
 function update(next: JobRecord | null, verified?: boolean) {
   if (next === useJob.getState().record) return;
   write(next);
-  useJob.setState({ record: next, ...(verified === undefined ? {} : { verified }), ...idle });
+  useJob.setState({ record: next, outcome: pruneOutcomes(useJob.getState().outcome, next), ...(verified === undefined ? {} : { verified }), ...idle });
 }
 
 /**
@@ -151,7 +162,7 @@ async function fingerprint(role: JobRole, path: string) {
     const next = withFingerprint(useJob.getState().record, role, path, observed);
     if (next !== useJob.getState().record) {
       write(next);
-      useJob.setState({ record: next });
+      useJob.setState({ record: next, outcome: pruneOutcomes(useJob.getState().outcome, next) });
     }
   } catch {
     /* no fingerprint means "cannot be vouched for", which is the honest default */

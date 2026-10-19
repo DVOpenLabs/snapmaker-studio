@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
@@ -411,7 +412,7 @@ export async function firstLayer(path: string, host?: string | null): Promise<Fi
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/first_layer`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`first_layer failed (${r.status})`);
   return r.json();
@@ -431,7 +432,7 @@ export async function toolheadFit(path: string, host?: string | null): Promise<T
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/toolhead_fit`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`toolhead_fit failed (${r.status})`);
   return r.json();
@@ -877,6 +878,8 @@ export interface PrinterDiagnostics {
 }
 
 async function printerPost<T>(path: string, body: object): Promise<T> {
+  // No address, no request: a profile that never set up a printer must not look one up.
+  requirePrinterHost((body as { host?: string | null }).host);
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -993,6 +996,7 @@ export async function printerDiscover(hosts?: string[]): Promise<PrinterProbe[]>
 }
 
 export async function printerStatus(host: string, port = 7125): Promise<PrinterStatus> {
+  requirePrinterHost(host);
   const { port: p, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${p}/printer/status`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -2321,6 +2325,7 @@ export interface NozzleStatus {
  *  probe:true call whose (possibly slower-arriving) response replaces it via
  *  the shared accept/drop decision (R2-D2), never the other way around. */
 export function nozzleStatus(host: string, port = 7125, probe = false): Promise<NozzleStatus> {
+  if (probe && !isPrinterSetUp(host)) return Promise.reject(new PrinterNotSetUpError()); // a live read contacts the printer
   return post("/nozzles/status", { host, port, probe }, "nozzle status");
 }
 

@@ -21,6 +21,7 @@ import type { LibraryProject } from "@/api";
 import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { usePrinter } from "@/store/printer";
+import { isPrinterSetUp } from "@/lib/printerSetup";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 
@@ -43,10 +44,12 @@ function activityText(p: LibraryProject): string {
 
 function PrinterCard() {
   const host = usePrinter((s) => s.host);
+  const setUp = isPrinterSetUp(host);
   const { data, status } = useQuery({
     queryKey: ["dash-printer", host],
     queryFn: () => printerStatus(host),
-    refetchInterval: 5000,   // read-only liveness
+    enabled: setUp,           // not set up: no request at all
+    refetchInterval: setUp ? 5000 : false,   // read-only liveness
     retry: false,
   });
   const online = status === "success";
@@ -60,7 +63,14 @@ function PrinterCard() {
             Printer Hub <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        {status === "pending" ? (
+        {!setUp ? (
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>No printer is set up yet. Studio does not look for one until you add it.</p>
+            <Button variant="secondary" size="sm" asChild>
+              <Link to="/printers"><Printer className="h-4 w-4" /> Set up your printer</Link>
+            </Button>
+          </div>
+        ) : status === "pending" ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Checking {host}…</div>
         ) : online && data ? (
           <div className="space-y-2 text-sm">
@@ -76,9 +86,9 @@ function PrinterCard() {
           </div>
         ) : (
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>No U1 connected.</p>
+            <p>Could not reach {host} just now. It may be off, asleep or on another network.</p>
             <Button variant="secondary" size="sm" asChild>
-              <Link to="/printers"><Printer className="h-4 w-4" /> Connect your printer</Link>
+              <Link to="/printers"><Printer className="h-4 w-4" /> Open Printer Hub</Link>
             </Button>
           </div>
         )}
@@ -153,7 +163,7 @@ export default function Dashboard() {
         ) : status === "error" ? (
           <div className="py-6 text-sm text-muted-foreground">Library unavailable — see the error above.</div>
         ) : recent.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {recent.map((p) => {
               const Icon = p.name.toLowerCase().endsWith(".stl") ? FileBox : Boxes;
               return (
@@ -162,14 +172,14 @@ export default function Dashboard() {
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProject(p); } }}
                   className="group cursor-pointer transition-all hover:border-primary/40 hover:shadow-md">
                   <CardContent className="space-y-3 p-4">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-col gap-2">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
                           <Icon className="h-[18px] w-[18px]" />
                         </span>
-                        <span className="truncate font-medium" title={p.source_path}>{p.name}</span>
+                        <span className="min-w-0 break-all font-medium leading-snug" title={p.source_path}>{p.name}</span>
                       </div>
-                      {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
+                      {p.verdict && <div><StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} /></div>}
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{(p.source_family ?? "project")}{p.filament_count != null ? ` · ${p.filament_count} ${unit}${p.filament_count === 1 ? "" : "s"}` : ""}</span>
