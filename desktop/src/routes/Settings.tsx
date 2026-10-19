@@ -8,6 +8,8 @@ import { usePrinter } from "@/store/printer";
 import { useFilament } from "@/store/filament";
 import MaterialProviderSettings from "@/components/MaterialProviderSettings";
 import PrinterNozzleSettings from "@/components/PrinterNozzleSettings";
+import PrinterAddress from "@/components/PrinterAddress";
+import { isPrinterSetUp } from "@/lib/printerSetup";
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -24,7 +26,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 export default function Settings() {
   const { theme, set } = useTheme();
   const { mode, setMode } = useMode();
-  const { host, setHost } = usePrinter();
+  const host = usePrinter((s) => s.host);
   const { pricePerKg, currency, setPrice, setCurrency } = useFilament();
   return (
     <div className="max-w-2xl space-y-6">
@@ -35,13 +37,8 @@ export default function Settings() {
       <Card>
         <CardContent className="divide-y divide-border p-5">
           <p className="flex items-center gap-2 pb-2 text-sm font-semibold"><Printer className="h-4 w-4" /> Printer</p>
-          <Row label="Your Snapmaker U1" hint="Network name or IP. Used by the Printer Hub to show live status.">
-            <input
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              placeholder="U1.local"
-              className="h-9 w-40 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            />
+          <Row label="Your Snapmaker U1" hint="Network name or IP. Studio looks it up only after you save it, to show live status.">
+            <PrinterAddress />
           </Row>
           <Row label="Printer access" hint="Monitors live status; send, pause, resume and cancel run only when you confirm — never auto-started.">
             <span className="inline-flex items-center gap-1 text-sm text-ready"><ShieldCheck className="h-4 w-4" /> Confirmed control</span>
@@ -49,7 +46,12 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <PrinterNozzleSettings />
+      {isPrinterSetUp(host) ? <PrinterNozzleSettings /> : (
+        <Card><CardContent className="p-5 text-sm text-muted-foreground">
+          <p className="font-semibold text-foreground">Nozzles</p>
+          <p className="mt-1">Set up your printer above to confirm which nozzles are fitted.</p>
+        </CardContent></Card>
+      )}
 
       <Card>
         <CardContent className="divide-y divide-border p-5">
@@ -132,8 +134,9 @@ export default function Settings() {
           <div className="flex items-center gap-2 text-sm font-semibold"><Info className="h-4 w-4" /> About</div>
           <div className="mt-2 space-y-1 text-sm text-muted-foreground">
             <p>Snapmaker Studio · v{__APP_VERSION__}</p>
-            <p>Local-first. No account, no cloud — nothing leaves your network. Printer Hub
-            sends a sliced job to your own printer only when you confirm it.</p>
+            <p>Local-first. No account, no cloud, no telemetry — your models and checks stay on this computer.
+            Studio contacts a printer only after you set one up, and sends a sliced job only when you confirm it.
+            Features you start yourself, such as the update check or the model browser, use the internet.</p>
             <p>Independent open-source project — not affiliated with or endorsed by Snapmaker.</p>
           </div>
         </CardContent>

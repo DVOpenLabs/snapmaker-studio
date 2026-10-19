@@ -986,6 +986,18 @@ def watch_folder(folder: str, project_path: str | None = None) -> dict:
     return wf.match_project(folder, project_path)
 
 
+def job_check(files) -> dict:
+    """Are the files of a saved job still the files it was made from? Read-only."""
+    from snapstudio_core import job_identity
+    return job_identity.check(files)
+
+
+def settings_receipt(original_path: str, prepared_path: str | None, sliced_path: str | None) -> dict:
+    """Original -> prepared -> sliced: what each file declares for a few settings. Read-only."""
+    from snapstudio_core import settings_receipt as sr
+    return sr.compare(original_path, prepared_path, sliced_path)
+
+
 def slice_provenance(project_path: str, gcode_path: str) -> dict:
     """Is this G-code the slice of that project?"""
     from snapstudio_core import gcode, project_traits, provenance

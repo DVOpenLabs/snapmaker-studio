@@ -12,7 +12,7 @@ export function StatusBar() {
         {online ? "Ready" : status === "pending" ? "Starting up…" : "Reconnecting…"}
       </span>
       <span>v{__APP_VERSION__}</span>
-      <span className="ml-auto">Local-only · nothing leaves your network</span>
+      <span className="ml-auto" title="Your models and analysis stay on this computer. Studio talks to a printer only after you set one up, and to the internet only for features you start yourself, such as the update check or the model browser.">Local-first · your files stay on this computer</span>
     </footer>
   );
 }

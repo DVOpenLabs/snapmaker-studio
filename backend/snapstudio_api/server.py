@@ -345,6 +345,24 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
+            elif self.path == "/job_check":
+                try:
+                    files = data.get("files") if isinstance(data, dict) else None
+                    self._send(200, service.job_check(files))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/settings_receipt":
+                try:
+                    self._send(200, service.settings_receipt(
+                        rv.require_path_string(data, "original_path"),
+                        rv.optional_str(data, "prepared_path", "") or None,
+                        rv.optional_str(data, "sliced_path", "") or None))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/slice_provenance":
                 try:
                     self._send(200, service.slice_provenance(

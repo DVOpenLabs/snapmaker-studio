@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
 import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, predictSuccess as apiPredictSuccess, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
+import { isPrinterSetUp } from "@/lib/printerSetup";
 import { useFilament } from "@/store/filament";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { useToast } from "@/store/toast";
@@ -96,7 +97,7 @@ export default function DesignInsights() {
   const { data: caps } = useQuery({
     queryKey: ["capabilities", u1Host],
     queryFn: () => printerCapabilities(u1Host),
-    enabled: doctor.status === "done", retry: false, staleTime: 60000,
+    enabled: doctor.status === "done" && isPrinterSetUp(u1Host), retry: false, staleTime: 60000,
   });
   // First-Layer Intelligence: design footprint/stability fused with the printer's
   // REAL measured bed (when reachable); design-only otherwise. Read-only.
@@ -565,7 +566,7 @@ export default function DesignInsights() {
 
               <div className="border-t border-border pt-3">
                 <button onClick={() => setShowStrategy((v) => !v)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="opacity-70">(optional)</span>
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="font-normal">(optional)</span>
                 </button>
                 {showStrategy
                   ? <div className="pt-3"><StrategyPicker filePath={file.path} mode="simple" value={strategy} onChange={setStrategy} /></div>

@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
@@ -411,7 +412,7 @@ export async function firstLayer(path: string, host?: string | null): Promise<Fi
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/first_layer`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`first_layer failed (${r.status})`);
   return r.json();
@@ -431,7 +432,7 @@ export async function toolheadFit(path: string, host?: string | null): Promise<T
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/toolhead_fit`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`toolhead_fit failed (${r.status})`);
   return r.json();
@@ -877,6 +878,8 @@ export interface PrinterDiagnostics {
 }
 
 async function printerPost<T>(path: string, body: object): Promise<T> {
+  // No address, no request: a profile that never set up a printer must not look one up.
+  requirePrinterHost((body as { host?: string | null }).host);
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -993,6 +996,7 @@ export async function printerDiscover(hosts?: string[]): Promise<PrinterProbe[]>
 }
 
 export async function printerStatus(host: string, port = 7125): Promise<PrinterStatus> {
+  requirePrinterHost(host);
   const { port: p, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${p}/printer/status`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -1470,6 +1474,8 @@ export interface WatchCandidate {
   name: string;
   size_bytes: number;
   age_seconds: number;
+  /** Exact modification time as text (nanoseconds). */
+  modified_ns?: string;
   complete: boolean;
   state: string;
   job?: {
@@ -1496,6 +1502,61 @@ export interface WatchResult {
 
 export function watchFolder(folder: string, projectPath?: string): Promise<WatchResult> {
   return post("/watch_folder", { folder, project_path: projectPath ?? "" }, "watch folder");
+}
+
+export interface JobCheckEntry {
+  role: "original" | "prepared" | "sliced";
+  path: string;
+  /** Without it the file is only fingerprinted. */
+  expected?: { size_bytes: number; sha256: string | null };
+}
+
+export interface JobCheckFile {
+  role: JobCheckEntry["role"];
+  path: string;
+  status: "recorded" | "same" | "changed" | "missing" | "unreadable" | "unverified";
+  observed?: { size_bytes: number; sha256: string | null; mtime_ns?: string };
+  reason?: string;
+}
+
+/** Read-only: size and SHA-256 of a job's files, compared with what was recorded. */
+export function jobCheck(files: JobCheckEntry[]): Promise<{ schema_version: string; files: JobCheckFile[] }> {
+  return post("/job_check", { files }, "job check");
+}
+
+export type ReceiptStatus = "unchanged" | "changed" | "missing" | "not_checked";
+export type ReceiptStage = "original" | "prepared" | "sliced";
+
+export interface ReceiptStep {
+  from: ReceiptStage;
+  to: ReceiptStage;
+  from_value: number | boolean | number[] | null;
+  to_value: number | boolean | number[] | null;
+  status: ReceiptStatus;
+  detail: string;
+  next_action: string | null;
+}
+
+export interface ReceiptFact {
+  id: "nozzles" | "layer_height" | "supports" | "prime_tower";
+  label: string;
+  status: ReceiptStatus;
+  steps: ReceiptStep[];
+}
+
+export interface SettingsReceipt {
+  schema_version: string;
+  scope: "project";
+  scope_note: string;
+  stages: Record<ReceiptStage, { state: "read" | "unreadable" | "not_provided"; reason?: string; note?: string }>;
+  facts: ReceiptFact[];
+  summary: string;
+  separate_from: string;
+}
+
+/** Read-only: the declared settings of the project, its prepared copy and the sliced G-code, side by side. */
+export function settingsReceipt(originalPath: string, preparedPath?: string | null, slicedPath?: string | null): Promise<SettingsReceipt> {
+  return post("/settings_receipt", { original_path: originalPath, prepared_path: preparedPath ?? "", sliced_path: slicedPath ?? "" }, "settings receipt");
 }
 
 export function sliceProvenance(projectPath: string, gcodePath: string): Promise<ProvenanceResult> {
@@ -2264,6 +2325,7 @@ export interface NozzleStatus {
  *  probe:true call whose (possibly slower-arriving) response replaces it via
  *  the shared accept/drop decision (R2-D2), never the other way around. */
 export function nozzleStatus(host: string, port = 7125, probe = false): Promise<NozzleStatus> {
+  if (probe && !isPrinterSetUp(host)) return Promise.reject(new PrinterNotSetUpError()); // a live read contacts the printer
   return post("/nozzles/status", { host, port, probe }, "nozzle status");
 }
 
