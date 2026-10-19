@@ -58,24 +58,24 @@ jobs:
           name: snapmaker-studio-installer
           path: rc
 
-      - name: Download the published v1.1.0 installer, verify its checksum
+      - name: Download the published v1.5.0 installer, verify its checksum
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or [string]::IsNullOrWhiteSpace($env:ImageOS) -or $env:GITHUB_REPOSITORY -ne 'DVOpenLabs/snapmaker-studio' `
           -or $env:ACT -or $env:WDAGUtilityAccount) { throw 'Disposable preflight failed.' }
-          $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v1.1.0/Snapmaker.Studio_1.1.0_x64-setup.exe"
-          $dest = "old\Snapmaker.Studio_1.1.0_x64-setup.exe"
+          $url = "https://github.com/DVOpenLabs/snapmaker-studio/releases/download/v1.5.0/Snapmaker.Studio_1.5.0_x64-setup.exe"
+          $dest = "old\Snapmaker.Studio_1.5.0_x64-setup.exe"
           New-Item -ItemType Directory -Force -Path old | Out-Null
           Invoke-WebRequest -Uri $url -OutFile $dest
           $hash = (Get-FileHash -Algorithm SHA256 $dest).Hash.ToLower()
-          $expected = "b41931774eac5586bc31746599d4a637e89eda195c620067dc1c756281b217ee"
+          $expected = "d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82"
           if ($hash -ne $expected) {
-            throw "Downloaded v1.1.0 installer hash $hash does not match the published $expected"
+            throw "Downloaded v1.5.0 installer hash $hash does not match the published $expected"
           }
-          Write-Host "v1.1.0 installer verified: $hash"
+          Write-Host "v1.5.0 installer verified: $hash"
 
-      - name: Install v1.1.0 (default path), record its registration
+      - name: Install v1.5.0 (default path), record its registration
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -90,14 +90,14 @@ jobs:
           if ((Test-Path -LiteralPath $userKey) -or (Test-Path -LiteralPath $machine64Key) -or (Test-Path -LiteralPath $machine32Key) -or (Test-Path -LiteralPath $rememberedKey) -or (Test-Path `
           -LiteralPath $manufacturerKey) -or (Test-Path -LiteralPath $defaultExe) -or (Get-Process -Name 'snapmaker-studio-desktop' -ErrorAction SilentlyContinue)) { throw `
           'Initial exact production state is not clean.' }
-          $old = (Resolve-Path "old\Snapmaker.Studio_1.1.0_x64-setup.exe").Path
+          $old = (Resolve-Path "old\Snapmaker.Studio_1.5.0_x64-setup.exe").Path
           $p = Start-Process -FilePath $old -ArgumentList '/S', '/NCRC' -PassThru -Wait
-          if ($p.ExitCode -ne 0) { throw "v1.1.0 silent install failed, exit $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0) { throw "v1.5.0 silent install failed, exit $($p.ExitCode)" }
           Start-Sleep -Seconds 2
           $beforePath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Snapmaker Studio'
-          if (-not (Test-Path -LiteralPath $beforePath)) { throw 'Exact v1.1.0 registration is absent' }
+          if (-not (Test-Path -LiteralPath $beforePath)) { throw 'Exact v1.5.0 registration is absent' }
           $beforeProps = Get-ItemProperty -LiteralPath $beforePath
-          if ($beforeProps.DisplayVersion -ne "1.1.0") { throw "v1.1.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 1.1.0" }
+          if ($beforeProps.DisplayVersion -ne "1.5.0") { throw "v1.5.0 registration says DisplayVersion=$($beforeProps.DisplayVersion), expected 1.5.0" }
           # NSIS can write InstallLocation wrapped in literal quote
           # characters (part of the string value itself, not just how it
           # displays) — trim them unconditionally so every later
@@ -112,7 +112,7 @@ jobs:
           if ($installLocation -ne (Join-Path $env:LOCALAPPDATA 'Snapmaker Studio')) { throw 'First install did not use the exact default path.' }
           "owned_uninstaller=$ownedUninstaller" >> $env:GITHUB_ENV
           "owned_uninstaller_sha256=$((Get-FileHash -LiteralPath $ownedUninstaller -Algorithm SHA256).Hash)" >> $env:GITHUB_ENV
-          Write-Host "v1.1.0 installed at $installLocation, DisplayVersion 1.1.0"
+          Write-Host "v1.5.0 installed at $installLocation, DisplayVersion 1.5.0"
           pwsh -NoProfile -File .github/scripts/ci-assert-registry.ps1 -Action Assert -InstallDir $installLocation -OutFile $env:RUNNER_TEMP\rc-before.json
           if ($LASTEXITCODE -ne 0) { throw 'Registry assertion failed.' }
 
