@@ -343,4 +343,18 @@ describe("review repair round", () => {
     expect(m.useJob.getState().dropped).toEqual([]);
     stop();
   });
+
+  it("opening a saved job's G-code by hand, after it changed, does not rewrite the recorded identity", async () => {
+    const first = await linkedJob(DISK());
+    first.stop();
+    engine({ ...DISK(), [G]: { size_bytes: 31, sha256: hex("d") } });
+    const m = await fresh();
+    const stop = m.trackJob();
+    m.useSliced.getState().setSliced(G);
+    await settle();
+    expect(m.useJob.getState().record?.sliced?.fingerprint).toEqual({ size_bytes: 30, sha256: hex("c") });
+    await m.useJob.getState().runCheck();
+    expect(m.useJob.getState().check.sliced).toBe("changed");
+    stop();
+  });
 });

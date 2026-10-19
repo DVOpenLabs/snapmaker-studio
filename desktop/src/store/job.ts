@@ -205,7 +205,7 @@ export function trackJob(): () => void {
     const before = useJob.getState().record;
     if (!s.path) {
       sliceView = null;
-      update(clearSliced(before));
+      if (linkedThisSession(before)) update(clearSliced(before));
       return;
     }
     watchSliceView(s.path);
@@ -261,6 +261,10 @@ interface SliceView {
 }
 let sliceView: SliceView | null = null;
 
+function linkedThisSession(record: JobRecord | null): boolean {
+  return !!record && useJob.getState().verified && useSession.getState().file?.path === record.original.path;
+}
+
 function watchSliceView(path: string) {
   const view: SliceView = { path, reading: false, base: null };
   sliceView = view;
@@ -281,7 +285,8 @@ async function readSliced(view: SliceView, verdict: string | undefined, sighted:
       before.size_bytes === observed.size_bytes && before.sha256 === observed.sha256;
     const replaced = sighted && !sameBytes;
     const record = useJob.getState().record;
-    if (record?.sliced && record.sliced.path === view.path) {
+    // An unverified saved job keeps its recorded identity; only a link made this session, or one adopted by restore (no fingerprint), follows the disk.
+    if (record?.sliced && record.sliced.path === view.path && (linkedThisSession(record) || !record.sliced.fingerprint)) {
       // A replacement that is another project's slice is not this job's result.
       update(replaced && verdict === "no_match" ? clearSliced(record) : withFingerprint(record, "sliced", view.path, observed));
     }
