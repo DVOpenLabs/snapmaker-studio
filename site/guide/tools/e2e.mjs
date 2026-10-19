@@ -197,7 +197,6 @@ async function run(label, viewport, theme) {
   await page.keyboard.press("Enter");
   await page.waitForTimeout(60);
   check(T("enlarging a screenshot opens the viewer"), await page.locator("#viewer[open]").count() === 1);
-  check(T("enlarged screenshot says which interface it shows"), /interface/i.test(await page.locator("#viewer .shot-iface").first().textContent().catch(() => "")));
   check(T("viewer moves focus inside"), (await page.evaluate(() => document.activeElement?.id)) === "viewer-close");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(60);

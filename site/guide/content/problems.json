@@ -73,15 +73,15 @@
   },
   {
     "id": "printer-not-found", "label": "Printer not found", "certainty": "unknown", "seen": ["check"],
-    "means": "Studio has no usable answer from a printer (none is set up, or the one at that address did not answer), so it checked your project without live printer information.",
+    "means": "Studio could not get a usable answer from the printer at that address, so it checked your project without live printer information.",
     "why": "The printer may be off, on another network, at a different address, or its network interface may be closed.",
-    "do": ["If you have not set a printer up, that is expected: connect one under **Printer** only if you want live comparisons.", "Check that the printer is on and on this network.", "Check that the address is the one the printer shows.", "On a U1, turn on Advanced Mode under **Settings → Maintenance** on the touchscreen.", "Press **Connect** again."],
+    "do": ["Check that the printer is on and on this network.", "Check that the address is the one the printer shows.", "On a U1, turn on Advanced Mode under **Settings → Maintenance** on the touchscreen.", "Press **Connect** again."],
     "dont": "It does not mean the project is incompatible: with no printer, everything that needs one is marked **Studio can’t tell**.",
-    "shot": "this-print-top", "tasks": ["connect-printer"], "keywords": ["printer not found", "unreachable", "u1.local", "advanced mode", "network", "connect", "not set up", "no printer", "could not reach"]
+    "shot": "this-print-top", "tasks": ["connect-printer"], "keywords": ["printer not found", "unreachable", "u1.local", "advanced mode", "network", "connect"]
   },
   {
     "id": "controls-off", "label": "Controls are off until the printer is connected and reachable.", "certainty": "info", "seen": ["job"],
-    "means": "Printer Hub's controls are disabled because the printer you set up cannot be reached right now. With no printer set up, the controls are not shown at all.",
+    "means": "Printer Hub's controls are disabled because no printer is connected.",
     "why": "That is deliberate: nothing can move the printer until Studio can reach it.",
     "do": ["Connect the printer in Printer Hub."],
     "dont": "Do not read it as a verdict on your project: the controls are off on purpose. If the printer should be reachable, check the connection status for an error.",

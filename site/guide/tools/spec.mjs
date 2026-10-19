@@ -14,15 +14,15 @@ export const SHOTS = [
   {
     id: "home", file: "home.png", route: "/",
     targets: {
-      "open-main": (p) => p.getByRole("button", { name: /Open a project/ }).first(),
+      "open-main": (p) => p.getByRole("button", { name: /Open a model/ }).nth(1),
       "open-sidebar": btn(/Open a model/),
       "view-toggle": (p) => p.getByText("VIEW").locator(".."),
       "help": link("Help"),
-      "local-only": T(/Local-first · your files stay on this computer/),
+      "local-only": T(/Local-only · nothing leaves your network/),
     },
   },
   {
-    id: "workspace-stl", file: "workspace-stl.png", open: "sample_cube.stl", size: { width: 1230, height: 1420 },
+    id: "workspace-stl", file: "workspace-stl.png", open: "sample_cube.stl",
     setup: waitText(/Can prepare a U1 copy/),
     targets: {
       "file": T("sample_cube.stl"), "verdict": T("Can prepare a U1 copy"), "prepare": btn(/^Prepare U1 copy/),
@@ -38,10 +38,10 @@ export const SHOTS = [
     },
   },
   {
-    id: "this-print-top", file: "this-print-top.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 1700 },
+    id: "this-print-top", file: "this-print-top.png", open: DEMO, route: "/this-print", size: { width: 1230, height: 1480 },
     setup: waitText(/Printer not found/),
     targets: {
-      "header": (p) => p.locator("#job-title"), "stage-one": T("1. Before slicing"), "placement": T("Object placement"),
+      "header": T(/^This print — /), "stage-one": T("1. Before slicing"), "placement": T("Object placement"),
       "printer-check": T("Before you slice"), "colours": T("Colours and toolheads"),
     },
   },
@@ -68,7 +68,7 @@ export const SHOTS = [
     setup: waitText(/Found \d+ invalid-value issue/),
     scroll: T(/Found \d+ invalid-value issue/),
     targets: {
-      "summary": T(/Found \d+ invalid-value issue/), "attention": T("NEEDS ATTENTION"), "do-this": (p) => p.getByText("NEEDS ATTENTION").first().locator("xpath=ancestor::*[contains(@class,'border')][1]").getByText(/^Do this:/),
+      "summary": T(/Found \d+ invalid-value issue/), "attention": T("NEEDS ATTENTION"), "do-this": T(/^Do this:/),
      
     },
   },
@@ -138,7 +138,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "after-result", file: "after-result.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 3000 },
+    id: "after-result", file: "after-result.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 1500 },
     setup: async (p, env) => {
       await p.locator("input").last().fill(env.inputs + "\\example_sliced_job.gcode");
       await p.getByRole("button", { name: "Check this job" }).click();
@@ -168,19 +168,20 @@ export const SHOTS = [
     id: "printer-hub", file: "printer-hub.png", route: "/printers",
     targets: {
       "connect-title": T("Connect to your U1"), "connect": btn("Connect"), "auto": btn("Auto-detect my U1"),
+      "controls": T("Printer controls"),
     },
   },
   {
     id: "settings-printer", file: "settings-printer.png", route: "/settings", size: { width: 1230, height: 1000 },
-    scroll: (p) => p.locator("main").getByText("Printer", { exact: true }).first(),
+    scroll: T("Your Snapmaker U1"),
     targets: {
       "address": T(/^Network name or IP\./), "confirmed": T("Confirmed control"),
-      "nozzles": T(/Set up your printer above to confirm which nozzles are fitted/),
+      "nozzles": T(/Toolhead 1 feeds slot 1/),
     },
   },
   {
     id: "settings-top", file: "settings-top.png", route: "/settings", size: { width: 1230, height: 1000 },
-    targets: { "provider": T("Materials provider"), "spoolman": btn("Spoolman"), "spoolease": btn("SpoolEase"), "notes": T(/Spool notes are kept per printer/) },
+    targets: { "provider": T("Materials provider"), "spoolman": btn("Spoolman"), "spoolease": btn("SpoolEase"), "notes": T(/Your spool notes/) },
   },
   {
     id: "ready-now", file: "ready-now.png", open: DEMO, route: "/ready-now",
@@ -260,7 +261,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "job-other-printer", file: "job-other-printer.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 2200 },
+    id: "job-other-printer", file: "job-other-printer.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 1000 },
     setup: async (p, env) => {
       await p.locator("input").last().fill(env.inputs + "\\example_other_printer.gcode");
       await p.getByRole("button", { name: "Check this job" }).click();

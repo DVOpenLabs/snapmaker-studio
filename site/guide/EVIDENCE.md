@@ -1,7 +1,5 @@
 # Evidence record — what each page rests on
 
-CANDIDATE NOTE: every browser-captured screenshot (all except the installed-app `handoff` shot, which still shows the released interface) was retaken from the unreleased candidate build (PR #112, branch `integ/phase2-ab`) and is tagged as such in the guide; the labels "This job" / "Open a project" and the explicit printer set-up come from that build, captured with `tools/capture.mjs` against synthetic fixtures, not from the published v1.5.0 interface. Table rows below that mention "This print", the old footer or a default-connected Printer Hub describe the released v1.5.0 and are kept as history. Do not publish until the matching app release.
-
 The guide describes **Snapmaker Studio v1.5.0** (tag `v1.5.0`; the interface in `main` at the time of writing is the
 same, apart from the Help / Get Started links added with this guide). Every button label in the lessons was read from the
 running interface or from the source that renders it. "UI" below means the label or behaviour was observed in the running
@@ -24,7 +22,7 @@ The table keeps the original lesson numbering because that is how the evidence w
 
 | # | Lesson | Verified in the UI | Verified in source / docs | Screenshots |
 |---|---|---|---|---|
-| 1 | Install and open | Home screen, sidebar items, `v1.5.0` in the status bar, footer "Local-first · your files stay on this computer" (the released v1.5.0 reads "Local-only · nothing leaves your network") | `docs/windows-install.md`, `docs/linux-install.md` (SHA256 check, SmartScreen, `sudo apt install ./….deb`, `snapmaker-studio-desktop`, data folder), `docs/RELEASE_METADATA.md` (hashes live there only) | `home` |
+| 1 | Install and open | Home screen, sidebar items, `v1.5.0` in the status bar, footer "Local-only · nothing leaves your network" | `docs/windows-install.md`, `docs/linux-install.md` (SHA256 check, SmartScreen, `sudo apt install ./….deb`, `snapmaker-studio-desktop`, data folder), `docs/RELEASE_METADATA.md` (hashes live there only) | `home` |
 | 2 | Open your first model | Opening `sample_cube.stl` lands on the Workspace; status line, verdict "Can prepare a U1 copy", "What's in this design" (20 × 20 × 20 mm, 0 colors, 0 parts, filament estimate); STL note "does not include creator slicer settings"; damaged 3MF → Compatibility says "Studio could not open this file as a 3MF project." | `desktop/src/routes/Cockpit.tsx` (drag-and-drop wording) | `workspace-stl` |
 | 3 | Understand "This print" | This print page: title, stages "1. Before slicing", "2. Prepared", "3. After slicing", "Nothing prepared yet.", "Pick up sliced jobs automatically", "Printer not found / STUDIO CAN'T TELL"; Advanced sidebar list | `desktop/src/lib/nav.ts` (Simple vs Advanced items, "More tools"), `routes/Cockpit.tsx` | `this-print-top`, `this-print-lower`, `nav-advanced` |
 | 4 | Read the checks | Compatibility Doctor: placement finding, "Found 5 invalid-value issue(s) and 2 warning(s).", NEEDS ATTENTION / HEADS UP labels, "Do this:" lines, "Technical detail"; This print: STUDIO CAN'T TELL / LOOKS RIGHT; the line "“Studio can't tell” means…" | `desktop/src/components/PreflightCard.tsx` wording as rendered | `compat-top`, `compat-findings` |

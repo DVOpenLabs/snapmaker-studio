@@ -18,7 +18,7 @@
       { "seen": "**Studio could not open this file as a 3MF project.** (in Compatibility)", "meaning": "Studio could not read the file as a 3MF. It may be damaged, inaccessible or not a 3MF.", "certainty": "confirmed", "action": "Download it again. The Workspace can look normal for a damaged file, so trust what Compatibility says." }
     ],
     "steps": [
-      "Press **Open a project** (the large button on Home) or **Open a model** (top of the sidebar), or drag an `.stl` or `.3mf` onto the Studio window.",
+      "Press **Open a model** (top of the sidebar, or the large button on Home), or drag an `.stl` or `.3mf` onto the Studio window.",
       "Studio opens the **Workspace** and reads the file locally.",
       "Read the status line, the verdict banner and **What's in this design**."
     ],
@@ -46,10 +46,10 @@
     "lead": "Studio compares the project with the U1 and with Snapmaker Orca's expectations. You do not need to read every line. What matters is telling a confirmed problem from a heads-up, and both from something Studio cannot know.",
     "evidence": {
       "shots": [
-        { "shot": "this-print-top", "label": "On “This job”, no printer connected" },
+        { "shot": "this-print-top", "label": "On “This print”, no printer connected" },
         { "shot": "compat-findings", "label": "On Compatibility, the findings list" }
       ],
-      "note": "Open **This job**, or **Compatibility** (Advanced sidebar; **More tools** in Simple view)."
+      "note": "Open **This print**, or **Compatibility** (Advanced sidebar; **More tools** in Simple view)."
     },
     "means": [
       { "seen": "**1 object is outside the U1's printable area.**", "meaning": "An object hangs off the plate. Studio names the object, the edge and the distance.", "certainty": "confirmed", "action": "Decide whether it is misplaced or too big (next stage)." },
@@ -59,7 +59,7 @@
       { "seen": "**LOOKS RIGHT**", "meaning": "Studio checked and found nothing wrong.", "certainty": "ok", "action": "Read any action listed on the card. It is advice, not a guarantee." }
     ],
     "steps": [
-      "Open **This job** for the whole job, or **Compatibility** for the full list (the **Open the full checks** link takes you there).",
+      "Open **This print** for the whole job, or **Compatibility** for the full list (the **Open the full checks** link takes you there).",
       "Read **Object placement** first. Studio can move this example onto the plate, and preparing a U1 copy also adjusts incompatible project settings.",
       "Skim the cards. For each, read the label, then its **Do this:** line. Open **Technical detail** only if you are curious.",
       "Make a short list: confirmed problems, things to check in Orca, things Studio cannot tell."
@@ -70,7 +70,7 @@
     ],
     "differs": [
       { "if": "The findings say “Invalid value for …”. Is my model broken?", "then": "Usually not. The text says the model may be fine and the project settings are for another printer." },
-      { "if": "Cards show “Checking…” for a while.", "then": "Studio tries to reach a printer only if you set one up. When none is set up or none answers, the cards switch to **Printer not found** and **Studio can’t tell**." },
+      { "if": "Cards show “Checking…” for a while.", "then": "Studio first tries to reach a printer. When none answers, the cards switch to **Printer not found** and **Studio can’t tell**." },
       { "if": "My findings differ from the example.", "then": "They describe your own file. The labels mean the same thing." }
     ],
     "notes": [
@@ -134,7 +134,7 @@
     "lead": "Studio does not ask you to trust the copy. It lists what it kept, what it changed, what it could not carry over and what it could not check, and you can always return to your original.",
     "evidence": {
       "shots": [{ "shot": "fidelity", "label": "The fidelity report and the change ledger" }],
-      "note": "These cards appear on the Workspace right after preparing, and on **This job** under **2. Prepared**."
+      "note": "These cards appear on the Workspace right after preparing, and on **This print** under **2. Prepared**."
     },
     "means": [
       { "seen": "**What survived preparing this copy** — 14 kept · 2 changed", "meaning": "A comparison of what Studio can identify in both files.", "certainty": "info", "action": "Expand **What Studio changed** and look at each line." },
@@ -229,8 +229,8 @@
     ],
     "examples": ["unknown-vs-confirmed"],
     "steps": [
-      "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This job**).",
-      "Optional: type the folder where Orca saves exports and press **Watch this folder**. Studio looks only while **After Slicing** or **This job** is open.",
+      "Open **After Slicing** (Advanced sidebar, **More tools**, or stage 3 of **This print**).",
+      "Optional: type the folder where Orca saves exports and press **Watch this folder**. Studio looks only while **After Slicing** or **This print** is open.",
       "Otherwise drag the `.gcode` onto the window or paste its full path under **Open the G-code your slicer produced**, then press **Check this job**.",
       "Read **Ready to send?** and then each finding. Sort them into confirmed, worth checking and unknown.",
       "Read **What the printer will actually do** and **What to load** (what each slot needs)."
@@ -240,7 +240,7 @@
       "You can say what you will do about each: re-slice, check yourself, or connect the printer."
     ],
     "differs": [
-      { "if": "Nothing appears in the watched folder.", "then": "Check that it is the folder Orca exports to, and that **After Slicing** or **This job** is open. You can always paste the file's path." },
+      { "if": "Nothing appears in the watched folder.", "then": "Check that it is the folder Orca exports to, and that **After Slicing** or **This print** is open. You can always paste the file's path." },
       { "if": "Studio says “that file does not exist”.", "then": "Studio could not find a file at that path. Copy the full path of the exported `.gcode` again." },
       { "if": "Many items say “Studio can’t check this”.", "then": "That is expected when no printer is connected. Connect the printer (see the task) or check those items yourself." }
     ],
