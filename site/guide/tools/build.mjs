@@ -159,6 +159,7 @@ function figureHtml(shotId, label) {
   const rows = items.map((h) => `<li><span class="num" aria-hidden="true">${h.n}</span><span><strong class="t">${esc(h.title)}</strong>${md(h.text)}</span></li>`).join("");
   return `<figure class="shot" data-shot="${esc(shotId)}">
   ${label ? `<p class="shot-label">${md(label)}</p>` : ""}
+  <p class="shot-iface ${s.released ? "is-released" : "is-next"}">${s.released ? "Released v1.5.0 interface" : "Next interface, not yet released"}</p>
   <p class="swipe-hint">Swipe sideways to see the whole screenshot. With JavaScript on, tap it to enlarge.</p>
   <div class="shot-scroll"><div class="shot-frame"><img src="assets/img/${esc(s.file)}" alt="${esc(s.alt)}" width="${g.width}" height="${g.height}" loading="lazy" decoding="async"></div></div>
   <figcaption>${md(s.caption)}</figcaption>
@@ -256,7 +257,7 @@ function stageHtml(s, i) {
   <div class="stage-grid">
     <div class="stage-main">
       <section class="block evidence" id="${s.page}--evidence" aria-labelledby="${s.page}-ev"><h3 id="${s.page}-ev">What Studio shows</h3>
-        <p class="evidence-note">Real screenshots from Studio v1.5.0. ${md(ev.note)}</p>
+        <p class="evidence-note">Real screenshots from the next, not yet released Studio interface (its version box still reads v1.5.0); each is labelled. ${md(ev.note)}</p>
         <button type="button" class="btn btn-sm js-only toggle-notes" aria-pressed="false">Show numbered notes on the controls</button>
         ${ev.shots.map((e) => figureHtml(e.shot, e.label)).join("")}
       </section>

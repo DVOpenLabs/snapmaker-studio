@@ -2,8 +2,8 @@
   "home": {
     "file": "home.png",
     "title": "Studio's Home screen",
-    "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This job, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a project button, and a footer reading Local-only, nothing leaves your network.",
-    "caption": "Home, as it looks the first time you open Studio (Simple view). *Candidate interface, not yet in a released version.*",
+    "alt": "Snapmaker Studio's Home screen in the dark theme. A left sidebar lists Home, This job, My designs, Ready now, Printer and Help. The main area says The Intelligence Layer for Open 3D Printing, with an Open a project button, and a footer reading Local-first, your files stay on this computer.",
+    "caption": "Home, as it looks the first time you open Studio (Simple view).",
     "hotspots": [
       {
         "key": "open-main",
@@ -97,7 +97,7 @@
     "file": "this-print-top.png",
     "title": "This job, stage 1: Before slicing",
     "alt": "Studio's This job page for demo_offplate_foreign.3mf. Stage 1, Before slicing, shows an Object placement card with a Move onto the plate button, then a Before you slice card listing checks marked Studio can't tell, then the start of a Colours and toolheads card.",
-    "caption": "**This job** for the example project, with no printer connected. *Candidate interface, not yet in a released version.*",
+    "caption": "**This job** for the example project, with no printer connected.",
     "hotspots": [
       {
         "key": "header",
@@ -130,7 +130,7 @@
     "file": "nav-advanced.png",
     "title": "Advanced view",
     "alt": "Studio with the Advanced view switched on. The sidebar now lists every tool: Dashboard, This Job, Get Started, Project Doctor, Projects, Ready now, Compatibility, After Slicing, Scale Doctor, Print Quality, Colors and Materials, Cost and Pricing Doctor, Printer Hub, Find Models and Batch Prepare.",
-    "caption": "The sidebar in **Advanced** view. *Candidate interface, not yet in a released version.*",
+    "caption": "The sidebar in **Advanced** view.",
     "hotspots": [
       {
         "key": "view-toggle",
@@ -407,7 +407,7 @@
   "printer-hub": {
     "file": "printer-hub.png",
     "title": "Printer Hub",
-    "alt": "Studio's Printer Hub with no printer connected. A Connect to your U1 card has a name field showing U1.local, a Connect button and an Auto-detect my U1 button. A Printer controls card says controls are off until the printer is connected and reachable.",
+    "alt": "Studio's Printer Hub with no printer connected. A Connect to your U1 card says Studio does not look for a printer until you connect one, and has a name field showing the hint U1.local, a Connect button and an Auto-detect my U1 button. The printer controls do not appear until a printer is connected.",
     "caption": "**Printer Hub** before a printer is connected.",
     "hotspots": [
       {
@@ -418,30 +418,25 @@
       {
         "key": "connect",
         "title": "Connect",
-        "text": "Asks the printer on your own network for its state. Nothing leaves your network."
+        "text": "Asks the printer on your own network for its state, only after you press it. Nothing is looked up before that."
       },
       {
         "key": "auto",
         "title": "Auto-detect my U1",
         "text": "Looks for a U1 on your network. If it cannot find one, type the address instead."
-      },
-      {
-        "key": "controls",
-        "title": "Printer controls",
-        "text": "Pause, Resume, Cancel print, Upload sliced gcode and Emergency stop live here. Controls stay off until the printer is connected and reachable."
       }
     ]
   },
   "settings-printer": {
     "file": "settings-printer.png",
     "title": "Settings: your printer",
-    "alt": "The Printer section of Studio's Settings. It shows Your Snapmaker U1, a network name or IP field, a Printer access section, a Confirmed control section, and a Nozzles section noting that Toolhead 1 feeds slot 1.",
+    "alt": "The Printer section of Studio's Settings. It shows Your Snapmaker U1, a network name or IP field with a Save and connect button, a note that no printer is set up yet, a Printer access section, a Confirmed control section, and a Nozzles card telling you to set up your printer first.",
     "caption": "**Settings → Printer**.",
     "hotspots": [
       {
         "key": "address",
         "title": "Network name or IP",
-        "text": "The address Printer Hub uses to show live status."
+        "text": "The address Printer Hub uses to show live status. Press **Save and connect** to set it up (**Remove** forgets it). Until you do, Studio does not look for a printer."
       },
       {
         "key": "confirmed",
@@ -451,14 +446,14 @@
       {
         "key": "nozzles",
         "title": "Nozzles",
-        "text": "If the printer does not report its nozzle sizes, you can tell Studio what is fitted. Those entries are labeled **Confirmed by you**."
+        "text": "Appears once a printer is set up. If the printer does not report its nozzle sizes, you can tell Studio what is fitted. Those entries are labeled **Confirmed by you**."
       }
     ]
   },
   "settings-top": {
     "file": "settings-top.png",
     "title": "Settings: materials provider",
-    "alt": "The top of Studio's Settings. A Materials provider section offers None, Spoolman, Bambuddy and SpoolEase, followed by a Your spool notes section for the printer.",
+    "alt": "The top of Studio's Settings. A Materials provider section offers None, Spoolman, Bambuddy and SpoolEase, followed by a note that spool notes are kept per printer and appear once a printer is set up.",
     "caption": "**Settings → Materials provider** and spool notes.",
     "hotspots": [
       {
@@ -478,8 +473,8 @@
       },
       {
         "key": "notes",
-        "title": "Your spool notes",
-        "text": "What you know is loaded, slot by slot. When the printer reports what is loaded, Studio trusts the printer over your notes and the provider."
+        "title": "Spool notes",
+        "text": "Kept per printer, so they appear once a printer is set up in Settings. They hold what you know is loaded, slot by slot. When the printer reports what is loaded, Studio trusts the printer over your notes and the provider."
       }
     ]
   },
@@ -688,6 +683,7 @@
     ]
   },
   "handoff": {
+    "released": true,
     "file": "handoff.png",
     "title": "A prepared copy, ready for Snapmaker Orca",
     "alt": "Studio's Workspace in the installed app after preparing. A heading says U1 copy created, review setup before slicing, and that the original file is not modified. The new file name is shown, then a What now section with two options and a blue Open in Snapmaker Orca button, followed by a Next line telling you to slice in Snapmaker Orca, export the G-code and return to Printer Hub.",
@@ -755,7 +751,7 @@
     "file": "job-other-printer.png",
     "title": "An example job whose header names a different printer",
     "alt": "Studio's After slicing page checking an example G-code file that names a different printer. A Ready to send card says nothing blocks the job but two things are worth settling. The first finding, Sliced for a different printer, is marked worth settling first and says to re-slice the model in Snapmaker Orca with a U1 profile. Below it, other findings are marked Studio can't check this.",
-    "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected. *Candidate interface, not yet in a released version.*",
+    "caption": "An example job whose header names a Bambu Lab printer, checked with no printer connected.",
     "hotspots": [
       {
         "key": "ready",

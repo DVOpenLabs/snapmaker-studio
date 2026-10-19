@@ -22,7 +22,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "workspace-stl", file: "workspace-stl.png", open: "sample_cube.stl",
+    id: "workspace-stl", file: "workspace-stl.png", open: "sample_cube.stl", size: { width: 1230, height: 1420 },
     setup: waitText(/Can prepare a U1 copy/),
     targets: {
       "file": T("sample_cube.stl"), "verdict": T("Can prepare a U1 copy"), "prepare": btn(/^Prepare U1 copy/),
@@ -68,7 +68,7 @@ export const SHOTS = [
     setup: waitText(/Found \d+ invalid-value issue/),
     scroll: T(/Found \d+ invalid-value issue/),
     targets: {
-      "summary": T(/Found \d+ invalid-value issue/), "attention": T("NEEDS ATTENTION"), "do-this": T(/^Do this:/),
+      "summary": T(/Found \d+ invalid-value issue/), "attention": T("NEEDS ATTENTION"), "do-this": (p) => p.getByText("NEEDS ATTENTION").first().locator("xpath=ancestor::*[contains(@class,'border')][1]").getByText(/^Do this:/),
      
     },
   },
@@ -138,7 +138,7 @@ export const SHOTS = [
     },
   },
   {
-    id: "after-result", file: "after-result.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 1500 },
+    id: "after-result", file: "after-result.png", open: DEMO, route: "/after-slicing", size: { width: 1230, height: 3000 },
     setup: async (p, env) => {
       await p.locator("input").last().fill(env.inputs + "\\example_sliced_job.gcode");
       await p.getByRole("button", { name: "Check this job" }).click();
@@ -168,20 +168,19 @@ export const SHOTS = [
     id: "printer-hub", file: "printer-hub.png", route: "/printers",
     targets: {
       "connect-title": T("Connect to your U1"), "connect": btn("Connect"), "auto": btn("Auto-detect my U1"),
-      "controls": T("Printer controls"),
     },
   },
   {
     id: "settings-printer", file: "settings-printer.png", route: "/settings", size: { width: 1230, height: 1000 },
-    scroll: T("Your Snapmaker U1"),
+    scroll: (p) => p.locator("main").getByText("Printer", { exact: true }).first(),
     targets: {
       "address": T(/^Network name or IP\./), "confirmed": T("Confirmed control"),
-      "nozzles": T(/Toolhead 1 feeds slot 1/),
+      "nozzles": T(/Set up your printer above to confirm which nozzles are fitted/),
     },
   },
   {
     id: "settings-top", file: "settings-top.png", route: "/settings", size: { width: 1230, height: 1000 },
-    targets: { "provider": T("Materials provider"), "spoolman": btn("Spoolman"), "spoolease": btn("SpoolEase"), "notes": T(/Your spool notes/) },
+    targets: { "provider": T("Materials provider"), "spoolman": btn("Spoolman"), "spoolease": btn("SpoolEase"), "notes": T(/Spool notes are kept per printer/) },
   },
   {
     id: "ready-now", file: "ready-now.png", open: DEMO, route: "/ready-now",

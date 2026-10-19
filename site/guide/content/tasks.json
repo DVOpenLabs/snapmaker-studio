@@ -20,7 +20,7 @@
         "**Windows:** run the installer. It is not code-signed yet, so SmartScreen may say **Unknown publisher**. Once the hash matches, choose **More info → Run anyway**, then start **Snapmaker Studio** from the Start menu. More: [Windows install guide](@windows_install).",
         "**Linux:** `sudo apt install ./<the .deb file name exactly as shown on the Releases page>`, then start **Snapmaker Studio** from your application menu or run `snapmaker-studio-desktop`. More: [Linux install guide](@linux_install)."
       ],
-      "success": ["Studio opens on **Home**, with the version **v1.5.0** in the status bar and **Local-only · nothing leaves your network** in the footer.", "There is nothing to sign in to."],
+      "success": ["Studio opens on **Home**, with the version **v1.5.0** in the status bar and **Local-first · your files stay on this computer** in the footer (the released v1.5.0 reads *Local-only · nothing leaves your network*).", "There is nothing to sign in to."],
       "differs": [
         { "if": "Windows says “Windows protected your PC”.", "then": "This is expected for an installer that is not code-signed yet. Continue only if the SHA256 matches and you downloaded the file from Studio's Releases page." },
         { "if": "The hash does not match.", "then": "Do not run the installer. Delete it and download it again from Studio's Releases page." },
@@ -75,7 +75,7 @@
       "success": ["Three stages in the order a job happens. With no printer connected, checks that need one say **Studio can’t tell**."],
       "differs": [
         { "if": "The page says “Open a model to start”.", "then": "No project is open. Press **Open a model**, or open one from **My designs**." },
-        { "if": "Cards show “Checking…” for a while.", "then": "Studio is trying to reach a printer. When none answers, the cards switch to **Printer not found** and **Studio can’t tell**." }
+        { "if": "Cards show “Checking…” for a while.", "then": "Studio is trying to reach a printer you set up. When none is set up or none answers, the cards switch to **Printer not found** and **Studio can’t tell**." }
       ],
       "notes": [], "shot": "this-print-top",
       "problems": ["studio-cant-tell"], "keywords": ["this job", "this print", "stages", "overview", "job", "cockpit", "before slicing", "prepared"]
@@ -264,8 +264,8 @@
       "prereq": ["Your U1 is on and connected to the same network as this computer.", "On the U1's touchscreen, Advanced Mode is on under **Settings → Maintenance**; Studio's own message says the printer's network interface opens only after you turn Advanced Mode on."],
       "steps": [
         "Open **Printer** (Simple) or **Printer Hub** (Advanced).",
-        "Under **Connect to your U1**, type the printer's network name (the hint in the field is `U1.local`) or IP address and press **Connect**, or press **Auto-detect my U1**.",
-        "Connecting saves the address. You can also change it under **Settings → Printer**, in the field whose hint reads *Network name or IP*.",
+        "Until you do this, Studio does not look for a printer. Under **Connect to your U1**, type the printer's network name (the hint in the field is `U1.local`) or IP address and press **Connect**, or press **Auto-detect my U1**.",
+        "Connecting saves the address. You can also set, change or remove it under **Settings → Printer**: type it in the *Network name or IP* field and press **Save and connect** (or **Remove**). A profile that already had a saved address keeps it.",
         "Read what Printer Hub reports. Anything the printer does not report is marked as such, for example **Nozzle sizes: not reported**."
       ],
       "success": ["When the printer answers, Printer Hub shows its live status and the controls become available. Otherwise: *Controls are off until the printer is connected and reachable.*"],

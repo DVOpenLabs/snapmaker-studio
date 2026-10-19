@@ -353,3 +353,6 @@ html:not(.js) .searchbar { display: none; }
 @media (max-width: 960px) { .map-fold > summary { display: block; } .map-fold[open] > summary { margin-bottom: 10px; } }
 .home .doors { margin-top: 24px; }
 .wfmap.compact .wf-lane-orca span, .wfmap.compact .wf-lane-printer span { left: 12px; right: auto; }
+
+.shot-iface { display: inline-block; margin: 0 0 8px; padding: 2px 9px; border: 1px solid var(--border, currentColor); border-radius: 999px; font-size: 0.8rem; color: var(--muted); }
+.shot-iface.is-next { border-style: dashed; }

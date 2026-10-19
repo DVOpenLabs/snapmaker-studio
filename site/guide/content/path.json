@@ -70,7 +70,7 @@
     ],
     "differs": [
       { "if": "The findings say “Invalid value for …”. Is my model broken?", "then": "Usually not. The text says the model may be fine and the project settings are for another printer." },
-      { "if": "Cards show “Checking…” for a while.", "then": "Studio first tries to reach a printer. When none answers, the cards switch to **Printer not found** and **Studio can’t tell**." },
+      { "if": "Cards show “Checking…” for a while.", "then": "Studio tries to reach a printer only if you set one up. When none is set up or none answers, the cards switch to **Printer not found** and **Studio can’t tell**." },
       { "if": "My findings differ from the example.", "then": "They describe your own file. The labels mean the same thing." }
     ],
     "notes": [
