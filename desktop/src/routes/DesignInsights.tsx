@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
+import { rawSizeQualifier } from "@/components/GeometryNotice";
+import { BedFitNotChecked, FirstLayerNotChecked, PredictionNotEstimated } from "@/components/SizeNotChecked";
 import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, predictSuccess as apiPredictSuccess, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
 import { isPrinterSetUp } from "@/lib/printerSetup";
@@ -286,6 +288,9 @@ export default function DesignInsights() {
           {/* Studio Intelligence Report — the one-screen synthesis (the product) */}
           <IntelligenceReport filePath={file.path} host={u1Host} />
 
+          {/* will it print? — no estimate when the model's physical size is not established */}
+          <PredictionNotEstimated predict={predict} />
+
           {/* will it print? — pre-print success prediction */}
           {predict?.available && predict.likelihood != null && (
             <Card>
@@ -310,6 +315,8 @@ export default function DesignInsights() {
               </CardContent>
             </Card>
           )}
+
+          <BedFitNotChecked bed={bed} />
 
           {/* out-of-bounds doctor — only when there's something to warn about */}
           {bed?.available && bed.overall_level && bed.overall_level !== "ok" && (
@@ -385,7 +392,7 @@ export default function DesignInsights() {
               <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> What's in this design</div>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-center gap-2"><FileBox className="h-4 w-4 text-muted-foreground" /> {familyLabel(d.family)}</li>
-                {dims && <li className="flex items-center gap-2"><Ruler className="h-4 w-4 text-muted-foreground" /> {dims.x} × {dims.y} × {dims.z} mm</li>}
+                {dims && <li className="flex items-center gap-2"><Ruler className="h-4 w-4 text-muted-foreground" /> {dims.x} × {dims.y} × {dims.z} mm{rawSizeQualifier(ins?.geometry_basis) && <span className="text-xs text-muted-foreground" data-testid="raw-size-note" title={ins?.geometry_basis?.summary}> ({rawSizeQualifier(ins?.geometry_basis)})</span>}</li>}
                 {colorsLabel(d.filament_count) && <li className="flex items-center gap-2"><Palette className="h-4 w-4 text-muted-foreground" /> {colorsLabel(d.filament_count)}</li>}
                 {partsLabel(d.object_count) && <li className="flex items-center gap-2"><Layers className="h-4 w-4 text-muted-foreground" /> {partsLabel(d.object_count)}{(ins?.plates ?? 0) > 1 ? ` · ${ins!.plates} plates` : ""}</li>}
                 {d.painted && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-ready" /> painted areas kept</li>}
@@ -438,6 +445,8 @@ export default function DesignInsights() {
 
           {/* Business Intelligence Layer — Cost / Pricing / Profit Doctors */}
           <BusinessDoctors filePath={file.path} host={u1Host} />
+
+          <FirstLayerNotChecked report={firstLayer} />
 
           {/* First-Layer Intelligence — design footprint × the printer's real bed */}
           {firstLayer?.available && firstLayer.findings && (

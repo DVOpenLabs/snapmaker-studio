@@ -14,6 +14,7 @@ import re
 from .geometry import load_mesh, build_item_dims
 from .cost_estimate import estimate as cost_estimate
 from .container import ThreeMF
+from . import geometry_basis
 
 _MODEL_SETTINGS = "Metadata/model_settings.config"
 
@@ -98,7 +99,11 @@ def preview(path: str, scale_percent: float) -> dict:
     cost_delta = None if cost_amt is None else round(cost_amt * (1 if delta_grams >= 0 else -1), 2)
 
     bed = _bed()
-    fits = _fits(scaled, bed)
+    basis = geometry_basis.assess(path)
+    established = geometry_basis.is_established(basis)
+    # Fit is judged only when the file's numbers are the physical size; otherwise it is unknown,
+    # not "yes" and not "no".
+    fits = _fits(scaled, bed) if established else None
 
     risks = [
         "Fit by SIZE only — Snapmaker Orca can still reject a scale because where the object "
@@ -107,13 +112,18 @@ def preview(path: str, scale_percent: float) -> dict:
         "check fit-critical features after scaling.",
         "Thin-wall safety check is not available here — verify wall thickness after scaling (approximate).",
     ]
-    if not fits:
+    if not established:
+        risks.insert(0, f"Not checked: {basis['summary']} The sizes below are the numbers stored in the "
+                        "file scaled by the percentage, not a confirmed physical size, and bed fit is not judged.")
+    elif not fits:
         risks.insert(0, f"Scaled size exceeds the {bed['name']} build volume "
                         f"({bed['x']:.0f}x{bed['y']:.0f}x{bed['z']:.0f} mm).")
     if s < 1.0:
         risks.append("Scaling down can make small text/details too fine to print cleanly.")
 
-    if not fits:
+    if not established:
+        recommendation = "not checked"
+    elif not fits:
         recommendation = "not recommended"
     elif abs(s - 1.0) > 1e-9:
         recommendation = "caution"
@@ -139,6 +149,7 @@ def preview(path: str, scale_percent: float) -> dict:
         "risks": risks,
         "recommendation": recommendation,
         "explanation": explanation,
+        **({} if established else geometry_basis.not_checked(basis, "the Scale Doctor size preview")),
     }
 
 
@@ -182,6 +193,12 @@ def scale_options(path: str, printer: str = "snapmaker_u1", margin_mm: float = 5
     if not raw:
         return {"schema_version": SCHEMA_VERSION, "available": False,
                 "reason": "could not read placed object dimensions from this file"}
+
+    basis = geometry_basis.assess(path)
+    if not geometry_basis.is_established(basis):
+        # placed sizes exist but are not trusted: the unit or a transform is not handled
+        return {"schema_version": SCHEMA_VERSION, "available": False,
+                **geometry_basis.not_checked(basis, "the Scale Doctor size preview")}
 
     pmap = _plate_map(path)
     # Group build items by plate and UNION their footprints, so a plate holding

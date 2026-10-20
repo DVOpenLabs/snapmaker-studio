@@ -10,6 +10,7 @@ from pathlib import Path
 from .doctor import diagnose_path, READY
 from .container import ThreeMF
 from .config_io import load_project_settings
+from . import geometry_basis
 
 SCHEMA_VERSION = "insights/1"
 SETTINGS = "Metadata/project_settings.config"
@@ -127,4 +128,7 @@ def project_info(path: str) -> dict:
         "triangles": triangles,
         "complexity": _complexity(triangles),
         "issues": [*(diag.get("validation_issues") or []), *(diag.get("compatibility_issues") or [])],
+        # `dimensions_mm` is the size stored in the file's mesh. Whether that is the physical
+        # size is `geometry_basis`'s call; size-dependent verdicts consume it, not the bare numbers.
+        "geometry_basis": geometry_basis.assess(path),
     }

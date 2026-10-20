@@ -16,6 +16,7 @@ from .intelligence import project_info
 from .container import ThreeMF
 from .config_io import load_project_settings
 from .collision import assess_spacing
+from . import geometry_basis
 
 SCHEMA_VERSION = "report/1"
 SETTINGS = "Metadata/project_settings.config"
@@ -49,7 +50,14 @@ def readiness_report(path: str) -> dict:
         ("Studio cannot prepare a copy of this file yet; review it in Snapmaker Orca"
          if diag.get("prepare_blocked") else "Prepare a U1 copy and review in Orca")
         if verdict != READY else "Review in Orca before slicing"))
-    if dims:
+    basis = info.get("geometry_basis")
+    if dims and not geometry_basis.is_established(basis):
+        # A "fits" or "too big" built on numbers that are not the physical size would be a
+        # guess; the check is recorded as not checked, and a not-checked check blocks a green
+        # "ready" below (ready needs every check to pass).
+        checks.append({"name": "Fits the print bed", "status": "not_checked",
+                       "detail": f"Not checked. {basis['summary']}"})
+    elif dims:
         fits = dims["x"] <= U1_BUILD[0] and dims["y"] <= U1_BUILD[1] and dims["z"] <= U1_BUILD[2]
         checks.append(_check(
             "Fits the print bed",
@@ -116,7 +124,9 @@ def readiness_report(path: str) -> dict:
                     f"{md['overhang']['overhang_pct']}% steep overhangs — supports will likely be needed (enable in Orca)"))
             if md["stability"]["tip_risk"]:
                 checks.append(_check("Stability", False,
-                    "Tall/narrow base — may tip or knock off the bed; add a brim or reorient"))
+                    "Tall/narrow base — may tip or knock off the bed; add a brim or reorient"
+                    + ("" if geometry_basis.is_established(basis)
+                       else " (measured on the file's own mesh, not its placed size)")))
             design_findings = md.get("findings", [])
             warnings.extend(f["text"] for f in design_findings if f["level"] in ("warn", "risk"))
     except Exception:
@@ -185,4 +195,5 @@ def readiness_report(path: str) -> dict:
         "layout_messages": layout["messages"] if layout else [],
         "collision_status": spacing["status"],
         "collision_messages": spacing["messages"],
+        "geometry_basis": basis,
     }

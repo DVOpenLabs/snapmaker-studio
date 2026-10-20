@@ -343,6 +343,20 @@ export async function batchStatus(jobId: string): Promise<BatchJobStatus> {
   return r.json();
 }
 
+/** Whether a file's mesh numbers are the model's physical size (unit mm, placement keeps extents). */
+export interface GeometryBasis {
+  schema_version: string;
+  established: boolean;
+  reasons: string[];
+  summary: string;
+  withheld: string[];
+  unchecked_objects?: string[];
+  objects_total?: number | null;
+  unit?: { unit: string | null; source: string };
+}
+/** Shape every surface adds when it withholds a size-dependent verdict. */
+export interface NotChecked { status?: "not_checked"; reason?: string; scope?: string; geometry_basis?: GeometryBasis }
+
 export interface Insights {
   schema_version: string;
   name: string;
@@ -362,6 +376,7 @@ export interface Insights {
   triangles: number | null;
   complexity: string | null;
   issues: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function insights(path: string): Promise<Insights> {
@@ -381,11 +396,12 @@ export interface ReadinessReport {
   verdict: string | null;
   readiness_score: number | null;
   ready: boolean;
-  checks: { name: string; status: "pass" | "warn" | "fail"; detail: string }[];
+  checks: { name: string; status: "pass" | "warn" | "fail" | "not_checked"; detail: string }[];
   preserved: string[];
   changes: string[];
   at_risk: string[];
   warnings: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function report(path: string): Promise<ReadinessReport> {
@@ -399,7 +415,7 @@ export async function report(path: string): Promise<ReadinessReport> {
   return r.json();
 }
 
-export interface FirstLayerReport {
+export interface FirstLayerReport extends NotChecked {
   available: boolean;
   bed_aware?: boolean;
   overall_level?: "ok" | "warn" | "risk";
@@ -644,7 +660,7 @@ export async function mmDoctor(path: string, host?: string | null): Promise<MMDo
 }
 
 // Bed-Fit / Out-of-Bounds Doctor: does it fit the U1 bed, and if not, why + fix.
-export interface BedFit {
+export interface BedFit extends NotChecked {
   available: boolean;
   bed_known?: boolean;
   bed_source?: string;
@@ -667,10 +683,11 @@ export async function bedFit(path: string, host?: string | null): Promise<BedFit
 }
 
 // Print Success Prediction: pre-print "will it print?" odds from existing signals.
-export interface SuccessPrediction {
+export interface SuccessPrediction extends NotChecked {
   available: boolean;
-  likelihood?: number;
-  band?: "likely" | "uncertain" | "risky";
+  /** null when Studio makes no estimate (the model's physical size is not established). */
+  likelihood?: number | null;
+  band?: "likely" | "uncertain" | "risky" | "unknown";
   factors?: string[];
   verdict?: string;
   reason?: string;
@@ -792,6 +809,7 @@ export interface MeshReport {
   surface_area_mm2?: number;
   material_estimate_g?: number | null;
   findings?: { level: "ok" | "warn" | "risk"; text: string }[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function mesh(path: string): Promise<MeshReport> {
@@ -1090,17 +1108,18 @@ export function firstLayerCheck(symptom: string): Promise<FirstLayerResponse> {
 }
 
 // ---- Scale Doctor (analysis-only preview) ----
-export interface ScaleResult {
+export interface ScaleResult extends NotChecked {
   available: boolean;
   reason?: string;
   scale_percent?: number;
   original_dimensions?: { x: number; y: number; z: number };
   scaled_dimensions?: { x: number; y: number; z: number };
-  fits_build_volume?: boolean;
+  /** null = not checked (the model's physical size is not established). */
+  fits_build_volume?: boolean | null;
   estimated_material_delta?: { grams: number; basis: string };
   estimated_cost_delta?: { amount: number | null; basis: string };
   risks?: string[];
-  recommendation?: "likely safe" | "caution" | "not recommended";
+  recommendation?: "likely safe" | "caution" | "not recommended" | "not checked";
   explanation?: string;
 }
 export function scalePreview(path: string, scalePercent: number): Promise<ScaleResult> {
@@ -1122,7 +1141,7 @@ export interface ScaleOption {
   dimensions_by_part: ScalePartDims[];
   explanation: string;
 }
-export interface ScaleOptionsResult {
+export interface ScaleOptionsResult extends NotChecked {
   available: boolean;
   schema_version?: number;
   reason?: string;
