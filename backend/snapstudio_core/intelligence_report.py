@@ -103,6 +103,12 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                 worst = lvl
         studio_score = _LEVEL_SCORE[worst] if any([avail["bed_fit"], avail["mm"], avail["first_layer"]]) else None
 
+    # The score blends the print-success estimate; when a Doctor withheld its verdict because the
+    # physical size is not established, the headline must not be rebuilt from what is left
+    # (printer health alone, or the multi-material level) and shown as a Studio score.
+    if any(d and d.get("status") == "not_checked" for d in (predict, bed_fit, first_layer)):
+        studio_score = None
+
     # --- money headline ---
     money = cost or {}
     cost_v = money.get("true_cost") if avail["cost"] else None

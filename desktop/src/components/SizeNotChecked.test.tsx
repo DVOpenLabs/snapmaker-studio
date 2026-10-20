@@ -68,6 +68,13 @@ describe("Design Health does not judge the bed or vouch for a raw size", () => {
     expect(text).toContain("not a confirmed physical size");               // stability is qualified
   });
 
+  it("the raw-size qualifier also applies to a tip-risk stability finding", () => {
+    const tippy: MeshReport = { ...MESH, geometry_basis: NOT_ESTABLISHED,
+      stability: { tip_risk: true, com_over_base: false, margin_mm: 0, height_mm: 30, aspect: 6 } };
+    render(<DesignHealth mesh={tippy} dims={DIMS} mode="simple" />);
+    expect(document.body.textContent).toMatch(/Tall and narrow[^]*not a confirmed physical size/);
+  });
+
   it("control: established size keeps the normal Fits verdict", () => {
     render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={DIMS} mode="simple" />);
     const text = document.body.textContent ?? "";

@@ -25,6 +25,7 @@ with the millimetre assumption Studio already makes.
 """
 from __future__ import annotations
 
+import copy
 import math
 import os
 
@@ -36,7 +37,10 @@ SCHEMA_VERSION = "geometry-basis/1"
 _CORE = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
 _PROD = "{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}"
 _ROOT_PART = "3D/3dmodel.model"
-_TOL = 1e-3
+# Axis-extent preservation tolerates serialisation noise only: 1e-5 is 0.003 mm on a 270 mm bed.
+# A real scale such as 1.0009 (0.24 mm on 270) is a scale, not noise.
+_TOL = 1e-5
+_ORTHO_TOL = 1e-3          # only picks the label rotated vs scaled; both are "not established"
 _MAX_VISITS = 100_000
 _MAX_DEPTH = 64
 
@@ -86,7 +90,7 @@ def _classify(m) -> str | None:
         return None
     # orthonormal rows/columns with |det| == 1: a rotation (possibly with a mirror)
     gram = [sum(m[3 * i + k] * m[3 * j + k] for k in range(3)) for i in range(3) for j in range(3)]
-    ident = all(abs(gram[3 * i + j] - (1.0 if i == j else 0.0)) <= _TOL for i in range(3) for j in range(3))
+    ident = all(abs(gram[3 * i + j] - (1.0 if i == j else 0.0)) <= _ORTHO_TOL for i in range(3) for j in range(3))
     if ident:
         return "transform_rotated"
     return "transform_scaled"
@@ -181,22 +185,17 @@ def _compute(path: str) -> dict:
     visits = [0]
     unchecked: dict = {}
 
-    def locate(oid, prefer):
-        if prefer and prefer in index and oid in index[prefer]:
-            return prefer
-        if prefer is None:
-            return None
-        for name, objs in index.items():
-            if oid in objs:
-                return name
-        return None
+    def locate(oid, part):
+        # Object ids are scoped to their part: an explicit part reference must resolve in that
+        # part, never in some other part that happens to reuse the id.
+        return part if (part in index and oid in index[part]) else None
 
     def walk(oid, prefer, matrix, chain, item_id):
         visits[0] += 1
         if visits[0] > _MAX_VISITS or len(chain) > _MAX_DEPTH:
             unchecked.setdefault(item_id, set()).add("structure_unresolved")
             return
-        where = locate(oid, prefer) or locate(oid, _ROOT_PART)
+        where = locate(oid, prefer)
         if where is None or (where, oid) in chain:
             unchecked.setdefault(item_id, set()).add("structure_unresolved")
             return
@@ -244,7 +243,7 @@ def assess(path: str) -> dict:
     """The geometry basis for `path`. Cached per file version; never raises."""
     key = _fingerprint(path)
     if key is not None and key in _cache:
-        return _cache[key]
+        return copy.deepcopy(_cache[key])
     try:
         out = _compute(path)
     except Exception:  # noqa: BLE001 - a crash must not read as "established"
@@ -253,7 +252,7 @@ def assess(path: str) -> dict:
         if len(_cache) > 64:
             _cache.clear()
         _cache[key] = out
-    return out
+    return copy.deepcopy(out)
 
 
 def is_established(basis: dict | None) -> bool:

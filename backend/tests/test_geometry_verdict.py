@@ -42,8 +42,10 @@ _RELS = ('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlforma
          'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
 
 
-def _mesh_xml(oid: int) -> str:
-    vs = "".join(f'<vertex x="{x}" y="{y}" z="{z}"/>' for x, y, z in _V)
+def _mesh_xml(oid: int, yxz: bool = False) -> str:
+    # yxz: attribute order y,x,z, valid XML that Studio's raw size scan cannot read (dimensions None)
+    vs = "".join((f'<vertex y="{y}" x="{x}" z="{z}"/>' if yxz else f'<vertex x="{x}" y="{y}" z="{z}"/>')
+                 for x, y, z in _V)
     ts = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in _F)
     return f'<object id="{oid}" type="model"><mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh></object>'
 
@@ -63,11 +65,11 @@ def _write(path, parts: dict) -> str:
     return str(path)
 
 
-def make(tmp_path, name, *, unit="millimeter", items=(("1", _IDENT),), extra_objects="", sub=None):
+def make(tmp_path, name, *, unit="millimeter", items=(("1", _IDENT),), extra_objects="", sub=None, yxz=False):
     """items: [(objectid, transform-or-None)]. Object 1 is the box; `extra_objects` adds more resources."""
     build = "".join(f'<item objectid="{oid}"' + (f' transform="{tf}"' if tf is not None else "") + "/>"
                     for oid, tf in items)
-    parts = {"3D/3dmodel.model": _model(_mesh_xml(1) + extra_objects, build, unit)}
+    parts = {"3D/3dmodel.model": _model(_mesh_xml(1, yxz) + extra_objects, build, unit)}
     for k, v in (sub or {}).items():
         parts[k] = v
     return _write(tmp_path / f"{name}.3mf", parts)
@@ -300,3 +302,80 @@ def test_basis_is_cached_per_file_version_and_refreshes_when_the_file_changes(tm
     assert geometry_basis.assess(p)["established"] is True
     make(tmp_path, "cache", unit="inch")                              # rewrite the same path
     assert geometry_basis.assess(p)["established"] is False
+
+
+# --- review blockers: boundaries that must not slip through ----------------------------------
+
+
+def test_readiness_is_blocked_even_when_raw_dimensions_are_unavailable(tmp_path):
+    """Attribute order y,x,z is valid XML but the raw size scan cannot read it: no dimensions.
+    An unestablished basis must still produce a not-checked check and no green ready."""
+    p = make(tmp_path, "inchyxz", unit="inch", yxz=True)
+    assert service.insights(p)["dimensions_mm"] is None
+    rep = readiness_report(p)
+    fit = next(c for c in rep["checks"] if c["name"] == "Fits the print bed")
+    assert fit["status"] == "not_checked"
+    assert rep["ready"] is False and rep["print_setup_ready"] is False
+
+
+@pytest.mark.parametrize("tf", [
+    "1.0009 0 0 0 1.0009 0 0 0 1.0009 0 0 0",            # a real scale that looks like identity
+    "1 0 0 0 1 0 0 0 1.0009 0 0 0",                      # one axis only
+    "1 0.0005 0 0 1 0 0 0 1 0 0 0",                      # a tiny shear
+])
+def test_near_identity_scales_and_shears_are_not_noise(tmp_path, tf):
+    p = make(tmp_path, "near", items=(("1", tf),))
+    assert geometry_basis.assess(p)["established"] is False
+    assert service.bed_fit(p)["status"] == "not_checked"
+    assert service.scale_preview(p, 100)["fits_build_volume"] is None
+
+
+def test_serialisation_noise_in_an_identity_is_still_identity(tmp_path):
+    p = make(tmp_path, "noise", items=(("1", "1.0000001 0 0 0 0.9999999 0 0 0 1 0 0 0"),))
+    assert geometry_basis.assess(p)["established"] is True
+
+
+def test_component_part_and_object_references_are_resolved_strictly(tmp_path):
+    """The explicit part is missing, but ANOTHER part has an object with the same id: not a match."""
+    other = {"3D/Objects/other.model": _model(_mesh_xml(1), "", "millimeter")}
+    root = ('<object id="2" type="model"><components>'
+            '<component p:path="/3D/missing.model" objectid="1"/></components></object>')
+    parts = {"3D/3dmodel.model": _model(_mesh_xml(1) + root, '<item objectid="2"/>', "millimeter")}
+    parts.update(other)
+    basis = geometry_basis.assess(_write(tmp_path / "ref1.3mf", parts))
+    assert basis["established"] is False and basis["reasons"] == ["structure_unresolved"]
+
+    # a component with no path refers to the SAME part; an object that only another part has is unresolved
+    root2 = ('<object id="2" type="model"><components><component objectid="7"/></components></object>')
+    sub = {"3D/Objects/other.model": _model(_mesh_xml(7), "", "millimeter")}
+    parts2 = {"3D/3dmodel.model": _model(root2, '<item objectid="2"/>', "millimeter")}
+    parts2.update(sub)
+    basis2 = geometry_basis.assess(_write(tmp_path / "ref2.3mf", parts2))
+    assert basis2["reasons"] == ["structure_unresolved"]
+
+
+def test_basis_returned_to_callers_cannot_corrupt_the_cache(tmp_path):
+    p = make(tmp_path, "mut", unit="inch")
+    a = geometry_basis.assess(p)
+    a["established"] = True
+    a["reasons"].clear()
+    assert geometry_basis.assess(p)["established"] is False
+
+
+def test_headline_score_is_withheld_when_any_doctor_withheld_its_verdict(tmp_path):
+    """Before: health-only or the multi-material level alone produced a green 100/100 / 88."""
+    rep = service.intelligence_report(make(tmp_path, "inchscore", unit="inch"))
+    assert rep["studio_score"] is None
+    out = intelligence_report.build(
+        predict={"available": True, "status": "not_checked", "likelihood": None, "band": "unknown",
+                 "reason": "R."},
+        bed_fit={"available": False, "status": "not_checked", "reason": "R."},
+        health={"available": True, "score": 88, "grade": "B", "verdict": "ok", "drivers": []})
+    assert out["studio_score"] is None
+    ok = intelligence_report.build(predict={"available": True, "likelihood": 90, "band": "likely", "factors": []})
+    assert ok["studio_score"] == 90                                  # control: ordinary reports keep a score
+
+
+def test_canonical_view_carries_the_basis_beside_the_raw_dimensions(tmp_path):
+    c = service.canonical(make(tmp_path, "canon", unit="inch"))
+    assert c["dimensions_mm"] and c["geometry_basis"]["established"] is False

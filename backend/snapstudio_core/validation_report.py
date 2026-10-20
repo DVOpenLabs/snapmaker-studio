@@ -51,7 +51,7 @@ def readiness_report(path: str) -> dict:
          if diag.get("prepare_blocked") else "Prepare a U1 copy and review in Orca")
         if verdict != READY else "Review in Orca before slicing"))
     basis = info.get("geometry_basis")
-    if dims and not geometry_basis.is_established(basis):
+    if not geometry_basis.is_established(basis):
         # A "fits" or "too big" built on numbers that are not the physical size would be a
         # guess; the check is recorded as not checked, and a not-checked check blocks a green
         # "ready" below (ready needs every check to pass).

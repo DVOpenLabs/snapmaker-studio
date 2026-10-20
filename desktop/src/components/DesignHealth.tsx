@@ -55,9 +55,9 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
     const tip = mesh.stability.tip_risk;
     rows.push({ key: "stability", label: "Stability", icon: MoveVertical, level: tip ? "warn" : "ok",
       status: tip ? "Tip risk" : "Stable",
-      detail: tip
+      detail: (tip
         ? `Tall and narrow (aspect ${mesh.stability.aspect}). It may tip over or knock off the bed — add a brim or reorient, and consider the Maximum Reliability strategy.`
-        : "Footprint is broad enough relative to height — low tip-over risk."
+        : "Footprint is broad enough relative to height — low tip-over risk.")
           + (unsure ? " (Measured on the file's own mesh, not a confirmed physical size.)" : "") });
   }
 
