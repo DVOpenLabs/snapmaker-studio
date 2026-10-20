@@ -17,16 +17,16 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.5.0 |
-| Installer | `Snapmaker.Studio_1.5.0_x64-setup.exe` |
-| Size (bytes) | 21,944,474 |
-| SHA256 | `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82` |
-| Linux installer | `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` |
-| Linux size (bytes) | 25,944,098 |
-| Linux SHA256 | `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37533259845 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0 |
-| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Version | v1.6.0 |
+| Installer | `Snapmaker.Studio_1.6.0_x64-setup.exe` |
+| Size (bytes) | 22,429,999 |
+| SHA256 | `f114c2d9a5482236b0187d073b73c81995ae10562acf5281decdd0726c4732d4` |
+| Linux installer | `snapmaker-studio_1.6.0_amd64_a93a705398a7.deb` |
+| Linux size (bytes) | 25,998,872 |
+| Linux SHA256 | `5284eaaa7929c9f30c3239c4cab5fd81016b52cab9872db8c6d98ded7e984ed7` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39344562048 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
+| Trust status | NOT ACCEPTED - REHEARSAL ONLY (scratch metadata; no acceptance, hardware or installer results exist for this candidate) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.
 Hashes for both files are also published as `SHA256SUMS` on the release.
