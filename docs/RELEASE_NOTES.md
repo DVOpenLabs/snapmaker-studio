@@ -1,4 +1,4 @@
-# Snapmaker Studio v1.5.0 — Project Materials
+# REHEARSAL ONLY - Snapmaker Studio v1.6.0 placeholder notes (not a release; candidate not accepted)
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
