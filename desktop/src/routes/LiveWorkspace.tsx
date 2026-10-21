@@ -54,6 +54,7 @@ export default function LiveWorkspace() {
   if (!file) return <Navigate to="/" replace />;
 
   const d = doctor.data;
+  const prepareBlocked = !!d?.prepare_blocked;
   const rv = readinessView(repQ.data);   // honest readiness (score/headline authority)
   const TypeIcon = file.ext === "stl" ? FileBox : Boxes;
   const converting = convert.status === "loading";
@@ -69,12 +70,12 @@ export default function LiveWorkspace() {
           <h2 className="truncate text-xl font-semibold tracking-tight">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">{file.path}</p>
         </div>
-        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} />}
+        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />}
         <div className="ml-auto flex gap-2">
           <Button variant="secondary" size="sm" onClick={openFile}>
             <FolderOpen className="h-4 w-4" /> Open another
           </Button>
-          <Button onClick={() => runConvert()} disabled={converting || preview.status === "loading" || doctor.status === "loading"}>
+          <Button onClick={() => runConvert()} disabled={prepareBlocked || converting || preview.status === "loading" || doctor.status === "loading"}>
             {converting ? <Spinner /> : <Wand2 className="h-4 w-4" />} Prepare U1 copy
           </Button>
         </div>
@@ -91,7 +92,7 @@ export default function LiveWorkspace() {
                 {rv.scoreCap ?? d.score ?? "—"}
               </div>
               <div className="space-y-1.5">
-                <StatusBadge verdict={d.verdict as Verdict} />
+                <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />
                 <p className="text-sm font-medium">{rv.headline}</p>
                 <p className="text-sm text-muted-foreground">{rv.atRisk[0] ?? d.recommended_action}</p>
               </div>
@@ -168,9 +169,9 @@ export default function LiveWorkspace() {
         </Card>
       )}
 
-      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} />}
+      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}
-      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={() => runConvert("preserve")} onPrepareRecommended={() => runConvert("recommended")} />}
+      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={prepareBlocked ? undefined : () => runConvert("preserve")} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
       {preview.status === "error" && <p className="text-sm text-risk">{preview.error}</p>}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
@@ -230,7 +231,7 @@ export default function LiveWorkspace() {
                 <div className="pt-1">
                   <OrcaHandoff outputPath={convert.data.output_path} originalPath={file?.path} />
                 </div>
-                {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={() => runConvert("recommended")} />}
+                {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
               </CardContent>
             </Card>
           )}
@@ -241,7 +242,7 @@ export default function LiveWorkspace() {
                   <AlertTriangle className="h-5 w-5" /> Preparation failed
                 </div>
                 <p className="text-sm text-muted-foreground">{convert.error}</p>
-                <Button variant="secondary" size="sm" onClick={() => runConvert()} disabled={preview.status === "loading"}>
+                <Button variant="secondary" size="sm" onClick={() => runConvert()} disabled={prepareBlocked || preview.status === "loading"}>
                   <RotateCw className="h-4 w-4" /> Retry
                 </Button>
               </CardContent>

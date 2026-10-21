@@ -62,17 +62,26 @@ export function OrcaHandoff({ outputPath, originalPath }:
           </a>
         </Button>
       )}
+      {/* The exact file the button opens, so the handoff never targets something unnamed. */}
+      <p className="max-w-full text-xs">
+        <span className="text-muted-foreground">Opens the prepared copy </span>
+        <span className="break-all font-medium" title={outputPath} data-testid="orca-target">{outputPath.split(/[\\/]/).pop() || outputPath}</span>
+      </p>
       <p className="text-xs text-muted-foreground">{ORCA_HANDOFF_LINE}</p>
       <div className="mt-1 rounded-md border border-border bg-muted/20 p-2 text-xs text-muted-foreground">
         <p>
           <span className="font-medium text-foreground">Next:</span> slice in Snapmaker Orca, export the{" "}
           <span title="The .gcode file is the printer-ready file Snapmaker Orca creates after slicing."
             className="cursor-help underline decoration-dotted">.gcode</span>{" "}
-          file, then return to{" "}
-          <Link to="/printers" className="inline-flex items-center gap-0.5 text-primary hover:underline">
-            Printer Hub <ArrowRight className="h-3 w-3" />
+          file, then open it in{" "}
+          <Link to="/after-slicing" className="inline-flex items-center gap-0.5 text-foreground underline underline-offset-2">
+            After slicing <ArrowRight className="h-3 w-3" />
           </Link>{" "}
-          and upload it. (Studio doesn't slice — Snapmaker Orca does.)
+          so Studio can check it. Sending to your printer is a separate step you confirm in{" "}
+          <Link to="/printers" className="inline-flex items-center gap-0.5 text-foreground underline underline-offset-2">
+            Printer Hub <ArrowRight className="h-3 w-3" />
+          </Link>
+          . (Studio doesn't slice — Snapmaker Orca does.)
         </p>
       </div>
       {/* Proof rather than a promise: what actually survived the preparation,
