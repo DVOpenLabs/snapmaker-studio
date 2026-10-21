@@ -18,6 +18,7 @@ import { Copy, Stethoscope } from "lucide-react";
 import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
 import { isExt } from "@/lib/modelPath";
+import { useSession } from "@/store/session";
 import { PlacementCard } from "@/components/PlacementCard";
 import { PreflightCard } from "@/components/PreflightCard";
 
@@ -49,8 +50,13 @@ export default function Compatibility() {
   const prepM = useMutation({
     mutationFn: ({ path: requestPath, mode, materials }: { path: string; mode: PrepareMode; generation: number; materials?: MaterialSelection[] }) =>
       convert(requestPath, undefined, mode, false, materials),
-    onMutate: () => setPrep(null),
-    onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current && !blockedRef.current) setPrep(d); },
+    onMutate: (variables) => { setPrep(null); useSession.getState().beginPrepare(variables.path); },
+    onSuccess: (d, variables) => {
+      if (variables.generation !== requestGeneration.current || blockedRef.current) return;
+      setPrep(d);
+      // Share it with This job and After slicing; the store accepts it only for the project that is open and only if validated.
+      useSession.getState().publishPrepared(variables.path, d);
+    },
   });
   const previewM = useMutation({
     mutationFn: ({ path: requestPath }: { path: string; generation: number }) => convert(requestPath, undefined, "preserve", true),

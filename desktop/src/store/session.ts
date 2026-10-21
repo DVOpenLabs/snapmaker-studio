@@ -37,6 +37,10 @@ interface SessionState {
   runDoctor: () => Promise<void>;
   setPrepareMode: (mode: PrepareMode) => void;
   runConvert: (mode?: PrepareMode) => Promise<void>;
+  /** A Prepare started elsewhere for this project: forget any earlier copy until the new one is validated. */
+  beginPrepare: (sourcePath: string) => void;
+  /** A Prepare that finished elsewhere: shared state only takes a validated, unblocked copy of the project that is open now. */
+  publishPrepared: (sourcePath: string, data: any) => void;
   previewConvert: () => Promise<void>;
   runDiff: () => Promise<void>;
   reset: () => void;
@@ -93,6 +97,21 @@ export const useSession = create<SessionState>((set, get) => ({
       if (requestGeneration !== generation || get().file?.path !== p) return;
       set({ convert: { status: "error", data: null, error: String(e?.message ?? e) }, settingsSummary: null });
     }
+  },
+
+  beginPrepare: (sourcePath) => {
+    if (get().file?.path !== sourcePath) return;
+    set({ convert: blank(), settingsSummary: null });
+  },
+
+  publishPrepared: (sourcePath, data) => {
+    // The project may have changed while the request ran; its result is then about a project that is no longer open.
+    if (get().file?.path !== sourcePath) return;
+    const out = data?.output_path;
+    const usable = !!data && !data.blocked && data.validated_ok === true && typeof out === "string" && out !== "" && out !== sourcePath;
+    set(usable
+      ? { convert: { status: "done", data, error: null }, settingsSummary: data.settings_summary ?? null }
+      : { convert: blank(), settingsSummary: null });
   },
 
   previewConvert: async () => {
