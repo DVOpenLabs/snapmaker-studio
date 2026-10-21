@@ -185,7 +185,7 @@ def test_the_writer_refuses_a_value_that_would_take_the_object_with_it():
 
 def test_the_writer_refuses_a_value_that_is_not_in_the_form_studio_writes():
     faults = overrides.validate_emitted({"sparse_infill_density": "45"})
-    assert faults and "not in the form Studio writes" in faults[0]
+    assert faults and "Snapmaker Orca reads" in faults[0]   # still refused: the gate is unchanged
 
 
 def test_prepare_fails_rather_than_writing_an_override_it_cannot_stand_behind():

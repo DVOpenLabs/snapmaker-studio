@@ -10,8 +10,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
+import { rawSizeQualifier } from "@/components/GeometryNotice";
+import { BedFitNotChecked, FirstLayerNotChecked, PredictionNotEstimated } from "@/components/SizeNotChecked";
 import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, predictSuccess as apiPredictSuccess, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
+import { isPrinterSetUp } from "@/lib/printerSetup";
 import { useFilament } from "@/store/filament";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { useToast } from "@/store/toast";
@@ -28,7 +31,7 @@ import { ColorPlanCard } from "@/components/ColorPlanCard";
 import { DesignHealth } from "@/components/DesignHealth";
 import { HeartPulse } from "lucide-react";
 import {
-  readinessStars, familyLabel, verdictStatus, colorsLabel, partsLabel,
+  readinessStars, familyLabel, verdictStatus, headlineWithReadiness, colorsLabel, partsLabel,
 } from "@/lib/simple";
 
 function Stars({ score }: { score: number | null | undefined }) {
@@ -69,8 +72,9 @@ export default function DesignInsights() {
   };
 
   const d = doctor.data;
+  const prepareBlocked = !!d?.prepare_blocked;
   const TypeIcon = file.name.toLowerCase().endsWith(".stl") ? FileBox : Boxes;
-  const status = d ? verdictStatus(d.verdict) : null;
+  const status = d ? verdictStatus(d.verdict, d.prepare_blocked) : null;
   // Rich Project Intelligence (real geometry + materials), fetched read-only.
   const { data: ins } = useQuery({
     queryKey: ["insights", file.path],
@@ -95,7 +99,7 @@ export default function DesignInsights() {
   const { data: caps } = useQuery({
     queryKey: ["capabilities", u1Host],
     queryFn: () => printerCapabilities(u1Host),
-    enabled: doctor.status === "done", retry: false, staleTime: 60000,
+    enabled: doctor.status === "done" && isPrinterSetUp(u1Host), retry: false, staleTime: 60000,
   });
   // First-Layer Intelligence: design footprint/stability fused with the printer's
   // REAL measured bed (when reachable); design-only otherwise. Read-only.
@@ -144,7 +148,8 @@ export default function DesignInsights() {
   const setupRisk = !!(mm?.available && mm.multi_material && mm.overall_level && mm.overall_level !== "ok")
     || !!(bed?.available && bed.overall_level && bed.overall_level !== "ok")
     || !!(rep && !rep.ready);
-  const headlineStatus = setupRisk && d && status?.tone === "ready" ? verdictStatus("HIGH_RISK") : status;
+  // Readiness wording for setup review; never the unusable-project (HIGH_RISK) mapping.
+  const headlineStatus = headlineWithReadiness(d ? status : null, setupRisk);
   const headlineScore = setupRisk ? Math.min(d?.score ?? 0, 70) : d?.score;
 
   // ---- Done: it's ready ------------------------------------------------------
@@ -189,7 +194,7 @@ export default function DesignInsights() {
             </div>
           </CardContent>
         </Card>
-        {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={() => runConvert("recommended")} />}
+        {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
       </div>
     );
   }
@@ -207,15 +212,15 @@ export default function DesignInsights() {
             {doctor.status === "loading"
               ? "Looking at your design…"
               : doctor.status === "done"
-                ? "Checked — here's what we found. Press Prepare U1 copy when you're set."
+                ? prepareBlocked ? "Review the original in Snapmaker Orca first. Studio cannot prepare this project." : "Checked — here's what we found. Press Prepare U1 copy when you're set."
                 : "Let's see what's in your design."}
           </p>
         </div>
       </div>
 
-      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} />}
+      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}
-      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={() => runConvert("preserve")} onPrepareRecommended={() => runConvert("recommended")} />}
+      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={prepareBlocked ? undefined : () => runConvert("preserve")} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
       {preview.status === "error" && <p className="text-sm text-risk">{preview.error}</p>}
 
       {/* At-a-glance summary + primary action, visible without scrolling */}
@@ -230,9 +235,9 @@ export default function DesignInsights() {
                   {headlineStatus.label}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">We make a U1 profile copy — your original is never changed.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{prepareBlocked ? "Studio cannot prepare this project — review the original in Snapmaker Orca." : "We make a U1 profile copy — your original is never changed."}</p>
             </div>
-            <Button onClick={() => runConvert()} disabled={convert.status === "loading" || preview.status === "loading"} className="shrink-0">
+            <Button onClick={() => runConvert()} disabled={prepareBlocked || convert.status === "loading" || preview.status === "loading"} className="shrink-0">
               {convert.status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               {convert.status === "loading" ? "Preparing…" : "Prepare U1 copy"}
             </Button>
@@ -283,6 +288,9 @@ export default function DesignInsights() {
           {/* Studio Intelligence Report — the one-screen synthesis (the product) */}
           <IntelligenceReport filePath={file.path} host={u1Host} />
 
+          {/* will it print? — no estimate when the model's physical size is not established */}
+          <PredictionNotEstimated predict={predict} />
+
           {/* will it print? — pre-print success prediction */}
           {predict?.available && predict.likelihood != null && (
             <Card>
@@ -307,6 +315,8 @@ export default function DesignInsights() {
               </CardContent>
             </Card>
           )}
+
+          <BedFitNotChecked bed={bed} />
 
           {/* out-of-bounds doctor — only when there's something to warn about */}
           {bed?.available && bed.overall_level && bed.overall_level !== "ok" && (
@@ -382,7 +392,7 @@ export default function DesignInsights() {
               <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> What's in this design</div>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-center gap-2"><FileBox className="h-4 w-4 text-muted-foreground" /> {familyLabel(d.family)}</li>
-                {dims && <li className="flex items-center gap-2"><Ruler className="h-4 w-4 text-muted-foreground" /> {dims.x} × {dims.y} × {dims.z} mm</li>}
+                {dims && <li className="flex items-center gap-2"><Ruler className="h-4 w-4 text-muted-foreground" /> {dims.x} × {dims.y} × {dims.z} mm{rawSizeQualifier(ins?.geometry_basis) && <span className="text-xs text-muted-foreground" data-testid="raw-size-note" title={ins?.geometry_basis?.summary}> ({rawSizeQualifier(ins?.geometry_basis)})</span>}</li>}
                 {colorsLabel(d.filament_count) && <li className="flex items-center gap-2"><Palette className="h-4 w-4 text-muted-foreground" /> {colorsLabel(d.filament_count)}</li>}
                 {partsLabel(d.object_count) && <li className="flex items-center gap-2"><Layers className="h-4 w-4 text-muted-foreground" /> {partsLabel(d.object_count)}{(ins?.plates ?? 0) > 1 ? ` · ${ins!.plates} plates` : ""}</li>}
                 {d.painted && <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-ready" /> painted areas kept</li>}
@@ -435,6 +445,8 @@ export default function DesignInsights() {
 
           {/* Business Intelligence Layer — Cost / Pricing / Profit Doctors */}
           <BusinessDoctors filePath={file.path} host={u1Host} />
+
+          <FirstLayerNotChecked report={firstLayer} />
 
           {/* First-Layer Intelligence — design footprint × the printer's real bed */}
           {firstLayer?.available && firstLayer.findings && (
@@ -563,14 +575,14 @@ export default function DesignInsights() {
 
               <div className="border-t border-border pt-3">
                 <button onClick={() => setShowStrategy((v) => !v)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="opacity-70">(optional)</span>
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showStrategy && "rotate-180")} /> Change how it's prepared <span className="font-normal">(optional)</span>
                 </button>
                 {showStrategy
                   ? <div className="pt-3"><StrategyPicker filePath={file.path} mode="simple" value={strategy} onChange={setStrategy} /></div>
                   : <p className="pt-1 text-xs text-muted-foreground">We'll use the recommended setup. No need to choose unless you want to.</p>}
               </div>
 
-              <Button className="w-full" onClick={() => runConvert()} disabled={convert.status === "loading" || preview.status === "loading"}>
+              <Button className="w-full" onClick={() => runConvert()} disabled={prepareBlocked || convert.status === "loading" || preview.status === "loading"}>
                 {convert.status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                 {convert.status === "loading" ? "Preparing…" : "Prepare U1 copy"}
               </Button>

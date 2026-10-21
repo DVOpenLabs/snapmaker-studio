@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
+    // Let ?raw CSS imports through unstubbed so the remote-font guard reads the real stylesheet.
+    css: { include: [/\.css(\?.*)?$/] },
   },
 });

@@ -185,7 +185,7 @@ export default function Printers() {
         <CardContent className="space-y-3 p-5">
           <p className="text-sm font-medium">Connect to your U1</p>
           <p className="text-xs text-muted-foreground">
-            Type <code className="rounded bg-muted px-1">U1.local</code> or its IP, or tap <b>Auto-detect my U1</b>. Studio shows live status and runs send, pause, resume and cancel only when you confirm — it never auto-starts a print.
+            Studio does not look for a printer until you connect one. Type <code className="rounded bg-muted px-1">U1.local</code> or its IP, or tap <b>Auto-detect my U1</b>. Studio shows live status and runs send, pause, resume and cancel only when you confirm — it never auto-starts a print.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex h-9 min-w-[200px] flex-1 items-center gap-2 rounded-md border border-border bg-card px-3">
