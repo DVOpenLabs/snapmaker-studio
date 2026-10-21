@@ -50,3 +50,12 @@ describe("11. no paid/commercial model names in copy", () => {
     }
   });
 });
+
+import { prepareGate } from "./compatibility";
+describe("prepareGate", () => {
+  const f = (id: string): CompatibilityFinding => ({ id, severity: "warning", title: "", explanation: "", suggested_action: "", setting_path: "", evidence: "" });
+  it("is open without either finding", () => { expect(prepareGate([f("x")])).toBe("open"); expect(prepareGate(null)).toBe("open"); });
+  it("is blocked for prepare.blocked", () => expect(prepareGate([f("prepare.blocked")])).toBe("blocked"));
+  it("is unreadable for project.unreadable, which wins", () =>
+    expect(prepareGate([f("prepare.blocked"), f("project.unreadable")])).toBe("unreadable"));
+});

@@ -62,6 +62,8 @@ def _write(tmp_path, name, items, *, printable_area=None, plates=1,
         f'<plate><metadata key="plater_id" value="{i + 1}"/></plate>' for i in range(plates))
     p = tmp_path / name
     with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
         z.writestr("3D/3dmodel.model", _model(items, objects))
         z.writestr("Metadata/project_settings.config", json.dumps(settings))
         z.writestr("Metadata/model_settings.config", f"<config>{plate_xml}</config>")
@@ -274,6 +276,8 @@ def _multi_plate_project(tmp_path, name, plates: dict, *, printable_area=None,
         settings["printable_area"] = printable_area
     p = tmp_path / name
     with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
         z.writestr("3D/3dmodel.model", _model(items))
         z.writestr("Metadata/project_settings.config", json.dumps(settings))
         z.writestr("Metadata/model_settings.config",
