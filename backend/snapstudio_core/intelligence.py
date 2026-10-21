@@ -10,7 +10,7 @@ from pathlib import Path
 from .doctor import diagnose_path, READY
 from .container import ThreeMF
 from .config_io import load_project_settings
-from . import units as _units
+from . import geometry_basis
 
 SCHEMA_VERSION = "insights/1"
 SETTINGS = "Metadata/project_settings.config"
@@ -49,20 +49,10 @@ def _bbox_and_triangles(tm: ThreeMF):
 
     helpers = geometry.nonprinting_meshes(tm)
     for p in model_parts:
-        raw = tm.read_part(p)
-        # Each part's coordinates are in the unit its own header declares; the result is
-        # millimetres. Millimetre parts (the default) are multiplied by exactly 1.0.
-        scale = _units.mm_per_unit(raw)
-        if any(part == p for part, _oid in helpers):
-            matches = (m for block in _OBJECT_BLOCK_RE.finditer(raw)
-                       if (p, _object_id(block.group(0))) not in helpers
-                       for m in _VERT_RE.finditer(block.group(0)))
-        else:
-            matches = _VERT_RE.finditer(raw)
-        for m in matches:
+        for m in _VERT_RE.finditer(tm.read_part(p)):
             seen = True
             for i in range(3):
-                v = float(m.group(i + 1)) * scale
+                v = float(m.group(i + 1))
                 if v < lo[i]: lo[i] = v
                 if v > hi[i]: hi[i] = v
     if not seen:
@@ -140,6 +130,7 @@ def project_info(path: str) -> dict:
         "readiness_score": diag.get("score"),
         "is_compatible": diag.get("verdict") == READY,
         "recommended_action": diag.get("recommended_action"),
+        "prepare_blocked": bool(diag.get("prepare_blocked")),
         "objects": diag.get("object_count"),
         "plates": diag.get("plate_count"),
         "colors": diag.get("filament_count"),
@@ -149,4 +140,7 @@ def project_info(path: str) -> dict:
         "triangles": triangles,
         "complexity": _complexity(triangles),
         "issues": [*(diag.get("validation_issues") or []), *(diag.get("compatibility_issues") or [])],
+        # `dimensions_mm` is the size stored in the file's mesh. Whether that is the physical
+        # size is `geometry_basis`'s call; size-dependent verdicts consume it, not the bare numbers.
+        "geometry_basis": geometry_basis.assess(path),
     }

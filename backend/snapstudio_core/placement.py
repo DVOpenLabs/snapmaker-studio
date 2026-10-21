@@ -25,8 +25,6 @@ import json
 import re
 import zipfile
 
-from . import units as _units
-
 SCHEMA_VERSION = "placement/1"
 
 #: The states an object's footprint can be in against the target polygon. They are
@@ -235,7 +233,7 @@ def read_objects(path: str, keep_points: bool = True) -> dict:
 
     root_bytes = tm.read_part(ROOT_MODEL) if ROOT_MODEL in names else b""
     root = root_bytes.decode("utf-8", "ignore")
-    root_scale = _units.mm_per_unit(root)   # the unit the root model declares -> mm
+    root_scale = 1.0   # Studio does not convert units: geometry_basis reports a non-millimetre project as not checked
     settings_text = _text(MODEL_SETTINGS)
     try:
         project = json.loads(_text(PROJECT_SETTINGS) or "{}")
@@ -246,7 +244,7 @@ def read_objects(path: str, keep_points: bool = True) -> dict:
     parts: dict[str, dict] = {}
     for name in sorted(n for n in names if n.endswith(".model")):
         body = _text(name)
-        scale = _units.mm_per_unit(body)   # each part's own declared unit
+        scale = 1.0
         meshes: dict[str, list[tuple]] = {}
         components: dict[str, list] = {}
         for block in _OBJECT_BLOCK.findall(body):
@@ -278,7 +276,7 @@ def read_objects(path: str, keep_points: bool = True) -> dict:
         who = (entry["part"] or ROOT_MODEL, object_id)
         instance_index = seen_per_object.get(who, 0)
         seen_per_object[who] = instance_index + 1
-        item = _units.scale_translation(parse_transform(transform_text), root_scale)
+        item = parse_transform(transform_text)
         part_ids = [part_id for part_id, _subtype in parts_by_object.get(object_id, [])]
         item_part = entry["part"] or ROOT_MODEL
         explicit = entry["part"] is not None
@@ -393,7 +391,7 @@ def _leaves(entries: list, parts: dict, part: str, explicit: bool, scale: float,
             if len(owners) != 1:
                 continue            # absent (nothing to measure) or ambiguous (not guessed)
             here_part, holder = owners[0], parts[owners[0]]
-        here = compose(outer, _units.scale_translation(parse_transform(text), scale))
+        here = compose(outer, parse_transform(text))
         child_role = role
         if records is not None and owner is not None and owner[0] == ROOT_MODEL:
             from . import roles as _roles

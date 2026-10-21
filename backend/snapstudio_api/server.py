@@ -207,7 +207,13 @@ def _make_handler(token: str):
             (with its traceback) in the local engine log and answered as 500 with only its class name, so a report can say
             what failed without anything private leaving the machine."""
             if isinstance(exc, SnapStudioError):
-                self._send(422, {"error": str(exc), "refusal": type(exc).__name__})
+                body = {"error": str(exc), "refusal": type(exc).__name__}
+                # A refusal may carry its raw technical wording separately, so the
+                # `error` stays a sentence a person can act on.
+                details = getattr(exc, "details", None)
+                if isinstance(details, str) and details:
+                    body["details"] = details
+                self._send(422, body)
                 return
             _log_unexpected(exc)
             self._send(500, {"error": "internal error", "kind": type(exc).__name__})
@@ -340,6 +346,24 @@ def _make_handler(token: str):
                     self._send(200, service.watch_folder(
                         rv.require_path_string(data, "folder"),
                         project_path=rv.optional_str(data, "project_path", "") or None))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/job_check":
+                try:
+                    files = data.get("files") if isinstance(data, dict) else None
+                    self._send(200, service.job_check(files))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/settings_receipt":
+                try:
+                    self._send(200, service.settings_receipt(
+                        rv.require_path_string(data, "original_path"),
+                        rv.optional_str(data, "prepared_path", "") or None,
+                        rv.optional_str(data, "sliced_path", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
                 except Exception as exc:

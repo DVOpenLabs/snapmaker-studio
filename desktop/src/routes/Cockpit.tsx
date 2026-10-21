@@ -9,8 +9,8 @@ import { FidelityCard } from "@/components/FidelityCard";
 import { FixLedgerCard } from "@/components/FixLedgerCard";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
-import { PostSliceCard } from "@/components/PostSliceCard";
-import { MaterialPlanCard, PrintPlanCard, SendReadyCard } from "@/components/PostSlicePanels";
+import { SlicedJobCards } from "@/components/SlicedJobCards";
+import { JobHeader } from "@/components/JobHeader";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 
@@ -33,7 +33,14 @@ export default function Cockpit() {
   const sliced = useSliced((s) => s.path);
   const slicedName = useSliced((s) => s.name);
 
-  const prepared: string | undefined = convert?.data?.output_path || convert?.data?.output;
+  // Same test as After slicing and the job header: a copy Studio wrote and validated this session.
+  // Behaviour change from before: a blocked or unvalidated result no longer offers the Orca handoff.
+  const prepared: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && convert.data.validated_ok
+    ? (convert.data.output_path || convert.data.output) : undefined;
+
+  // A copy was written but its own validation did not pass: say so, keep the record of what was written.
+  const unvalidatedPath: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && !convert.data.validated_ok
+    ? (convert.data.output_path || convert.data.output) : undefined;
 
   if (!project) {
     return (
@@ -56,7 +63,7 @@ export default function Cockpit() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Header name={project.name} />
+      <JobHeader />
 
       <Stage number={1} title="Before slicing"
              detail="What this project is, and how it compares to the printer Studio can see.">
@@ -65,13 +72,26 @@ export default function Cockpit() {
         <ColorPlanCard path={project.path} />
       </Stage>
 
-      <Stage number={2} title="Prepared"
+      <Stage id="job-stage-prepared" number={2} title="Prepared"
              detail="What Studio changed, what survived, and the way back.">
         {prepared ? (
           <>
             <FidelityCard original={project.path} prepared={prepared} />
             <FixLedgerCard source={project.path} output={prepared} />
-            <OrcaHandoff outputPath={prepared} originalPath={project.path} />
+            <OrcaHandoff outputPath={prepared} />
+          </>
+        ) : unvalidatedPath ? (
+          <>
+            <Card>
+              <CardContent className="space-y-2 p-5">
+                <p className="text-sm font-medium">A copy was written, but its check found issues.</p>
+                <p className="text-sm text-muted-foreground">
+                  Studio did not confirm it, so it is not offered to Snapmaker Orca. Your original was not changed.
+                  See what remains in <Link className="underline" to="/workspace">the workspace</Link>.
+                </p>
+              </CardContent>
+            </Card>
+            <FixLedgerCard source={project.path} output={unvalidatedPath} />
           </>
         ) : (
           <Card>
@@ -79,7 +99,7 @@ export default function Cockpit() {
               <p className="text-sm">Nothing prepared yet.</p>
               <p className="text-sm text-muted-foreground">
                 Preparing writes a new copy and never touches your original. Do it from{" "}
-                <Link className="underline" to="/compatibility">Compatibility</Link>, and the
+                <Link className="underline" to="/workspace">the workspace</Link>, and the
                 result appears here.
               </p>
             </CardContent>
@@ -92,10 +112,7 @@ export default function Cockpit() {
         <OrcaRoundTrip />
         {sliced ? (
           <>
-            <SendReadyCard path={sliced} projectPath={project.path} />
-            <PostSliceCard path={sliced} projectPath={project.path} />
-            <MaterialPlanCard path={sliced} />
-            <PrintPlanCard path={sliced} />
+            <SlicedJobCards path={sliced} projectPath={project.path} />
           </>
         ) : (
           <Card>
@@ -127,7 +144,7 @@ function Header({ name }: { name?: string }) {
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <FileCheck2 className="h-5 w-5" aria-hidden="true" />
-          {name ? `This print — ${name}` : "This print"}
+          {name ? `This job — ${name}` : "This job"}
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           One job, from the file you downloaded to the moment it is ready to send. Every
@@ -143,11 +160,11 @@ function Header({ name }: { name?: string }) {
   );
 }
 
-function Stage({ number, title, detail, children }: {
-  number: number; title: string; detail: string; children: React.ReactNode;
+function Stage({ id, number, title, detail, children }: {
+  id?: string; number: number; title: string; detail: string; children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section id={id} tabIndex={id ? -1 : undefined} aria-label={`${number}. ${title}`} className="flex flex-col gap-3 outline-none">
       <div className="flex items-start gap-2">
         <CircleDot className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <div>

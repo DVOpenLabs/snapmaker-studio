@@ -16,7 +16,6 @@ from pathlib import Path
 from . import roles as _roles
 from .container import ThreeMF
 from .config_io import load_model_settings
-from . import units as _units
 
 # Mirror intelligence.py's byte guard; plus a triangle cap for analysis cost.
 _MAX_BYTES = 80 * 1024 * 1024
@@ -47,7 +46,6 @@ def _parse_3mf_model(raw: bytes, verts: list, faces: list) -> None:
     hardened XML parser (no XXE/DTD/network). Triangle indices are local to each
     <mesh>, so we offset by the vertex count at the start of that mesh."""
     root = load_model_settings(raw)
-    scale = _units.mm_per_unit(raw)   # the part's declared unit -> millimetres (1.0 for mm)
     for mesh in root.iter(f"{_3MF_CORE_NS}mesh"):
         vstart = len(verts)
         vnode = mesh.find(f"{_3MF_CORE_NS}vertices")
@@ -55,11 +53,7 @@ def _parse_3mf_model(raw: bytes, verts: list, faces: list) -> None:
         if vnode is None or tnode is None:
             continue
         for v in vnode.iterfind(f"{_3MF_CORE_NS}vertex"):
-            if scale == 1.0:
-                verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
-            else:
-                verts.append((float(v.get("x", 0)) * scale, float(v.get("y", 0)) * scale,
-                              float(v.get("z", 0)) * scale))
+            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
         for t in tnode.iterfind(f"{_3MF_CORE_NS}triangle"):
             faces.append((vstart + int(t.get("v1")), vstart + int(t.get("v2")), vstart + int(t.get("v3"))))
             if len(faces) > _MAX_TRIANGLES:
@@ -245,11 +239,8 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
 
         # (part, object_id) -> (verts, [(component_objectid, component_part|None, component_xform)])
         parsed: dict[str, dict[str, tuple]] = {}
-        unit_scale: dict[str, float] = {}
         for fname, raw in model_files.items():
             root = load_model_settings(raw)
-            scale = _units.mm_per_unit(raw)   # this part's declared unit -> millimetres
-            unit_scale[fname] = scale
             objs: dict[str, tuple] = {}
             for ob in root.iter(f"{_3MF_CORE_NS}object"):
                 oid = ob.get("id")
@@ -259,18 +250,14 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
                     vn = mesh.find(f"{_3MF_CORE_NS}vertices")
                     if vn is not None:
                         for v in vn.iterfind(f"{_3MF_CORE_NS}vertex"):
-                            if scale == 1.0:
-                                verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
-                            else:
-                                verts.append((float(v.get("x", 0)) * scale, float(v.get("y", 0)) * scale,
-                                              float(v.get("z", 0)) * scale))
+                            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
                 comps = []
                 cn = ob.find(f"{_3MF_CORE_NS}components")
                 if cn is not None:
                     for c in cn.iterfind(f"{_3MF_CORE_NS}component"):
                         comps.append((c.get("objectid"),
                                       normalize_part(c.get(f"{_3MF_PROD_NS}path")),
-                                      _units.scale_translation(_xform(c.get("transform")), scale)))
+                                      _xform(c.get("transform"))))
                 objs[oid] = (verts, comps)
             parsed[fname] = objs
 
@@ -338,8 +325,7 @@ def measure_items(path: str) -> tuple[list[dict], list[dict]]:
             printing: list = []
             bad: list = []
             part = it["part"] or root_file
-            collect(oid, part, it["part"] is not None,
-                    _units.scale_translation(_xform(it["transform"]), unit_scale[root_file]),
+            collect(oid, part, it["part"] is not None, _xform(it["transform"]),
                     acc, frozenset(), bad, printing, None, records)
             if bad:
                 unresolved.append({"item_index": it["item_index"], "object_id": oid,

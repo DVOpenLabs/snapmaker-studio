@@ -25,6 +25,7 @@ from snapstudio_core import scale_doctor
 from snapstudio_core import print_failure
 from snapstudio_core import print_quality
 from snapstudio_core import first_layer_doctor
+from snapstudio_core import geometry_basis
 from snapstudio_core.paths import data_dir as _resolve_data_dir
 from snapstudio_core.errors import SnapStudioError
 
@@ -523,7 +524,9 @@ def strategy_recommend(path: str) -> dict:
     signals = {
         "colors": info.get("colors"),
         "source_family": info.get("source_family"),
-        "dimensions_mm": info.get("dimensions_mm"),
+        # a height taken from an unestablished size would steer the recommendation; leave it out
+        "dimensions_mm": (info.get("dimensions_mm")
+                          if geometry_basis.is_established(info.get("geometry_basis")) else None),
         "triangles": info.get("triangles"),
         "complexity": info.get("complexity"),
         "issues": info.get("issues"),
@@ -978,6 +981,18 @@ def watch_folder(folder: str, project_path: str | None = None) -> dict:
     """
     from snapstudio_core import watch_folder as wf
     return wf.match_project(folder, project_path)
+
+
+def job_check(files) -> dict:
+    """Are the files of a saved job still the files it was made from? Read-only."""
+    from snapstudio_core import job_identity
+    return job_identity.check(files)
+
+
+def settings_receipt(original_path: str, prepared_path: str | None, sliced_path: str | None) -> dict:
+    """Original -> prepared -> sliced: what each file declares for a few settings. Read-only."""
+    from snapstudio_core import settings_receipt as sr
+    return sr.compare(original_path, prepared_path, sliced_path)
 
 
 def slice_provenance(project_path: str, gcode_path: str) -> dict:
@@ -1913,6 +1928,13 @@ def first_layer(path: str, host: str | None = None, port: int = 7125) -> dict:
     if not md.get("available"):
         return {"schema_version": fl.SCHEMA_VERSION, "available": False,
                 "reason": "geometry unavailable", "bed_aware": False}
+    basis = md.get("geometry_basis")
+    if not geometry_basis.is_established(basis):
+        # Footprint area and height are raw-mesh numbers; without an established size they are
+        # not first-layer evidence. The printer's own bed data needs no model size, but the
+        # question "will THIS print stick" does, so the whole check is withheld.
+        return {"schema_version": fl.SCHEMA_VERSION, "available": False, "bed_aware": False,
+                **geometry_basis.not_checked(basis, "first-layer footprint checks")}
     bed = None
     bed_dim = 270.0
     if host:
@@ -2054,6 +2076,11 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     from snapstudio_core.intelligence import project_info
     from snapstudio_core import bed_fit as bf
     info = project_info(path)
+    basis = info.get("geometry_basis")
+    if not geometry_basis.is_established(basis):
+        # The numbers in the file are not the physical size: say "not checked", never "fits".
+        return {"schema_version": bf.SCHEMA_VERSION, "available": False,
+                **geometry_basis.not_checked(basis, "bed fit")}
     dims = info.get("dimensions_mm")
     object_count = info.get("objects") or 1
     multi = (info.get("colors") or 0) > 1
@@ -2110,8 +2137,13 @@ def predict_success(path: str, host: str | None = None, port: int = 7125) -> dic
                     prior = int(ro.get("failures") or 0)
         except Exception:
             pass
+    basis = None
+    try:
+        basis = geometry_basis.assess(path)
+    except Exception:
+        pass
     return sp.predict(readiness=readiness, toolfit=toolfit, first_layer=fl,
-                      health=health, prior_failures=prior)
+                      health=health, prior_failures=prior, geometry_basis=basis)
 
 
 def pricing_doctor(path: str, host: str | None = None, filename: str | None = None,
@@ -2340,6 +2372,8 @@ def record_diagnosis(path: str, result: dict) -> None:
                 verdict=result.get("verdict"), score=result.get("score"),
                 filament_count=result.get("filament_count"),
                 last_action="doctor", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(result.get("prepare_blocked")),
+                                    result.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "doctor",
                                 f"Checked — {result.get('verdict', '')}".strip(" —"), _now())
         finally:
@@ -2471,7 +2505,9 @@ def register_downloaded_model(path: str, site: str, page_url: str | None = None)
             "sha256": digest.hexdigest(), "size_bytes": total,
             "source_family": result.get("family"), "verdict": verdict,
             "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
-            "ready_hint": "check" if verdict == "READY" else "prepare"}
+            "prepare_blocked": bool(result.get("prepare_blocked")),
+            "ready_hint": ("review" if result.get("prepare_blocked")
+                           else "check" if verdict == "READY" else "prepare")}
 
 
 def record_conversion(path: str, result: dict) -> None:
@@ -2490,6 +2526,8 @@ def record_conversion(path: str, result: dict) -> None:
                 verdict=diag.get("verdict"), score=diag.get("score"),
                 filament_count=diag.get("filament_count"),
                 last_action="convert", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(diag.get("prepare_blocked")),
+                                    diag.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "convert",
                                 f"Made U1-ready — {result.get('output_name', '')}".strip(" —"), _now())
         finally:

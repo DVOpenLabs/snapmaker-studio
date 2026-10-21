@@ -25,7 +25,9 @@ export function familyLabel(family: string | null | undefined): string {
 }
 
 /** Verdict → friendly status (no READY/REPAIRABLE jargon). */
-export function verdictStatus(verdict: string | null | undefined): { icon: string; label: string; tone: Tone } {
+export function verdictStatus(verdict: string | null | undefined, prepareBlocked?: boolean | null): { icon: string; label: string; tone: Tone } {
+  // Readable but not preparable: Studio will refuse to prepare it, so it is neither "fixable" nor "compatible".
+  if (prepareBlocked && (verdict || "").toUpperCase() !== "HIGH_RISK") return { icon: "⚠️", label: "Review in Orca first", tone: "risk" };
   switch ((verdict || "").toUpperCase()) {
     case "READY": return { icon: "✅", label: "U1 compatible", tone: "ready" };
     case "REPAIRABLE": return { icon: "🛠", label: "Needs a fix first", tone: "repairable" };
@@ -33,6 +35,17 @@ export function verdictStatus(verdict: string | null | undefined): { icon: strin
     case "HIGH_RISK": return { icon: "⚠️", label: "Review before printing", tone: "risk" };
     default: return { icon: "•", label: "Checking…", tone: "convertible" };
   }
+}
+
+/** The badge/stars headline when the readiness report says setup review remains. A compatible
+ *  profile stays compatible (the Doctor's verdict is never rewritten); the headline says "review",
+ *  using the readiness wording, not the unusable-project (HIGH_RISK) mapping. */
+export function headlineWithReadiness(
+  base: { icon: string; label: string; tone: Tone } | null,
+  setupRisk: boolean,
+): { icon: string; label: string; tone: Tone } | null {
+  if (!base || !setupRisk || base.tone !== "ready") return base;
+  return { icon: "⚠️", label: "Review before printing", tone: "repairable" };
 }
 
 /** "N color" / "N colors", guarding nulls. */

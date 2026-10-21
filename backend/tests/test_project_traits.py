@@ -29,6 +29,8 @@ def _model(unit="millimeter", app="OrcaSlicer-2.2.0", items=1, extra=""):
 
 
 def _write(path, entries: dict) -> str:
+    # A 3MF project needs these parts to be readable at all (same rule as the Doctor).
+    entries = {"[Content_Types].xml": "<Types/>", "_rels/.rels": "<Relationships/>", **entries}
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in entries.items():
             z.writestr(name, data if isinstance(data, bytes) else data.encode())

@@ -110,7 +110,7 @@
     ],
     "success": [
       "You see **U1 copy created — review setup before slicing**, followed by a note that your original file is not modified.",
-      "New files beside your original, for example `…_placed_U1_SnapmakerU1.3mf`. You may also see a `.orig.3mf` snapshot Studio keeps next to a prepared copy.",
+      "New files beside your original, for example `…_placed_U1_SnapmakerU1.3mf`.",
       "When you open the prepared copy, **Object placement** says the object sits inside the printable area."
     ],
     "differs": [
