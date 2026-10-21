@@ -68,6 +68,8 @@ Read-only checks against a real Snapmaker U1 passed (78/78), including the Spool
 checks, with no printer-control action called. This printer's four toolheads all carry the same 0.4 mm nozzle, no
 real SpoolEase device has been tested, and the Linux-installed app was not run against the real printer.
 
+**Known limitation.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch.
+
 Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
 is something you confirm.
 

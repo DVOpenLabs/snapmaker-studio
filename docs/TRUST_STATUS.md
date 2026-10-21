@@ -86,6 +86,8 @@ default-path upgrade smoke test on a disposable GitHub-hosted runner.
 isolated native builds of the job-restore scenarios, and the screens the acceptance run drives; they were not
 verified against a real printer beyond the read-only hardware run above.
 
+**Known limitation found after the acceptance run.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch. Preparing from the workspace screen was not checked in an installed build for this finding, and the accepted validation above is unchanged.
+
 ## v1.5.0 — ACCEPTED
 
 **Project Materials (#39).** The Windows installer and Linux `.deb` named in

@@ -97,6 +97,7 @@ All notable changes to this project are documented here. The format is based on
   "stops loading the whole file" when it meets one. That sentence is not established by the interface
   check described above and will be corrected in a later release; Studio's decision not to prepare such a
   project is unchanged.
+- **Compatibility and This job.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch.
 
 ## [1.5.0] - 2026-10-06
 
