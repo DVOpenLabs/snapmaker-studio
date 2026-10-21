@@ -49,7 +49,14 @@ def _bbox_and_triangles(tm: ThreeMF):
 
     helpers = geometry.nonprinting_meshes(tm)
     for p in model_parts:
-        for m in _VERT_RE.finditer(tm.read_part(p)):
+        raw = tm.read_part(p)
+        if any(part == p for part, _oid in helpers):
+            matches = (m for block in _OBJECT_BLOCK_RE.finditer(raw)
+                       if (p, _object_id(block.group(0))) not in helpers
+                       for m in _VERT_RE.finditer(block.group(0)))
+        else:
+            matches = _VERT_RE.finditer(raw)
+        for m in matches:
             seen = True
             for i in range(3):
                 v = float(m.group(i + 1))
