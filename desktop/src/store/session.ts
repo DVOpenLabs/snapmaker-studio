@@ -92,17 +92,17 @@ export const useSession = create<SessionState>((set, get) => ({
     const p = file.path;
     const generation = ++requestGeneration;
     const prepareMode = mode ?? get().prepareMode;
-    prepareRevision++;
+    const revision = ++prepareRevision;
     set({ prepareMode, convert: { status: "loading", data: null, error: null }, diff: blank(), settingsSummary: null });
     try {
       const data = await apiConvert(p, undefined, prepareMode);
-      if (requestGeneration !== generation || get().file?.path !== p) return;
+      if (requestGeneration !== generation || prepareRevision !== revision || get().file?.path !== p) return;
       set({ convert: { status: "done", data, error: null }, settingsSummary: data.settings_summary ?? null });
       // Auto-compare only when there's a source *project* to diff against.
       // STL inputs are wrapped into a brand-new U1 project — nothing to compare.
       if (file.ext === "3mf") void get().runDiff();
     } catch (e: any) {
-      if (requestGeneration !== generation || get().file?.path !== p) return;
+      if (requestGeneration !== generation || prepareRevision !== revision || get().file?.path !== p) return;
       set({ convert: { status: "error", data: null, error: String(e?.message ?? e) }, settingsSummary: null });
     }
   },
@@ -110,7 +110,7 @@ export const useSession = create<SessionState>((set, get) => ({
   beginPrepare: (sourcePath) => {
     if (get().file?.path !== sourcePath) return null;
     const revision = ++prepareRevision;
-    set({ convert: blank(), settingsSummary: null });
+    set({ convert: blank(), diff: blank(), settingsSummary: null });
     return revision;
   },
 
@@ -120,8 +120,10 @@ export const useSession = create<SessionState>((set, get) => ({
     const out = data?.output_path;
     const usable = !!data && !data.blocked && data.validated_ok === true && typeof out === "string" && out !== "" && out !== sourcePath;
     set(usable
-      ? { convert: { status: "done", data, error: null }, settingsSummary: data.settings_summary ?? null }
-      : { convert: blank(), settingsSummary: null });
+      ? { convert: { status: "done", data, error: null }, diff: blank(), settingsSummary: data.settings_summary ?? null }
+      : { convert: blank(), diff: blank(), settingsSummary: null });
+    // The comparison belongs to this copy: same rule as runConvert (a 3MF has a project to compare against).
+    if (usable && get().file?.ext === "3mf") void get().runDiff();
   },
 
   previewConvert: async () => {
@@ -145,13 +147,14 @@ export const useSession = create<SessionState>((set, get) => ({
     const out = get().convert.data?.output_path;
     if (!file || !out) return;
     const p = file.path;
+    const revision = prepareRevision;
     set({ diff: { status: "loading", data: null, error: null } });
     try {
       const data = await apiDiff(p, out);
-      if (get().file?.path !== p) return;
+      if (prepareRevision !== revision || get().file?.path !== p) return;
       set({ diff: { status: "done", data, error: null } });
     } catch (e: any) {
-      if (get().file?.path !== p) return;
+      if (prepareRevision !== revision || get().file?.path !== p) return;
       set({ diff: { status: "error", data: null, error: String(e?.message ?? e) } });
     }
   },

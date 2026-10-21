@@ -55,3 +55,68 @@ describe("a published preparation is bound to the revision it started under", ()
     expect(useSession.getState().convert.data?.output_path).toBe("C:/p/store.3mf");
   });
 });
+
+const deferred = <T,>() => { let resolve!: (v: T) => void; let reject!: (e: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+describe("the store's own Prepare and the published one cannot overwrite each other", () => {
+  it("an older runConvert that resolves after a newer published Prepare is dropped", async () => {
+    const old = deferred<unknown>();
+    api.convert.mockReturnValueOnce(old.promise);
+    const running = useSession.getState().runConvert();
+    const rev = useSession.getState().beginPrepare(A);
+    useSession.getState().publishPrepared(rev, A, ok("C:/p/newer.3mf"));
+    old.resolve(ok("C:/p/older.3mf"));
+    await running; await flush();
+    expect(useSession.getState().convert.data?.output_path).toBe("C:/p/newer.3mf");
+  });
+  it("an older runConvert that rejects after a newer published Prepare does not clear it", async () => {
+    const old = deferred<unknown>();
+    api.convert.mockReturnValueOnce(old.promise);
+    const running = useSession.getState().runConvert();
+    const rev = useSession.getState().beginPrepare(A);
+    useSession.getState().publishPrepared(rev, A, ok("C:/p/newer.3mf"));
+    old.reject(new Error("engine went away"));
+    await running; await flush();
+    expect(useSession.getState().convert.status).toBe("done");
+    expect(useSession.getState().convert.data?.output_path).toBe("C:/p/newer.3mf");
+  });
+});
+
+describe("the comparison always belongs to the current prepared copy", () => {
+  it("a new preparation drops the previous copy's comparison and compares the replacement", async () => {
+    api.convert.mockResolvedValueOnce(ok("C:/p/first.3mf"));
+    api.diff.mockResolvedValueOnce({ for: "first" });
+    await useSession.getState().runConvert(); await flush();
+    expect(useSession.getState().diff.data).toEqual({ for: "first" });
+    api.diff.mockResolvedValueOnce({ for: "second" });
+    const rev = useSession.getState().beginPrepare(A);
+    expect(useSession.getState().diff.status).not.toBe("done");
+    useSession.getState().publishPrepared(rev, A, ok("C:/p/second.3mf"));
+    await flush();
+    expect(api.diff).toHaveBeenLastCalledWith(A, "C:/p/second.3mf");
+    expect(useSession.getState().diff.data).toEqual({ for: "second" });
+  });
+  it("an earlier comparison that finishes after the replacement was published is dropped", async () => {
+    api.convert.mockResolvedValueOnce(ok("C:/p/first.3mf"));
+    const slow = deferred<unknown>();
+    api.diff.mockReturnValueOnce(slow.promise);
+    await useSession.getState().runConvert(); await flush();
+    api.diff.mockResolvedValueOnce({ for: "second" });
+    const rev = useSession.getState().beginPrepare(A);
+    useSession.getState().publishPrepared(rev, A, ok("C:/p/second.3mf"));
+    await flush();
+    slow.resolve({ for: "first" });
+    await flush();
+    expect(useSession.getState().diff.data).toEqual({ for: "second" });
+  });
+  it("a published copy that is not usable leaves no comparison behind", async () => {
+    api.convert.mockResolvedValueOnce(ok("C:/p/first.3mf"));
+    api.diff.mockResolvedValueOnce({ for: "first" });
+    await useSession.getState().runConvert(); await flush();
+    const rev = useSession.getState().beginPrepare(A);
+    useSession.getState().publishPrepared(rev, A, { ...ok("C:/p/bad.3mf"), validated_ok: false });
+    await flush();
+    expect(useSession.getState().diff.status).not.toBe("done");
+  });
+});

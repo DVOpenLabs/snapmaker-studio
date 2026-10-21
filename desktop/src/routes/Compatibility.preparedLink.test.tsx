@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // Integration: a copy prepared on the Compatibility route reaches This job and the After slicing receipt.
 // Real stores, the real trackJob subscription, the real Compatibility and AfterSlicing routes and the real receipt card;
-// only the engine (@/api) is faked. Nothing here injects a finished conversion into a store.
+// only the engine (@/api) is faked. Prepare is always started from the real Compatibility button; the one test that
+// simulates a newer preparation does so through the store actions, because the UI disables Prepare while one is pending.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -90,7 +91,7 @@ describe("Prepare on the Compatibility route is part of the job", () => {
     await waitFor(() => expect(receiptCall()).toEqual([A, OUT, GCODE]));
   });
 
-  it("Project Materials preparation links the same way", async () => {
+  it("preparing after choosing to keep the project's own filament (no material selection) links the same way", async () => {
     f("convert").mockResolvedValue(converted());
     render(wrap(<Compatibility />));
     await screen.findByTestId("provider-down");
