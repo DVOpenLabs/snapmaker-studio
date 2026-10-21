@@ -137,6 +137,38 @@ describe("only a validated, unblocked copy of the open project is published", ()
     expect(useJob.getState().record?.original.path).toBe(B);
   });
 
+  it("a response for an earlier open of the same project (A, then B, then A again) is dropped", async () => {
+    let release!: (v: unknown) => void;
+    f("convert").mockReturnValue(new Promise((r) => { release = r; }));
+    render(wrap(<Compatibility />));
+    await screen.findByRole("button", { name: /Prepare U1 copy/ });
+    fireEvent.click(plainPrepare());
+    await waitFor(() => expect(f("convert")).toHaveBeenCalledTimes(1));
+    act(() => { useSession.getState().setFile(B); });
+    act(() => { useSession.getState().setFile(A); });
+    await act(async () => { release(converted()); await Promise.resolve(); await Promise.resolve(); });
+    expect(useSession.getState().convert.status).not.toBe("done");
+    expect(useJob.getState().record?.prepared ?? null).toBeNull();
+    goToAfterSlicing();
+    await waitFor(() => expect(f("settingsReceipt")).toHaveBeenCalled());
+    expect(receiptCall()).toEqual([A, null, GCODE]);
+  });
+
+  it("an older Prepare that resolves after a newer one for the same project does not replace it", async () => {
+    let releaseOld!: (v: unknown) => void;
+    f("convert").mockReturnValueOnce(new Promise((r) => { releaseOld = r; }));
+    render(wrap(<Compatibility />));
+    await screen.findByRole("button", { name: /Prepare U1 copy/ });
+    fireEvent.click(plainPrepare());
+    await waitFor(() => expect(f("convert")).toHaveBeenCalledTimes(1));
+    f("convert").mockResolvedValueOnce(converted({ output_path: "C:/p/newer.3mf", output_name: "newer.3mf" }));
+    const rev = useSession.getState().beginPrepare(A);
+    expect(rev).not.toBeNull();
+    useSession.getState().publishPrepared(rev, A, converted({ output_path: "C:/p/newer.3mf" }));
+    await act(async () => { releaseOld(converted({ output_path: "C:/p/older.3mf" })); await Promise.resolve(); await Promise.resolve(); });
+    expect(useSession.getState().convert.data?.output_path).toBe("C:/p/newer.3mf");
+  });
+
   it("a dry-run preview never becomes the prepared copy", async () => {
     f("convert").mockResolvedValue(converted({ dry: true }));
     render(wrap(<Compatibility />));

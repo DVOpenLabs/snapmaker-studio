@@ -38,13 +38,19 @@ interface SessionState {
   setPrepareMode: (mode: PrepareMode) => void;
   runConvert: (mode?: PrepareMode) => Promise<void>;
   /** A Prepare started elsewhere for this project: forget any earlier copy until the new one is validated. */
-  beginPrepare: (sourcePath: string) => void;
+  beginPrepare: (sourcePath: string) => number | null;
   /** A Prepare that finished elsewhere: shared state only takes a validated, unblocked copy of the project that is open now. */
-  publishPrepared: (sourcePath: string, data: any) => void;
+  publishPrepared: (revision: number | null | undefined, sourcePath: string, data: any) => void;
   previewConvert: () => Promise<void>;
   runDiff: () => Promise<void>;
   reset: () => void;
 }
+
+/**
+ * Bumped whenever the open project changes (or is reset), a preparation starts anywhere, or Prepare is run through
+ * the store: a preparation published later than any of these belongs to a project, or a request, that is gone.
+ */
+let prepareRevision = 0;
 
 export const useSession = create<SessionState>((set, get) => ({
   file: null,
@@ -57,6 +63,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   setFile: (path) => {
     requestGeneration++;
+    prepareRevision++;
     set({ file: toFileRef(path), doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() });
     void get().runDoctor();
   },
@@ -85,6 +92,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const p = file.path;
     const generation = ++requestGeneration;
     const prepareMode = mode ?? get().prepareMode;
+    prepareRevision++;
     set({ prepareMode, convert: { status: "loading", data: null, error: null }, diff: blank(), settingsSummary: null });
     try {
       const data = await apiConvert(p, undefined, prepareMode);
@@ -100,13 +108,15 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   beginPrepare: (sourcePath) => {
-    if (get().file?.path !== sourcePath) return;
+    if (get().file?.path !== sourcePath) return null;
+    const revision = ++prepareRevision;
     set({ convert: blank(), settingsSummary: null });
+    return revision;
   },
 
-  publishPrepared: (sourcePath, data) => {
-    // The project may have changed while the request ran; its result is then about a project that is no longer open.
-    if (get().file?.path !== sourcePath) return;
+  publishPrepared: (revision, sourcePath, data) => {
+    // The project may have changed (even to the same path again) or a newer preparation may have started while this one ran.
+    if (revision == null || revision !== prepareRevision || get().file?.path !== sourcePath) return;
     const out = data?.output_path;
     const usable = !!data && !data.blocked && data.validated_ok === true && typeof out === "string" && out !== "" && out !== sourcePath;
     set(usable
@@ -146,5 +156,8 @@ export const useSession = create<SessionState>((set, get) => ({
     }
   },
 
-  reset: () => set({ file: null, doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() }),
+  reset: () => {
+    prepareRevision++;
+    set({ file: null, doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() });
+  },
 }));

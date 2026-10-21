@@ -50,12 +50,13 @@ export default function Compatibility() {
   const prepM = useMutation({
     mutationFn: ({ path: requestPath, mode, materials }: { path: string; mode: PrepareMode; generation: number; materials?: MaterialSelection[] }) =>
       convert(requestPath, undefined, mode, false, materials),
-    onMutate: (variables) => { setPrep(null); useSession.getState().beginPrepare(variables.path); },
-    onSuccess: (d, variables) => {
+    // The store hands back the revision this request belongs to; it is the only thing that lets its result in later.
+    onMutate: (variables) => { setPrep(null); return { revision: useSession.getState().beginPrepare(variables.path) }; },
+    onSuccess: (d, variables, started) => {
       if (variables.generation !== requestGeneration.current || blockedRef.current) return;
       setPrep(d);
       // Share it with This job and After slicing; the store accepts it only for the project that is open and only if validated.
-      useSession.getState().publishPrepared(variables.path, d);
+      useSession.getState().publishPrepared(started?.revision, variables.path, d);
     },
   });
   const previewM = useMutation({
