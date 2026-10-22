@@ -16,6 +16,7 @@ import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { useToast } from "@/store/toast";
 import { cn } from "@/lib/utils";
+import { JOB_ROUTE } from "@/lib/routes";
 
 function eventLabel(action: string): string {
   if (action === "convert") return "Prepared U1 copy";
@@ -161,7 +162,7 @@ export default function Projects() {
 
   const openProject = (p: LibraryProject) => {
     setFile(p.source_path);
-    nav("/workspace");
+    nav(JOB_ROUTE);
   };
 
   return (

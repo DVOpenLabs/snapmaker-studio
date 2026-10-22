@@ -468,6 +468,8 @@ export interface ViewProps {
   forget?: { candidate: MaterialCandidate; busy: boolean; returnFocusTo: () => HTMLElement | null; onCancel: () => void; onConfirm: () => void } | null;
   onForget?: (candidate: MaterialCandidate, opener: HTMLButtonElement) => void;
   forgetNote?: { kind: "ok" | "error"; text: string } | null;
+  /** Drop the title and subtitle: a parent that already names this area (a tab) supplies them. */
+  bare?: boolean;
 }
 
 export function ProjectMaterialsView(p: ViewProps) {
@@ -516,7 +518,7 @@ export function ProjectMaterialsView(p: ViewProps) {
         )}
         {p.review.status === "idle" ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={p.onReview} disabled={selections.length === 0 || pending.length > 0}>Review &amp; prepare</Button>
+            <Button size="sm" id="materials-review" onClick={p.onReview} disabled={selections.length === 0 || pending.length > 0}>Review &amp; prepare</Button>
             {selections.length > 0 && <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => p.dispatch({ type: "reset" })}>Clear all choices</button>}
             {pending.length > 0 && <span className="text-xs text-repairable" data-testid="confirm-first">{COPY.confirmFirst}</span>}
             {selections.length === 0 && pending.length === 0 && <span className="text-xs text-muted-foreground">Nothing chosen. Prepare works as usual without this.</span>}
@@ -531,10 +533,12 @@ export function ProjectMaterialsView(p: ViewProps) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div>
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Layers className="h-4 w-4 text-primary" />{COPY.title}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{COPY.subtitle}</p>
-        </div>
+        {p.bare ? null : (
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Layers className="h-4 w-4 text-primary" />{COPY.title}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{COPY.subtitle}</p>
+          </div>
+        )}
         {body}
       </CardContent>
     </Card>
@@ -552,9 +556,10 @@ interface CardProps {
   /** Lets the parent know whether Project Materials holds choices, so a plain Prepare is not offered beside them. */
   onActiveChange?: (active: boolean) => void;
   busy?: boolean;
+  bare?: boolean;
 }
 
-export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy }: CardProps) {
+export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy, bare }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
   const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
@@ -723,7 +728,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   }
 
   return (
-    <ProjectMaterialsView load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
+    <ProjectMaterialsView bare={bare} load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
       onPrepare={doPrepare} busy={busy || preparing} warning={warning} loadInventory={loadInventory}
       onForget={(candidate, opener) => { setForgetNote(null); setForget({ candidate, opener }); }}

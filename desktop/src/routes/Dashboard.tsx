@@ -24,6 +24,7 @@ import { usePrinter } from "@/store/printer";
 import { isPrinterSetUp } from "@/lib/printerSetup";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
+import { JOB_ROUTE } from "@/lib/routes";
 
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
@@ -109,7 +110,7 @@ export default function Dashboard() {
   const ready = projects.filter((p) => p.verdict === "READY" && !p.prepare_blocked).length;
   const needsWork = projects.length - ready;
 
-  const openProject = (p: LibraryProject) => { setFile(p.source_path); nav("/workspace"); };
+  const openProject = (p: LibraryProject) => { setFile(p.source_path); nav(JOB_ROUTE); };
 
   // Demo Mode: one click → a full Studio Intelligence Report, no file or printer.
   const [demoOn, setDemoOn] = useState(false);

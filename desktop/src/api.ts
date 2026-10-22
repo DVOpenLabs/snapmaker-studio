@@ -1392,6 +1392,8 @@ export interface PlacedInstances {
 
 export interface PlacementItem {
   object_id: string;
+  /** Where the instance sits, in the same frame the fit is judged in. */
+  bounds_mm?: { min: number[]; max: number[] };
   // One object can be used by several build items; these tell the instances apart.
   item_index?: number;
   instance_index?: number;
@@ -1411,6 +1413,9 @@ export interface PlacementCheck {
   plate_count?: number;
   /** False when positions across plates are not established by Studio (multi-plate projects). */
   placement_established?: boolean;
+  /** The printable rectangle the fit is judged against. */
+  bed?: { min_x: number; min_y: number; max_x: number; max_y: number };
+  bed_name?: string;
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];
