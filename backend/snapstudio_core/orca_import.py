@@ -91,7 +91,7 @@ def _enable_exclude_object(cfg: dict, changes: list) -> None:
         cfg["exclude_object"] = "1"
         _change(changes, "exclude_object", old, "1",
                 "enabled so the U1 can skip a failed object and probe adaptively",
-                "Studio's import rule turns Exclude Object on for every U1 copy; the original did not have it turned on.")
+                "Studio's import rule turns Exclude Object on for this U1 copy; the original did not have it turned on.")
 
 
 def _fix_auto_brim(cfg: dict, changes: list) -> None:

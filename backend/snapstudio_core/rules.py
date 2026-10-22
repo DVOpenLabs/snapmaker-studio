@@ -14,7 +14,7 @@ def apply_clamps(cfg: dict, rules: dict) -> list[dict]:
                       "explanation": clamp_explanation({"key": k, "old": cfg[k], "new": c["good"]}),
                       "source": ("Studio's import rule for this setting" if k == "raft_first_layer_expansion"
                                  else "the Compatibility check's valid range"),
-                      # the raft explanation ends with advice to check the raft in Snapmaker Orca
+                      # the raft kind is "orca": the desktop labels it as advice to verify in Snapmaker Orca
                       "kind": "orca" if k == "raft_first_layer_expansion" else "engine"}
             findings.append(change)
             cfg[k] = c["good"]
