@@ -22,6 +22,8 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Test-only: validates the committed scene/1 JSON Schema with a real validator (never imported by the engine).
+test = ["pytest>=8", "jsonschema>=4.18,<5"]
 
 [project.scripts]
 u1convert = "u1convert.cli:cli"
