@@ -11,6 +11,7 @@ local coordinates aren't reconstructed here), so they return `warn`, never a fal
 """
 from __future__ import annotations
 
+from . import geometry_basis
 from .geometry import build_item_dims
 from .intelligence import project_info
 
@@ -51,6 +52,20 @@ def assess_layout(path: str) -> dict:
       - unknown : no placement data could be read.
       - pass    : every object read fits within one plate.
     """
+    basis = geometry_basis.assess(path)
+    if not geometry_basis.is_established(basis):
+        # Size not established (non-mm unit, rotated/scaled item, unfollowable structure):
+        # no fit verdict, no number, no geometry-based remedy.
+        return {
+            "status": "unknown",
+            "plates": 0,
+            "object_count": 0,
+            "messages": [
+                f"Layout not checked. {basis['summary']} Check placement in Snapmaker Orca "
+                "before slicing."
+            ],
+            "geometry_basis": basis,
+        }
     items = build_item_dims(path)
     info = project_info(path)
     plates = int(info.get("plates") or 1)

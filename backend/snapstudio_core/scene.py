@@ -46,6 +46,7 @@ from importlib.resources import files
 from lxml import etree
 
 from . import scene_limits as L
+from . import roles as _roles
 from . import units as _units
 from .errors import SnapStudioError
 
@@ -627,7 +628,8 @@ def find_root_model(arc: Archive) -> str:
 
 
 #: Stands in for a subtype when two records for one (object, part) disagree; ``role_of`` reads it as unknown.
-CONFLICTING_SUBTYPE = "conflicting_records"
+#: Defined once, in ``roles``, with the rest of the role rule the sizes and footprints share.
+CONFLICTING_SUBTYPE = _roles.CONFLICTING_SUBTYPE
 
 
 class SettingsInfo:
@@ -665,10 +667,7 @@ def parse_settings(arc: Archive, ctl: Control) -> SettingsInfo:
                     pid = p.get("id")
                     if pid is None:
                         continue
-                    subtype = p.get("subtype")
-                    if pid in parts and parts[pid] != subtype:
-                        subtype = CONFLICTING_SUBTYPE
-                    parts[pid] = subtype
+                    _roles.merge_record(parts, pid, p.get("subtype"))
                 _free(elem)
             elif elem.tag == "plate":
                 if len(info.plates) >= 256:
@@ -818,13 +817,10 @@ class Traversal:
             return "unknown"
         own = None
         if parent is not None and via is not None and self.settings.dialect == "bambu" and parent.resource[0] == self.root_part:
-            subtypes = self.settings.part_subtypes.get(parent.resource[1])
-            if parent.resource[1] in self.settings.metadata_objects and subtypes is not None:
-                from .assignments import role_of
-                own = role_of(subtypes[via]) if via in subtypes else "unknown"
-        if inherited not in (None, "part"):
-            return inherited
-        return own if own is not None else inherited
+            # the one shared role rule; here a component an object's records do not mention is unknown
+            own = _roles.own_role(self.settings.part_subtypes, self.settings.metadata_objects,
+                                  parent.resource[1], via, missing="unknown")
+        return _roles.inherit(inherited, own)
 
     def _expand(self, key, local, parent: Node | None, path: list[int], ctx: TopContext,
                 stack: tuple, via: str | None = None, inherited: str | None = None) -> Node:

@@ -9,6 +9,10 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 - **Print risk signals replace the readiness percentage.** The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each risk it found, once per condition, with what it means and what to do, and says what it did and did not check. Community guidance attaches only to the conditions it actually fits.
 
+### Fixed
+- Object placement judges each placed copy of a repeated object on its own, so a copy that hangs off the plate is no longer hidden by one that does not (#93).
+- Placement and plate-fit checks are withheld (reported as not checked) for projects whose physical size the file does not establish: a non-millimetre unit, or a rotated or scaled object.
+
 ## [1.6.0] - 2026-10-21
 
 **A job you can pick up again, sizes Studio will not guess, and more projects that prepare.**
