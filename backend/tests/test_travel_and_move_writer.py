@@ -159,3 +159,13 @@ def test_an_inch_project_gets_no_placement_or_preflight_bed_verdict(tmp_path, mo
     monkeypatch.setattr(service, "printer_facts", _facts({"printer_id": "snapmaker_u1"}))
     check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
     assert check["confidence"] != "confirmed" and "inside" not in check["evidence"]
+
+
+def test_an_inch_project_gets_no_layout_fit_claim(tmp_path):
+    from snapstudio_core import layout
+    path = str(fx.three_mf(tmp_path / "inch_layout.3mf", fx.model_xml(
+        [fx.cube_object("1", 12)], [("1", fx.tf(100, 100, 0))], unit="inch")))
+    out = layout.assess_layout(path)
+    assert out["status"] == "unknown" and out["geometry_basis"]["established"] is False
+    assert "Layout not checked" in out["messages"][0]
+    assert not any("fit within" in m or "build plate" in m for m in out["messages"])
