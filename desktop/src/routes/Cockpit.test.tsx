@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 1, token: "t" }) }));
 vi.mock("@/api", () => ({
-  doctor: vi.fn(), convert: vi.fn(), diff: vi.fn(), detectOrca: vi.fn(), openInOrca: vi.fn(), openModelDialog: vi.fn(),
+  doctor: vi.fn(), convert: vi.fn(), diff: vi.fn(), detectOrca: vi.fn(), openInOrca: vi.fn(), openModelDialog: vi.fn(), compatibilityCheck: vi.fn(),
 }));
 vi.mock("@/components/PlacementCard", () => ({
   usePlacement: () => ({ check: null, failed: false, fix: null, fixing: false, runFix: vi.fn() }),
@@ -50,6 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.doctor).mockResolvedValue({ verdict: "READY", prepare_blocked: false } as any);
   vi.mocked(api.diff).mockResolvedValue({} as any);
+  vi.mocked(api.compatibilityCheck).mockResolvedValue({ findings: [] } as any);
   vi.mocked(api.detectOrca).mockResolvedValue("C:\\Orca\\orca.exe");
   vi.mocked(api.openInOrca).mockResolvedValue(undefined);
   useSession.getState().reset();
@@ -177,6 +178,46 @@ describe("This job: creating the copy", () => {
     expect(screen.queryByTestId("materials")).toBeNull();
   });
 
+  it.each([
+    ["unreadable", "project.unreadable", /cannot read this file as a project/],
+    ["refused", "prepare.blocked", /cannot prepare a U1 copy of it yet/],
+  ])("a %s project (engine eligibility) offers no Create and sends no request", async (_label, id, copy) => {
+    vi.mocked(api.compatibilityCheck).mockResolvedValue({ findings: [{ id }] } as any);
+    await openChecked();
+    expect(screen.getByTestId("job-blocked").textContent).toMatch(copy);
+    const primary = screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement;
+    expect(primary.disabled).toBe(true);
+    fireEvent.click(primary);
+    expect(api.convert).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("materials")).toBeNull();
+  });
+
+  it("Create waits for the eligibility answer, so a slow check can never be raced", async () => {
+    let answer!: (v: unknown) => void;
+    vi.mocked(api.compatibilityCheck).mockReturnValue(new Promise((r) => { answer = r; }) as any);
+    await openChecked();
+    expect((screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { answer({ findings: [] }); await Promise.resolve(); });
+    expect((screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("an STL is not asked for 3MF eligibility and can be created", async () => {
+    vi.mocked(api.convert).mockResolvedValue({ blocked: false, validated_ok: true, output_path: "C:\work\m_U1.3mf", output_name: "m_U1.3mf", prepare_mode: "preserve", settings_summary: null } as any);
+    view();
+    await act(async () => { useSession.getState().setFile("C:\work\m.stl"); });
+    await settle();
+    expect(api.compatibilityCheck).not.toHaveBeenCalled();
+    create(); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("m_U1.3mf");
+  });
+
+  it("an unusable file shows the engine's plain recommendation, and the engine still decides what Create does", async () => {
+    vi.mocked(api.doctor).mockResolvedValue({ verdict: "HIGH_RISK", prepare_blocked: false, recommended_action: "This file is not a 3MF project and cannot be diagnosed." } as any);
+    await openChecked();
+    expect(screen.getByTestId("job-high-risk").textContent).toContain("cannot be diagnosed");
+    expect((screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("a failed check offers Check again and does not start a preparation", async () => {
     vi.mocked(api.doctor).mockRejectedValue(new Error("unreadable"));
     await openChecked();
@@ -247,7 +288,12 @@ describe("This job: old results never look current", () => {
     await openChecked(A);
     create(); await settle();
     await act(async () => { useSliced.setState({ path: "C:\\out\\a.gcode", name: "a.gcode" }); });
-    expect(screen.getByRole("button", { name: "Compare slice" })).toBeTruthy();
+    // The comparison is already showing, so its button is not offered to press itself.
     expect(screen.getByTestId("slice-compare").textContent).toBe("C:\\work\\a_U1.3mf");
+    expect(document.querySelectorAll("[data-primary]")).toHaveLength(0);
+    // Looking at the plate again brings the one primary action back.
+    fireEvent.click(within(screen.getByRole("list", { name: "Job progress" })).getByRole("button", { name: /Open project/ }));
+    expect(screen.getByRole("button", { name: "Compare slice" })).toBeTruthy();
+    expect(document.querySelectorAll("[data-primary]")).toHaveLength(1);
   });
 });

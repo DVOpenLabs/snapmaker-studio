@@ -14,7 +14,7 @@ import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
 import { PrepareRefusal } from "@/components/PrepareRefusal";
 import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
 import { Copy, Stethoscope } from "lucide-react";
-import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate } from "@/lib/compatibility";
+import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate, GATE_COPY } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
 import { usePrepare } from "@/hooks/usePrepare";
 import { isExt } from "@/lib/modelPath";
@@ -192,10 +192,8 @@ export default function Compatibility() {
           {counts && counts.total > 0 && (
             <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
               <p className="text-sm" data-testid={blocked ? "prepare-blocked-copy" : undefined}>
-                {gate === "unreadable"
-                  ? "Studio cannot read this file as a project, so it cannot prepare a U1 copy. Re-export the project from the slicer that made it and open the new file."
-                  : blocked
-                  ? "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it, or remove the settings listed above in the slicer that made it and export it again."
+                {gate !== "open"
+                  ? GATE_COPY[gate]
                   : "This model may be fine, but the project settings are for another printer. Studio can prepare a U1 profile copy so Orca opens it with U1-compatible settings."}
               </p>
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} blocked={blocked} onCustom={() => path && startPreview(path)} previewing={ctl.previewing || ctl.pending} />

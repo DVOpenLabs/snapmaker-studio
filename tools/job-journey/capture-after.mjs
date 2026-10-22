@@ -2,7 +2,8 @@
 // Synthetic fixtures only; the harness refuses printer and discovery calls and every non-local host.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launch } from "./harness.mjs";
+import { spawnSync } from "node:child_process";
+import { launch, repo } from "./harness.mjs";
 
 const arg = (n) => (process.argv.includes(n) ? process.argv[process.argv.indexOf(n) + 1] : null);
 const out = arg("--out") ?? join(process.cwd(), "after");
@@ -41,6 +42,23 @@ try {
       await page.waitForTimeout(1500);
       await shot(page, `${theme}-6-copy-created`);
       await shot(page, `${theme}-6-copy-created-full`, { fullPage: true });
+      await ctx.close();
+    }
+    // The returned slice, compared inside the same job. The G-code is built from the backend test constants (synthetic).
+    if (want("compare")) {
+      const gcode = join(h.work, "synthetic-job.gcode");
+      const made = spawnSync(process.env.PYTHON || "py", ["-c", "import sys; sys.path.insert(0,\".\"); from tests import test_gcode as t; open(sys.argv[1],\"w\").write(t.HEADER+t.SUMMARY+t.CONFIG)", gcode], { cwd: join(repo, "backend") });
+      if (made.status !== 0) log.push("could not build the synthetic G-code");
+      const { ctx, page, go, openProject } = await h.newPage({ theme });
+      await go("/this-print");
+      await openProject(painted);
+      await page.waitForSelector('[data-primary="create"]:not([disabled])', { timeout: 20000 }).catch(() => {});
+      await page.click('[data-primary="create"]');
+      await page.waitForSelector('[data-testid="copy-result"]', { timeout: 30000 }).catch(() => log.push(theme + ": no copy for compare"));
+      await page.evaluate(async (p) => { const m = await import("/src/store/sliced.ts"); m.useSliced.getState().setSliced(p); }, gcode);
+      await page.waitForTimeout(3500);
+      await shot(page, theme + "-10-compare-slice");
+      await shot(page, theme + "-10-compare-slice-full", { fullPage: true });
       await ctx.close();
     }
     // A project made for the U1 itself, then one the engine cannot read.
