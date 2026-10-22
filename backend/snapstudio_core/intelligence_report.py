@@ -159,6 +159,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     # finding: it is listed as "not verified" and keeps the report from saying "found nothing".
     spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
     not_verified = ["object spacing"] if spacing_unverified else []
+    # A bed-fit result that could not be produced (unidentified printer, nothing measurable) is not "no risk":
+    # say it was not verified. (A size that is not established is reported by its own not_checked finding above.)
+    if bed_fit and not avail["bed_fit"] and bed_fit.get("status") != "not_checked":
+        not_verified.append("bed fit")
 
     seen_r = set()
     recommendations = [r for r in recs if not (r in seen_r or seen_r.add(r))]

@@ -220,14 +220,18 @@ def _placed_findings(placed: dict | None, findings: list, fixes: list) -> str | 
         n = len(sunk)
         findings.append(_f("warn", f"By placement, {n} placed instance{'s' if n != 1 else ''} reach down to "
                                    f"{low:g} mm, below the build plate; Studio cannot confirm "
-                                   f"{'they print' if n != 1 else 'it prints'} as modelled."))
+                                   f"{'they print' if n != 1 else 'it prints'} as modelled.",
+                           id="placement-below-plate",
+                           action="Check the height of the sunk instance in Snapmaker Orca."))
         fixes.append("Check the height of the sunk instance in Snapmaker Orca.")
         level = level or "warn"
     if tall:
         top = max(row["bounds_mm"]["max"][2] for row in tall)
         n = len(tall)
         findings.append(_f("risk", f"By placement, {n} placed instance{'s' if n != 1 else ''} stand up to "
-                                   f"{top:.0f} mm, above the {placed['bed_height_mm']:.0f} mm height limit."))
+                                   f"{top:.0f} mm, above the {placed['bed_height_mm']:.0f} mm height limit.",
+                           id="placement-over-height",
+                           action="Scale the tall instance down or split it in Snapmaker Orca."))
         fixes.append("Scale the tall instance down or split it in Snapmaker Orca.")
         return "risk"
     return level
@@ -242,25 +246,32 @@ def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
         if oversized:
             for plate in oversized:
                 findings.append(_f("risk", f"By placement, plate {plate['plate']}: {plate['reason']}. "
-                                           "Scale it down or split it."))
+                                           "Scale it down or split it.",
+                                   id="placement-plate-oversized",
+                                   action="Scale the oversized plate down or split it, then use Arrange in Snapmaker Orca."))
             fixes.append("Scale the oversized plate down or split it, then use Arrange in Snapmaker Orca.")
             return "risk"
         if placed.get("not_judged"):
-            findings.append(_f("warn", f"By placement: {placed.get('summary')}"))
+            findings.append(_f("warn", f"By placement: {placed.get('summary')}",
+                               id="placement-not-judged",
+                               action="Check these instances in Snapmaker Orca; Studio could not judge their placement."))
             return "warn"
         findings.append(_f("ok", f"By placement, each of the {plate_count} plates fits on its own. "
                                  "Positions across plates are not checked; use Arrange in Snapmaker Orca."))
         return None
     if not placed.get("off_plate"):
         if placed.get("not_judged"):
-            findings.append(_f("warn", f"By placement: {placed.get('summary')}"))
+            findings.append(_f("warn", f"By placement: {placed.get('summary')}",
+                               id="placement-not-judged",
+                               action="Check these instances in Snapmaker Orca; Studio could not judge their placement."))
             return "warn"
         findings.append(_f("ok", "By placement, every placed instance sits inside the plate."))
         return None
-    findings.append(_f("risk", f"By placement: {placed.get('summary')}"))
-    fixes.append("Move the arrangement onto the plate (Studio can save a corrected copy), "
-                 "or use Arrange in Snapmaker Orca." if placed.get("fixable") else
-                 "Use Arrange in Snapmaker Orca to bring every instance onto the plate.")
+    move = ("Move the arrangement onto the plate (Studio can save a corrected copy), "
+            "or use Arrange in Snapmaker Orca." if placed.get("fixable") else
+            "Use Arrange in Snapmaker Orca to bring every instance onto the plate.")
+    findings.append(_f("risk", f"By placement: {placed.get('summary')}", id="placement-off-plate", action=move))
+    fixes.append(move)
     return "risk"
 
 

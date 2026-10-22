@@ -290,3 +290,29 @@ def test_community_fix_attaches_by_condition_id_not_keywords_issue_106():
     fit = ir.build(mm={"available": True, "overall_level": "risk", "findings": [
         {"id": "toolhead-fit", "level": "risk", "text": "5 colors but only 4 toolheads"}]})
     assert any("community" in r for r in fit["risks"] if r["condition"] == "toolhead-fit")
+
+
+def test_placement_findings_carry_condition_ids_and_never_community_guidance():
+    """Placement findings are identified by id, own their action, and get no keyword-matched community fix."""
+    from snapstudio_core import bed_fit as bf, intelligence_report as ir
+    placed = {"available": True, "plate_count": 1, "bed_height_mm": 270.0, "items": [],
+              "off_plate": [{"object_id": "1"}], "fixable": True, "not_judged": [],
+              "summary": "1 placed instance sits outside the printable area."}
+    doc = bf.assess_objects([{"object_id": "1", "dimensions_mm": {"x": 10, "y": 10, "z": 10}}], placed=placed,
+                            bed=None, bed_known=False)
+    ids = {f.get("id") for f in doc["findings"] if f["level"] in ("warn", "risk")}
+    assert "placement-off-plate" in ids
+    assert all(f.get("id") and f.get("action") for f in doc["findings"] if f["level"] in ("warn", "risk"))
+    out = ir.build(bed_fit=doc)
+    risk = next(r for r in out["risks"] if r["condition"] == "placement-off-plate")
+    assert "community" not in risk and risk["action"] and not risk["action"].startswith("Look into")
+
+
+def test_an_unavailable_bed_fit_is_listed_as_not_verified_not_as_no_risk():
+    from snapstudio_core import intelligence_report as ir
+    mm_ok = {"available": True, "overall_level": "ok", "findings": []}
+    out = ir.build(bed_fit={"available": False, "basis": "size", "reason": "printer not identified"}, mm=mm_ok)
+    assert "bed fit" in out["not_verified"]
+    # control: a size that is not established is reported by its own finding, not double-listed
+    nc = ir.build(bed_fit={"available": False, "status": "not_checked", "reason": "unit is inch"}, mm=mm_ok)
+    assert "bed fit" not in nc["not_verified"]
