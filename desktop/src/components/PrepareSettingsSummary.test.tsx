@@ -112,17 +112,19 @@ describe("PrepareSettingsSummary explanations", () => {
     kept_count: 12,
     mapped_to_u1: [{ key: "nozzle_temperature", old: "[200]", new: "[200,200,200,200]", reason: "carried over to U1 toolheads (values preserved)" }],
     compat_changed: [
-      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 default." },
-      { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses." },
+      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 default.", source: "Studio's valid range for this setting", kind: "engine" as const },
+      { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses.", source: "Studio's rule for how Snapmaker Orca imports this setting", kind: "orca" as const },
       { key: "some_setting", old: "1", new: "2", reason: "changed only for U1 compatibility" },
     ],
     recommended_changes: [{ key: "speed", old: 20, new: 40, reason: "available with the recommended U1 profile" }],
   };
 
   it("shows the engine's explanation under each compatibility change that has one", () => {
-    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />).replace(/&#x27;/g, "'");
     expect(html).toContain("which the Compatibility check flags as an invalid value");
     expect(html).toContain("Automatic means the slicer chooses.");
+    expect(html).toContain("Studio's check");
+    expect(html).toContain("Studio's rule for how Snapmaker Orca imports this setting");
   });
 
   it("does not repeat a reason that only restates the change", () => {

@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format is based on
 - Studio no longer recommends Arrange all plates as a fix. It was only seen failing to fix an Outside object in one tested project; the text now says to review the project in Snapmaker Orca before slicing.
 - Preparing with Recommended settings now says the creator's supports are not kept when they were turned on, and no longer describes the written settings as "kept". The Validation Center only says values are kept for a Preserve copy.
 - When the bed-fit check could not run, the Intelligence Report headline, next action and comparison lines say it was not verified instead of reading as a clean result.
+- Each setting Studio adjusts when it prepares a copy now says why, in plain language, and labels where that statement comes from: Studio's own check, or advice to verify the setting in Snapmaker Orca. The labels make no claim about how Snapmaker Orca behaves.
+- The cost line in the Business Doctors now says "estimated cost" instead of "true cost to make".
 
 ## [1.6.0] - 2026-10-21
 
