@@ -49,7 +49,7 @@ _REASON_ORDER = ("unit_not_millimeter", "transform_rotated", "transform_scaled",
                  "transform_unreadable", "structure_unresolved", "structure_unreadable")
 
 #: What a not-established size withholds. Shared by every surface so scope agrees.
-WITHHELD = ("bed fit", "the size-based readiness check", "the print-success estimate",
+WITHHELD = ("bed fit", "the size-based readiness check", "the print risk signals",
             "first-layer footprint checks", "the Scale Doctor size preview")
 
 _cache: dict = {}

@@ -1,7 +1,7 @@
 import { Navigate, Link } from "react-router-dom";
 import {
   Boxes, FileBox, Loader2, Sparkles, AlertTriangle, RotateCw, Wand2,
-  CheckCircle2, Plus, Star, StarHalf, Palette, Layers, ChevronDown,
+  CheckCircle2, Plus, Palette, Layers, ChevronDown,
   Ruler, Gauge, ShieldCheck, Copy, Printer, Box, Coins,
 } from "lucide-react";
 import { useState } from "react";
@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
 import { rawSizeQualifier } from "@/components/GeometryNotice";
-import { BedFitNotChecked, FirstLayerNotChecked, PredictionNotEstimated } from "@/components/SizeNotChecked";
-import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, predictSuccess as apiPredictSuccess, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
+import { BedFitNotChecked, FirstLayerNotChecked } from "@/components/SizeNotChecked";
+import { insights as apiInsights, report as apiReport, mesh as apiMesh, printerCapabilities, firstLayer as apiFirstLayer, toolheadFit as apiToolheadFit, costEstimate as apiCostEstimate, intelligenceReport as apiIntelligenceReport, bedFit as apiBedFit, mmDoctor as apiMmDoctor } from "@/api";
 import { usePrinter } from "@/store/printer";
 import { isPrinterSetUp } from "@/lib/printerSetup";
 import { useFilament } from "@/store/filament";
@@ -30,20 +30,10 @@ import { PreflightCard } from "@/components/PreflightCard";
 import { ColorPlanCard } from "@/components/ColorPlanCard";
 import { DesignHealth } from "@/components/DesignHealth";
 import { HeartPulse } from "lucide-react";
+import { PrintRiskSignals } from "@/components/PrintRiskSignals";
 import {
-  readinessStars, familyLabel, verdictStatus, headlineWithReadiness, colorsLabel, partsLabel,
+  familyLabel, verdictStatus, headlineWithReadiness, colorsLabel, partsLabel,
 } from "@/lib/simple";
-
-function Stars({ score }: { score: number | null | undefined }) {
-  const { full, half, empty } = readinessStars(score);
-  return (
-    <span className="inline-flex items-center gap-0.5 text-repairable" aria-label={`Print readiness ${Math.round((score ?? 0) / 20 * 10) / 10} of 5`}>
-      {Array.from({ length: full }).map((_, i) => <Star key={`f${i}`} className="h-5 w-5 fill-current" />)}
-      {half && <StarHalf className="h-5 w-5 fill-current" />}
-      {Array.from({ length: empty }).map((_, i) => <Star key={`e${i}`} className="h-5 w-5 opacity-30" />)}
-    </span>
-  );
-}
 
 export default function DesignInsights() {
   const file = useSession((s) => s.file);
@@ -135,22 +125,23 @@ export default function DesignInsights() {
     queryFn: () => apiBedFit(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
-  // Print Success Prediction: pre-print odds from design + printer + history.
-  const { data: predict } = useQuery({
-    queryKey: ["predict", file.path, u1Host],
-    queryFn: () => apiPredictSuccess(file.path, u1Host),
+  // The Print risk signals card comes from the Intelligence Report's own reply (same query key and function as
+  // <IntelligenceReport>, so it is one request and one printer read): the card and the report cannot differ (#92).
+  const { data: reportReply } = useQuery({
+    queryKey: ["report", file.path, u1Host],
+    queryFn: () => apiIntelligenceReport(file.path, u1Host),
     enabled: doctor.status === "done", retry: false, staleTime: 30000,
   });
+  const findings = reportReply?.print_findings;
   const issues = [...(d?.validation_issues ?? []), ...(d?.compatibility_issues ?? [])];
 
   // Honest headline: a green "ready" verdict must not survive real print-setup risks
-  // (e.g. more colours than toolheads). Demote the badge + stars to match the warnings below.
+  // (e.g. more colours than toolheads). Demote the badge to match the warnings below.
   const setupRisk = !!(mm?.available && mm.multi_material && mm.overall_level && mm.overall_level !== "ok")
     || !!(bed?.available && bed.overall_level && bed.overall_level !== "ok")
     || !!(rep && !rep.ready);
   // Readiness wording for setup review; never the unusable-project (HIGH_RISK) mapping.
   const headlineStatus = headlineWithReadiness(d ? status : null, setupRisk);
-  const headlineScore = setupRisk ? Math.min(d?.score ?? 0, 70) : d?.score;
 
   // ---- Done: it's ready ------------------------------------------------------
   if (convert.status === "done" && convert.data) {
@@ -229,7 +220,6 @@ export default function DesignInsights() {
           <CardContent className="flex flex-wrap items-center gap-4 p-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <Stars score={headlineScore} />
                 <span className={cn("text-sm font-semibold",
                   headlineStatus.tone === "ready" ? "text-ready" : headlineStatus.tone === "risk" ? "text-risk" : "text-repairable")}>
                   {headlineStatus.label}
@@ -288,33 +278,8 @@ export default function DesignInsights() {
           {/* Studio Intelligence Report — the one-screen synthesis (the product) */}
           <IntelligenceReport filePath={file.path} host={u1Host} />
 
-          {/* will it print? — no estimate when the model's physical size is not established */}
-          <PredictionNotEstimated predict={predict} />
-
-          {/* will it print? — pre-print success prediction */}
-          {predict?.available && predict.likelihood != null && (
-            <Card>
-              <CardContent className="space-y-2 p-5">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-sm font-semibold"><Gauge className="h-4 w-4 text-primary" /> Print readiness <span className="text-[11px] font-normal text-muted-foreground">(estimate)</span></span>
-                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold ${
-                    predict.band === "likely" ? "bg-ready/10 text-ready"
-                      : predict.band === "uncertain" ? "bg-repairable/10 text-repairable" : "bg-risk/10 text-risk"}`}>
-                    {predict.band !== "likely" && <span className="tabular-nums">{predict.likelihood}%</span>}
-                    <span className="capitalize">{predict.band === "likely" ? "Few risks" : predict.band}</span>
-                  </span>
-                </div>
-                {predict.verdict && <p className="text-sm text-muted-foreground">{predict.verdict}</p>}
-                {predict.band !== "likely" && predict.factors && predict.factors.length > 0 && (
-                  <ul className="space-y-1 text-xs text-muted-foreground">
-                    {predict.factors.map((f, i) => (
-                      <li key={i} className="flex items-start gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-current opacity-60" /> {f}</li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          {/* risk signals Studio found: specific findings and limits, no percentage (#92) */}
+          {findings && <PrintRiskSignals findings={findings} />}
 
           <BedFitNotChecked bed={bed} />
 
@@ -510,13 +475,13 @@ export default function DesignInsights() {
             </Card>
           )}
 
-          {/* Validation Center — will it print + what's preserved/changes/at-risk */}
+          {/* Validation Center — what Studio checked + what's preserved/changes/at-risk */}
           {rep && (
             <Card>
               <CardContent className="space-y-4 p-5">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Step 2 · Validate</p>
                 <div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" /> Validation Center</div>
-                <p className="-mt-2 text-xs text-muted-foreground">Will it print on your U1 — and what we keep, change, or can’t carry over.</p>
+                <p className="-mt-2 text-xs text-muted-foreground">What Studio checked for your U1 — and what we keep, change, or can’t carry over.</p>
                 <ul className="space-y-1.5 text-sm">
                   {rep.checks.map((c, i) => (
                     <li key={i} className="flex items-start gap-2">
@@ -549,10 +514,7 @@ export default function DesignInsights() {
           <Card>
             <CardContent className="space-y-3 p-5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Step 3 · Prepare</p>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Print-Readiness</span>
-                <Stars score={headlineScore} />
-              </div>
+              <span className="text-sm font-medium">Before you prepare</span>
               <p className={cn("flex items-center gap-2 text-sm",
                 headlineStatus?.tone === "ready" ? "text-ready" : headlineStatus?.tone === "risk" ? "text-risk" : "text-repairable")}>
                 <span>{headlineStatus?.icon}</span> {headlineStatus?.label}

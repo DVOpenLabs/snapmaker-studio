@@ -195,7 +195,9 @@ def check(path: str) -> dict:
     except Exception:
         oc = 0
     spacing = assess_spacing(oc, is_stl=False)
-    if spacing["status"] != "pass":
+    # An archive Studio cannot read as a project has no object count to be unsure about: it is already
+    # reported as unreadable, so the spacing note would only add noise to that one finding.
+    if spacing["status"] != "pass" and eligible.readable:
         findings.append(_finding(
             "layout.object_spacing", "warning",
             "Object spacing / collisions are not verified by Studio yet",
@@ -204,7 +206,8 @@ def check(path: str) -> dict:
             "Object layout (plate)",
             "Open in Snapmaker Orca and check for too-close / collision warnings; use "
             "Arrange or move objects before slicing.",
-            f"{oc} object(s) on the plate; spacing unchecked by Studio",
+            (f"{oc} object(s) on the plate; spacing unchecked by Studio" if oc
+             else "object count unknown; spacing unchecked by Studio"),
         ))
 
     # Support enforcers present but support generation disabled — Orca warns

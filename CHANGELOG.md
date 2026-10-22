@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Print risk signals replace the readiness percentage.** The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each risk it found, once per condition, with what it means and what to do, and says what it did and did not check. Community guidance attaches only to the conditions it actually fits.
+
 ## [1.6.0] - 2026-10-21
 
 **A job you can pick up again, sizes Studio will not guess, and more projects that prepare.**

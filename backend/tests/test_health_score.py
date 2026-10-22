@@ -39,8 +39,12 @@ def test_recent_streak_and_firmware_fault_compound():
     # rate 0.2->-8, streak4->-25, state not ready->-30, 1 component->-20, 1 warn->-5
     assert out["score"] == max(0, 100 - 8 - 25 - 30 - 20 - 5)  # 12
     assert out["grade"] == "F"
-    # most impactful driver listed first
-    assert "firmware" in out["drivers"][0].lower()
+    # one line per condition, most impactful first: the failure history (rate + streak, 33 points as ONE condition)
+    # outranks "firmware not ready" (30)
+    assert [c["id"] for c in out["conditions"]] == ["printer-failure-history", "firmware-not-ready",
+                                                    "firmware-failed-component", "firmware-warning"]
+    assert out["drivers"] == [c["text"] for c in out["conditions"]]
+    assert "failed" in out["drivers"][0].lower() and "in a row" in out["drivers"][0]
 
 
 def test_score_clamps_at_zero():
