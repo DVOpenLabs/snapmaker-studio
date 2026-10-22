@@ -8,7 +8,7 @@ import FirstLayer from "@/routes/FirstLayer";
 // tabs. /first-layer still resolves on its own for any deep links.
 export default function PrintQualityHub() {
   return (
-    <ToolTabs tabs={[
+    <ToolTabs label="Print quality tools" tabs={[
       { id: "quality", label: "Print Quality", icon: Stethoscope, el: <PrintQuality /> },
       { id: "first-layer", label: "First Layer", icon: Layers, el: <FirstLayer /> },
     ]} />
