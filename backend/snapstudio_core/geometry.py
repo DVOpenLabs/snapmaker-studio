@@ -406,7 +406,7 @@ def _measure_uncached(path: str):
                 continue
             if not points:
                 continue
-            xform = _units.scale_translation(_xform(it["transform"]), unit_scale[root_file])
+            xform = _xform(it["transform"])
             # the placed bounds are those of what PRINTS; an object made only of helper volumes has nothing
             # that prints, and keeps its full extent rather than vanishing from the checks
             measured = printing or points

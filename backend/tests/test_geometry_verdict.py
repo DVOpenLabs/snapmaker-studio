@@ -110,7 +110,11 @@ def _surfaces(path):
 def test_established_cases_keep_every_verdict(tmp_path, label, tf):
     s = _surfaces(make(tmp_path, "ok", items=(("1", tf),)))
     assert s["insights"]["geometry_basis"]["established"] is True, label
-    assert s["bed_fit"]["available"] is True and s["bed_fit"]["overall_level"] == "ok"
+    # Bed fit judges size and, separately, where the items sit: a mesh authored at the plate corner (no/identity
+    # transform) or mirrored off it is a placement concern, not a change of the size verdict.
+    assert s["bed_fit"]["available"] is True and s["bed_fit"]["overall_text"].startswith("By size")
+    if label == "translation only":
+        assert s["bed_fit"]["overall_level"] == "ok"
     fit = next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")
     assert fit["status"] == "pass"
     assert isinstance(s["predict"]["likelihood"], int) and s["predict"]["band"] in ("likely", "uncertain", "risky")

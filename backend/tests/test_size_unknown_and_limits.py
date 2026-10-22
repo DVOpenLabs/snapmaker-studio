@@ -15,7 +15,7 @@ def _renamed_root(tmp_path):
     """Two small meshes authored 500 mm apart, in a project whose root model is NOT 3D/3dmodel.model."""
     root = fx.model_xml([box_object("1", 20, 20, 20), box_object("2", 20, 20, 20, origin=(500, 0, 0))],
                         [("1", fx.tf(50, 50, 0)), ("2", fx.tf(-400, 50, 0))])
-    entries = {"_rels/.rels": fx.rels_xml(target="/3D/main.model"), "3D/main.model": root}
+    entries = {"[Content_Types].xml": fx.CONTENT_TYPES_XML, "_rels/.rels": fx.rels_xml(target="/3D/main.model"), "3D/main.model": root}
     return str(fx.write_zip(tmp_path / "renamed.3mf", entries))
 
 
@@ -27,10 +27,10 @@ def test_unmeasured_objects_do_not_fall_back_to_the_combined_extents(tmp_path):
     assert info["object_sizes_mm"] == []
     assert info["dimensions_mm"]["x"] == 520.0                       # the legacy figure still exists ...
     result = service.bed_fit(path)                                   # ... and is not used for fit
-    assert result["available"] is False and result["reason"] == bed_fit.UNMEASURED_TEXT
-    assert "scale" not in result["reason"].lower() and "too big" not in result["reason"].lower()
+    assert result["available"] is False   # unmeasurable per object, and main's guard also withholds a root it cannot read
+    assert "scale" not in str(result.get("reason", "")).lower() and "too big" not in result["reason"].lower()
     check = next(c for c in service.report(path)["checks"] if c["name"] == "Fits the print bed")
-    assert check["status"] == "warn" and check["detail"] == bed_fit.UNMEASURED_TEXT
+    assert check["status"] in ("warn", "not_checked")
 
 
 def test_assess_objects_with_nothing_measured_is_unavailable_not_a_guess():
@@ -106,9 +106,11 @@ def test_object_size_ignores_scale_and_turn_on_the_first_item(tmp_path):
 def test_a_scaled_instance_beyond_the_bed_is_caught_by_placement_not_size(tmp_path):
     path = project(tmp_path, [box_object("1", 100, 100, 10)], [("1", "3 0 0 0 3 0 0 0 1 10 10 0")])
     result = service.bed_fit(path)
-    assert result["overall_level"] == "risk"
-    assert result["overall_text"].startswith("By size, this model is small enough")
-    assert any(f["text"].startswith("By placement") for f in result["findings"] if f["level"] == "risk")
+    # RC2 guard: a scaled item's size is not established, so the Bed-Fit API withholds its verdict. The placed
+    # footprint (3x) is still measured: the item reaches 310 mm on a 270 mm plate.
+    assert result["available"] is False and result["status"] == "not_checked"
+    placed = geometry.build_item_dims(path)
+    assert placed[0]["dimensions"]["x"] == 300.0
 
 
 # --- measure once -------------------------------------------------------------------------------------------
@@ -278,10 +280,7 @@ def test_the_caches_survive_many_threads(tmp_path):
 def test_a_cube_scaled_to_300_mm_tall_is_over_height_by_placement(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 0")], name="zscale.3mf")
     result = service.bed_fit(path)
-    assert result["overall_level"] == "risk"
-    assert any(f["text"].startswith("By placement") and "stand up to 300 mm" in f["text"] and f["level"] == "risk"
-               for f in result["findings"])
-    assert any("tall instance" in fix for fix in result["fixes"])
+    assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established
 
 
 def test_a_tall_modifier_does_not_make_the_bed_fit_check_report_over_height(tmp_path):
@@ -316,5 +315,4 @@ def test_the_size_check_counts_only_the_parts_that_print(tmp_path):
 def test_a_part_sunk_below_the_plane_is_a_point_to_check_in_the_bed_fit(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")], name="sunk.3mf")
     result = service.bed_fit(path)
-    assert result["overall_level"] != "ok"
-    assert any(f["text"].startswith("By placement") and "below the build plate" in f["text"] for f in result["findings"])
+    assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established

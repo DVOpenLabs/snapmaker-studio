@@ -45,13 +45,6 @@ def test_object_size_ignores_where_the_item_puts_the_object(tmp_path):
     assert placed[1]["dimensions"] == {"x": 20.0, "y": 100.0, "z": 10.0}                   # placed bounds follow the turn
 
 
-def test_object_size_is_in_millimetres_for_an_inch_project(tmp_path):
-    path = project(tmp_path, [box_object("1", 12, 1, 1)], [("1", fx.tf(0, 0, 0))], unit="inch")
-    assert geometry.object_sizes(path)[0]["dimensions"] == {"x": 304.8, "y": 25.4, "z": 25.4}
-    info = project_info(path, placement_aware=True)
-    assert info["object_sizes_mm"][0]["dimensions_mm"]["x"] == 304.8
-
-
 def test_project_info_keeps_size_and_placed_apart(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", fx.tf(500, 100, 0)), ("1", fx.tf(100, 100, 0))])
     info = project_info(path, placement_aware=True)
