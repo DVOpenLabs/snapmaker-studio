@@ -16,6 +16,7 @@ from .intelligence import project_info
 from .container import ThreeMF
 from .config_io import load_project_settings
 from .collision import assess_spacing
+from . import geometry_basis
 
 SCHEMA_VERSION = "report/1"
 SETTINGS = "Metadata/project_settings.config"
@@ -45,48 +46,57 @@ def readiness_report(path: str) -> dict:
     # --- compatibility checks -------------------------------------------------
     checks.append(_check(
         "Fits U1 profile checks",
-        verdict in (READY, CONVERTIBLE, "REPAIRABLE"),
-        "Prepare a U1 copy and review in Orca" if verdict != READY
-        else "Review in Orca before slicing"))
-    # SIZE, not position: each object against the bed on its own. Where the objects sit on the plate is
-    # judged below under "Layout / plate fit", and the combined extents of several separated objects or
-    # plates are never read as one big object. No per-object size means UNKNOWN, not the overall extents.
-    sized = [o for o in (info.get("object_sizes_mm") or []) if o.get("dimensions_mm")]
-    unmeasured = info.get("objects_unmeasured") or 0
-    if sized:
-        def _over(entry):
-            d = entry["dimensions_mm"]
-            return d["x"] > U1_BUILD[0] or d["y"] > U1_BUILD[1] or d["z"] > U1_BUILD[2]
-        too_big = [o for o in sized if _over(o)]
-        many = len(sized) > 1
+        verdict in (READY, CONVERTIBLE, "REPAIRABLE") and not diag.get("prepare_blocked"),
+        ("Studio cannot prepare a copy of this file yet; review it in Snapmaker Orca"
+         if diag.get("prepare_blocked") else "Prepare a U1 copy and review in Orca")
+        if verdict != READY else "Review in Orca before slicing"))
+    basis = info.get("geometry_basis")
+    if not geometry_basis.is_established(basis):
+        # A "fits" or "too big" built on numbers that are not the physical size would be a
+        # guess; the check is recorded as not checked, and a not-checked check blocks a green
+        # "ready" below (ready needs every check to pass).
+        checks.append({"name": "Fits the print bed", "status": "not_checked",
+                       "detail": f"Not checked. {basis['summary']}"})
+    else:
+        # SIZE, not position: each object against the bed on its own. Where the objects sit on the plate is
+        # judged below under "Layout / plate fit", and the combined extents of several separated objects or
+        # plates are never read as one big object. No per-object size means UNKNOWN, not the overall extents.
+        sized = [o for o in (info.get("object_sizes_mm") or []) if o.get("dimensions_mm")]
+        unmeasured = info.get("objects_unmeasured") or 0
+        if sized:
+            def _over(entry):
+                d = entry["dimensions_mm"]
+                return d["x"] > U1_BUILD[0] or d["y"] > U1_BUILD[1] or d["z"] > U1_BUILD[2]
+            too_big = [o for o in sized if _over(o)]
+            many = len(sized) > 1
 
-        def _name(entry):
-            return f'object {entry["object_id"]} ' if many and entry.get("object_id") is not None else ""
+            def _name(entry):
+                return f'object {entry["object_id"]} ' if many and entry.get("object_id") is not None else ""
 
-        bed_text = f"{U1_BUILD[0]:.0f} × {U1_BUILD[1]:.0f} × {U1_BUILD[2]:.0f} mm bed"
-        if too_big:
-            d = too_big[0]["dimensions_mm"]
-            detail = (f'By size, {_name(too_big[0])}({d["x"]} × {d["y"]} × {d["z"]} mm) is larger than the U1 '
-                      "bed — scale it down or split it."
-                      if many else
-                      f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm is larger than the U1 bed — '
-                      "scale it down or split it.")
-            if len(too_big) > 1:
-                detail += f" {len(too_big)} objects are larger than the bed."
-        else:
-            largest = max(sized, key=lambda o: o["dimensions_mm"]["x"] * o["dimensions_mm"]["y"])
-            d = largest["dimensions_mm"]
-            detail = (f'By size, the largest object ({_name(largest).strip()}, {d["x"]} × {d["y"]} × '
-                      f'{d["z"]} mm) fits the U1\'s {bed_text}.'
-                      if many else
-                      f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm fits the U1\'s {bed_text}.')
-        if unmeasured:
-            detail += (f" {unmeasured} build item{'s' if unmeasured != 1 else ''} could not be measured, "
-                       "so Studio cannot say whether everything fits.")
-        checks.append(_check("Fits the print bed", not too_big and not unmeasured, detail))
-    elif dims:
-        from .bed_fit import UNMEASURED_TEXT
-        checks.append(_check("Fits the print bed", False, UNMEASURED_TEXT))
+            bed_text = f"{U1_BUILD[0]:.0f} × {U1_BUILD[1]:.0f} × {U1_BUILD[2]:.0f} mm bed"
+            if too_big:
+                d = too_big[0]["dimensions_mm"]
+                detail = (f'By size, {_name(too_big[0])}({d["x"]} × {d["y"]} × {d["z"]} mm) is larger than the U1 '
+                          "bed — scale it down or split it."
+                          if many else
+                          f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm is larger than the U1 bed — '
+                          "scale it down or split it.")
+                if len(too_big) > 1:
+                    detail += f" {len(too_big)} objects are larger than the bed."
+            else:
+                largest = max(sized, key=lambda o: o["dimensions_mm"]["x"] * o["dimensions_mm"]["y"])
+                d = largest["dimensions_mm"]
+                detail = (f'By size, the largest object ({_name(largest).strip()}, {d["x"]} × {d["y"]} × '
+                          f'{d["z"]} mm) fits the U1\'s {bed_text}.'
+                          if many else
+                          f'By size, {d["x"]} × {d["y"]} × {d["z"]} mm fits the U1\'s {bed_text}.')
+            if unmeasured:
+                detail += (f" {unmeasured} build item{'s' if unmeasured != 1 else ''} could not be measured, "
+                           "so Studio cannot say whether everything fits.")
+            checks.append(_check("Fits the print bed", not too_big and not unmeasured, detail))
+        elif dims:
+            from .bed_fit import UNMEASURED_TEXT
+            checks.append(_check("Fits the print bed", False, UNMEASURED_TEXT))
     if colors:
         colors_ok = colors <= U1_TOOLHEADS
         checks.append(_check(
@@ -147,7 +157,9 @@ def readiness_report(path: str) -> dict:
                     f"{md['overhang']['overhang_pct']}% steep overhangs — supports will likely be needed (enable in Orca)"))
             if md["stability"]["tip_risk"]:
                 checks.append(_check("Stability", False,
-                    "Tall/narrow base — may tip or knock off the bed; add a brim or reorient"))
+                    "Tall/narrow base — may tip or knock off the bed; add a brim or reorient"
+                    + ("" if geometry_basis.is_established(basis)
+                       else " (measured on the file's own mesh, not its placed size)")))
             design_findings = md.get("findings", [])
             warnings.extend(f["text"] for f in design_findings if f["level"] in ("warn", "risk"))
     except Exception:
@@ -194,8 +206,11 @@ def readiness_report(path: str) -> dict:
     score = base
     if not ready and isinstance(base, (int, float)):
         score = min(int(base), 70)   # not a perfect score while setup review remains
-    # Profile may be compatible, but if setup review remains do not surface a green "ready".
-    out_verdict = "HIGH_RISK" if (not ready and verdict == READY) else verdict
+    # `verdict` is the Doctor's own verdict and means the same thing here: HIGH_RISK is only
+    # "not a usable project". Setup warnings (spacing, overhangs, colours, layout) do not
+    # rewrite it; they are carried by `ready: false`, `at_risk` and the failed checks, which is
+    # also what keeps a green "ready" from being shown.
+    out_verdict = verdict
     return {
         "schema_version": SCHEMA_VERSION,
         "name": Path(path).name,
@@ -213,4 +228,5 @@ def readiness_report(path: str) -> dict:
         "layout_messages": layout["messages"] if layout else [],
         "collision_status": spacing["status"],
         "collision_messages": spacing["messages"],
+        "geometry_basis": basis,
     }

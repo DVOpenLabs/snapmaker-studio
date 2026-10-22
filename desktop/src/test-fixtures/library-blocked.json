@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "name": "ironing.3mf",
+  "source_path": "<downloads>/ironing.3mf",
+  "source_family": "bambu-family",
+  "output_path": null,
+  "verdict": "REPAIRABLE",
+  "score": 15,
+  "filament_count": 3,
+  "last_action": "doctor",
+  "updated_at": "2026-10-14T08:14:50Z",
+  "prepare_blocked": true,
+  "prepare_summary": "Studio only keeps per-object settings it has verified Snapmaker Orca reads. 1 setting(s) are not verified, on object 2 (\"slab.stl\"): ironing_type. Open the original in Snapmaker Orca to review those settings, or remove them in the slicer that made the file and export it again."
+}

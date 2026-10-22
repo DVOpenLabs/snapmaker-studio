@@ -24,7 +24,7 @@ def _band(likelihood: int) -> str:
 
 
 def predict(readiness=None, toolfit=None, first_layer=None, health=None,
-            prior_failures: int = 0) -> dict:
+            prior_failures: int = 0, geometry_basis: dict | None = None) -> dict:
     """Combine pre-print signals into a 0–100 success likelihood.
 
     readiness: validation_report.readiness_report() output (ready + warnings).
@@ -38,6 +38,9 @@ def predict(readiness=None, toolfit=None, first_layer=None, health=None,
     if not have_any:
         return {"schema_version": SCHEMA_VERSION, "available": False,
                 "reason": "no design or printer signals available to predict from"}
+
+    if geometry_basis is not None and not geometry_basis.get("established", True):
+        return _not_estimated(geometry_basis, toolfit, health, prior_failures)
 
     factors: list[tuple[int, str]] = []
 
@@ -82,6 +85,34 @@ def predict(readiness=None, toolfit=None, first_layer=None, health=None,
         "band": band,
         "factors": factor_text,
         "verdict": _verdict(likelihood, band),
+    }
+
+
+def _not_estimated(basis: dict, toolfit, health, prior_failures: int) -> dict:
+    """The model's physical size is not established, so the design signals that rest on it
+    (readiness, first layer) are not usable and neither is a probability built from the
+    rest: say so, and keep only the independent signals as plain facts, not as a score."""
+    from . import geometry_basis as gb
+    facts: list[str] = []
+    if toolfit and toolfit.get("available"):
+        lvl = toolfit.get("overall_level")
+        if lvl == "risk":
+            facts.append("more colours than toolheads — needs a swap or remap")
+        elif lvl == "warn":
+            facts.append("colour layout needs a filament swap or remap")
+    if health and health.get("available") and int(health.get("score") or 100) < 60:
+        facts.append(f"printer health is low ({int(health.get('score') or 100)}/100)")
+    if prior_failures and prior_failures > 0:
+        facts.append(f"this exact file failed {prior_failures}× before")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "available": True,
+        "likelihood": None,
+        "band": "unknown",
+        "factors": facts,
+        "verdict": "Not estimated — Studio could not establish this model's physical size, "
+                   "so it makes no print-success estimate.",
+        **gb.not_checked(basis, "the print-success estimate"),
     }
 
 

@@ -82,8 +82,16 @@ def write_zip(path, entries: dict, order=None) -> Path:
     return path
 
 
+# The part every readable 3MF project carries; Studio's readability gate (eligibility.is_readable) requires it.
+CONTENT_TYPES_XML = ('<?xml version="1.0" encoding="UTF-8"?>'
+                     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                     '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+                     '</Types>')
+
+
 def three_mf(path, root_model: str, extra: dict | None = None, rels: str | None = None) -> Path:
-    entries = {"_rels/.rels": rels or rels_xml(), "3D/3dmodel.model": root_model}
+    entries = {"[Content_Types].xml": CONTENT_TYPES_XML, "_rels/.rels": rels or rels_xml(), "3D/3dmodel.model": root_model}
     entries.update(extra or {})
     return write_zip(path, entries)
 

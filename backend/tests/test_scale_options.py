@@ -16,6 +16,9 @@ def _patch(monkeypatch, parts):
     monkeypatch.setattr(sd, "build_item_dims",
                         lambda path: [{"object_id": str(i + 1), "dimensions": d} for i, d in enumerate(parts)])
     monkeypatch.setattr(sd, "_plate_map", lambda path: {})
+    # these tests use a path that is not a real file; its geometry basis is covered in
+    # test_geometry_verdict.py, so treat the size as established here
+    monkeypatch.setattr(sd.geometry_basis, "assess", lambda path: {"established": True})
 
 
 def test_theoretical_max_about_134(monkeypatch):

@@ -31,7 +31,7 @@ const doctorRoute = (id: string) => DOCTORS.find((d) => d.id === id)!.route;
 export const PRIMARY_NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   // One job, through its stages. The individual Doctors stay where they were.
-  { to: "/this-print", label: "This Print", icon: FileCheck2 },
+  { to: "/this-print", label: "This job", icon: FileCheck2 },
   { to: "/start", label: "Get Started", icon: Rocket },
   { to: doctorRoute("project"), label: "Project Doctor", icon: FileCheck2, doctorId: "project" },
   { to: "/projects", label: "Projects", icon: FolderKanban },
@@ -59,7 +59,7 @@ export const PRIMARY_NAV: NavItem[] = [
 ];
 
 // Simple mode IA (beta.21 "one clear path for a novice"): six items
-// with novice labels — Home / This print / My designs / Ready now / Printer / Help.
+// with novice labels — Home / This job / My designs / Ready now / Printer / Help.
 // Everything else lives under "More tools". Advanced mode keeps the full
 // PRIMARY_NAV unchanged. Routes stay validated by isKnownRoute().
 export const BEGINNER_NAV: NavItem[] = [
@@ -68,7 +68,7 @@ export const BEGINNER_NAV: NavItem[] = [
   // findings and then stays with the job. The standalone Project Doctor keeps its
   // route and lives under More tools, so nothing is taken away from anyone who
   // was using it.
-  { to: "/this-print", label: "This print", icon: FileCheck2 },
+  { to: "/this-print", label: "This job", icon: FileCheck2 },
   { to: "/projects", label: "My designs", icon: FolderKanban },
   { to: "/ready-now", label: "Ready now", icon: ListChecks },
   { to: doctorRoute("printer"), label: "Printer", icon: HeartPulse, doctorId: "printer" },
