@@ -195,7 +195,9 @@ def check(path: str) -> dict:
     except Exception:
         oc = 0
     spacing = assess_spacing(oc, is_stl=False)
-    if spacing["status"] != "pass":
+    # An archive Studio cannot read as a project has no object count to be unsure about: it is already
+    # reported as unreadable, so the spacing note would only add noise to that one finding.
+    if spacing["status"] != "pass" and eligible.readable:
         findings.append(_finding(
             "layout.object_spacing", "warning",
             "Object spacing / collisions are not verified by Studio yet",
