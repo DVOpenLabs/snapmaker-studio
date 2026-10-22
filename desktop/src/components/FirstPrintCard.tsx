@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 const STEPS: { n: number; label: string; to: string }[] = [
   { n: 1, label: "Find a model", to: "/find-models" },
   { n: 2, label: "Source Check (what file is this?)", to: "/source" },
-  { n: 3, label: "Project Doctor (will it print?)", to: "/doctor/project" },
+  { n: 3, label: "Project Doctor (what is at risk?)", to: "/doctor/project" },
   { n: 4, label: "Prepare a U1 copy", to: "/doctor/project" },
   { n: 5, label: "Open in Snapmaker Orca", to: "/doctor/project" },
   { n: 6, label: "Export the gcode from Orca", to: "/doctor/project" },

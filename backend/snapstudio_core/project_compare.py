@@ -201,9 +201,12 @@ def slot_usage(tm: ThreeMF) -> dict:
     for i in painted_slots:
         if i in slots:
             slots[i]["painted"] = True
+    # A geometry that could not be read at all, or paint the file mentions but Studio could not decode, leaves
+    # painting unread: nothing can be said about which slots it uses. (A file with no painting is complete.)
     paint_complete = (not paint.get("truncated") and bool(paint.get("default_slot_resolved", True))
                       and not paint.get("malformed_triangle_count") and not paint.get("facets_outside_mesh")
-                      ) if paint.get("available") else True      # no painting in the file: nothing was left unread
+                      and not paint.get("paint_marker_undecodable")
+                      ) if paint.get("available") else False
     complete = paint_complete and readable            # an unreadable object list is not evidence of absence
 
     for change in color_plan._layer_changes(_text(tm, CUSTOM_GCODE)):

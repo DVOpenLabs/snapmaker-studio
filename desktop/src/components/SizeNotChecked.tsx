@@ -1,5 +1,5 @@
-import { Gauge, Layers, Ruler } from "lucide-react";
-import type { BedFit, FirstLayerReport, SuccessPrediction } from "@/api";
+import { Layers, Ruler } from "lucide-react";
+import type { BedFit, FirstLayerReport } from "@/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { NotCheckedReason } from "@/components/GeometryNotice";
 
@@ -33,22 +33,6 @@ export function FirstLayerNotChecked({ report }: { report?: FirstLayerReport | n
   return (
     <Shell icon={<Layers className="h-4 w-4 text-primary" />} title="First-layer check" pill="Not checked">
       <NotCheckedReason reason={report.reason} scope={report.scope} />
-    </Shell>
-  );
-}
-
-export function PredictionNotEstimated({ predict }: { predict?: SuccessPrediction | null }) {
-  if (!predict?.available || predict.status !== "not_checked") return null;
-  return (
-    <Shell icon={<Gauge className="h-4 w-4 text-primary" />} title="Print readiness" pill="Not estimated">
-      <NotCheckedReason reason={predict.reason} scope={predict.scope} />
-      {predict.factors && predict.factors.length > 0 && (
-        <ul className="space-y-1 text-xs text-muted-foreground">
-          {predict.factors.map((f, i) => (
-            <li key={i} className="flex items-start gap-1.5"><span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-current opacity-60" /> {f}</li>
-          ))}
-        </ul>
-      )}
     </Shell>
   );
 }

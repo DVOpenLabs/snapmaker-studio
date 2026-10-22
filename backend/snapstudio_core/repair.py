@@ -167,6 +167,14 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 if declared:
                     declared["new"] = copy.deepcopy(work["different_settings_to_system"])
 
+    # Whatever declared above, the key left out of the copy is not declared in it.
+    if mode in ("preserve", "u1", "optimize"):
+        late = orca_import.withdraw_nozzle_volume_type_declaration(work)
+        if late:
+            report.setdefault("orca_compatibility", []).extend(late)
+            if report.get("preset_deviations_declared"):
+                report["preset_deviations_declared"]["new"] = copy.deepcopy(work["different_settings_to_system"])
+
     # ThreeMF is in-memory here. Replacing the parts even for dry runs lets the
     # caller validate the exact would-be project without writing an output file.
     tm.replace_part(SETTINGS, dump_project_settings(work))

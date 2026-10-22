@@ -156,7 +156,7 @@ export function nextAction(f: JobFacts): NextAction {
   return {
     headline: "Prepare a U1 copy",
     detail: "Preparing writes a new copy and never touches your original.",
-    // The Prepare button that feeds this job lives in the workspace; Compatibility keeps its own, unlinked result.
+    // The Prepare button that feeds this job lives in the workspace; a copy prepared on Compatibility is published to the same shared state and shows up here too.
     action: { kind: "link", label: "Prepare a copy", to: "/workspace" },
   };
 }

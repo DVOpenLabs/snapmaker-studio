@@ -469,6 +469,28 @@ def analyze(cfg: dict, plates: list[dict] | None, *, provider: str | None, state
     return out
 
 
+# --- usage (read-only) ------------------------------------------------------------
+
+def attach_usage(analysis: dict, usage: dict | None) -> dict:
+    """Add, to each slot, where the project references it, and say when it has more materials than toolheads.
+
+    Additive and read-only. `usage` is :func:`project_compare.slot_usage` (slots numbered from 1); None means it
+    could not be read, and every slot is then 'unknown'. Nothing here removes, merges or renumbers a slot."""
+    from .color_plan import DEFAULT_TOOLHEADS
+
+    by_slot = (usage or {}).get("slots") or {}
+    for entry in analysis.get("slots", []):
+        found = by_slot.get(entry["slot"] + 1)
+        entry["usage"] = {"verdict": found["verdict"] if found else "unknown",
+                          "referenced_by": list(found["referenced_by"]) if found else []}
+    analysis["toolheads"] = DEFAULT_TOOLHEADS
+    analysis["beyond_toolheads"] = max(0, len(analysis.get("slots", [])) - DEFAULT_TOOLHEADS)
+    # True only when everything Studio reads for usage was read in full: the object list, and any painting.
+    analysis["usage_readable"] = bool(usage and usage.get("object_list_readable")
+                                      and (usage.get("painting") or {}).get("complete"))
+    return analysis
+
+
 # --- Prepare inputs --------------------------------------------------------------
 
 def apply_colours(cfg: dict, colours: dict | None) -> list[dict]:
