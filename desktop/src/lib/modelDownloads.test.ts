@@ -40,6 +40,12 @@ describe("toAddedItem", () => {
     expect(item.facts).toContain("Profile compatible with the U1.");
     expect(item.facts.join(" ")).not.toMatch(/will print|guarantee|success/i);
   });
+  it("a readable project Studio cannot prepare says so and does not push Prepare", () => {
+    const item = toAddedItem("p", ok({ verdict: "REPAIRABLE", prepare_blocked: true, ready_hint: "review", source_family: "bambu" }));
+    expect(item.needsPrepare).toBe(false);
+    expect(item.facts.join(" ")).toContain("can't prepare a U1 copy");
+    expect(item.facts.join(" ")).not.toContain("Studio can prepare a U1 copy");
+  });
   it("unknown facts stay unknown (no family, no verdict, no filament count)", () => {
     const item = toAddedItem("p", ok({ source_family: null, verdict: null, filament_count: null }));
     expect(item.facts).toEqual([]);

@@ -47,7 +47,7 @@ NOTE = ("Each plate fits on its own, but Studio cannot check where the plates si
 
 
 def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=False,
-          painted_supports=False, source_declares_supports=True, tower=None):
+          painted_supports=False, source_declares_supports=True):
     """The base project with `plates` plates, one slab each, at Bambu-stride offsets."""
     out = tmp_path / name
     with zipfile.ZipFile(BASE) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
@@ -89,9 +89,6 @@ def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=Fa
                     if isinstance(cfg.get(key), list) and cfg[key]:
                         cfg[key] = (cfg[key] + [cfg[key][-1]] * 4)[:4]
                 cfg["flush_volumes_matrix"] = ["0"] * 16
-                if tower:   # (x list, y list, width): values of the source's own bed
-                    cfg["enable_prime_tower"] = "1"
-                    cfg["wipe_tower_x"], cfg["wipe_tower_y"], cfg["prime_tower_width"] = tower
                 cfg["printable_area"] = ["0x0", f"{BED_W}x0", f"{BED_W}x{BED_D}", f"0x{BED_D}"]
                 if supports:
                     cfg["enable_support"] = "1"
@@ -275,98 +272,3 @@ def test_validation_report_only_says_values_are_kept_where_that_is_true(tmp_path
     assert "your setting values are kept" not in unknown
     assert "only when prepared with Preserve creator settings" in unknown
     assert "your setting values are kept" not in changes(pres, None)
-
-
-# --- 5. the prime tower, computed from the project's own settings -------------------
-
-# A 330 x 320 source bed's tower position and width, as the C11 project carried them.
-SOURCE_TOWER = (["236.895", "165"], ["233.729", "250"], "60")
-
-
-def test_preserve_reports_the_inherited_tower_outside_the_u1_area(tmp_path):
-    r = convert(build(tmp_path, tower=SOURCE_TOWER), "preserve", tmp_path)
-    note = r["settings_summary"]["prime_tower_note"]
-    assert note.startswith("The prime tower (plate 1) sits outside the")
-    assert "printable area" in note and "X 236.895, Y 233.729" in note
-    assert "at least 60 mm wide" in note
-    with zipfile.ZipFile(r["output_path"]) as z:      # detection only: nothing moved
-        cfg = json.loads(z.read(SETTINGS))
-    assert cfg["wipe_tower_x"] == SOURCE_TOWER[0]
-
-
-def test_recommended_tower_is_judged_on_what_it_wrote_not_on_the_source(tmp_path):
-    r = convert(build(tmp_path, tower=SOURCE_TOWER), "recommended", tmp_path)
-    with zipfile.ZipFile(r["output_path"]) as z:
-        cfg = json.loads(z.read(SETTINGS))
-    from snapstudio_core import prime_tower
-    from snapstudio_core.plate_placement import u1_bed_rect
-    bed = u1_bed_rect()
-    expected = prime_tower.message(prime_tower.findings(cfg, 2, bed), bed)
-    assert r["settings_summary"].get("prime_tower_note") == expected
-
-
-def test_a_tower_inside_the_area_says_nothing(tmp_path):
-    src = build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30"))
-    r = convert(src, "preserve", tmp_path)
-    assert "prime_tower_note" not in r["settings_summary"]
-    assert service.placement_check(r["output_path"])["prime_tower"]["message"] is None
-
-
-def test_placement_card_data_names_the_tower(tmp_path):
-    out = convert(build(tmp_path, tower=SOURCE_TOWER), "preserve", tmp_path)["output_path"]
-    tower = service.placement_check(out)["prime_tower"]
-    assert [t["plate"] for t in tower["outside"]] == [1]   # plate 2 (165, 250) is inside
-    assert "Snapmaker Orca can refuse to slice" in tower["message"]
-
-
-def test_doctor_ready_carries_the_tower_even_on_one_plate(tmp_path):
-    out = convert(build(tmp_path, "t1.3mf", plates=1, tower=SOURCE_TOWER),
-                  "preserve", tmp_path)["output_path"]
-    d = service.doctor(out)
-    assert d["verdict"] == "READY"
-    assert d["recommended_action"].startswith("Ready for Snapmaker U1")
-    assert "The prime tower (plate 1) sits outside" in d["recommended_action"]
-
-
-def test_tower_outside_is_attention_and_never_ready_now(tmp_path):
-    bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
-    p = printer([spool()])
-
-    def run(path):
-        placement = plate_placement.assess(path, bed=bed, bed_name="the U1's")
-        pre = pf.evaluate(traits(), p, placement)
-        return pre, rd.classify_project(PROJECT, traits(), p, pre, "ok")
-
-    one = convert(build(tmp_path, "t1.3mf", plates=1, tower=SOURCE_TOWER), "preserve",
-                  tmp_path)["output_path"]
-    pre, result = run(one)
-    check = next(c for c in pre["checks"] if c["id"] == "prime_tower.fit")
-    assert check["result"] == pf.ATTENTION and check["confidence"] == pf.CONFIRMED
-    assert result["bucket"] == rd.NEEDS_ATTENTION
-
-    ok = convert(build(tmp_path, "ok.3mf", plates=1, tower=(["13"], ["211"], "30")),
-                 "preserve", tmp_path)["output_path"]
-    pre, result = run(ok)
-    assert not any(c["id"] == "prime_tower.fit" for c in pre["checks"])
-    assert result["bucket"] == rd.READY_NOW
-
-
-def test_a_tower_that_is_not_proven_outside_is_never_called_fine(tmp_path):
-    # Depth, brim and rotation are only known when Orca slices (Print.cpp
-    # wipe_tower_data().depth), so "inside" is never claimed: a note says so instead.
-    out = convert(build(tmp_path, "in.3mf", plates=1, tower=(["13"], ["211"], "30")),
-                  "preserve", tmp_path)["output_path"]
-    tower = service.placement_check(out)["prime_tower"]
-    assert tower["message"] is None and tower["outside"] == []
-    assert tower["note"].startswith("Studio could not verify how far the prime tower reaches")
-    # Informational only: it does not turn into a preflight check or a Doctor claim.
-    assert "prime tower" not in service.doctor(out)["recommended_action"].lower()
-
-
-def test_a_rotated_tower_is_not_judged(tmp_path):
-    from snapstudio_core import prime_tower
-    cfg = {"wipe_tower_x": ["300"], "wipe_tower_y": ["300"], "prime_tower_width": "60",
-           "wipe_tower_rotation_angle": "30"}
-    bed = {"min_x": 0.5, "min_y": 1.0, "max_x": 270.5, "max_y": 271.0}
-    assert prime_tower.findings(cfg, 1, bed) == []
-    assert prime_tower.unverified_note(cfg, []) is not None

@@ -354,25 +354,66 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                          f"{_fallback_name()} instead."),
             action="Connect the printer to check against its real bed.",
             source="Klipper toolhead axis limits")
-    size = f"{bed.get('x')} × {bed.get('y')} × {bed.get('z')} mm"
+    # The printer's reported bed is the toolhead's AXIS TRAVEL (about 271 x 335 on a U1), which is not
+    # a printable area. Placement is judged against the printable area of the machine Studio prepares
+    # for, and the evidence names that area, not the travel figure.
+    plate = placement.get("bed") if placement else None
+    owner = (placement.get("bed_name") if placement else None) or "the printer's"
+    area = (f"{plate['max_x'] - plate['min_x']:g} × {plate['max_y'] - plate['min_y']:g} mm printable area"
+            if plate else "printable area")
     if not placement or not placement.get("available"):
         return _check(
             "bed.fit", "Fits the printer's bed", UNKNOWN,
-            evidence=f"printer bed is {size}; Studio could not read where the objects sit",
+            evidence=("Studio could not read where the objects sit, or does not know this printer's "
+                      "printable area (a printer reports its axis travel, which is not a printable area)"),
             confidence=INFORMATIONAL,
             consequence="Studio cannot confirm the objects land on this printer's plate.",
             action="Open the project in the slicer to see the plate.",
-            source="Klipper toolhead axis limits")
+            source="project geometry vs the printer's printable area")
     off = placement.get("off_plate") or []
-    multi_plate = (placement.get("plate_count") or 1) > 1
-    if not off and multi_plate:
+    height = placement.get("bed_height_mm")     # the printable height, when it is known
+    from .plate_placement import below_plate, over_height
+
+    tops = [(item.get("bounds_mm") or {}).get("max") for item in placement.get("items") or []]
+    tops = [t[2] for t in tops if t and len(t) > 2]
+    tall = [row["bounds_mm"]["max"][2] for row in over_height(placement)]
+    if not off and placement.get("not_judged"):
+        n = placement["not_judged"]
+        return _check(
+            "bed.fit", "Fits the printer's bed", UNKNOWN,
+            evidence=(f"{n} placed instance{'s' if n != 1 else ''} could not be judged, so Studio "
+                      "cannot say whether everything is on the plate"),
+            confidence=INFORMATIONAL,
+            consequence="Studio cannot confirm the objects land on this printer's plate.",
+            action="Review the project in Snapmaker Orca before slicing.",
+            source=f"project geometry vs {owner} printable area")
+    if not off and tall:
+        return _check(
+            "bed.fit", "Objects are taller than this printer can print", ATTENTION,
+            evidence=(f"{len(tall)} placed instance{'s' if len(tall) != 1 else ''} stand up to "
+                      f"{max(tall):g} mm, above the {height:g} mm height limit"),
+            confidence=CONFIRMED,
+            consequence="The slicer will refuse to slice it, or the print will not fit.",
+            action="Scale the model down or split it in Snapmaker Orca.",
+            source=f"project geometry vs {owner} printable height")
+    sunk = below_plate(placement)
+    if not off and sunk:
+        low = min(row["bounds_mm"]["min"][2] for row in sunk)
+        return _check(
+            "bed.fit", "Objects reach below the build plate", ATTENTION,
+            evidence=(f"{len(sunk)} placed instance{'s' if len(sunk) != 1 else ''} reach down to "
+                      f"{low:g} mm, below the build plate"),
+            confidence=LIKELY,
+            consequence="A slicer prints what is above the plate; Studio cannot confirm this prints as modelled.",
+            action="Check the height of these objects in Snapmaker Orca.",
+            source="project geometry vs the build plane")
+    if not off and (placement.get("plate_count") or 1) > 1:
         # Each plate may fit, but where the plates sit on the slicer's grid is not
         # something Studio establishes. Not OK, and not an error either: unknown.
         return _check(
             "bed.fit", "Fits the printer's bed", UNKNOWN,
-            evidence=(f"printer bed is {size}; the project has {placement.get('plate_count')} "
-                      "plates and each fits on its own, but Studio does not check where the "
-                      "plates sit"),
+            evidence=(f"the project has {placement.get('plate_count')} plates and each fits "
+                      f"the {area} on its own, but Studio does not check where the plates sit"),
             confidence=INFORMATIONAL,
             consequence=("Snapmaker Orca can list an object as Outside even when its plate "
                          "fits, so Studio cannot confirm the objects land on this printer's plates."),
@@ -380,15 +421,24 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                     "listed as Outside."),
             source="project geometry vs printer bed")
     if not off:
+        if tops and height:
+            return _check(
+                "bed.fit", "Fits the printer's bed", OK,
+                evidence=f"every placed instance sits inside the {area} and under the "
+                         f"{height:g} mm height limit",
+                confidence=CONFIRMED,
+                consequence="Nothing is placed off the plate or above its height.",
+                source=f"project geometry vs {owner} printable area and height")
         return _check(
             "bed.fit", "Fits the printer's bed", OK,
-            evidence=f"every object sits inside this printer's {size} area",
-            confidence=CONFIRMED,
-            consequence="Nothing is placed off the plate.",
-            source="project geometry vs printer bed")
+            evidence=f"every placed instance sits inside the {area} (X and Y only; "
+                     "height was not checked)",
+            confidence=INFORMATIONAL,
+            consequence="Nothing is placed off the plate sideways.",
+            source=f"project geometry vs {owner} printable area")
     return _check(
         "bed.fit", "Objects sit outside this printer's bed", ATTENTION,
-        evidence=f"{len(off)} object(s) fall outside this printer's {size} area",
+        evidence=f"{len(off)} object(s) fall outside this printer's {area}",
         confidence=CONFIRMED,
         consequence=("The slicer will refuse to slice, or the print will start off the "
                      "plate."),
@@ -397,20 +447,6 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                 else "Review the project in Snapmaker Orca before slicing; Studio could not "
                      "bring every object onto the plate."),
         source="project geometry vs printer bed")
-
-
-def _prime_tower(placement: dict | None) -> dict | None:
-    """Only reported when the project's own settings put the tower outside the area."""
-    tower = (placement or {}).get("prime_tower") or {}
-    if not tower.get("outside"):
-        return None
-    return _check(
-        "prime_tower.fit", "Prime tower sits outside the printable area", ATTENTION,
-        evidence=tower.get("message"), confidence=CONFIRMED,
-        consequence=("Snapmaker Orca can refuse to slice a plate whose prime tower reaches "
-                     "past the printable area."),
-        action="Move the prime tower in Snapmaker Orca before slicing.",
-        source="project settings vs printable area")
 
 
 def _object_exclusion(project: dict, printer: dict) -> dict:
@@ -538,7 +574,6 @@ def evaluate(project: dict, printer: dict, placement: dict | None = None) -> dic
     checks = [
         _printer_found(printer),
         _bed(project, printer, placement),
-        _prime_tower(placement),
         _toolheads_vs_filaments(project, printer),
         _nozzle(project, printer),
         _nozzle_conflict(printer),

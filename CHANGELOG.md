@@ -6,71 +6,110 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- **Print risk signals replace the readiness percentage.** The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each risk it found, once per condition, with what it means and what to do, and says what it did and did not check. Community guidance attaches only to the conditions it actually fits.
+
 ### Fixed
-- **Projects with more than one plate no longer show a green "every object is inside".** Studio
-  checks that each plate fits the U1 on its own, but it does not move objects between plates and
-  cannot check where the plates sit. The Object placement card now says so: Orca can list an object
-  as Outside, and in our test Arrange all plates did not fix it. The card says to review the project
-  in Snapmaker Orca; the printer bed check reports "unknown" instead
-  of a pass, so Ready Now does not count such a project as ready; and the Project Doctor's "ready"
-  line carries the same note.
-- **A prime tower outside the printable area is reported.** From the copy's own tower position and
-  width, the Object placement card, the Prepare summary, the Project Doctor and the printer checks say
-  when the prime tower starts or reaches outside the U1's printable area, which Snapmaker Orca can
-  refuse to slice. Studio reports this; it does not move the tower.
-- **The plate count now comes from the plates the project declares**, not from slice-cache files, so
-  a project with several plates is no longer counted as one.
-- **"Use Studio's U1 starter settings instead" says when it does not keep the creator's supports.**
-  When the original turned supports on, the Prepare summary now says, before you open the copy, that
-  Snapmaker Orca will open with supports off (and that painted support areas then do nothing). The
-  summary no longer describes the written settings as "kept" in that mode, and the Validation Center
-  only says your setting values are kept for a copy prepared with Preserve creator settings. What the
-  mode writes is unchanged.
+- Bed fit now reports each object's size and the instances' placement as separate facts; several small, separated objects are no longer summed into one "too big" object (#91).
+- Object placement judges each placed copy of a repeated object on its own, so a copy that hangs off the plate is no longer hidden by one that does not (#93).
+- Placement and plate-fit checks are withheld (reported as not checked) for projects whose physical size the file does not establish: a non-millimetre unit, or a rotated or scaled object.
+- A project with several plates is no longer called ready or "fits the bed" just because each plate fits on its own: the placement card, the preflight bed check, Ready Now and the Doctor's READY action say Studio cannot check where the plates sit.
+- Studio no longer recommends Arrange all plates as a fix. It was only seen failing to fix an Outside object in one tested project; the text now says to review the project in Snapmaker Orca before slicing.
+- Preparing with Recommended settings now says the creator's supports are not kept when they were turned on, and no longer describes the written settings as "kept". The Validation Center only says values are kept for a Preserve copy.
+- When the bed-fit check could not run, the Intelligence Report headline, next action and comparison lines say it was not verified instead of reading as a clean result.
 
-- **Studio no longer recommends Arrange as a remedy.** Arrange was only ever observed failing to fix
-  an Outside object or an inherited prime tower, and was never tested otherwise, so every message and
-  guide page that told you to use it now says to review the project in Snapmaker Orca before slicing.
+## [1.6.0] - 2026-10-21
 
-### Known limits (not changed)
-- For a project made for a printer with a larger bed, the objects keep the creator's positions, so
-  Snapmaker Orca can list an object as Outside even when its plate fits, and in our test Arrange
-  all plates did not fix it; the object had to be moved by hand. Studio does not rearrange plates
-  or move the prime tower automatically.
-- The starter-settings mode puts the wipe tower at a fixed position and resets a multi-nozzle flush
-  table to zeros. Check the tower in Orca's preview and open Flushing volumes if you use them.
-- Preserve keeps the creator's wipe-tower position, which can lie outside the U1's printable area for
-  a project made for a larger bed; Studio now says so but does not move it.
-
-## [1.5.1] - 2026-10-09
-
-**Clearer Prepare, easier spool choices, and controls that work from the keyboard and with a screen reader.**
+**A job you can pick up again, sizes Studio will not guess, and more projects that prepare.**
 
 ### Added
-- **Choose any spool from your inventory** (Project Materials). Each slot can open the provider's
-  whole spool list, searchable by vendor, material, colour or id, showing colour, vendor, material,
-  spool id, weight status and the status of the mapped Orca preset. When a spool is picked with no
-  Orca preset, the slot and the review say the project's existing filament preset will remain.
-- **Forget saved mapping.** A mapping Studio remembered for one spool, or for similar spools, can be
-  forgotten from the slot. The confirmation says what is forgotten and what is not changed (your
-  inventory, your Orca presets and the project).
-- **Why a setting changed.** The Prepare summary shows a short reason under each setting Studio
-  changed for the U1 and labels where the statement comes from: "Studio's check" or "Verify in
-  Snapmaker Orca". Lists Studio had to repair say exactly what was done.
-- **User guide links.** Help and Get Started link to the task-first user guide, which shows where
-  each statement comes from and which Studio version it was checked against. Its screenshots were
-  captured from v1.5.0 and have not been retaken.
+- **This job keeps its files together.** A job holds its project, its prepared copy and its sliced
+  G-code. After a restart Studio shows what it recorded, checks the files only when you ask, and
+  reopens only what is unchanged (plus a changed file you name). Each file is labelled recorded,
+  checked, reopened or left out, and a file that was not reopened keeps its old fingerprint, labelled
+  as the earlier record. A saved fingerprint is history, not proof that a file was reopened or is
+  unchanged. Opening a saved job's G-code by hand no longer rewrites its recorded identity.
+- **A settings receipt on After slicing** for the original, the prepared copy and the sliced file:
+  which settings each one carries (the sliced file's read strictly from its G-code), with neutral advice.
+- **Refreshed Home, This job and After slicing screens.**
+
+### Changed
+- **Printer setup is explicit.** A profile with no printer address is "not set up" until you save one
+  in Settings; Studio no longer looks up `U1.local` on its own. A stored address is kept, and "Not set
+  up" and "Could not reach <address>" are different messages. The address you type is a draft until you
+  press Save. Printer controls are unchanged: Studio does not contact a printer on its own until you set one up, and anything
+  that controls it still waits for your confirmation.
+- **No remote fonts.** The interface uses your system fonts and loads no font from the internet.
+- **Wording about the network is now exact.** Studio says your files and checks stay on this computer.
+  Studio does not contact a printer on its own until you set one up, and features you start yourself (the
+  update check, the model browser, Auto-detect) can reach beyond this computer.
+- The main view scrolls back to the top when you move to a different page. Long project names in
+  Recent projects can no longer overlap the status chip, and the watch-folder placeholder shows single
+  backslashes.
 
 ### Fixed
-- **A saved-mappings file Studio could not read is no longer treated as damaged.** If another
-  program briefly holds the file, Studio waits and retries; if it still cannot read it, it changes
-  nothing and asks you to try again.
-- **Printer-action confirmation is an accessible dialog.** Start, Cancel print and Emergency stop
-  now open a named, described dialog that starts on Cancel, is dismissed only by Escape or Cancel,
-  names the printer (and the file for Start), and is withdrawn if the printer changes or can no
-  longer take the action.
-- **Tool tabs work from the keyboard.** The Compatibility / Source Check and Print Quality / First
-  Layer tab rows respond to the arrow keys, Home and End, show a focus outline and wrap on narrow
-  windows. Moving along the row does not open or re-run a tool.
+- **More Bambu Studio projects now prepare.** Studio keeps six more per-object settings that
+  Snapmaker Orca 2.4.0 reads in the same words: infill pattern, skeleton and skin infill
+  density, top and bottom shell layers, and brim type (`no_brim`, `outer_only`, `inner_only`,
+  `outer_and_inner`, `brim_ears`; the creator's automatic brim is still not carried). Every value
+  is checked first, and anything else is still refused rather than guessed.
+- A project that uses the same part more than once in one object (for example two copies of one
+  piece in an assembly) is no longer refused as corrupt. A real mismatch between the parts and
+  the object is still refused.
+- The Doctor no longer recommends "Prepare a U1 profile copy" for a file Prepare would refuse; it
+  now says Studio cannot prepare it yet and points to reviewing the original in Snapmaker Orca.
+- When Prepare refuses a file, the message now says in plain language which settings or structure
+  and on which object, and what to do next. The raw technical wording is kept in a collapsed
+  "Technical details" area.
+- A project with blank (`nil`) per-part values (for example speeds) is now named in plain language by
+  the Doctor and by Prepare, and Studio does not prepare it. This is a precaution. It rests on Snapmaker
+  Orca's command-line output and a reading of the Snapmaker Orca 2.4.0 source; an isolated check that opened
+  such a file in the Snapmaker Orca 2.4.1 interface did **not** show it failing to load, so Studio does
+  not establish that blank values stop Orca from loading a file. Review the original in Snapmaker Orca.
+- A prepared copy of a multi-plate project that carried the authoring slicer's per-plate cache
+  files is no longer reported as not validated because the plate count appeared to drop; plates
+  are now counted from the project's plate list. The fidelity audit also reports infill density
+  and support settings that were kept unchanged as kept, not as "not carried".
+- A project Studio can read but would refuse to prepare is now reported the same way everywhere:
+  the Doctor, Model Connect (it is still added to your library), the Validation Center's report, Ready Now,
+  the Compatibility check and the command line all say it needs a look in Snapmaker Orca instead of
+  calling it ready or sending it to Prepare, and `u1convert repair` refuses it with the same reason.
+- Projects Studio will not prepare now stay marked that way in your library and on the
+  Dashboard and Projects lists ("Review in Orca first"), a missing required part makes a file
+  unreadable everywhere at once, and a setup warning no longer turns a compatible project into
+  "Needs review".
+- Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. The original
+  was never modified; the extra copy was only a leftover. The command-line `repair` and
+  `optimize` commands still keep their snapshot, and no longer leave one behind if they fail.
+- **Size-dependent verdicts no longer trust raw numbers.** Bed fit, the readiness "Fits the print bed"
+  check, the print-success estimate, the first-layer footprint checks and the Scale Doctor used the raw
+  numbers stored in a 3MF mesh. A file that declares inches, or that rotates or scales its objects through
+  a placement transform, could be reported as fitting, ready or "likely" at the wrong size. Studio now first
+  decides whether those numbers are the physical size: every model part is in millimetres, and every placed
+  mesh keeps its axis extents through its transforms (no change, a move, or an axis mirror). When that is not
+  established, each of these says "not checked" with the reason, instead of a verdict, and a not-checked bed
+  fit stops a project from showing as ready. STL files are unchanged (assumed millimetres).
+
+### Known limitations
+- **Sizes Studio cannot establish are "not checked", not guessed.** A project that declares a unit other
+  than millimetres, or whose objects are rotated or scaled by a placement transform, shows "not checked"
+  for the size-dependent verdicts above and cannot reach a green ready state. Studio does not convert
+  declared units, and a near-identity scale can be labelled "rotated".
+- **Placement and layout still read the raw coordinates.** The Object placement card ignores declared
+  units and transforms, so it is outside the "not checked" handling above. Volume, material and cost for a
+  project that declares a non-millimetre unit are also not corrected in this release.
+- **Loading is not slicing, and slicing is not printing.** Studio checks, in isolated runs, that Snapmaker
+  Orca 2.4.1 opens a prepared copy: four of the six per-object settings above (infill pattern, top and
+  bottom shell layers, brim type) showed their prepared values in its interface, the two infill densities
+  could not be located there and are not confirmed, and a repeated part loaded. Those runs used a
+  synthetic test project, and two import prompts also appeared on the unprepared control. Nobody sliced
+  those copies or printed them for this release, so the results say nothing about sliced output or a
+  finished print.
+- **Blank (`nil`) per-part values.** The in-app refusal for such a project still says Snapmaker Orca 2.4.0
+  "stops loading the whole file" when it meets one. That sentence is not established by the interface
+  check described above and will be corrected in a later release; Studio's decision not to prepare such a
+  project is unchanged.
+- **Compatibility and This job.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch.
 
 ## [1.5.0] - 2026-10-06
 

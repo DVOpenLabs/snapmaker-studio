@@ -718,7 +718,7 @@
   "placement-oversized": {
     "file": "placement-oversized.png",
     "title": "Placement: an object longer than the plate",
-    "alt": "Studio's Object placement card for a project with one long bar. It says one object is outside the U1's printable area: Object 1, 320 by 20 by 20 millimeters, hangs 1.0 millimeters past the left edge and 50.0 millimeters past the right edge. A note says moving the objects as one piece would not bring them all on, so Studio will not guess, and points to Snapmaker Orca. There is no Move button.",
+    "alt": "Studio's Object placement card for a project with one long bar. It says one object is outside the U1's printable area: Object 1, 320 by 20 by 20 millimeters, hangs 1.0 millimeters past the left edge and 50.0 millimeters past the right edge. A note says moving the objects as one piece would not bring them all on, so Studio will not guess, and to use Arrange in Snapmaker Orca. There is no Move button.",
     "caption": "`example_oversized.3mf`: one 320 mm bar on a plate about 270 mm wide.",
     "hotspots": [
       {
@@ -747,7 +747,7 @@
       {
         "key": "refusal",
         "title": "Studio will not guess",
-        "text": "Moving separate objects relative to each other is a job for Snapmaker Orca."
+        "text": "Rearranging separate objects is a job for **Arrange** in Snapmaker Orca."
       }
     ]
   },

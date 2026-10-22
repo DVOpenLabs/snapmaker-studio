@@ -1,5 +1,4 @@
 import type { SettingsChange } from "@/api";
-import { evidenceKindLabel, type EvidenceKind } from "./evidenceKind";
 
 // What to tell a person about WHY one setting changed, using only what the engine already said.
 //
@@ -17,20 +16,12 @@ const RESTATES_THE_CHANGE = new Set([
   "U1 project identity normalized",
 ]);
 
-export interface SettingNote {
-  note: string;
-  source: string | null;
-  kind: EvidenceKind | null;
-}
-
-export function settingNote(change: SettingsChange): SettingNote | null {
+export function settingNote(change: SettingsChange): string | null {
   const explanation = change.explanation?.trim();
-  const source = change.source?.trim() || null;
-  const kind = change.kind && evidenceKindLabel(change.kind) ? change.kind : null;
-  if (explanation) return { note: explanation, source, kind };
+  if (explanation) return explanation;
   const reason = change.reason?.trim();
   if (!reason) return null;
   // "U1 compatibility clamp: -1 → 5" only repeats the old and new values already on the line above it.
   if (RESTATES_THE_CHANGE.has(reason) || reason.startsWith("U1 compatibility clamp:")) return null;
-  return { note: reason, source, kind };
+  return reason;
 }

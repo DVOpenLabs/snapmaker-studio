@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
@@ -127,9 +128,6 @@ export interface SettingsChange {
   reason?: string;
   /** Plain-language explanation some steps add next to the reason. */
   explanation?: string;
-  /** Evidence provenance for the explanation, replaced or cleared with it. */
-  source?: string;
-  kind?: "file" | "engine" | "estimate" | "orca";
 }
 
 export interface SettingsSummary {
@@ -143,8 +141,6 @@ export interface SettingsSummary {
   recommended_changes: SettingsChange[];
   /** Present only when the creator's supports will not be in effect in Orca (Recommended mode). */
   supports_note?: string;
-  /** Present only when the project's prime tower sits outside the printable area. */
-  prime_tower_note?: string;
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
 }
@@ -187,6 +183,17 @@ export interface ConversionResult {
   blocked?: boolean;
 }
 
+/** A deliberate refusal (HTTP 422): `message` is the plain sentence for the person; `details` is the engine's raw
+ *  technical wording, kept for a collapsible secondary area and never shown as the main message. */
+export class PrepareRefusalError extends Error {
+  details?: string;
+  constructor(message: string, details?: string) {
+    super(message);
+    this.name = "PrepareRefusalError";
+    this.details = details;
+  }
+}
+
 export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false,
                               materials?: MaterialSelection[]): Promise<ConversionResult> {
   const { port, token } = await apiInfo();
@@ -201,14 +208,16 @@ export async function convert(path: string, outDir?: string, prepareMode: Prepar
   });
   if (!r.ok) {
     let msg = `convert failed (${r.status})`;
+    let details: string | undefined;
     try {
       const e = await r.json();
       if (e?.error) msg = e.error;
       // v1.3.1 (#67): a genuine engine fault names its class, so a report can say what failed; a deliberate refusal
       // already carries its own readable message.
       if (e?.kind && !e?.refusal) msg = `${msg} (${e.kind})`;
+      if (e?.refusal && typeof e?.details === "string" && e.details) details = e.details;
     } catch { /* ignore */ }
-    throw new Error(msg);
+    throw details ? new PrepareRefusalError(msg, details) : new Error(msg);
   }
   return r.json();
 }
@@ -239,6 +248,9 @@ export interface LibraryProject {
   filament_count: number | null;
   last_action: string | null;
   updated_at: string | null;
+  /** Readable, but Studio would refuse to prepare a copy; persisted with the record. */
+  prepare_blocked?: boolean;
+  prepare_summary?: string | null;
 }
 
 export async function library(query = "", tag?: string): Promise<LibraryProject[]> {
@@ -333,6 +345,20 @@ export async function batchStatus(jobId: string): Promise<BatchJobStatus> {
   return r.json();
 }
 
+/** Whether a file's mesh numbers are the model's physical size (unit mm, placement keeps extents). */
+export interface GeometryBasis {
+  schema_version: string;
+  established: boolean;
+  reasons: string[];
+  summary: string;
+  withheld: string[];
+  unchecked_objects?: string[];
+  objects_total?: number | null;
+  unit?: { unit: string | null; source: string };
+}
+/** Shape every surface adds when it withholds a size-dependent verdict. */
+export interface NotChecked { status?: "not_checked"; reason?: string; scope?: string; geometry_basis?: GeometryBasis }
+
 export interface Insights {
   schema_version: string;
   name: string;
@@ -341,15 +367,26 @@ export interface Insights {
   verdict: string | null;
   readiness_score: number | null;
   is_compatible: boolean;
+  /** True when Studio can read the file but would refuse to prepare a copy of it. */
+  prepare_blocked?: boolean;
   objects: number | null;
   plates: number | null;
   colors: number | null;
   painted: boolean;
   materials: { color: string; type: string | null }[];
+  // Overall extents of all the mesh data together: a size-only figure, not one object's size and not a position.
   dimensions_mm: { x: number; y: number; z: number } | null;
+  dimensions_basis?: string;
+  // Per-object size (mm), before any build item moves, turns or scales it.
+  object_sizes_mm?: ObjectSize[];
+  // Build items whose object could not be found, so they have no size above.
+  objects_unmeasured?: number;
+  // Where each instance sits and on which plate (placed bounds), kept apart from the sizes above.
+  placed?: PlacedInstances;
   triangles: number | null;
   complexity: string | null;
   issues: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function insights(path: string): Promise<Insights> {
@@ -369,11 +406,12 @@ export interface ReadinessReport {
   verdict: string | null;
   readiness_score: number | null;
   ready: boolean;
-  checks: { name: string; status: "pass" | "warn" | "fail"; detail: string }[];
+  checks: { name: string; status: "pass" | "warn" | "fail" | "not_checked"; detail: string }[];
   preserved: string[];
   changes: string[];
   at_risk: string[];
   warnings: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function report(path: string): Promise<ReadinessReport> {
@@ -387,7 +425,7 @@ export async function report(path: string): Promise<ReadinessReport> {
   return r.json();
 }
 
-export interface FirstLayerReport {
+export interface FirstLayerReport extends NotChecked {
   available: boolean;
   bed_aware?: boolean;
   overall_level?: "ok" | "warn" | "risk";
@@ -400,7 +438,7 @@ export async function firstLayer(path: string, host?: string | null): Promise<Fi
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/first_layer`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`first_layer failed (${r.status})`);
   return r.json();
@@ -420,7 +458,7 @@ export async function toolheadFit(path: string, host?: string | null): Promise<T
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/toolhead_fit`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`toolhead_fit failed (${r.status})`);
   return r.json();
@@ -524,14 +562,16 @@ export interface ReportRisk {
 export interface ReportEvidence { doctor: string; status: string; detail: string; }
 export interface IntelligenceReport {
   available: boolean;
-  studio_score?: number | null;
-  print_success_score?: number | null;
+  risks_found?: number;
+  not_verified?: string[];
+  /** The Print risk signals card content from the SAME request, so the card and the report cannot differ. */
+  print_findings?: PrintFindings;
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;
   profit_per_print?: number | null;
   currency?: string;
-  printer_compatibility?: "Compatible" | "Check" | "Unknown";
+  printer_status?: string;
   risks?: ReportRisk[];
   biggest_risk?: ReportRisk | null;
   recommendations?: string[];
@@ -541,7 +581,6 @@ export interface IntelligenceReport {
   reason?: string;
   is_demo?: boolean;
   demo_name?: string;
-  expected_improvement?: { current: number; after_fixes: number; is_estimate: boolean; label: string } | null;
   comparison?: {
     issues_found: number; fixes_offered: number; prices_the_print: boolean;
     orca_line: string; studio_line: string;
@@ -632,7 +671,7 @@ export async function mmDoctor(path: string, host?: string | null): Promise<MMDo
 }
 
 // Bed-Fit / Out-of-Bounds Doctor: does it fit the U1 bed, and if not, why + fix.
-export interface BedFit {
+export interface BedFit extends NotChecked {
   available: boolean;
   bed_known?: boolean;
   bed_source?: string;
@@ -654,16 +693,27 @@ export async function bedFit(path: string, host?: string | null): Promise<BedFit
   return r.json();
 }
 
-// Print Success Prediction: pre-print "will it print?" odds from existing signals.
-export interface SuccessPrediction {
+// Print risk signals: what Studio found worth settling before slicing, with what
+// was and was not checked. Deliberately no percentage, band or verdict (#92).
+export interface RiskSignal {
+  id: string;
+  kind: "file" | "engine" | "estimate" | "orca";
+  level: "warn" | "risk";
+  title: string;
+  meaning: string;
+  action: string;
+  details?: string[];
+}
+export interface PrintFindings extends NotChecked {
   available: boolean;
-  likelihood?: number;
-  band?: "likely" | "uncertain" | "risky";
-  factors?: string[];
-  verdict?: string;
+  signals?: RiskSignal[];
+  checked?: string[];
+  not_checked?: string[];
+  limitations?: string[];
+  summary?: string;
   reason?: string;
 }
-export async function predictSuccess(path: string, host?: string | null): Promise<SuccessPrediction> {
+export async function printFindings(path: string, host?: string | null): Promise<PrintFindings> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/predict_success`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -690,12 +740,15 @@ export function printerFailureInsights(host: string, port = 7125): Promise<Failu
   return printerPost("/printer/failure_insights", { host, port });
 }
 
-// Printer Health Score: one 0–100 from the U1's own read-only firmware + history signals.
+// Printer health: what the U1's own read-only firmware state and print history show.
 export interface PrinterHealth {
   available: boolean;
   score?: number;
   grade?: "A" | "B" | "C" | "D" | "F";
+  /** One line per condition the printer reported (failure history is ONE line with merged evidence). */
   drivers?: string[];
+  /** The same list with stable condition ids; its length is the concern count the state chip and the report use. */
+  conditions?: { id: string; level: "warn" | "risk"; text: string }[];
   basis?: string;
   verdict?: string;
   reason?: string;
@@ -780,6 +833,7 @@ export interface MeshReport {
   surface_area_mm2?: number;
   material_estimate_g?: number | null;
   findings?: { level: "ok" | "warn" | "risk"; text: string }[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function mesh(path: string): Promise<MeshReport> {
@@ -866,6 +920,8 @@ export interface PrinterDiagnostics {
 }
 
 async function printerPost<T>(path: string, body: object): Promise<T> {
+  // No address, no request: a profile that never set up a printer must not look one up.
+  requirePrinterHost((body as { host?: string | null }).host);
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -982,6 +1038,7 @@ export async function printerDiscover(hosts?: string[]): Promise<PrinterProbe[]>
 }
 
 export async function printerStatus(host: string, port = 7125): Promise<PrinterStatus> {
+  requirePrinterHost(host);
   const { port: p, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${p}/printer/status`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -1075,17 +1132,18 @@ export function firstLayerCheck(symptom: string): Promise<FirstLayerResponse> {
 }
 
 // ---- Scale Doctor (analysis-only preview) ----
-export interface ScaleResult {
+export interface ScaleResult extends NotChecked {
   available: boolean;
   reason?: string;
   scale_percent?: number;
   original_dimensions?: { x: number; y: number; z: number };
   scaled_dimensions?: { x: number; y: number; z: number };
-  fits_build_volume?: boolean;
+  /** null = not checked (the model's physical size is not established). */
+  fits_build_volume?: boolean | null;
   estimated_material_delta?: { grams: number; basis: string };
   estimated_cost_delta?: { amount: number | null; basis: string };
   risks?: string[];
-  recommendation?: "likely safe" | "caution" | "not recommended";
+  recommendation?: "likely safe" | "caution" | "not recommended" | "not checked";
   explanation?: string;
 }
 export function scalePreview(path: string, scalePercent: number): Promise<ScaleResult> {
@@ -1107,7 +1165,7 @@ export interface ScaleOption {
   dimensions_by_part: ScalePartDims[];
   explanation: string;
 }
-export interface ScaleOptionsResult {
+export interface ScaleOptionsResult extends NotChecked {
   available: boolean;
   schema_version?: number;
   reason?: string;
@@ -1304,8 +1362,37 @@ export async function ecosystemAdvice(
 // while passing every size check. These read where each object sits and, when a
 // single honest move fixes it, write a NEW copy — the original is never touched.
 
+export interface ObjectSize {
+  object_id: string | null;
+  part?: string;
+  instance_count: number;
+  dimensions_mm: { x: number; y: number; z: number };
+}
+
+export interface PlacedInstances {
+  available: boolean;
+  basis: string;
+  reason?: string | null;
+  plate_count: number;
+  instances: {
+    item_index: number | null;
+    object_id: string;
+    instance_index: number;
+    instance_count: number;
+    plate: number | null;
+    bounds_mm: { min: number[]; max: number[] };
+    dimensions_mm: { x: number; y: number; z: number };
+  }[];
+  plate_extents: { plate: number; instances: number; x: number; y: number }[];
+  combined_extent_mm: { x: number; y: number } | null;
+}
+
 export interface PlacementItem {
   object_id: string;
+  // One object can be used by several build items; these tell the instances apart.
+  item_index?: number;
+  instance_index?: number;
+  instance_count?: number;
   dimensions: { x: number; y: number; z: number };
   position: { x: number; y: number };
   off_plate: boolean;
@@ -1321,13 +1408,13 @@ export interface PlacementCheck {
   plate_count?: number;
   /** False when positions across plates are not established by Studio (multi-plate projects). */
   placement_established?: boolean;
-  /** Prime tower judged against the printable area, from the project's own settings. */
-  prime_tower?: { outside: { plate: number; x: number; y: number; width: number }[]; message: string | null; note?: string | null };
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];
   skipped_plates?: { plate: number; reason: string }[];
-  unresolved_objects?: { object_id: string }[];
+  unresolved_objects?: { object_id: string; item_index?: number; reason?: string }[];
+  // Placed instances Studio could not judge (not found, or on no plate record).
+  not_judged?: number;
   fixable: boolean;
   summary?: string;
 }
@@ -1463,6 +1550,8 @@ export interface WatchCandidate {
   name: string;
   size_bytes: number;
   age_seconds: number;
+  /** Exact modification time as text (nanoseconds). */
+  modified_ns?: string;
   complete: boolean;
   state: string;
   job?: {
@@ -1489,6 +1578,61 @@ export interface WatchResult {
 
 export function watchFolder(folder: string, projectPath?: string): Promise<WatchResult> {
   return post("/watch_folder", { folder, project_path: projectPath ?? "" }, "watch folder");
+}
+
+export interface JobCheckEntry {
+  role: "original" | "prepared" | "sliced";
+  path: string;
+  /** Without it the file is only fingerprinted. */
+  expected?: { size_bytes: number; sha256: string | null };
+}
+
+export interface JobCheckFile {
+  role: JobCheckEntry["role"];
+  path: string;
+  status: "recorded" | "same" | "changed" | "missing" | "unreadable" | "unverified";
+  observed?: { size_bytes: number; sha256: string | null; mtime_ns?: string };
+  reason?: string;
+}
+
+/** Read-only: size and SHA-256 of a job's files, compared with what was recorded. */
+export function jobCheck(files: JobCheckEntry[]): Promise<{ schema_version: string; files: JobCheckFile[] }> {
+  return post("/job_check", { files }, "job check");
+}
+
+export type ReceiptStatus = "unchanged" | "changed" | "missing" | "not_checked";
+export type ReceiptStage = "original" | "prepared" | "sliced";
+
+export interface ReceiptStep {
+  from: ReceiptStage;
+  to: ReceiptStage;
+  from_value: number | boolean | number[] | null;
+  to_value: number | boolean | number[] | null;
+  status: ReceiptStatus;
+  detail: string;
+  next_action: string | null;
+}
+
+export interface ReceiptFact {
+  id: "nozzles" | "layer_height" | "supports" | "prime_tower";
+  label: string;
+  status: ReceiptStatus;
+  steps: ReceiptStep[];
+}
+
+export interface SettingsReceipt {
+  schema_version: string;
+  scope: "project";
+  scope_note: string;
+  stages: Record<ReceiptStage, { state: "read" | "unreadable" | "not_provided"; reason?: string; note?: string }>;
+  facts: ReceiptFact[];
+  summary: string;
+  separate_from: string;
+}
+
+/** Read-only: the declared settings of the project, its prepared copy and the sliced G-code, side by side. */
+export function settingsReceipt(originalPath: string, preparedPath?: string | null, slicedPath?: string | null): Promise<SettingsReceipt> {
+  return post("/settings_receipt", { original_path: originalPath, prepared_path: preparedPath ?? "", sliced_path: slicedPath ?? "" }, "settings receipt");
 }
 
 export function sliceProvenance(projectPath: string, gcodePath: string): Promise<ProvenanceResult> {
@@ -2257,6 +2401,7 @@ export interface NozzleStatus {
  *  probe:true call whose (possibly slower-arriving) response replaces it via
  *  the shared accept/drop decision (R2-D2), never the other way around. */
 export function nozzleStatus(host: string, port = 7125, probe = false): Promise<NozzleStatus> {
+  if (probe && !isPrinterSetUp(host)) return Promise.reject(new PrinterNotSetUpError()); // a live read contacts the printer
   return post("/nozzles/status", { host, port, probe }, "nozzle status");
 }
 

@@ -82,10 +82,35 @@ def _finding(fid, severity, title, explanation, setting_path, action, evidence) 
     }
 
 
+def _unreadable_finding(tm) -> dict:
+    from .validate import REQUIRED
+    missing = [part for part in REQUIRED if not tm.has_part(part)]
+    return _finding(
+        "project.unreadable", "error",
+        "Studio cannot read this as a 3MF project",
+        "The file is missing parts every 3MF project needs, so Studio cannot say whether "
+        "Snapmaker Orca will open it, and it is not reported as compatible.",
+        "package structure",
+        "Open the original in the slicer that made it and export it again, or re-download it.",
+        "missing: " + ", ".join(missing),
+    )
+
+
 def check(path: str) -> dict:
     """Read-only compatibility check. Returns {findings, summary, recommendation}."""
     tm = ThreeMF.open(path)
+    from . import eligibility
+    eligible = eligibility.assess(tm)
     if not tm.has_part(SETTINGS):
+        if not eligible.readable:
+            # A geometry-only archive missing a required part is not a bare model: it is
+            # unreadable, and the same finding closes Prepare.
+            return {
+                "findings": [_unreadable_finding(tm)],
+                "summary": "Studio cannot read this as a 3MF project.",
+                "recommendation": "Open the original in the slicer that made it and export "
+                                  "it again, or re-download it.",
+            }
         return {
             "findings": [],
             "summary": "No project settings found to check — this looks like a bare "
@@ -131,6 +156,21 @@ def check(path: str) -> dict:
                 f"printer_model={model or '(none)'}; printer_settings_id={settings_id or '(none)'}",
             ))
 
+    # B2. the same eligibility record Prepare and the Doctor use: a readable project Studio
+    # would refuse to prepare is never reported as clean.
+    if not eligible.readable:
+        findings.append(_unreadable_finding(tm))
+    elif not eligible.preparable:
+        findings.append(_finding(
+            "prepare.blocked", "warning",
+            "Studio cannot prepare a U1 copy of this project yet",
+            eligible.summary,
+            "Metadata/model_settings.config",
+            "Open the original in Snapmaker Orca to review it, or remove the unverified "
+            "settings in the slicer that made it and export it again.",
+            f"{len(eligible.problems)} item(s) Studio has not verified Snapmaker Orca reads",
+        ))
+
     # C. relative extrusion without a G92 E0 layer reset
     if _truthy(cfg, "use_relative_e_distances"):
         layer_gcode = (_text(cfg, "layer_change_gcode") + "\n"
@@ -155,7 +195,9 @@ def check(path: str) -> dict:
     except Exception:
         oc = 0
     spacing = assess_spacing(oc, is_stl=False)
-    if spacing["status"] != "pass":
+    # An archive Studio cannot read as a project has no object count to be unsure about: it is already
+    # reported as unreadable, so the spacing note would only add noise to that one finding.
+    if spacing["status"] != "pass" and eligible.readable:
         findings.append(_finding(
             "layout.object_spacing", "warning",
             "Object spacing / collisions are not verified by Studio yet",
@@ -164,7 +206,8 @@ def check(path: str) -> dict:
             "Object layout (plate)",
             "Review the project in Snapmaker Orca and look for too-close / collision "
             "warnings before slicing.",
-            f"{oc} object(s) on the plate; spacing unchecked by Studio",
+            (f"{oc} object(s) on the plate; spacing unchecked by Studio" if oc
+             else "object count unknown; spacing unchecked by Studio"),
         ))
 
     # Support enforcers present but support generation disabled — Orca warns

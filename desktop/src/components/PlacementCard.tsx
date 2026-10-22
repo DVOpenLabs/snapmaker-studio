@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/store/toast";
 import { placementCheck, preparePlaced } from "@/api";
 import type { PlacementCheck, PlacementFix } from "@/api";
-import { blockedReason, overhangText, placementVerdict } from "@/lib/placement";
+import { blockedReason, itemLabel, overhangText, placementVerdict } from "@/lib/placement";
 
 /**
  * Where the objects actually sit.
@@ -88,25 +88,15 @@ export function PlacementView({ check, fix, fixing, onFix }: {
         {check?.available && check.off_plate.length > 0 && (
           <ul className="space-y-1.5">
             {check.off_plate.map((item) => (
-              <li key={item.object_id} className="rounded-md border border-risk/40 p-2.5">
+              <li key={item.item_index ?? item.object_id} className="rounded-md border border-risk/40 p-2.5">
                 <p className="text-xs font-medium">
-                  Object {item.object_id} · {item.dimensions.x} × {item.dimensions.y} ×{" "}
+                  {itemLabel(item)} · {item.dimensions.x} × {item.dimensions.y} ×{" "}
                   {item.dimensions.z} mm
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{overhangText(item)}</p>
               </li>
             ))}
           </ul>
-        )}
-
-        {check?.available && check.prime_tower?.message && (
-          <p className="rounded-md border border-risk/40 p-2.5 text-xs text-muted-foreground">
-            {check.prime_tower.message}
-          </p>
-        )}
-
-        {check?.available && !check.prime_tower?.message && check.prime_tower?.note && (
-          <p className="text-[11px] text-muted-foreground">{check.prime_tower.note}</p>
         )}
 
         {blocked && (

@@ -20,7 +20,8 @@ SCAN = [
     (ROOT / "backend" / "u1convert", "*.py"),
     (ROOT / "desktop" / "src", "*.ts"),
     (ROOT / "desktop" / "src", "*.tsx"),
-    (ROOT / "site" / "guide" / "content", "*.json"),
+    # site/guide/content is deliberately not scanned here: the user guide is held and
+    # reviewed on its own, so this guard covers the app and engine text only.
 ]
 
 

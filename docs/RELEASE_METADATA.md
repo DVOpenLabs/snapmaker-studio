@@ -17,15 +17,15 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
-| Version | v1.5.1 |
-| Installer | `Snapmaker.Studio_1.5.1_x64-setup.exe` |
-| Size (bytes) | 21,962,736 |
-| SHA256 | `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3` |
-| Linux installer | `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb` |
-| Linux size (bytes) | 25,954,272 |
-| Linux SHA256 | `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37947895421 |
-| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.1 |
+| Version | v1.6.0 |
+| Installer | `Snapmaker.Studio_1.6.0_x64-setup.exe` |
+| Size (bytes) | 22,444,501 |
+| SHA256 | `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0` |
+| Linux installer | `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` |
+| Linux size (bytes) | 26,004,974 |
+| Linux SHA256 | `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39413867451 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 A stable release, not a prerelease, so GitHub's "latest release" points at it.

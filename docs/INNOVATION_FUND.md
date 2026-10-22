@@ -208,7 +208,7 @@ simply the machine it is verified against.
 
 ## Evidence
 
-Everything below was verified against the **v1.5.1 release-candidate build** (the same
+Everything below was verified against the **v1.6.0 release-candidate build** (the same
 application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
@@ -216,11 +216,11 @@ source at the release commit, not from the installer. Commands, counts and full 
 | What | Result |
 |---|---|
 | Installed-application acceptance, through the real UI | 50/50 |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app, with Spoolman and Bambuddy | 76/76 |
+| Read-only verification against a real Snapmaker U1, from the Windows-installed app | 78/78 |
 | Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2927 passed, 49 skipped |
-| Desktop tests | 852 passed |
+| Backend tests | 3185 passed, 49 skipped |
+| Desktop tests | 1091 passed |
 | TypeScript, Rust, production build | clean |
 
 Demo: [`docs/media/snapmaker-studio-demo.mp4`](media/snapmaker-studio-demo.mp4) —

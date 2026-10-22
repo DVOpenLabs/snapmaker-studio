@@ -1,11 +1,11 @@
 {
   "acceptance": {
     "passed": 50,
-    "report": "acceptance-1.5.1.json",
+    "report": "acceptance-1.6.0.json",
     "total": 50
   },
   "backend": {
-    "passed": 2927,
+    "passed": 3185,
     "skipped": 49
   },
   "demo": {
@@ -13,18 +13,18 @@
     "seconds": 66
   },
   "desktop": {
-    "passed": 852
+    "passed": 1091
   },
   "hardware": {
-    "passed": 76,
-    "report": "hardware-1.5.1.json",
-    "total": 76
+    "passed": 78,
+    "report": "hardware-1.6.0.json",
+    "total": 78
   },
   "schema_version": "evidence/1",
-  "screenshots_dir": "docs/screenshots/v1.5.1",
+  "screenshots_dir": "docs/screenshots/v1.6.0",
   "selfcheck": {
     "passed": 27,
     "total": 27
   },
-  "version": "1.5.1"
+  "version": "1.6.0"
 }

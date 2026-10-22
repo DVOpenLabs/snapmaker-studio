@@ -25,6 +25,7 @@ from snapstudio_core import scale_doctor
 from snapstudio_core import print_failure
 from snapstudio_core import print_quality
 from snapstudio_core import first_layer_doctor
+from snapstudio_core import geometry_basis
 from snapstudio_core.paths import data_dir as _resolve_data_dir
 from snapstudio_core.errors import SnapStudioError
 
@@ -326,10 +327,11 @@ def project_materials(path: str, provider: str | None = None, provider_url: str 
     if "supported" in opened:
         return opened
     cfg, plates, kind, url, state = (opened[k] for k in ("cfg", "plates", "kind", "url", "state"))
-    return pm.analyze(cfg, plates, provider=kind if url else None, state=state,
-                      catalog=catalog if catalog is not None else _orca_catalog(),
-                      store=store if store is not None else _material_store(),
-                      limit=max(1, min(int(limit), 20)))
+    analysis = pm.analyze(cfg, plates, provider=kind if url else None, state=state,
+                          catalog=catalog if catalog is not None else _orca_catalog(),
+                          store=store if store is not None else _material_store(),
+                          limit=max(1, min(int(limit), 20)))
+    return pm.attach_usage(analysis, opened.get("usage"))
 
 
 def project_materials_inventory(path: str, slot: int, provider: str | None = None,
@@ -378,7 +380,14 @@ def _open_materials(path, provider, provider_url, provider_key, slot_map, slot_b
             state = {"available": False, "error_code": "invalid_address", "spools": [], "slots": []}
         except Exception:
             state = {"available": False, "error_code": "unreachable", "spools": [], "slots": []}
-    return {"cfg": cfg, "plates": plates, "kind": kind, "url": url, "state": state}
+    usage = None
+    try:
+        if slot is None:                # the single-slot inventory has no use for it
+            from snapstudio_core.project_compare import slot_usage
+            usage = slot_usage(tm)
+    except Exception:
+        usage = None            # unreadable usage is reported as unknown, never as unused
+    return {"cfg": cfg, "plates": plates, "kind": kind, "url": url, "state": state, "usage": usage}
 
 
 def material_presets(nozzle: str = "0.4", *, catalog=None) -> dict:
@@ -487,7 +496,7 @@ def diff(a: str, b: str) -> dict:
 def insights(path: str) -> dict:
     """Rich read-only Project Intelligence (geometry, materials, readiness)."""
     from snapstudio_core.intelligence import project_info
-    return project_info(path)
+    return project_info(path, placement_aware=True)
 
 
 def report(path: str, prepare_mode: str | None = None) -> dict:
@@ -527,7 +536,9 @@ def strategy_recommend(path: str) -> dict:
     signals = {
         "colors": info.get("colors"),
         "source_family": info.get("source_family"),
-        "dimensions_mm": info.get("dimensions_mm"),
+        # a height taken from an unestablished size would steer the recommendation; leave it out
+        "dimensions_mm": (info.get("dimensions_mm")
+                          if geometry_basis.is_established(info.get("geometry_basis")) else None),
         "triangles": info.get("triangles"),
         "complexity": info.get("complexity"),
         "issues": info.get("issues"),
@@ -578,7 +589,10 @@ def prepare_placed(path: str, out_dir: str | None = None) -> dict:
             changes=[{"key": "object placement", "old": "off the U1 plate",
                       "new": change.get("detail"), "reason": change.get("kept")}
                      for change in (result.get("changes") or [])],
-            findings=[{"title": f"Object {item.get('object_id')} outside the plate",
+            findings=[{"title": (f"Object {item.get('object_id')}, instance "
+                                 f"{(item.get('instance_index') or 0) + 1} of {item['instance_count']} "
+                                 "outside the plate" if (item.get("instance_count") or 1) > 1
+                                 else f"Object {item.get('object_id')} outside the plate"),
                        "detail": item.get("edges") and f"past the {item['edges']} edge"}
                       for item in (before.get("off_plate") or [])],
             validated=not ((result.get("after") or {}).get("off_plate")))
@@ -771,17 +785,8 @@ def preflight(path: str, host: str | None = None, port: int = 7125,
         facts["nozzle_revision"] = resolved["revision"]
         facts["nozzle_storage_error"] = resolved["storage_error"]
 
-    bed = None
-    dims = facts.get("bed_mm") or {}
-    if dims.get("x") and dims.get("y"):
-        bed = {"min_x": 0.0, "min_y": 0.0,
-               "max_x": float(dims["x"]), "max_y": float(dims["y"])}
     try:
-        # Name the plate after whatever supplied it, so a summary never describes a
-        # live bed as though it were the U1's.
-        placement = plate_placement.assess(
-            path, bed=bed,
-            bed_name=("this printer's" if bed else None))
+        placement = _assess_against(path, _placement_target(facts))
     except Exception:
         placement = None
 
@@ -988,6 +993,18 @@ def watch_folder(folder: str, project_path: str | None = None) -> dict:
     """
     from snapstudio_core import watch_folder as wf
     return wf.match_project(folder, project_path)
+
+
+def job_check(files) -> dict:
+    """Are the files of a saved job still the files it was made from? Read-only."""
+    from snapstudio_core import job_identity
+    return job_identity.check(files)
+
+
+def settings_receipt(original_path: str, prepared_path: str | None, sliced_path: str | None) -> dict:
+    """Original -> prepared -> sliced: what each file declares for a few settings. Read-only."""
+    from snapstudio_core import settings_receipt as sr
+    return sr.compare(original_path, prepared_path, sliced_path)
 
 
 def slice_provenance(project_path: str, gcode_path: str) -> dict:
@@ -1913,7 +1930,7 @@ def _upload_state(confirmation: dict) -> str:
     return "verified"
 
 
-def first_layer(path: str, host: str | None = None, port: int = 7125) -> dict:
+def first_layer(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """First-Layer Intelligence: fuse the design's footprint/stability with the printer's
     REAL measured bed (when a host is reachable) into plain-language first-layer findings.
     Read-only end to end. Works design-only when no printer is connected."""
@@ -1923,17 +1940,23 @@ def first_layer(path: str, host: str | None = None, port: int = 7125) -> dict:
     if not md.get("available"):
         return {"schema_version": fl.SCHEMA_VERSION, "available": False,
                 "reason": "geometry unavailable", "bed_aware": False}
+    basis = md.get("geometry_basis")
+    if not geometry_basis.is_established(basis):
+        # Footprint area and height are raw-mesh numbers; without an established size they are
+        # not first-layer evidence. The printer's own bed data needs no model size, but the
+        # question "will THIS print stick" does, so the whole check is withheld.
+        return {"schema_version": fl.SCHEMA_VERSION, "available": False, "bed_aware": False,
+                **geometry_basis.not_checked(basis, "first-layer footprint checks")}
     bed = None
     bed_dim = 270.0
-    if host:
+    if snapshot is not None:
+        bed = snapshot.get("bed_mesh")
+    elif host:
         from snapstudio_core import moonraker
         bed = moonraker.bed_mesh(host, port)            # never raises
-        try:
-            caps = moonraker.capabilities(host, port)   # can raise when unreachable
-            if caps.get("bed_mm") and caps["bed_mm"].get("x"):
-                bed_dim = caps["bed_mm"]["x"]
-        except Exception:
-            pass
+    caps = _caps(host, port, snapshot)
+    if caps and caps.get("bed_mm") and caps["bed_mm"].get("x"):
+        bed_dim = caps["bed_mm"]["x"]
     out = fl.assess(md.get("footprint"), md.get("stability"), bed, bed_dim)
     out["available"] = True
     return out
@@ -2033,7 +2056,16 @@ def batch_pricing(paths: list[str], currency: str = "$", **factors) -> dict:
     return pricing.aggregate(priced)
 
 
-def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
+def _toolhead_count(host: str | None, port: int = 7125, snapshot: dict | None = None) -> tuple:
+    """The ONE place the toolhead count is read: (count, known) from the connected printer (the request snapshot when
+    there is one), or (None, False). The Multi-Material and Toolhead-Fit Doctors both use it."""
+    caps = _caps(host, port, snapshot)
+    if caps and caps.get("toolhead_count"):
+        return caps["toolhead_count"], True
+    return None, False
+
+
+def mm_doctor(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """Multi-Material Doctor: one verdict for a multicolour U1 print — colours vs
     toolheads, filament-settings consistency, painted-region mapping. Uses the
     connected U1's real toolhead count when reachable, else the U1's 4. Read-only."""
@@ -2042,86 +2074,187 @@ def mm_doctor(path: str, host: str | None = None, port: int = 7125) -> dict:
     info = project_info(path)
     issues = info.get("issues") or []
     metadata_issues = [i for i in issues if "filament metadata inconsistent" in str(i)]
-    heads = None
-    heads_known = False
-    if host:
-        from snapstudio_core import moonraker
-        try:
-            caps = moonraker.capabilities(host, port)
-            if caps.get("toolhead_count"):
-                heads, heads_known = caps["toolhead_count"], True
-        except Exception:
-            pass
+    heads, heads_known = _toolhead_count(host, port, snapshot)
     return mmd.assess(info.get("colors"), heads=heads, heads_known=heads_known,
                       painted=bool(info.get("painted")), metadata_issues=metadata_issues,
                       object_count=info.get("objects") or 1)
 
 
-def bed_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
-    """Bed-Fit / Out-of-Bounds Doctor: does the model fit the U1 bed, and if not,
-    WHY (the cryptic 'out of bounds' error) and HOW to fix it. Uses the connected
-    U1's real bed when reachable, else the known U1 bed. Read-only; works offline."""
+def bed_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
+    """Bed-Fit / Out-of-Bounds Doctor: does each object fit the printer's printable area (by size),
+    do the placed instances sit on it (by placement), and if not, WHY (the cryptic 'out of bounds'
+    error) and HOW to fix it. Uses the profile of the connected printer when it identifies itself,
+    else the known U1 profile; a connected printer Studio cannot identify is reported as unknown.
+    Read-only; works offline."""
     from snapstudio_core.intelligence import project_info
     from snapstudio_core import bed_fit as bf
-    info = project_info(path)
+    info = project_info(path, placement_aware=True)
+    basis = info.get("geometry_basis")
+    if not geometry_basis.is_established(basis):
+        # The numbers in the file are not the physical size: say "not checked", never "fits".
+        return {"schema_version": bf.SCHEMA_VERSION, "available": False,
+                **geometry_basis.not_checked(basis, "bed fit")}
     dims = info.get("dimensions_mm")
     object_count = info.get("objects") or 1
     multi = (info.get("colors") or 0) > 1
     bed = None
     bed_known = False
+    # Offline: the machine Studio prepares for (its profile polygon). Connected: the printable area of
+    # the printer that identifies itself; a printer's reported bed is axis TRAVEL (about 271 x 335 on a
+    # U1, anchored at 0,0), never used as a printable rectangle or size, so a printer Studio cannot
+    # identify gets neither a size nor a placement verdict.
+    target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
+    profile = None
     if host:
-        from snapstudio_core import moonraker
+        from snapstudio_core import printer_profiles
+        target = None
         try:
-            caps = moonraker.capabilities(host, port)
-            bm = caps.get("bed_mm")
-            if bm and bm.get("x"):
-                bed, bed_known = bm, True
+            caps = _caps(host, port, snapshot)
+            if caps is None:
+                raise RuntimeError("printer unreachable")   # fall back to the profile Studio prepares for
+            identity = printer_profiles.identify({"reachable": True,
+                                                  "klipper_objects": caps.get("klipper_objects"),
+                                                  "toolhead_count": caps.get("toolhead_count")})
+            target = _placement_target({"identity": identity})
+            if identity.get("printer_id"):
+                # the identified printer's RECORDED printable volume, labelled as the profile's, not as
+                # something the printer measured
+                profile = printer_profiles.load(identity["printer_id"])
+            else:
+                # a printer Studio cannot identify reports axis travel, not a printable size: neither
+                # the size nor the placement can be judged
+                return {"schema_version": bf.SCHEMA_VERSION, "available": False, "basis": "size",
+                        "reason": ("Studio does not know this connected printer's printable area (it "
+                                   "reports axis travel, which is not a printable size), so it cannot say "
+                                   "whether the objects fit.")}
         except Exception:
-            pass
-    return bf.assess(dims, bed=bed, bed_known=bed_known,
-                     object_count=object_count, multi_material=multi)
+            target = _placement_target({"identity": {"printer_id": printer_profiles_target_id()}})
+    # Two separate facts: how big each object is (size, per object) and where the instances sit
+    # (placement, per instance and plate). A combined extent is neither, and is never used here.
+    try:
+        placed = _assess_against(path, target)
+    except Exception:
+        placed = None
+    return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,
+                             unmeasured=info.get("objects_unmeasured") or 0,
+                             bed=bed, bed_known=bed_known, profile=profile, object_count=object_count,
+                             multi_material=multi)
 
 
-def predict_success(path: str, host: str | None = None, port: int = 7125) -> dict:
-    """Print Success Prediction: synthesise design readiness + toolhead fit +
-    first-layer risk + (when a printer is reachable) its health score and this
-    file's prior-failure count into one pre-print likelihood. Read-only; the
-    printer-side signals are simply skipped when no host is given."""
+def _printer_snapshot(host: str, port: int = 7125, limit: int = 50) -> dict:
+    """ONE read of every printer-side input for a whole request, each source independently: diagnostics, print history,
+    capabilities (toolhead count, bed size) and the bed mesh. The Doctors, the Print risk signals and the Intelligence
+    Report all consume this snapshot, so a transient failure or a change between two reads cannot make them disagree,
+    and a source that is unreadable does not hide the ones that are.
+    {"diag", "hist_jobs", "history_ok", "caps", "bed_mesh", "health", "reachable"} (unreadable sources are None)."""
+    from snapstudio_core import moonraker, failure_patterns as fp, health_score as hs
+    snap = {"diag": None, "jobs": None, "history_ok": False, "caps": None, "bed_mesh": None,
+            "health": None, "reachable": False}
+    try:
+        diag = moonraker.diagnostics(host, port)
+        if diag.get("klippy_state") is not None:   # an answer with no firmware state is not a readable diagnosis
+            snap["diag"] = diag
+    except Exception:
+        pass
+    fail = None
+    try:
+        hist = moonraker.history(host, port, limit)
+        snap["jobs"] = hist.get("jobs")
+        snap["history_ok"] = True
+        fail = fp.assess(hist.get("jobs"), hist.get("totals"))
+    except Exception:
+        pass
+    try:
+        snap["caps"] = moonraker.capabilities(host, port)
+    except Exception:
+        pass
+    try:
+        snap["bed_mesh"] = moonraker.bed_mesh(host, port)   # never raises
+    except Exception:
+        pass
+    snap["reachable"] = bool(snap["diag"] or snap["history_ok"] or snap["caps"])
+    if snap["diag"] or fail:
+        snap["health"] = hs.score(diagnostics=snap["diag"], failures=fail)
+    return snap
+
+
+def _caps(host, port: int = 7125, snapshot: dict | None = None):
+    """Capabilities from the request snapshot when there is one (never read twice), else one read, else None."""
+    if snapshot is not None:
+        return snapshot.get("caps")
+    if not host:
+        return None
+    from snapstudio_core import moonraker
+    try:
+        return moonraker.capabilities(host, port)   # can raise when unreachable
+    except Exception:
+        return None
+
+
+def predict_success(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None,
+                    inputs: dict | None = None) -> dict:
+    """Print risk signals: one signal per stable condition id (design validation, toolhead fit, first-layer
+    conditions and, when a printer answered, its health conditions and this file's prior failures), plus what was and
+    was not checked. No percentage or verdict. Read-only. `snapshot` lets a caller that also builds the Intelligence
+    Report share ONE printer read (see `_printer_snapshot`)."""
     from snapstudio_core import success_predict as sp
     from snapstudio_core.validation_report import readiness_report
     import os
-    readiness = toolfit = fl = health = None
-    prior = 0
+    inputs = inputs or {}
+    if snapshot is None and host:
+        snapshot = _printer_snapshot(host, port)
+    snapshot = snapshot or {}
+    readiness = toolfit = fl = None
     try:
         readiness = readiness_report(path)
     except Exception:
         pass
-    try:
-        toolfit = toolhead_fit(path, host, port)
-    except Exception:
-        pass
-    try:
-        fl = first_layer(path, host, port)
-    except Exception:
-        pass
-    if host:
+    toolfit = inputs.get("toolfit")
+    if toolfit is None:
         try:
-            health = printer_health(host, port)
+            toolfit = toolhead_fit(path, host, port, snapshot or None)
         except Exception:
             pass
+    fl = inputs.get("first_layer")
+    if fl is None:
         try:
-            from snapstudio_core import moonraker
-            base = os.path.basename(path).lower()
-            hist = moonraker.history(host, port, 50)
-            from snapstudio_core import failure_patterns as fp
-            fa = fp.assess(hist.get("jobs"), hist.get("totals"))
-            for ro in (fa.get("repeat_offenders") or []):
-                if (ro.get("filename") or "").lower() == base:
-                    prior = int(ro.get("failures") or 0)
+            fl = first_layer(path, host, port, snapshot or None)
         except Exception:
             pass
-    return sp.predict(readiness=readiness, toolfit=toolfit, first_layer=fl,
-                      health=health, prior_failures=prior)
+    health = snapshot.get("health")
+    prior = _prior_failures(snapshot.get("jobs"), os.path.basename(path)) if snapshot.get("history_ok") else 0
+    spacing_unverified = True
+    try:
+        from snapstudio_core.collision import assess_spacing
+        spacing_unverified = assess_spacing(
+            (insights(path) or {}).get("objects"), str(path).lower().endswith(".stl")
+        ).get("status") == "unknown"
+    except Exception:
+        pass
+    basis = None
+    try:
+        basis = geometry_basis.assess(path)
+    except Exception:
+        pass
+    return sp.findings(readiness=readiness, toolfit=toolfit, first_layer=fl,
+                       health=health, prior_failures=prior, printer_checked=bool(snapshot.get("history_ok")),
+                       spacing_unverified=spacing_unverified, geometry_basis=basis)
+
+
+def _prior_failures(jobs, filename: str) -> int:
+    """Failed jobs in the printer's history whose file stem matches this file's, so a
+    design .3mf matches the .gcode Orca exported from it. Name only, not contents."""
+    import os
+    from snapstudio_core import failure_patterns as fp
+
+    def stem(name):
+        base = fp._base(name)
+        return os.path.splitext(base)[0].lower() if base else None
+    want = stem(filename)
+    if not want:
+        return 0
+    return sum(1 for j in (jobs or [])
+               if j.get("status") in fp._FAILURE_STATES and stem(j.get("filename")) == want)
 
 
 def pricing_doctor(path: str, host: str | None = None, filename: str | None = None,
@@ -2239,7 +2372,7 @@ def demo_report() -> dict:
 def intelligence_report(path: str, host: str | None = None, filename: str | None = None,
                         port: int = 7125, currency: str = "$", **factors) -> dict:
     """Studio Intelligence Report: run every Doctor and synthesise one verdict —
-    Studio score, will-it-print, cost, price, profit, biggest risk, next action,
+    risk signals, cost, price, profit, biggest risk, next action,
     with each Doctor as supporting evidence. Read-only; one failing Doctor never
     sinks the report."""
     from snapstudio_core import intelligence_report as ir
@@ -2250,11 +2383,15 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
         except Exception:
             return None
 
-    predict = _safe(predict_success, path, host, port)
-    bed = _safe(bed_fit, path, host, port)
-    mm = _safe(mm_doctor, path, host, port)
-    fl = _safe(first_layer, path, host, port)
-    health = _safe(printer_health, host, port) if host else None
+    # ONE read of every printer-side input; each Doctor, the card and the report consume it, and the toolhead-fit and
+    # first-layer results are computed once and shared with the card.
+    snapshot = _safe(_printer_snapshot, host, port) if host else None
+    bed = _safe(bed_fit, path, host, port, snapshot)
+    mm = _safe(mm_doctor, path, host, port, snapshot)
+    fl = _safe(first_layer, path, host, port, snapshot)
+    toolfit = _safe(toolhead_fit, path, host, port, snapshot)
+    predict = _safe(predict_success, path, host, port, snapshot or {}, {"toolfit": toolfit, "first_layer": fl})
+    health = (snapshot or {}).get("health")
     cost = _safe(cost_to_price, path, host, filename, port, currency, **factors)
     pricing = _safe(pricing_doctor, path, host, filename, port, currency, **factors)
     profit = _safe(profit_doctor, path, host, filename, port, currency=currency, **factors)
@@ -2263,19 +2400,32 @@ def intelligence_report(path: str, host: str | None = None, filename: str | None
     from snapstudio_core.collision import assess_spacing
     _info = _safe(insights, path) or {}
     spacing = assess_spacing(_info.get("objects"), str(path).lower().endswith(".stl"))
-    return ir.build(predict=predict, bed_fit=bed, mm=mm, first_layer=fl,
-                    health=health, cost=cost, pricing=pricing, profit=profit, spacing=spacing)
+    out = ir.build(predict=predict, bed_fit=bed, mm=mm, first_layer=fl,
+                   health=health, cost=cost, pricing=pricing, profit=profit, spacing=spacing)
+    if predict is not None:
+        # The card is shown from THIS reply, with the report's own wording and action for each condition id, so the two
+        # cannot differ.
+        by_id = {r.get("condition"): r for r in out.get("risks") or []}
+        for sg in predict.get("signals") or []:
+            r = by_id.get(sg.get("id"))
+            if r:
+                sg["title"] = r["text"]
+                if r.get("action"):
+                    sg["action"] = r["action"]
+        out["print_findings"] = predict
+    return out
 
 
 def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
     """Printer Health Score: fold the U1's OWN read-only signals — firmware/
-    connectivity diagnostics + print-history failure patterns — into one 0–100
-    score, a grade, and plain-language drivers. Read-only; never raises."""
+    connectivity diagnostics + print-history failure patterns — into a grade and plain-language drivers (the number is not shown to users). Read-only; never raises."""
     from snapstudio_core import moonraker, failure_patterns as fp, health_score as hs
     diag = None
     fail = None
     try:
         diag = moonraker.diagnostics(host, port)
+        if diag.get("klippy_state") is None:
+            diag = None   # the printer did not answer: that is not "healthy"
     except Exception:
         pass
     try:
@@ -2286,7 +2436,7 @@ def printer_health(host: str, port: int = 7125, limit: int = 50) -> dict:
     return hs.score(diagnostics=diag, failures=fail)
 
 
-def toolhead_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
+def toolhead_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict | None = None) -> dict:
     """Toolhead-Fit Intelligence: does the design's colour count fit the U1's toolheads?
     Uses the printer's REAL toolhead count when a host is reachable, else the U1's known 4.
     Read-only end to end; works offline (printer-unaware) when no host is given."""
@@ -2294,17 +2444,7 @@ def toolhead_fit(path: str, host: str | None = None, port: int = 7125) -> dict:
     from snapstudio_core import toolhead_fit as tf
     info = project_info(path)
     colors = info.get("colors")
-    heads = None
-    known = False
-    if host:
-        from snapstudio_core import moonraker
-        try:
-            caps = moonraker.capabilities(host, port)   # can raise when unreachable
-            if caps.get("toolhead_count"):
-                heads = caps["toolhead_count"]
-                known = True
-        except Exception:
-            pass
+    heads, known = _toolhead_count(host, port, snapshot)
     return tf.assess(colors, heads, known)
 
 
@@ -2350,6 +2490,8 @@ def record_diagnosis(path: str, result: dict) -> None:
                 verdict=result.get("verdict"), score=result.get("score"),
                 filament_count=result.get("filament_count"),
                 last_action="doctor", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(result.get("prepare_blocked")),
+                                    result.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "doctor",
                                 f"Checked — {result.get('verdict', '')}".strip(" —"), _now())
         finally:
@@ -2481,7 +2623,9 @@ def register_downloaded_model(path: str, site: str, page_url: str | None = None)
             "sha256": digest.hexdigest(), "size_bytes": total,
             "source_family": result.get("family"), "verdict": verdict,
             "filament_count": result.get("filament_count"), "is_u1": bool(result.get("is_u1")),
-            "ready_hint": "check" if verdict == "READY" else "prepare"}
+            "prepare_blocked": bool(result.get("prepare_blocked")),
+            "ready_hint": ("review" if result.get("prepare_blocked")
+                           else "check" if verdict == "READY" else "prepare")}
 
 
 def record_conversion(path: str, result: dict) -> None:
@@ -2500,6 +2644,8 @@ def record_conversion(path: str, result: dict) -> None:
                 verdict=diag.get("verdict"), score=diag.get("score"),
                 filament_count=diag.get("filament_count"),
                 last_action="convert", updated_at=_now())
+            library.set_eligibility(conn, pid, bool(diag.get("prepare_blocked")),
+                                    diag.get("prepare_blocked_summary"))
             library.add_history(conn, pid, "convert",
                                 f"Made U1-ready — {result.get('output_name', '')}".strip(" —"), _now())
         finally:
@@ -2585,25 +2731,89 @@ _READY_CACHE_MAX = 256  # bounded; in memory only, gone when the sidecar stops
 _ready_cache_lock = threading.Lock()
 
 
-def _ready_analysis(path: str, bed: dict | None,
+def printer_profiles_target_id() -> str:
+    from snapstudio_core import printer_profiles
+
+    return printer_profiles.PREPARE_TARGET_ID
+
+
+def _placement_target(facts: dict) -> dict | None:
+    """The printable area to judge placement against, or None when it is not known.
+
+    A connected printer reports the toolhead's AXIS TRAVEL (about 271 x 335 on a U1, whose plate is
+    270 x 270), which is not a printable area and is never used as one. What is used instead:
+    the U1's printable polygon when the machine identifies itself as the U1, or the recorded
+    printable volume of the profile it identifies as. A printer Studio cannot identify has no known
+    printable area: None, and the bed check says so rather than guessing.
+    """
+    from snapstudio_core import printer_profiles
+
+    printer_id = (facts.get("identity") or {}).get("printer_id")
+    if not printer_id:
+        return None
+    if printer_id == printer_profiles.PREPARE_TARGET_ID:
+        return {"key": ("profile", printer_id), "bed": None, "name": None, "height": None}
+    try:
+        profile = printer_profiles.load(printer_id)
+        volume = profile.get("build_volume_mm") or {}
+    except KeyError:
+        return None
+    if not (volume.get("x") and volume.get("y")):
+        return None
+    return {"key": ("profile", printer_id, float(volume["x"]), float(volume["y"])),
+            "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": float(volume["x"]), "max_y": float(volume["y"])},
+            "name": f"the {printer_profiles.display_name(profile)}'s", "height": float(volume["z"]) if volume.get("z") else None}
+
+
+def _assess_against(path: str, target: dict | None) -> dict | None:
+    from snapstudio_core import plate_placement
+
+    if target is None:
+        return None
+    return plate_placement.assess(path, bed=target["bed"], bed_name=target["name"],
+                                  height_mm=target["height"])
+
+
+_READY_ATTEMPTS = 3
+
+
+def _ready_analysis(path: str, target: dict | None,
                     need_placement: bool = True) -> tuple[str, dict | None, dict | None]:
     """(file_state, traits, placement) for one file, cached by what was read.
 
-    Keyed by path, mtime_ns, size and the bed it was placed against, so an edited
-    file or a different printer bed is analysed again and nothing else is.
+    The file is identified before it is read and again after: if it changed in between, what was
+    read may mix two versions, so it is discarded and read again (a few times at most). A file that
+    will not hold still is reported as unreadable this time and nothing about it is cached.
+    """
+    for _attempt in range(_READY_ATTEMPTS):
+        outcome = _ready_analysis_once(path, target, need_placement)
+        if outcome is not None:
+            return outcome
+    return "unreadable", None, None
+
+
+def _ready_analysis_once(path: str, target: dict | None, need_placement: bool):
+    """One pass of `_ready_analysis`; None when the file changed while it was being read.
+
+    Keyed by the file's content fingerprint (and the printable area it was placed against), so an
+    edited file or a different printer is analysed again and nothing else is.
 
     Placement (a full read of the model's geometry) is by far the slowest step, so it
     is only done when asked for: `need_placement=False` returns the cheap traits and
     leaves placement None, and a later `True` call fills it in on the same cache entry.
     """
-    from snapstudio_core import plate_placement, project_traits
+    from snapstudio_core import fileid, plate_placement, project_traits
 
     try:
         st = os.stat(path)
     except OSError:
         return "missing", None, None
-    bed_key = (bed["max_x"], bed["max_y"]) if bed else None
-    key = (path, st.st_mtime_ns, st.st_size, bed_key)
+    # the content fingerprint is part of the key: a same-size replacement that kept its timestamp
+    # must not be served a placement computed for the old content
+    identity = fileid.file_identity(path)
+    if identity is None:
+        return "missing", None, None
+    key = (identity, target["key"] if target else None)
     with _ready_cache_lock:
         hit = _READY_CACHE.get(key)
     if hit is None:
@@ -2611,15 +2821,18 @@ def _ready_analysis(path: str, bed: dict | None,
         hit = {"state": "ok" if traits.get("readable") else "unreadable", "traits": traits,
                "placement": None, "placed": False}
     foreign = (hit["traits"].get("foreign_printer") or {}).get("value") is True
-    if need_placement and not hit["placed"] and hit["state"] == "ok" and bed and not foreign:
+    if need_placement and not hit["placed"] and hit["state"] == "ok" and target and not foreign:
         # Work on a copy so concurrent scans never mutate a shared entry. A failed read is
         # not cached as done: it is unknown this time and tried again next scan.
         hit = dict(hit)
         try:
-            hit["placement"] = plate_placement.assess(path, bed=bed, bed_name="this printer's")
-            hit["placed"] = True
+            hit["placement"] = _assess_against(path, target)
+            # an unavailable result (unreadable, too large) is not "done": it is tried again next scan
+            hit["placed"] = bool(hit["placement"] and hit["placement"].get("available"))
         except Exception:
             hit["placement"] = None
+    if fileid.file_identity(path) != identity:
+        return None          # replaced while it was being read: never cache or return a mix
     with _ready_cache_lock:
         if key not in _READY_CACHE and len(_READY_CACHE) >= _READY_CACHE_MAX:
             _READY_CACHE.pop(next(iter(_READY_CACHE)), None)  # oldest first
@@ -2632,21 +2845,21 @@ def _ready_analysis(path: str, bed: dict | None,
 _PLACEMENT_MATTERS = ("cant_determine", "one_change_away", "ready_now")
 
 
-def _ready_one(row: dict, printer: dict, bed: dict | None) -> dict:
+def _ready_one(row: dict, printer: dict, target: dict | None) -> dict:
     from snapstudio_core import preflight as pf
     from snapstudio_core import readiness
 
     project = {"path": row.get("source_path"), "name": row.get("name")}
     try:
-        state, traits, placement = _ready_analysis(project["path"], bed, need_placement=False)
+        state, traits, placement = _ready_analysis(project["path"], target, need_placement=False)
         foreign = ((traits or {}).get("foreign_printer") or {}).get("value") is True
         usable = state == "ok" and printer.get("reachable") and not foreign
         pre = pf.evaluate(traits, printer, placement) if usable else None
         result = readiness.classify_project(project, traits, printer, pre, state)
-        if usable and bed and result.get("bucket") in _PLACEMENT_MATTERS:
+        if usable and target and result.get("bucket") in _PLACEMENT_MATTERS:
             # Only now is the (slow) geometry read worth it, and it can only make the
             # result stricter, never claim more than the cheap pass did.
-            state, traits, placement = _ready_analysis(project["path"], bed, need_placement=True)
+            state, traits, placement = _ready_analysis(project["path"], target, need_placement=True)
             pre = pf.evaluate(traits, printer, placement)
             result = readiness.classify_project(project, traits, printer, pre, state)
         return result
@@ -2692,13 +2905,11 @@ def ready_now_start(host: str | None = None, port: int = 7125, provider: str | N
             printer = printer_facts(host, port) if host else {"reachable": False}
             printer = _with_providers(printer, host, port, url, slot_map, slot_base, kind,
                                       provider_key)
-            dims = printer.get("bed_mm") or {}
-            bed = ({"min_x": 0.0, "min_y": 0.0, "max_x": float(dims["x"]),
-                    "max_y": float(dims["y"])} if dims.get("x") and dims.get("y") else None)
+            target = _placement_target(printer)
 
             results: list[dict] = []
             for row in rows:
-                results.append(_ready_one(row, printer, bed))
+                results.append(_ready_one(row, printer, target))
                 publish(progress={"done": len(results), "total": len(rows)},
                         result={"results": list(results)})
             results.sort(key=readiness.sort_key)  # stable: newest first within a bucket

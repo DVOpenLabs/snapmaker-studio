@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlacementCheck, PlacementItem } from "@/api";
-import { blockedReason, overhangText, placementVerdict } from "./placement";
+import { blockedReason, itemLabel, overhangText, placementVerdict } from "./placement";
 
 const item = (over: Partial<PlacementItem["overhang_mm"]> = {}): PlacementItem => ({
   object_id: "1",
@@ -80,6 +80,20 @@ describe("overhangText", () => {
   });
 });
 
+describe("placementVerdict for several plates", () => {
+  it("is unverified, not ok, and offers no fix when every plate fits on its own", () => {
+    const v = placementVerdict(check({ plate_count: 2, item_count: 2 }));
+    expect(v.tone).toBe("unverified");
+    expect(v.canFix).toBe(false);
+    expect(v.headline).toContain("Studio cannot check where the plates sit");
+    expect(v.headline).not.toMatch(/inside/i);
+  });
+
+  it("still reports an oversized plate as outside", () => {
+    expect(placementVerdict(check({ plate_count: 2, off_plate: [item()] })).tone).toBe("blocked");
+  });
+});
+
 describe("blockedReason", () => {
   it("is silent when there is nothing to explain", () => {
     expect(blockedReason(check())).toBeNull();
@@ -108,16 +122,41 @@ describe("blockedReason", () => {
   });
 });
 
-describe("placementVerdict for several plates", () => {
-  it("is unverified, not ok, and offers no fix when every plate fits on its own", () => {
-    const v = placementVerdict(check({ plate_count: 2, item_count: 2 }));
-    expect(v.tone).toBe("unverified");
-    expect(v.canFix).toBe(false);
-    expect(v.headline).toContain("Studio cannot check where the plates sit");
-    expect(v.headline).not.toMatch(/inside/i);
+describe("repeated instances", () => {
+  const second = { ...item({ right: 235 }), item_index: 0, instance_index: 0, instance_count: 2 };
+  const first = { ...item(), off_plate: false, item_index: 1, instance_index: 1, instance_count: 2 };
+
+  it("labels each instance of one object separately", () => {
+    expect(itemLabel(second)).toBe("Object 1 · instance 1 of 2");
+    expect(itemLabel(item())).toBe("Object 1");
   });
 
-  it("still reports an oversized plate as outside", () => {
-    expect(placementVerdict(check({ plate_count: 2, off_plate: [item()] })).tone).toBe("blocked");
+  it("counts placed instances, so an in-bounds one cannot hide an off-plate one", () => {
+    const verdict = placementVerdict(
+      check({ items: [second, first], off_plate: [second], item_count: 2, fixable: false }),
+    );
+    expect(verdict.headline).toBe("1 placed instance is outside the U1's printable area.");
+    expect(verdict.tone).toBe("blocked");
+  });
+
+  it("says placed instances when all are inside", () => {
+    const verdict = placementVerdict(check({ items: [first, { ...first, item_index: 2 }], item_count: 2 }));
+    expect(verdict.headline).toBe("Every placed instance sits inside the U1's printable area.");
+  });
+
+  it("never shows the ok headline while an instance could not be judged", () => {
+    const verdict = placementVerdict(
+      check({ items: [first], item_count: 1, off_plate: [], not_judged: 2, unresolved_objects: [{ object_id: "1" }, { object_id: "1" }] }),
+    );
+    expect(verdict.tone).toBe("blocked");
+    expect(verdict.headline).toBe(
+      "2 placed instances could not be judged, so Studio cannot say whether everything is inside the U1's printable area.",
+    );
+    expect(verdict.canFix).toBe(false);
+  });
+
+  it("explains unjudged instances even when nothing is off the plate", () => {
+    const reason = blockedReason(check({ off_plate: [], not_judged: 1, unresolved_objects: [{ object_id: "1" }] }));
+    expect(reason).toContain("could not be found or are not listed on any plate");
   });
 });

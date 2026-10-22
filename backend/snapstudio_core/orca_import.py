@@ -69,11 +69,9 @@ def _num(cfg: dict, key: str):
         return None
 
 
-def _change(changes: list, key: str, old, new, reason: str, why: str,
-            *, kind: str = "engine", source: str = "Studio's import rule for this setting") -> None:
+def _change(changes: list, key: str, old, new, reason: str, why: str) -> None:
     changes.append({"key": key, "old": old, "new": new, "reason": reason,
-                    "explanation": why, "source": source,
-                    "kind": kind, "category": "orca-compatibility"})
+                    "explanation": why, "category": "orca-compatibility"})
 
 
 # --- individual rules -------------------------------------------------------
@@ -91,7 +89,9 @@ def _enable_exclude_object(cfg: dict, changes: list) -> None:
         cfg["exclude_object"] = "1"
         _change(changes, "exclude_object", old, "1",
                 "enabled so the U1 can skip a failed object and probe adaptively",
-                "Studio's import rule turns Exclude Object on for every U1 copy; the original had it off.")
+                "With Exclude Object off, the U1 cannot cancel one failed object "
+                "without losing the whole plate, and adaptive bed mesh has no object "
+                "outlines to work from.")
 
 
 def _fix_auto_brim(cfg: dict, changes: list) -> None:
@@ -107,9 +107,10 @@ def _fix_auto_brim(cfg: dict, changes: list) -> None:
     if brim == "auto_brim":
         cfg["brim_type"] = "no_brim"
         _change(changes, "brim_type", brim, "no_brim",
-                "Studio replaced an automatic brim choice with no brim for this U1 copy",
-                "Studio replaced the automatic brim choice with no brim. A brim you chose yourself is kept.",
-                kind="orca")
+                "the creator left the brim on automatic, and Snapmaker Orca decides "
+                "differently from the slicer this was made in",
+                "Automatic means the slicer chooses. Snapmaker Orca's choice can add "
+                "a brim this project never had. A brim you asked for yourself is kept.")
 
 
 def _fix_tree_support_with_adaptive_layers(cfg: dict, changes: list) -> None:
@@ -127,8 +128,11 @@ def _fix_tree_support_with_adaptive_layers(cfg: dict, changes: list) -> None:
     if style in ("organic", "tree_slim", "tree_strong"):
         cfg["support_style"] = "tree_hybrid"
         _change(changes, "support_style", style, "tree_hybrid",
-                "Studio replaced the tree support style with the hybrid style for this U1 copy",
-                "Studio replaced the tree support style with the hybrid style for this U1 copy.", kind="orca")
+                "tree support with variable layer height needs the hybrid style on the U1",
+                "This project uses variable layer height with tree supports. The "
+                "slicer it was made in silently switches that combination to hybrid "
+                "when it opens the file; Snapmaker Orca does not, so Studio applies "
+                "the same correction.")
 
 
 def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
@@ -150,38 +154,14 @@ def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
         filled = [v for v in value if str(v).strip() != ""]
         if not filled:
             return
-        # Only entries that survive truncation can have been filled, trimmed or converted;
-        # dropped entries are reported once, as a resize.
-        retained = value[:count]
-        had_empty = any(str(v).strip() == "" for v in retained)
-        trimmed = any(isinstance(v, str) and v.strip() != v for v in retained)
         new = [(str(v).strip() or str(filled[-1])) for v in value]
         if len(new) < count:
             new = new + [new[-1]] * (count - len(new))
         elif len(new) > count:
             new = new[:count]
         if new != value:
-            resized = len(new) != len(value)
-            converted = any(not isinstance(v, str) for v in retained)
-            parts = []
-            if had_empty:
-                parts.append("Studio filled an empty entry with the last non-empty value in this list.")
-            if resized:
-                parts.append("Studio resized this list to cover every filament slot.")
-            if trimmed:
-                parts.append("Studio trimmed whitespace around a string value.")
-            if converted:
-                parts.append("Studio wrote each value in this list as text.")
-            actual_why = " ".join(parts)
-            actual_reason = "; ".join(filter(None, [
-                "filled an empty entry with the last non-empty value" if had_empty else "",
-                "resized the list" if resized else "",
-                "trimmed whitespace from a string" if trimmed else "",
-                "wrote each value in the list as text" if converted else "",
-            ]))
             cfg[key] = new
-            _change(changes, key, value, new, actual_reason, actual_why,
-                    kind="engine", source="Studio's import rule for this setting")
+            _change(changes, key, value, new, reason, why)
 
     pad_from_self(
         "filament_adaptive_volumetric_speed",
@@ -204,15 +184,18 @@ def _fix_filament_array_validity(cfg: dict, changes: list, count: int) -> None:
             cfg["filament_self_index"] = expected
             _change(changes, "filament_self_index", self_index, expected,
                     "renumbered so every filament slot identifies itself correctly",
-                    "Studio renumbered each filament slot so the list matches its position.")
+                    "Each filament slot has to carry its own position. When the "
+                    "numbering is missing or out of step the slicer reports an "
+                    "invalid project configuration.")
 
 
 # The raft expansion has two owners: the U1 clamp table (data/u1_rules.json), which runs in every mode and fixes -1, and
 # the rule below, which runs in Preserve/U1/Optimize and fixes any negative value. They must agree on the value (the clamp's
 # "good" is the U1 template default, checked by a test) and say the same thing about why, so the reason shown to the person
 # does not depend on which of them acted.
-RAFT_EXPANSION_REASON = "replaced a negative raft expansion with the U1 base-profile value"
-RAFT_EXPANSION_WHY = "A negative raft expansion was replaced with the value from Studio's U1 base profile."
+RAFT_EXPANSION_REASON = "restored to the U1 default (a negative value is out of range)"
+RAFT_EXPANSION_WHY = ("Snapmaker Orca and OrcaSlicer both reject a negative raft expansion "
+                      "and warn when the project is opened.")
 
 
 def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
@@ -229,8 +212,60 @@ def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
     old = cfg.get("raft_first_layer_expansion")
     cfg["raft_first_layer_expansion"] = default
     _change(changes, "raft_first_layer_expansion", old, default,
-            RAFT_EXPANSION_REASON, RAFT_EXPANSION_WHY, kind="orca",
-            source="Studio's import rule for this setting")
+            RAFT_EXPANSION_REASON, RAFT_EXPANSION_WHY)
+
+
+NOZZLE_VOLUME_TYPE_REASON = "left out: Snapmaker Orca does not write this setting"
+NOZZLE_VOLUME_TYPE_WHY = (
+    "The projects Snapmaker Orca saves for the U1 do not contain a nozzle volume type; Bambu Studio and OrcaSlicer "
+    "write one (for example Standard). A copy that carried it was reported to show a 'newer version, values replaced' "
+    "notice naming it. Whether leaving it out removes that notice has not been confirmed in Snapmaker Orca, so check "
+    "the opened copy in Orca. The original file is not changed.")
+NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: Snapmaker Orca does not write this setting"
+
+
+def _withdraw_declaration(cfg: dict, key: str, changes: list) -> None:
+    """Take `key` out of every entry of `different_settings_to_system`, so a value that is gone is not still declared."""
+    old = cfg.get("different_settings_to_system")
+    if not isinstance(old, (list, str)):
+        return
+    new, touched = [], False
+    for entry in (old if isinstance(old, list) else [old]):      # a scalar string is the process entry
+        parts = [p.strip() for p in str(entry).split(";") if p.strip()]
+        if key in parts:
+            touched = True
+            entry = ";".join(p for p in parts if p != key)
+        new.append(entry)
+    if touched:
+        new = new if isinstance(old, list) else new[0]
+        cfg["different_settings_to_system"] = new
+        _change(changes, "different_settings_to_system", old, new, NOZZLE_VOLUME_TYPE_DECLARATION_REASON,
+                f"The project declared {key} as a deviation from its presets. The copy does not carry that setting, so "
+                "there is nothing left to declare.")
+
+
+def withdraw_nozzle_volume_type_declaration(cfg: dict) -> list[dict]:
+    """The last word on the key's declaration: run after every step that can declare, so none can bring it back."""
+    changes: list[dict] = []
+    if "nozzle_volume_type" not in cfg:
+        _withdraw_declaration(cfg, "nozzle_volume_type", changes)
+    return changes
+
+
+def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:
+    """Leave out `nozzle_volume_type`, which Snapmaker Orca does not write.
+
+    Measured on the committed fixtures: the Snapmaker Orca 2.3.5 and 2.3.6 projects have no such key; Bambu Studio
+    2.08 and OrcaSlicer 2.4.2 projects carry it (also OrcaSlicer ones that name a U1), so it is not Bambu-only.
+    Removing it makes the copy read like one Snapmaker Orca saved. OrcaSlicer-authored U1 files lose it too: nothing
+    here shows Orca needs it, and the 'not confirmed in Snapmaker Orca' label stays on the change. A project without
+    the key is left exactly as it was, unless it still declares the key: any declaration of it is withdrawn too."""
+    if "nozzle_volume_type" not in cfg:
+        return
+    old = cfg.pop("nozzle_volume_type")
+    _change(changes, "nozzle_volume_type", old, None, NOZZLE_VOLUME_TYPE_REASON, NOZZLE_VOLUME_TYPE_WHY)
+    changes[-1]["removed"] = True
+    _withdraw_declaration(cfg, "nozzle_volume_type", changes)
 
 
 # --- entry points -----------------------------------------------------------
@@ -249,6 +284,7 @@ def apply_compatibility(cfg: dict, filament_count: int = 0) -> list[dict]:
     _fix_tree_support_with_adaptive_layers(cfg, changes)
     _fix_filament_array_validity(cfg, changes, filament_count)
     _fix_negative_raft_expansion(cfg, changes)
+    _drop_foreign_nozzle_volume_type(cfg, changes)
     return changes
 
 
