@@ -76,8 +76,8 @@ def assess_layout(path: str) -> dict:
             "plates": plates,
             "object_count": 0,
             "messages": [
-                "Studio couldn't read object placement from this file — open it in "
-                "Snapmaker Orca and use Arrange all plates to check the layout before slicing."
+                "Studio couldn't read object placement from this file — review the project in "
+                "Snapmaker Orca before slicing; Studio could not establish where the objects sit."
             ],
         }
 
@@ -96,8 +96,8 @@ def assess_layout(path: str) -> dict:
         status = "warn"
         messages.append(
             f"Multi-plate project ({plates} plates) — Studio can't fully verify each plate's "
-            "object positions from the file. Open in Snapmaker Orca and use Arrange all plates "
-            "before slicing; objects may sit outside a plate."
+            "object positions from the file. Review it in Snapmaker Orca before slicing; "
+            "objects may sit outside a plate, and Arrange all plates did not fix that in our test."
         )
     else:
         (xlo, xhi), (ylo, yhi) = plate_window(items)
@@ -111,7 +111,7 @@ def assess_layout(path: str) -> dict:
             status = "fail"
             messages.append(
                 f"{len(off)} object(s) sit outside the U1 build plate ({int(U1_PLATE_MM)} mm). "
-                "Open in Snapmaker Orca and use Arrange all plates before slicing."
+                "Review the project in Snapmaker Orca before slicing."
             )
 
     if oversized:

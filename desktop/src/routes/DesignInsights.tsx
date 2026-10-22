@@ -158,7 +158,7 @@ export default function DesignInsights() {
               <p className="mt-1 text-sm text-muted-foreground">
                 We made a U1 copy of <b>{file.name}</b>. Your original file is not modified.
                 {setupRisk
-                  ? " Print-setup risks remain (see the checks) — open in Snapmaker Orca, arrange plates and review supports/colours before slicing."
+                  ? " Print-setup risks remain (see the checks) — open in Snapmaker Orca and review the plates, supports and colours before slicing."
                   : " This is an advisory check, not a guarantee — slice in Snapmaker Orca to confirm."}
               </p>
             </div>

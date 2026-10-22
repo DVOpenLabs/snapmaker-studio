@@ -18,7 +18,7 @@ export function recommendBlurb(r: ScaleOptionsResult): string {
     return `Largest verified scale that stays on the plate: ${pct}%.`;
   }
   return `Largest fit by size only: ${pct}%. Snapmaker Orca can still reject a scale because `
-    + `where the object sits on the plate also matters — verify in Orca and Arrange all plates after scaling.`;
+    + `where the object sits on the plate also matters — check it in Snapmaker Orca after scaling.`;
 }
 
 // The green "recommended" badge only appears when placement is actually verified —

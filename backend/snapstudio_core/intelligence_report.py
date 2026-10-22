@@ -18,6 +18,11 @@ SCHEMA_VERSION = "report/2"   # 2: no studio_score / print_success_score / expec
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
 
 
+def _phrase(items: list[str]) -> str:
+    """"object spacing", "object spacing and bed fit", "a, b and c"."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
 def _community_entries(ck, risk) -> list:
     """(entry, confidence) pairs for one report risk, chosen by IDENTITY: the condition id maps to one curated entry
     (conditions.COMMUNITY_ENTRY) or to none. Confidence is "High" when one of the entry's symptom phrases also appears
@@ -190,8 +195,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         # The step that goes with the biggest risk, not just the first fix in Doctor order.
         next_action = biggest_risk.get("action") or f"Look into: {biggest_risk['text']}"
     else:
-        next_action = ("Check spacing between objects in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing."
-                       if spacing_unverified else
+        next_action = (f"Check {_phrase(not_verified)} in Snapmaker Orca, then prepare a U1 profile copy and review it before slicing."
+                       if not_verified else
                        "Review the recommendations, then prepare a U1 profile copy and check it in Snapmaker Orca before slicing.")
 
     # --- supporting evidence (each Doctor's one-line status) ---
@@ -226,8 +231,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
         verdict = f"{count}top risk: {biggest_risk['text']}."
     else:
         verdict = "Studio's checks found no risks. That is not a sign the print will succeed."
-    if not risks_found and spacing_unverified:
-        verdict = ("Studio's other checks found no risks, but object spacing was not verified. "
+    if not risks_found and not_verified:
+        # A check that could not be run is not a clean result: say which one(s) did not run.
+        verdict = (f"Studio's other checks found no risks, but {_phrase(not_verified)} "
+                   f"{'was' if len(not_verified) == 1 else 'were'} not verified. "
                    "That is not a sign the print will succeed.")
 
     # --- Before vs After: "why not just use Orca?" ---
@@ -241,9 +248,12 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
                        f"{n_fixes} fix{'es' if n_fixes != 1 else ''} before you slice{money_bit}.")
     else:
         orca_line = ("Only Snapmaker Orca's preview can show spacing between objects."
-                     if spacing_unverified else "Orca slices the file as you give it.")
-        studio_line = (("Studio's other checks found nothing in this file, but object spacing was not verified. "
-                        if spacing_unverified else "Studio's checks found nothing in this file. ")
+                     if spacing_unverified else
+                     "Snapmaker Orca's preview shows what Studio did not verify here."
+                     if not_verified else "Orca slices the file as you give it.")
+        studio_line = ((f"Studio's other checks found nothing in this file, but {_phrase(not_verified)} "
+                        f"{'was' if len(not_verified) == 1 else 'were'} not verified. "
+                        if not_verified else "Studio's checks found nothing in this file. ")
                        + "They do not cover slicer settings, filament condition, bed cleanliness or "
                        "mid-print behavior. Verify in Snapmaker Orca before you print.")
     comparison = {

@@ -79,7 +79,7 @@
         "title": "Object spacing / collisions are not verified by Studio yet",
         "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
         "setting_path": "Object layout (plate)",
-        "suggested_action": "Open in Snapmaker Orca and check for too-close / collision warnings; use Arrange or move objects before slicing.",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
         "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
       }
     ],
@@ -103,7 +103,7 @@
         "title": "Object spacing / collisions are not verified by Studio yet",
         "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
         "setting_path": "Object layout (plate)",
-        "suggested_action": "Open in Snapmaker Orca and check for too-close / collision warnings; use Arrange or move objects before slicing.",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
         "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
       }
     ],
@@ -181,7 +181,7 @@
         "title": "Object spacing / collisions are not verified by Studio yet",
         "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
         "setting_path": "Object layout (plate)",
-        "suggested_action": "Open in Snapmaker Orca and check for too-close / collision warnings; use Arrange or move objects before slicing.",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
         "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
       }
     ],
