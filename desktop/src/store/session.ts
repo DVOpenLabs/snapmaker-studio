@@ -37,10 +37,20 @@ interface SessionState {
   runDoctor: () => Promise<void>;
   setPrepareMode: (mode: PrepareMode) => void;
   runConvert: (mode?: PrepareMode) => Promise<void>;
+  /** A Prepare started elsewhere for this project: forget any earlier copy until the new one is validated. */
+  beginPrepare: (sourcePath: string) => number | null;
+  /** A Prepare that finished elsewhere: shared state only takes a validated, unblocked copy of the project that is open now. */
+  publishPrepared: (revision: number | null | undefined, sourcePath: string, data: any) => void;
   previewConvert: () => Promise<void>;
   runDiff: () => Promise<void>;
   reset: () => void;
 }
+
+/**
+ * Bumped whenever the open project changes (or is reset), a preparation starts anywhere, or Prepare is run through
+ * the store: a preparation published later than any of these belongs to a project, or a request, that is gone.
+ */
+let prepareRevision = 0;
 
 export const useSession = create<SessionState>((set, get) => ({
   file: null,
@@ -53,6 +63,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   setFile: (path) => {
     requestGeneration++;
+    prepareRevision++;
     set({ file: toFileRef(path), doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() });
     void get().runDoctor();
   },
@@ -81,18 +92,38 @@ export const useSession = create<SessionState>((set, get) => ({
     const p = file.path;
     const generation = ++requestGeneration;
     const prepareMode = mode ?? get().prepareMode;
+    const revision = ++prepareRevision;
     set({ prepareMode, convert: { status: "loading", data: null, error: null }, diff: blank(), settingsSummary: null });
     try {
       const data = await apiConvert(p, undefined, prepareMode);
-      if (requestGeneration !== generation || get().file?.path !== p) return;
+      if (requestGeneration !== generation || prepareRevision !== revision || get().file?.path !== p) return;
       set({ convert: { status: "done", data, error: null }, settingsSummary: data.settings_summary ?? null });
       // Auto-compare only when there's a source *project* to diff against.
       // STL inputs are wrapped into a brand-new U1 project — nothing to compare.
       if (file.ext === "3mf") void get().runDiff();
     } catch (e: any) {
-      if (requestGeneration !== generation || get().file?.path !== p) return;
+      if (requestGeneration !== generation || prepareRevision !== revision || get().file?.path !== p) return;
       set({ convert: { status: "error", data: null, error: String(e?.message ?? e) }, settingsSummary: null });
     }
+  },
+
+  beginPrepare: (sourcePath) => {
+    if (get().file?.path !== sourcePath) return null;
+    const revision = ++prepareRevision;
+    set({ convert: blank(), diff: blank(), settingsSummary: null });
+    return revision;
+  },
+
+  publishPrepared: (revision, sourcePath, data) => {
+    // The project may have changed (even to the same path again) or a newer preparation may have started while this one ran.
+    if (revision == null || revision !== prepareRevision || get().file?.path !== sourcePath) return;
+    const out = data?.output_path;
+    const usable = !!data && !data.blocked && data.validated_ok === true && typeof out === "string" && out !== "" && out !== sourcePath;
+    set(usable
+      ? { convert: { status: "done", data, error: null }, diff: blank(), settingsSummary: data.settings_summary ?? null }
+      : { convert: blank(), diff: blank(), settingsSummary: null });
+    // The comparison belongs to this copy: same rule as runConvert (a 3MF has a project to compare against).
+    if (usable && get().file?.ext === "3mf") void get().runDiff();
   },
 
   previewConvert: async () => {
@@ -116,16 +147,20 @@ export const useSession = create<SessionState>((set, get) => ({
     const out = get().convert.data?.output_path;
     if (!file || !out) return;
     const p = file.path;
+    const revision = prepareRevision;
     set({ diff: { status: "loading", data: null, error: null } });
     try {
       const data = await apiDiff(p, out);
-      if (get().file?.path !== p) return;
+      if (prepareRevision !== revision || get().file?.path !== p) return;
       set({ diff: { status: "done", data, error: null } });
     } catch (e: any) {
-      if (get().file?.path !== p) return;
+      if (prepareRevision !== revision || get().file?.path !== p) return;
       set({ diff: { status: "error", data: null, error: String(e?.message ?? e) } });
     }
   },
 
-  reset: () => set({ file: null, doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() }),
+  reset: () => {
+    prepareRevision++;
+    set({ file: null, doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() });
+  },
 }));
