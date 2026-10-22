@@ -623,6 +623,12 @@ def assess(path: str, printer: str = "Snapmaker U1") -> dict:
     Where an object sits and whether the target can print it there are two facts,
     and this returns both.
     """
+    from . import geometry_basis
+
+    basis = geometry_basis.assess(path)
+    if not geometry_basis.is_established(basis):
+        return dict({"schema_version": SCHEMA_VERSION, "available": False, "reason": basis["summary"]},
+                    **geometry_basis.not_checked(basis, "placement check"))
     try:
         read = read_objects(path)
     except Exception as exc:  # noqa: BLE001 — a report, never a crash
