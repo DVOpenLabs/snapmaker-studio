@@ -316,3 +316,22 @@ def test_an_unavailable_bed_fit_is_listed_as_not_verified_not_as_no_risk():
     # control: a size that is not established is reported by its own finding, not double-listed
     nc = ir.build(bed_fit={"available": False, "status": "not_checked", "reason": "unit is inch"}, mm=mm_ok)
     assert "bed fit" not in nc["not_verified"]
+
+
+def test_an_unavailable_bed_fit_changes_the_headline_not_just_the_list():
+    """The headline must not read as a clean result when the bed-fit check could not run."""
+    from snapstudio_core import intelligence_report as ir
+    mm_ok = {"available": True, "overall_level": "ok", "findings": []}
+    out = ir.build(bed_fit={"available": False, "basis": "size", "reason": "printer not identified"}, mm=mm_ok)
+    assert "bed fit was not verified" in out["verdict"]
+    assert "found no risks. That" not in out["verdict"]
+    assert "bed fit" in out["next_action"].lower()
+    assert "bed fit was not verified" in out["comparison"]["studio_line"]
+    assert "found nothing in this file. " not in out["comparison"]["studio_line"]
+    # both gaps are named together
+    both = ir.build(bed_fit={"available": False, "basis": "size", "reason": "printer not identified"},
+                    mm=mm_ok, spacing={"status": "unknown"})
+    assert "object spacing and bed fit were not verified" in both["verdict"]
+    # control: a size that is not established keeps its own finding and is not double-listed
+    nc = ir.build(bed_fit={"available": False, "status": "not_checked", "reason": "unit is inch"}, mm=mm_ok)
+    assert "bed fit was not verified" not in nc["verdict"]

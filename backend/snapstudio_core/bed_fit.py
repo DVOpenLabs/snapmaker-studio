@@ -125,7 +125,7 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
         diag = (x + y) / (2 ** 0.5)
         if (over_x ^ over_y) and diag <= min(bx, by):
             fixes.append(f"Or it may fit rotated ~45° on the plate — the diagonal ({diag:.0f} mm) "
-                         f"is within the bed; try Arrange in Orca to confirm.")
+                         f"is within the bed; confirm it in Snapmaker Orca.")
 
     # Almost the whole plate — fits, but brim/skirt/tower can spill over.
     elif x > bx * EDGE_FRAC or y > by * EDGE_FRAC:
@@ -154,7 +154,7 @@ def assess(dims, bed=None, bed_known: bool = False, object_count: int = 1,
     if object_count and object_count > 1:
         findings.append(_f("ok", f"The project has {object_count} objects. Whatever sits on one plate "
                                  f"must fit that plate together; if Snapmaker Orca still says out of "
-                                 f"bounds, one object is off its plate and Arrange can re-pack them."))
+                                 f"bounds, one object is off its plate; review the plate in Snapmaker Orca."))
 
     # Where the instances sit is a different fact from how big each object is.
     placed_level = _placed_findings(placed, findings, fixes)
@@ -248,8 +248,8 @@ def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
                 findings.append(_f("risk", f"By placement, plate {plate['plate']}: {plate['reason']}. "
                                            "Scale it down or split it.",
                                    id="placement-plate-oversized",
-                                   action="Scale the oversized plate down or split it, then use Arrange in Snapmaker Orca."))
-            fixes.append("Scale the oversized plate down or split it, then use Arrange in Snapmaker Orca.")
+                                   action="Scale the oversized plate down or split it, then review the project in Snapmaker Orca."))
+            fixes.append("Scale the oversized plate down or split it, then review the project in Snapmaker Orca.")
             return "risk"
         if placed.get("not_judged"):
             findings.append(_f("warn", f"By placement: {placed.get('summary')}",
@@ -257,7 +257,7 @@ def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
                                action="Check these instances in Snapmaker Orca; Studio could not judge their placement."))
             return "warn"
         findings.append(_f("ok", f"By placement, each of the {plate_count} plates fits on its own. "
-                                 "Positions across plates are not checked; use Arrange in Snapmaker Orca."))
+                                 "Positions across plates are not checked; review the project in Snapmaker Orca."))
         return None
     if not placed.get("off_plate"):
         if placed.get("not_judged"):
@@ -268,8 +268,8 @@ def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
         findings.append(_f("ok", "By placement, every placed instance sits inside the plate."))
         return None
     move = ("Move the arrangement onto the plate (Studio can save a corrected copy), "
-            "or use Arrange in Snapmaker Orca." if placed.get("fixable") else
-            "Use Arrange in Snapmaker Orca to bring every instance onto the plate.")
+            "or review the project in Snapmaker Orca." if placed.get("fixable") else
+            "Review the project in Snapmaker Orca; Studio could not bring every instance onto the plate.")
     findings.append(_f("risk", f"By placement: {placed.get('summary')}", id="placement-off-plate", action=move))
     fixes.append(move)
     return "risk"

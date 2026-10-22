@@ -385,7 +385,7 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                       "cannot say whether everything is on the plate"),
             confidence=INFORMATIONAL,
             consequence="Studio cannot confirm the objects land on this printer's plate.",
-            action="Open the project in Snapmaker Orca and use Arrange.",
+            action="Review the project in Snapmaker Orca before slicing.",
             source=f"project geometry vs {owner} printable area")
     if not off and tall:
         return _check(
@@ -407,6 +407,19 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
             consequence="A slicer prints what is above the plate; Studio cannot confirm this prints as modelled.",
             action="Check the height of these objects in Snapmaker Orca.",
             source="project geometry vs the build plane")
+    if not off and (placement.get("plate_count") or 1) > 1:
+        # Each plate may fit, but where the plates sit on the slicer's grid is not
+        # something Studio establishes. Not OK, and not an error either: unknown.
+        return _check(
+            "bed.fit", "Fits the printer's bed", UNKNOWN,
+            evidence=(f"the project has {placement.get('plate_count')} plates and each fits "
+                      f"the {area} on its own, but Studio does not check where the plates sit"),
+            confidence=INFORMATIONAL,
+            consequence=("Snapmaker Orca can list an object as Outside even when its plate "
+                         "fits, so Studio cannot confirm the objects land on this printer's plates."),
+            action=("Review the project in Snapmaker Orca before slicing; an object may be "
+                    "listed as Outside."),
+            source="project geometry vs printer bed")
     if not off:
         if tops and height:
             return _check(
@@ -431,7 +444,8 @@ def _bed(project: dict, printer: dict, placement: dict | None) -> dict:
                      "plate."),
         action=("Use Studio's object-placement fix to move them on — it saves a copy and "
                 "leaves your original alone." if placement.get("fixable")
-                else "Open the project in Snapmaker Orca and use Arrange."),
+                else "Review the project in Snapmaker Orca before slicing; Studio could not "
+                     "bring every object onto the plate."),
         source="project geometry vs printer bed")
 
 
