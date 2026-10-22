@@ -24,7 +24,7 @@ def test_exclude_object_is_enabled_when_off():
     change = next(c for c in changes if c["key"] == "exclude_object")
     assert change["old"] == "0"
     # the explanation describes only Studio's operation, not external slicer behavior
-    assert change["explanation"] == "Studio's import rule turns Exclude Object on for every U1 copy; the original had it off."
+    assert change["explanation"] == "Studio's import rule turns Exclude Object on for every U1 copy; the original did not have it turned on."
     assert change["kind"] == "engine"
 
 

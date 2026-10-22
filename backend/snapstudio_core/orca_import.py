@@ -91,7 +91,7 @@ def _enable_exclude_object(cfg: dict, changes: list) -> None:
         cfg["exclude_object"] = "1"
         _change(changes, "exclude_object", old, "1",
                 "enabled so the U1 can skip a failed object and probe adaptively",
-                "Studio's import rule turns Exclude Object on for every U1 copy; the original had it off.")
+                "Studio's import rule turns Exclude Object on for every U1 copy; the original did not have it turned on.")
 
 
 def _fix_auto_brim(cfg: dict, changes: list) -> None:
@@ -235,10 +235,9 @@ def _fix_negative_raft_expansion(cfg: dict, changes: list) -> None:
 
 NOZZLE_VOLUME_TYPE_REASON = "left out: Snapmaker Orca does not write this setting"
 NOZZLE_VOLUME_TYPE_WHY = (
-    "The projects Snapmaker Orca saves for the U1 do not contain a nozzle volume type; Bambu Studio and OrcaSlicer "
-    "write one (for example Standard). A copy that carried it was reported to show a 'newer version, values replaced' "
-    "notice naming it. Whether leaving it out removes that notice has not been confirmed in Snapmaker Orca, so check "
-    "the opened copy in Orca. The original file is not changed.")
+    "Studio left the nozzle volume type (for example Standard) out of this copy. A copy that carried it was reported "
+    "to show a 'newer version, values replaced' notice naming it. Whether leaving it out removes that notice has not "
+    "been confirmed in Snapmaker Orca, so check the opened copy there. The original file is not changed.")
 NOZZLE_VOLUME_TYPE_DECLARATION_REASON = "no longer declared: Snapmaker Orca does not write this setting"
 
 
@@ -281,7 +280,8 @@ def _drop_foreign_nozzle_volume_type(cfg: dict, changes: list) -> None:
     if "nozzle_volume_type" not in cfg:
         return
     old = cfg.pop("nozzle_volume_type")
-    _change(changes, "nozzle_volume_type", old, None, NOZZLE_VOLUME_TYPE_REASON, NOZZLE_VOLUME_TYPE_WHY)
+    _change(changes, "nozzle_volume_type", old, None, NOZZLE_VOLUME_TYPE_REASON, NOZZLE_VOLUME_TYPE_WHY,
+            kind="orca")
     changes[-1]["removed"] = True
     _withdraw_declaration(cfg, "nozzle_volume_type", changes)
 
