@@ -172,17 +172,16 @@ def test_fix_never_modifies_the_original(tmp_path):
     assert open(p, "rb").read() == before
 
 
-def test_fix_preserves_rotation_and_scale(tmp_path):
-    """A creator's rotated, scaled object must come back rotated and scaled."""
+def test_a_rotated_scaled_object_is_not_moved_because_its_size_is_not_established(tmp_path):
+    """A creator's rotated, scaled object is left alone: the move is withheld, not guessed."""
     rotated_scaled = "0 2 0 -2 0 0 0 0 2 320 100 0"
     p = _write(tmp_path, "rot.3mf", [(1, rotated_scaled)],
                printable_area=["0x0", "350x0", "350x350", "0x350"])
+    # RC2: a scaled or rotated item has no established physical size, so Studio does not move it
+    # (and so cannot rewrite its matrix); it says why and writes nothing.
     res = pp.prepare_placed_copy(p, out_dir=str(tmp_path / "out"))
-    assert res["ok"] is True
-    with zipfile.ZipFile(res["output_path"]) as z:
-        model = z.read("3D/3dmodel.model").decode()
-    matrix = model.split('transform="')[1].split('"')[0].split()
-    assert matrix[:9] == ["0", "2", "0", "-2", "0", "0", "0", "0", "2"]
+    assert res["ok"] is False and res["before"]["status"] == "not_checked"
+    assert not (tmp_path / "out").exists()
 
 
 def test_fix_preserves_relative_layout_between_objects(tmp_path):

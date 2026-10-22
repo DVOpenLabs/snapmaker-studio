@@ -375,7 +375,15 @@ export interface Insights {
   colors: number | null;
   painted: boolean;
   materials: { color: string; type: string | null }[];
+  // Overall extents of all the mesh data together: a size-only figure, not one object's size and not a position.
   dimensions_mm: { x: number; y: number; z: number } | null;
+  dimensions_basis?: string;
+  // Per-object size (mm), before any build item moves, turns or scales it.
+  object_sizes_mm?: ObjectSize[];
+  // Build items whose object could not be found, so they have no size above.
+  objects_unmeasured?: number;
+  // Where each instance sits and on which plate (placed bounds), kept apart from the sizes above.
+  placed?: PlacedInstances;
   triangles: number | null;
   complexity: string | null;
   issues: string[];
@@ -555,14 +563,16 @@ export interface ReportRisk {
 export interface ReportEvidence { doctor: string; status: string; detail: string; }
 export interface IntelligenceReport {
   available: boolean;
-  studio_score?: number | null;
-  print_success_score?: number | null;
+  risks_found?: number;
+  not_verified?: string[];
+  /** The Print risk signals card content from the SAME request, so the card and the report cannot differ. */
+  print_findings?: PrintFindings;
   cost?: number | null;
   suggested_price?: number | null;
   margin_pct?: number | null;
   profit_per_print?: number | null;
   currency?: string;
-  printer_compatibility?: "Compatible" | "Check" | "Unknown";
+  printer_status?: string;
   risks?: ReportRisk[];
   biggest_risk?: ReportRisk | null;
   recommendations?: string[];
@@ -572,7 +582,6 @@ export interface IntelligenceReport {
   reason?: string;
   is_demo?: boolean;
   demo_name?: string;
-  expected_improvement?: { current: number; after_fixes: number; is_estimate: boolean; label: string } | null;
   comparison?: {
     issues_found: number; fixes_offered: number; prices_the_print: boolean;
     orca_line: string; studio_line: string;
@@ -685,17 +694,27 @@ export async function bedFit(path: string, host?: string | null): Promise<BedFit
   return r.json();
 }
 
-// Print Success Prediction: pre-print "will it print?" odds from existing signals.
-export interface SuccessPrediction extends NotChecked {
+// Print risk signals: what Studio found worth settling before slicing, with what
+// was and was not checked. Deliberately no percentage, band or verdict (#92).
+export interface RiskSignal {
+  id: string;
+  kind: "file" | "engine" | "estimate" | "orca";
+  level: "warn" | "risk";
+  title: string;
+  meaning: string;
+  action: string;
+  details?: string[];
+}
+export interface PrintFindings extends NotChecked {
   available: boolean;
-  /** null when Studio makes no estimate (the model's physical size is not established). */
-  likelihood?: number | null;
-  band?: "likely" | "uncertain" | "risky" | "unknown";
-  factors?: string[];
-  verdict?: string;
+  signals?: RiskSignal[];
+  checked?: string[];
+  not_checked?: string[];
+  limitations?: string[];
+  summary?: string;
   reason?: string;
 }
-export async function predictSuccess(path: string, host?: string | null): Promise<SuccessPrediction> {
+export async function printFindings(path: string, host?: string | null): Promise<PrintFindings> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/predict_success`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -722,12 +741,15 @@ export function printerFailureInsights(host: string, port = 7125): Promise<Failu
   return printerPost("/printer/failure_insights", { host, port });
 }
 
-// Printer Health Score: one 0–100 from the U1's own read-only firmware + history signals.
+// Printer health: what the U1's own read-only firmware state and print history show.
 export interface PrinterHealth {
   available: boolean;
   score?: number;
   grade?: "A" | "B" | "C" | "D" | "F";
+  /** One line per condition the printer reported (failure history is ONE line with merged evidence). */
   drivers?: string[];
+  /** The same list with stable condition ids; its length is the concern count the state chip and the report use. */
+  conditions?: { id: string; level: "warn" | "risk"; text: string }[];
   basis?: string;
   verdict?: string;
   reason?: string;
@@ -1341,8 +1363,37 @@ export async function ecosystemAdvice(
 // while passing every size check. These read where each object sits and, when a
 // single honest move fixes it, write a NEW copy — the original is never touched.
 
+export interface ObjectSize {
+  object_id: string | null;
+  part?: string;
+  instance_count: number;
+  dimensions_mm: { x: number; y: number; z: number };
+}
+
+export interface PlacedInstances {
+  available: boolean;
+  basis: string;
+  reason?: string | null;
+  plate_count: number;
+  instances: {
+    item_index: number | null;
+    object_id: string;
+    instance_index: number;
+    instance_count: number;
+    plate: number | null;
+    bounds_mm: { min: number[]; max: number[] };
+    dimensions_mm: { x: number; y: number; z: number };
+  }[];
+  plate_extents: { plate: number; instances: number; x: number; y: number }[];
+  combined_extent_mm: { x: number; y: number } | null;
+}
+
 export interface PlacementItem {
   object_id: string;
+  // One object can be used by several build items; these tell the instances apart.
+  item_index?: number;
+  instance_index?: number;
+  instance_count?: number;
   dimensions: { x: number; y: number; z: number };
   position: { x: number; y: number };
   off_plate: boolean;
@@ -1360,7 +1411,9 @@ export interface PlacementCheck {
   items: PlacementItem[];
   off_plate: PlacementItem[];
   skipped_plates?: { plate: number; reason: string }[];
-  unresolved_objects?: { object_id: string }[];
+  unresolved_objects?: { object_id: string; item_index?: number; reason?: string }[];
+  // Placed instances Studio could not judge (not found, or on no plate record).
+  not_judged?: number;
   fixable: boolean;
   summary?: string;
 }

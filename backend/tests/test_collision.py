@@ -14,8 +14,12 @@ def test_multi_object_3mf_is_unknown():
 def test_single_object_3mf_passes():
     # one object can't collide with others
     assert assess_spacing(1, is_stl=False)["status"] == "pass"
-    assert assess_spacing(0, is_stl=False)["status"] == "pass"
-    assert assess_spacing(None, is_stl=False)["status"] == "pass"
+
+
+def test_unknown_object_count_is_not_assumed_single():
+    # None or 0 means Studio could not count the objects: spacing stays unknown.
+    assert assess_spacing(0, is_stl=False)["status"] == "unknown"
+    assert assess_spacing(None, is_stl=False)["status"] == "unknown"
 
 
 def test_stl_passes():
@@ -29,8 +33,10 @@ def test_unknown_spacing_blocks_no_blockers_verdict():
     cost = {"available": True, "true_cost": 1.0, "currency": "$"}
     clean = ir.build(cost=cost, spacing={"status": "unknown"})
     assert "no major blockers" not in clean["verdict"]
-    assert any("spacing" in r["text"].lower() or "collision" in r["text"].lower()
-               for r in clean["risks"])
+    # spacing is a limitation ("not verified"), not a counted risk or the biggest risk
+    assert clean["not_verified"] == ["object spacing"]
+    assert clean["risks_found"] == 0 and clean["biggest_risk"] is None
+    assert "spacing" in clean["verdict"].lower()
 
 
 def test_pass_spacing_does_not_inject_risk():

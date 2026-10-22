@@ -3,17 +3,18 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DesignHealth } from "@/components/DesignHealth";
-import { BedFitNotChecked, FirstLayerNotChecked, PredictionNotEstimated } from "@/components/SizeNotChecked";
+import { BedFitNotChecked, FirstLayerNotChecked } from "@/components/SizeNotChecked";
 import { NotCheckedReason, rawSizeQualifier, sizeNotEstablished } from "@/components/GeometryNotice";
 import { recTone } from "@/routes/ScaleDoctor";
-import type { BedFit, FirstLayerReport, GeometryBasis, MeshReport, SuccessPrediction } from "@/api";
+import type { BedFit, FirstLayerReport, GeometryBasis, MeshReport, PrintFindings } from "@/api";
+import { PrintRiskSignals } from "@/components/PrintRiskSignals";
 
 afterEach(cleanup);
 
 const REASON = "The file declares its unit as inch, but Studio reads its numbers as millimetres and does not convert them.";
 const NOT_ESTABLISHED: GeometryBasis = {
   schema_version: "geometry-basis/1", established: false, reasons: ["unit_not_millimeter"], summary: REASON,
-  withheld: ["bed fit", "the print-success estimate"],
+  withheld: ["bed fit", "the print risk signals"],
 };
 const ESTABLISHED: GeometryBasis = { schema_version: "geometry-basis/1", established: true, reasons: [], summary: "", withheld: [] };
 
@@ -28,34 +29,36 @@ const MESH: MeshReport = {
 const DIMS = { x: 10, y: 20, z: 30 };
 
 describe("a not-checked verdict names its scope and gives one shared reason", () => {
-  it("bed fit, first layer and prediction show the same reason and never a verdict", () => {
+  it("bed fit, first layer and the print risk signals show the same reason and never a verdict", () => {
     const fl: FirstLayerReport = { available: false, status: "not_checked", reason: REASON, scope: "first-layer footprint checks" };
-    const pr: SuccessPrediction = { available: true, status: "not_checked", reason: REASON, scope: "the print-success estimate",
-      likelihood: null, band: "unknown", factors: ["printer health is low (40/100)"] };
-    render(<><BedFitNotChecked bed={bed({})} /><FirstLayerNotChecked report={fl} /><PredictionNotEstimated predict={pr} /></>);
+    const pr: PrintFindings = { available: true, status: "not_checked", reason: REASON, scope: "the print risk signals that rest on the model's size",
+      signals: [{ id: "toolhead-fit", kind: "engine", level: "risk", title: "More colors than toolheads", meaning: "m", action: "a" }],
+      checked: ["colors against toolheads"], not_checked: ["design validation", "first-layer risk"] };
+    render(<><BedFitNotChecked bed={bed({})} /><FirstLayerNotChecked report={fl} /><PrintRiskSignals findings={pr} /></>);
     const notes = screen.getAllByTestId("not-checked-reason");
     expect(notes).toHaveLength(3);
     notes.forEach((n) => expect(n.textContent).toContain(REASON));
     expect(notes.map((n) => n.textContent)).toEqual([
       expect.stringContaining("Not checked: bed fit."),
       expect.stringContaining("Not checked: first-layer footprint checks."),
-      expect.stringContaining("Not checked: the print-success estimate."),
+      expect.stringContaining("Not checked: the print risk signals that rest on the model's size."),
     ]);
-    expect(screen.getByText("Not estimated")).toBeTruthy();
-    expect(screen.getByText(/printer health is low/)).toBeTruthy();       // independent signals stay visible
+    expect(screen.getByText(/More colors than toolheads/)).toBeTruthy();   // independent signals stay visible
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/Fits|Out of bounds|Few risks|Likely|\d+%/);
   });
 
-  it("control: an ordinary verdict renders none of the not-checked cards", () => {
+  it("control: an ordinary verdict renders none of the not-checked cards or notes", () => {
     const { container } = render(<>
       <BedFitNotChecked bed={{ available: true, overall_level: "ok" }} />
       <FirstLayerNotChecked report={{ available: true, overall_level: "ok" }} />
-      <PredictionNotEstimated predict={{ available: true, likelihood: 90, band: "likely" }} />
     </>);
     expect(container.textContent).toBe("");
   });
 });
+
+const objectsOf = (d: { x: number; y: number; z: number }) =>
+  [{ object_id: "1", part: "3D/3dmodel.model", instance_count: 1, dimensions_mm: d }];
 
 describe("Design Health does not judge the bed or vouch for a raw size", () => {
   it("not established: bed fit is Not checked with the reason, and never Fits or Too big", () => {
@@ -75,20 +78,34 @@ describe("Design Health does not judge the bed or vouch for a raw size", () => {
     expect(document.body.textContent).toMatch(/Tall and narrow[^]*not a confirmed physical size/);
   });
 
+  it("not established with no overall dims but per-object sizes: still Not checked, never Fits or Too big", () => {
+    render(<DesignHealth mesh={{ ...MESH, geometry_basis: NOT_ESTABLISHED }} dims={null} objects={objectsOf(DIMS)} mode="simple" />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Not checked");
+    expect(text).toContain(REASON);
+    expect(text).not.toMatch(/Fits|Too big|10 × 20 × 30/);
+  });
+
   it("control: established size keeps the normal Fits verdict", () => {
-    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={DIMS} mode="simple" />);
+    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={DIMS} objects={objectsOf(DIMS)} mode="simple" />);
     const text = document.body.textContent ?? "";
     expect(text).toMatch(/Fits/);
     expect(text).not.toMatch(/Not checked|not a confirmed physical size/);
   });
 
-  it("control: a mesh without a basis (older engine) behaves as before", () => {
-    render(<DesignHealth mesh={MESH} dims={DIMS} mode="simple" />);
+  it("control: a mesh without a basis judges the per-object sizes", () => {
+    render(<DesignHealth mesh={MESH} dims={DIMS} objects={objectsOf(DIMS)} mode="simple" />);
     expect(document.body.textContent).toMatch(/Fits/);
   });
 
+  it("control: no per-object sizes at all reads Unknown, not Fits", () => {
+    render(<DesignHealth mesh={MESH} dims={DIMS} mode="simple" />);
+    expect(document.body.textContent).toMatch(/Unknown/);
+    expect(document.body.textContent).not.toMatch(/Fits/);
+  });
+
   it("a too-large established model is still Too big (the guard does not soften real verdicts)", () => {
-    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={{ x: 300, y: 20, z: 30 }} mode="simple" />);
+    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={{ x: 300, y: 20, z: 30 }} objects={objectsOf({ x: 300, y: 20, z: 30 })} mode="simple" />);
     expect(document.body.textContent).toMatch(/Too big/);
   });
 });

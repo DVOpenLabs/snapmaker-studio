@@ -8,6 +8,7 @@ const sources = import.meta.glob([
   "./PrepareSettingsSummary.tsx",
   "../lib/evidenceKind.ts",
   "./FirstPrintCard.tsx",
+  "./PrintRiskSignals.tsx",
   "../routes/Compatibility.tsx",
   "../routes/DesignInsights.tsx",
   "../routes/LiveWorkspace.tsx",
