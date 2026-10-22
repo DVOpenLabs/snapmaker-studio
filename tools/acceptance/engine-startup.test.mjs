@@ -46,15 +46,16 @@ test("an early exit is reported with its code and a bounded stderr tail", { time
 test("a handshake timeout stops the child this call started, by PID", { timeout: HARD_MS }, async () => {
   const s = script("hang.mjs", "setInterval(() => {}, 1000);");
   let pid;
+  let spawned;
   try {
-    await assert.rejects(startEngine({ command: process.execPath, args: [s], cwd: dir, env: process.env, repoRoot: dir, timeoutMs: 400, onSpawn: (c) => { pid = c.pid; } }), (e) => {
+    await assert.rejects(startEngine({ command: process.execPath, args: [s], cwd: dir, env: process.env, repoRoot: dir, timeoutMs: 400, onSpawn: (c) => { spawned = c; pid = c.pid; } }), (e) => {
       assert.match(e.message, /did not report its port within 400 ms/);
       return true;
     });
     for (let i = 0; i < 50 && alive(pid); i++) await new Promise((r) => setTimeout(r, 100));
     assert.equal(alive(pid), false, "the hung child is gone");
   } finally {
-    if (pid && alive(pid)) stopTree(pid); // never leave an orphan if the module regressed
+    stopChild(spawned); // never leave an orphan if the module regressed; skips a child that already exited
   }
 });
 
@@ -109,7 +110,7 @@ test("stopChild stops a live child and reports success", { timeout: HARD_MS }, a
     assert.equal(stopChild(c), true);
     for (let i = 0; i < 50 && alive(c.pid); i++) await new Promise((r) => setTimeout(r, 100));
     assert.equal(alive(c.pid), false);
-  } finally { if (alive(c.pid)) stopTree(c.pid); }
+  } finally { stopChild(c); } // by child state, never by a bare PID that may have been reused
 });
 
 test("stopTree on a missing PID reports failure instead of claiming success", () => {
