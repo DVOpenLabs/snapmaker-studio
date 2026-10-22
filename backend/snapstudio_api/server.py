@@ -627,6 +627,13 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
+            elif self.path == "/painted_preview":
+                try:
+                    self._send(200, service.painted_preview(rv.require_path_string(data)))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/prepare_placed":
                 try:
                     self._send(200, service.prepare_placed(
