@@ -490,7 +490,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
     measuring against a rectangle a different printer reported is describing the
     wrong machine.
     """
-    from . import geometry, project_traits
+    from . import geometry, geometry_basis, project_traits
 
     target = bed or u1_bed_rect()
     whose = bed_name or ("this printer's" if bed else f"the {_prepare_target_name()}'s")
@@ -499,6 +499,12 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
         tm = ThreeMF.open(path)
     except Exception:
         return _unavailable("Studio could not open this file as a 3MF project.")
+
+    basis = geometry_basis.assess(path)
+    if not geometry_basis.is_established(basis):
+        # Positions and heights are in the file's own numbers; with no established physical size they
+        # are never read against the plate, so there is no on-plate / over-height / below-plate verdict.
+        return dict(_unavailable(basis["summary"]), **geometry_basis.not_checked(basis, "placement check"))
 
     traits = project_traits.extract(path)
     plate_count = (traits.get("plate_count") or {}).get("value") or 1

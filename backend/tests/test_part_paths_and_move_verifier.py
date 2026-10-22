@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import zipfile
 
+import pytest
+
 from snapstudio_core import geometry, placement, plate_placement as pp
 from tests import scene_fixtures as fx
 
@@ -23,6 +25,14 @@ def _two_parts(tmp_path, items, objects=(), settings=None, a_size=10, b_size=50,
     if settings:
         extra[SETTINGS] = settings
     return fx.three_mf(tmp_path / name, fx.model_xml(list(objects), items), extra)
+
+
+@pytest.fixture(autouse=True)
+def _keying_not_the_gate(monkeypatch):
+    """These tests pin how objects are keyed by (part, id). The geometry-basis gate cannot follow a
+    build item that names its part, so it is stood in for here; its behaviour is tested elsewhere."""
+    from snapstudio_core import geometry_basis
+    monkeypatch.setattr(geometry_basis, "assess", lambda path: {"established": True})
 
 
 # --- keyed by (part, object id) ------------------------------------------------------------------------

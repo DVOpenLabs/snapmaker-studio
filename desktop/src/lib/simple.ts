@@ -3,15 +3,6 @@
 
 export type Tone = "ready" | "repairable" | "convertible" | "risk";
 
-/** 0–100 score → 0..5 (half-star aware). */
-export function readinessStars(score: number | null | undefined): { full: number; half: boolean; empty: number } {
-  if (score == null) return { full: 0, half: false, empty: 5 };
-  const v = Math.max(0, Math.min(5, score / 20));
-  const full = Math.floor(v);
-  const half = v - full >= 0.5;
-  return { full, half, empty: 5 - full - (half ? 1 : 0) };
-}
-
 /** Where the design came from, in plain words. */
 export function familyLabel(family: string | null | undefined): string {
   switch ((family || "").toLowerCase()) {

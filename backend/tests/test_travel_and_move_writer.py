@@ -70,15 +70,13 @@ def test_the_move_writer_keeps_every_other_token_verbatim():
     assert tokens[9] == "106.123457" and tokens[10] == "200" and tokens[11] == "5"
 
 
-def test_a_rotated_project_is_moved_and_verified(tmp_path):
+def test_a_rotated_project_is_not_moved_because_its_size_is_not_established(tmp_path):
     rot = "0.7071067812 0.7071067812 0 -0.7071067812 0.7071067812 0 0 0 1"
     src = fx.three_mf(tmp_path / "rot.3mf", fx.model_xml(
         [fx.cube_object("1", 10)], [("1", f"{rot} -5 100 0"), ("1", f"{rot} 100 100 0")]))
     result = pp.prepare_placed_copy(str(src), out_dir=str(tmp_path / "out"))
-    assert result["ok"] is True, result.get("reason")
-    assert result["verification"]["passed"] is True
-    with zipfile.ZipFile(result["output_path"]) as z:
-        assert z.read("3D/3dmodel.model").decode().count(rot) == 2
+    assert result["ok"] is False and result["before"]["status"] == "not_checked"
+    assert not (tmp_path / "out").exists()
 
 
 def test_a_tall_object_is_not_confirmed_by_preflight_even_when_it_is_on_the_plate(tmp_path, monkeypatch):
@@ -106,15 +104,32 @@ def test_a_tall_modifier_does_not_make_a_short_part_over_height(tmp_path):
     assert len(pp.over_height(pp.assess(path2))) == 1
 
 
-def test_a_part_sunk_below_the_build_plane_is_not_confirmed_to_fit(tmp_path, monkeypatch):
-    # a 10 mm cube scaled 30x in Z and moved to Z=-100 spans -100..200: under 270, but below the plate
-    path = str(fx.three_mf(tmp_path / "sunk.3mf", fx.model_xml(
+def test_a_scaled_part_is_not_judged_for_height_or_plate_at_all(tmp_path, monkeypatch):
+    path = str(fx.three_mf(tmp_path / "scaled.3mf", fx.model_xml(
         [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")])))
+    report = pp.assess(path)
+    assert report["available"] is False and report["status"] == "not_checked"
+    assert pp.below_plate(report) == [] and pp.over_height(report) == []
+    monkeypatch.setattr(service, "printer_facts", _facts({"printer_id": "snapmaker_u1"}))
+    check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
+    assert check["confidence"] != "confirmed" and "270" not in check["evidence"]
+
+
+def test_a_translated_part_below_the_plate_is_a_point_to_check(tmp_path, monkeypatch):
+    # translation only, so the size is established: a 10 mm cube moved to Z=-100 sits below the plate
+    path = str(fx.three_mf(tmp_path / "sunk.3mf", fx.model_xml(
+        [fx.cube_object("1", 10)], [("1", fx.tf(100, 100, -100))])))
     assert len(pp.below_plate(pp.assess(path))) == 1 and pp.over_height(pp.assess(path)) == []
     monkeypatch.setattr(service, "printer_facts", _facts({"printer_id": "snapmaker_u1"}))
     check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
     assert check["result"] == "attention" and check["confidence"] == "likely"
     assert "below the build plate" in check["evidence"] and "-100" in check["evidence"]
+
+
+def test_a_translated_part_above_the_height_limit_is_over_height(tmp_path):
+    path = str(fx.three_mf(tmp_path / "high.3mf", fx.model_xml(
+        [fx.cube_object("1", 10)], [("1", fx.tf(100, 100, 300))])))
+    assert len(pp.over_height(pp.assess(path))) == 1
 
 
 def test_a_part_resting_on_the_plate_is_not_below_it(tmp_path):
@@ -131,3 +146,26 @@ def test_the_bed_check_source_names_the_printer_it_judged_against():
                            "klipper_objects": [], "print_state": "standby"}, placement=placement)
     source = next(c for c in out["checks"] if c["id"] == "bed.fit")["source"]
     assert "Voron" in source and "U1" not in source
+
+
+def test_an_inch_project_gets_no_placement_or_preflight_bed_verdict(tmp_path, monkeypatch):
+    # a 12-unit cube is 304.8 mm if the file means inches: no on-plate claim, no number, no move
+    path = str(fx.three_mf(tmp_path / "inch.3mf", fx.model_xml(
+        [fx.cube_object("1", 12)], [("1", fx.tf(100, 100, 0))], unit="inch")))
+    report = pp.assess(path)
+    assert report["available"] is False and report["status"] == "not_checked"
+    assert placement.assess(path)["available"] is False
+    assert pp.prepare_placed_copy(path, out_dir=str(tmp_path / "out"))["ok"] is False
+    monkeypatch.setattr(service, "printer_facts", _facts({"printer_id": "snapmaker_u1"}))
+    check = next(c for c in service.preflight(path, "h")["checks"] if c["id"] == "bed.fit")
+    assert check["confidence"] != "confirmed" and "inside" not in check["evidence"]
+
+
+def test_an_inch_project_gets_no_layout_fit_claim(tmp_path):
+    from snapstudio_core import layout
+    path = str(fx.three_mf(tmp_path / "inch_layout.3mf", fx.model_xml(
+        [fx.cube_object("1", 12)], [("1", fx.tf(100, 100, 0))], unit="inch")))
+    out = layout.assess_layout(path)
+    assert out["status"] == "unknown" and out["geometry_basis"]["established"] is False
+    assert "Layout not checked" in out["messages"][0]
+    assert not any("fit within" in m or "build plate" in m for m in out["messages"])

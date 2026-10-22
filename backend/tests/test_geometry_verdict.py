@@ -117,7 +117,7 @@ def test_established_cases_keep_every_verdict(tmp_path, label, tf):
         assert s["bed_fit"]["overall_level"] == "ok"
     fit = next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")
     assert fit["status"] == "pass"
-    assert isinstance(s["predict"]["likelihood"], int) and s["predict"]["band"] in ("likely", "uncertain", "risky")
+    assert s["predict"]["available"] is True and "status" not in s["predict"] and isinstance(s["predict"]["signals"], list)
     assert s["first_layer"].get("overall_level") in ("ok", "warn", "risk")
     assert s["scale_preview"]["fits_build_volume"] is True
     assert s["scale_options"]["available"] is True
@@ -128,7 +128,7 @@ def test_stl_stays_established(tmp_path):
     s = _surfaces(make_stl(tmp_path))
     assert s["insights"]["geometry_basis"]["established"] is True
     assert s["bed_fit"]["overall_level"] == "ok"
-    assert s["predict"]["likelihood"] is not None
+    assert s["predict"]["available"] is True and "status" not in s["predict"]
 
 
 def test_composed_transforms_that_cancel_are_established(tmp_path):
@@ -164,8 +164,9 @@ def test_declared_inch_file_is_not_checked_everywhere(tmp_path):
     fit = next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")
     assert fit["status"] == "not_checked" and basis["summary"] in fit["detail"]
     assert s["readiness"]["ready"] is False and s["readiness"]["print_setup_ready"] is False
-    assert s["predict"]["likelihood"] is None and s["predict"]["band"] == "unknown"
-    assert "likely" not in s["predict"]["verdict"].lower().replace("print-success", "")
+    assert s["predict"]["status"] == "not_checked" and not {"likelihood", "band", "verdict"} & set(s["predict"])
+    assert "design validation" in s["predict"]["not_checked"] and "first-layer risk" in s["predict"]["not_checked"]
+    assert all(sig["id"] not in ("design-validation", "first-layer-adhesion") for sig in s["predict"]["signals"])
     assert s["first_layer"]["available"] is False and s["first_layer"]["status"] == "not_checked"
     assert s["scale_preview"]["fits_build_volume"] is None and s["scale_preview"]["recommendation"] == "not checked"
     assert s["scale_options"]["available"] is False and s["scale_options"]["status"] == "not_checked"
@@ -181,7 +182,7 @@ def test_every_surface_gives_the_same_reason_and_names_its_own_scope(tmp_path):
         assert s[name]["geometry_basis"]["reasons"] == ["unit_not_millimeter"], name
     scopes = {s[n]["scope"] for n in ("bed_fit", "predict", "first_layer", "scale_options")}
     assert len(scopes) == 4                                           # each says what IT withheld
-    assert set(s["insights"]["geometry_basis"]["withheld"]) >= {"bed fit", "the print-success estimate"}
+    assert set(s["insights"]["geometry_basis"]["withheld"]) >= {"bed fit", "the print risk signals"}
 
 
 def test_unit_declared_only_by_a_sub_model_part_is_caught(tmp_path):
@@ -205,7 +206,7 @@ def test_scaled_or_rotated_placement_is_not_checked_even_when_it_would_fit(tmp_p
     """Scale 6 really does fit (60 x 120 x 180) and still is not judged: the measurement ignores it."""
     s = _surfaces(make(tmp_path, "tf", items=(("1", tf),)))
     assert s["insights"]["geometry_basis"]["reasons"] == [reason]
-    assert s["bed_fit"]["status"] == "not_checked" and s["predict"]["likelihood"] is None
+    assert s["bed_fit"]["status"] == "not_checked" and s["predict"]["status"] == "not_checked"
     assert s["scale_options"]["status"] == "not_checked"
     assert s["scale_preview"]["fits_build_volume"] is None
     assert next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")["status"] == "not_checked"
@@ -261,15 +262,17 @@ def test_unreadable_3mf_is_not_established(tmp_path):
 def test_unrelated_signals_survive_and_are_not_turned_into_a_probability():
     basis = {"established": False, "reasons": ["unit_not_millimeter"], "summary": "S.", "withheld": [],
              "schema_version": "geometry-basis/1"}
-    out = success_predict.predict(readiness={"ready": False, "warnings": ["a"]},
-                                  toolfit={"available": True, "overall_level": "risk"},
-                                  first_layer={"overall_level": "risk"}, health={"available": True, "score": 40},
-                                  prior_failures=2, geometry_basis=basis)
-    assert out["likelihood"] is None and out["band"] == "unknown" and out["available"] is True
-    assert any("colours than toolheads" in f for f in out["factors"])
-    assert any("printer health is low" in f for f in out["factors"])
-    assert any("failed 2" in f for f in out["factors"])
-    assert not any("first-layer" in f or "validation-ready" in f for f in out["factors"])
+    out = success_predict.findings(readiness={"ready": False, "warnings": ["a"]},
+                                   toolfit={"available": True, "overall_level": "risk"},
+                                   first_layer={"overall_level": "risk"},
+                                   health={"available": True, "conditions": [
+                                       {"id": "firmware-not-ready", "level": "risk", "text": "Printer not ready"}]},
+                                   prior_failures=2, geometry_basis=basis)
+    assert out["status"] == "not_checked" and out["available"] is True and out["reason"] == "S."
+    assert not {"likelihood", "band", "verdict", "factors"} & set(out)
+    ids = {sig["id"] for sig in out["signals"]}
+    assert ids == {"toolhead-fit", "firmware-not-ready", "printer-failure-history"}   # size-independent signals only
+    assert "design validation" in out["not_checked"] and "first-layer risk" in out["not_checked"]
 
 
 def test_mesh_integrity_findings_stay_available_when_size_is_not_established(tmp_path):
@@ -366,18 +369,18 @@ def test_basis_returned_to_callers_cannot_corrupt_the_cache(tmp_path):
     assert geometry_basis.assess(p)["established"] is False
 
 
-def test_headline_score_is_withheld_when_any_doctor_withheld_its_verdict(tmp_path):
-    """Before: health-only or the multi-material level alone produced a green 100/100 / 88."""
+def test_no_headline_score_and_a_withheld_verdict_is_reported_as_a_risk(tmp_path):
+    """There is no headline score at all, and a Doctor that withheld its verdict is said once, not hidden."""
     rep = service.intelligence_report(make(tmp_path, "inchscore", unit="inch"))
-    assert rep["studio_score"] is None
+    assert "studio_score" not in rep
     out = intelligence_report.build(
-        predict={"available": True, "status": "not_checked", "likelihood": None, "band": "unknown",
-                 "reason": "R."},
+        predict={"available": True, "status": "not_checked", "signals": [], "reason": "R."},
         bed_fit={"available": False, "status": "not_checked", "reason": "R."},
         health={"available": True, "score": 88, "grade": "B", "verdict": "ok", "drivers": []})
-    assert out["studio_score"] is None
-    ok = intelligence_report.build(predict={"available": True, "likelihood": 90, "band": "likely", "factors": []})
-    assert ok["studio_score"] == 90                                  # control: ordinary reports keep a score
+    assert "studio_score" not in out
+    assert out["biggest_risk"]["condition"] == "size-not-established" and "R." in out["biggest_risk"]["text"]
+    ok = intelligence_report.build(predict={"available": True, "signals": []})
+    assert ok["biggest_risk"] is None                                # control: an ordinary report has no size risk
 
 
 def test_canonical_view_carries_the_basis_beside_the_raw_dimensions(tmp_path):

@@ -158,7 +158,11 @@ def test_two_parts_with_the_same_object_id_have_two_sizes(tmp_path):
         [], [("1", fx.tf(10, 10, 0), "/" + a), ("1", fx.tf(100, 10, 0), "/" + b)]), extra))
     sizes = {s["part"]: s["dimensions"]["x"] for s in geometry.object_sizes(path)}
     assert sizes == {a: 10.0, b: 50.0}
-    assert pp.assess(path)["available"]
+    # a build item that names its part (p:path) is structure the RC2 guard cannot follow, so placement
+    # is not checked: no per-instance verdict, no number (the sizes above are read untransformed)
+    report = pp.assess(path)
+    assert report["available"] is False and report["status"] == "not_checked"
+    assert report["geometry_basis"]["established"] is False
 
 
 def test_project_info_keeps_its_old_cost_unless_asked_for_placement_data(tmp_path, monkeypatch):
