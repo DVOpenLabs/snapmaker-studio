@@ -57,6 +57,9 @@ describe("a not-checked verdict names its scope and gives one shared reason", ()
   });
 });
 
+const objectsOf = (d: { x: number; y: number; z: number }) =>
+  [{ object_id: "1", part: "3D/3dmodel.model", instance_count: 1, dimensions_mm: d }];
+
 describe("Design Health does not judge the bed or vouch for a raw size", () => {
   it("not established: bed fit is Not checked with the reason, and never Fits or Too big", () => {
     render(<DesignHealth mesh={{ ...MESH, geometry_basis: NOT_ESTABLISHED }} dims={DIMS} mode="simple" />);
@@ -76,19 +79,19 @@ describe("Design Health does not judge the bed or vouch for a raw size", () => {
   });
 
   it("control: established size keeps the normal Fits verdict", () => {
-    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={DIMS} mode="simple" />);
+    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={DIMS} objects={objectsOf(DIMS)} mode="simple" />);
     const text = document.body.textContent ?? "";
     expect(text).toMatch(/Fits/);
     expect(text).not.toMatch(/Not checked|not a confirmed physical size/);
   });
 
   it("control: a mesh without a basis (older engine) behaves as before", () => {
-    render(<DesignHealth mesh={MESH} dims={DIMS} mode="simple" />);
+    render(<DesignHealth mesh={MESH} dims={DIMS} objects={objectsOf(DIMS)} mode="simple" />);
     expect(document.body.textContent).toMatch(/Fits/);
   });
 
   it("a too-large established model is still Too big (the guard does not soften real verdicts)", () => {
-    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={{ x: 300, y: 20, z: 30 }} mode="simple" />);
+    render(<DesignHealth mesh={{ ...MESH, geometry_basis: ESTABLISHED }} dims={{ x: 300, y: 20, z: 30 }} objects={objectsOf({ x: 300, y: 20, z: 30 })} mode="simple" />);
     expect(document.body.textContent).toMatch(/Too big/);
   });
 });
