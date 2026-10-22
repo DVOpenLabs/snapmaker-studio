@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,14 +20,20 @@
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 201 100% 45%;
-    --primary: 201 100% 45%;
+    --primary: 201 100% 35%;
     --primary-foreground: 0 0% 100%;
-    --accent: 201 100% 45%;
+    --accent: 201 100% 35%;
     --accent-foreground: 0 0% 100%;
-    --ready: 120 61% 34%;
+    --ready: 120 61% 30%;
     --repairable: 41 100% 37%;
-    --convertible: 201 100% 45%;
-    --risk: 302 90% 45%;
+    /* Text colours for the status hues: >= 4.5:1 on the page, card, muted panel and the /5-/15 tints of the same hue.
+       Fills (bg-*, borders, icons) keep the plain tokens above; only text-* utilities read these (tailwind.config.js). */
+    --repairable-text: 41 100% 26%;
+    --primary-text: 201 100% 32%;
+    --ready-text: 120 61% 28%;
+    --risk-text: 302 90% 36%;
+    --convertible: 201 100% 35%;
+    --risk: 302 90% 38%;
 
     /* Workflow stage colours — the spectrum flow Input → Diagnose → Transform →
        Validate → Output (mark reads left→right: ribbons → portal → cube). */
@@ -62,6 +66,10 @@
     --accent-foreground: 228 28% 8%;
     --ready: 120 61% 50%;             /* green #32CD32 */
     --repairable: 54 100% 55%;        /* yellow — legible on dark */
+    --repairable-text: 54 100% 55%;
+    --primary-text: 201 100% 50%;
+    --ready-text: 120 61% 50%;
+    --risk-text: 302 100% 62%;
     --convertible: 201 100% 50%;      /* accent #00A6FF */
     --risk: 302 100% 62%;             /* magenta #FF3DF9 */
 
@@ -109,5 +117,23 @@
   /* Faint top-lit panel used for hero / feature surfaces. */
   .surface-raised {
     @apply bg-gradient-to-b from-muted/40 to-transparent;
+  }
+}
+
+/* Keyboard focus is always visible, on every control — including plain <button>s and cards-as-buttons. */
+@layer base {
+  :where(a, button, summary, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+/* Reduced motion: no spinning, sliding or pulsing; text still says what is happening. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

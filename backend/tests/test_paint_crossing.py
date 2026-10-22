@@ -309,5 +309,5 @@ def test_prepare_refuses_to_save_a_structure_it_cannot_vouch_for(monkeypatch, tm
     out_dir = tmp_path / "out"
     with pytest.raises(UnsoundOutput) as caught:
         convert_to_u1(str(TWO_VOLUMES), out_dir=str(out_dir))
-    assert "do not match its component ids" in str(caught.value)
+    assert "do not match its component ids" in caught.value.details
     assert not list(out_dir.glob("*.3mf")), "an unsound copy must not be left behind"

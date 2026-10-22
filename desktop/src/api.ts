@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
@@ -183,6 +184,17 @@ export interface ConversionResult {
   blocked?: boolean;
 }
 
+/** A deliberate refusal (HTTP 422): `message` is the plain sentence for the person; `details` is the engine's raw
+ *  technical wording, kept for a collapsible secondary area and never shown as the main message. */
+export class PrepareRefusalError extends Error {
+  details?: string;
+  constructor(message: string, details?: string) {
+    super(message);
+    this.name = "PrepareRefusalError";
+    this.details = details;
+  }
+}
+
 export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false,
                               materials?: MaterialSelection[]): Promise<ConversionResult> {
   const { port, token } = await apiInfo();
@@ -197,14 +209,16 @@ export async function convert(path: string, outDir?: string, prepareMode: Prepar
   });
   if (!r.ok) {
     let msg = `convert failed (${r.status})`;
+    let details: string | undefined;
     try {
       const e = await r.json();
       if (e?.error) msg = e.error;
       // v1.3.1 (#67): a genuine engine fault names its class, so a report can say what failed; a deliberate refusal
       // already carries its own readable message.
       if (e?.kind && !e?.refusal) msg = `${msg} (${e.kind})`;
+      if (e?.refusal && typeof e?.details === "string" && e.details) details = e.details;
     } catch { /* ignore */ }
-    throw new Error(msg);
+    throw details ? new PrepareRefusalError(msg, details) : new Error(msg);
   }
   return r.json();
 }
@@ -235,6 +249,9 @@ export interface LibraryProject {
   filament_count: number | null;
   last_action: string | null;
   updated_at: string | null;
+  /** Readable, but Studio would refuse to prepare a copy; persisted with the record. */
+  prepare_blocked?: boolean;
+  prepare_summary?: string | null;
 }
 
 export async function library(query = "", tag?: string): Promise<LibraryProject[]> {
@@ -329,6 +346,20 @@ export async function batchStatus(jobId: string): Promise<BatchJobStatus> {
   return r.json();
 }
 
+/** Whether a file's mesh numbers are the model's physical size (unit mm, placement keeps extents). */
+export interface GeometryBasis {
+  schema_version: string;
+  established: boolean;
+  reasons: string[];
+  summary: string;
+  withheld: string[];
+  unchecked_objects?: string[];
+  objects_total?: number | null;
+  unit?: { unit: string | null; source: string };
+}
+/** Shape every surface adds when it withholds a size-dependent verdict. */
+export interface NotChecked { status?: "not_checked"; reason?: string; scope?: string; geometry_basis?: GeometryBasis }
+
 export interface Insights {
   schema_version: string;
   name: string;
@@ -337,6 +368,8 @@ export interface Insights {
   verdict: string | null;
   readiness_score: number | null;
   is_compatible: boolean;
+  /** True when Studio can read the file but would refuse to prepare a copy of it. */
+  prepare_blocked?: boolean;
   objects: number | null;
   plates: number | null;
   colors: number | null;
@@ -346,6 +379,7 @@ export interface Insights {
   triangles: number | null;
   complexity: string | null;
   issues: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function insights(path: string): Promise<Insights> {
@@ -365,11 +399,12 @@ export interface ReadinessReport {
   verdict: string | null;
   readiness_score: number | null;
   ready: boolean;
-  checks: { name: string; status: "pass" | "warn" | "fail"; detail: string }[];
+  checks: { name: string; status: "pass" | "warn" | "fail" | "not_checked"; detail: string }[];
   preserved: string[];
   changes: string[];
   at_risk: string[];
   warnings: string[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function report(path: string): Promise<ReadinessReport> {
@@ -383,7 +418,7 @@ export async function report(path: string): Promise<ReadinessReport> {
   return r.json();
 }
 
-export interface FirstLayerReport {
+export interface FirstLayerReport extends NotChecked {
   available: boolean;
   bed_aware?: boolean;
   overall_level?: "ok" | "warn" | "risk";
@@ -396,7 +431,7 @@ export async function firstLayer(path: string, host?: string | null): Promise<Fi
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/first_layer`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`first_layer failed (${r.status})`);
   return r.json();
@@ -416,7 +451,7 @@ export async function toolheadFit(path: string, host?: string | null): Promise<T
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/toolhead_fit`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
-    body: JSON.stringify({ path, host: host ?? null }),
+    body: JSON.stringify({ path, host: host || null }),
   });
   if (!r.ok) throw new Error(`toolhead_fit failed (${r.status})`);
   return r.json();
@@ -628,7 +663,7 @@ export async function mmDoctor(path: string, host?: string | null): Promise<MMDo
 }
 
 // Bed-Fit / Out-of-Bounds Doctor: does it fit the U1 bed, and if not, why + fix.
-export interface BedFit {
+export interface BedFit extends NotChecked {
   available: boolean;
   bed_known?: boolean;
   bed_source?: string;
@@ -651,10 +686,11 @@ export async function bedFit(path: string, host?: string | null): Promise<BedFit
 }
 
 // Print Success Prediction: pre-print "will it print?" odds from existing signals.
-export interface SuccessPrediction {
+export interface SuccessPrediction extends NotChecked {
   available: boolean;
-  likelihood?: number;
-  band?: "likely" | "uncertain" | "risky";
+  /** null when Studio makes no estimate (the model's physical size is not established). */
+  likelihood?: number | null;
+  band?: "likely" | "uncertain" | "risky" | "unknown";
   factors?: string[];
   verdict?: string;
   reason?: string;
@@ -776,6 +812,7 @@ export interface MeshReport {
   surface_area_mm2?: number;
   material_estimate_g?: number | null;
   findings?: { level: "ok" | "warn" | "risk"; text: string }[];
+  geometry_basis?: GeometryBasis;
 }
 
 export async function mesh(path: string): Promise<MeshReport> {
@@ -862,6 +899,8 @@ export interface PrinterDiagnostics {
 }
 
 async function printerPost<T>(path: string, body: object): Promise<T> {
+  // No address, no request: a profile that never set up a printer must not look one up.
+  requirePrinterHost((body as { host?: string | null }).host);
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -978,6 +1017,7 @@ export async function printerDiscover(hosts?: string[]): Promise<PrinterProbe[]>
 }
 
 export async function printerStatus(host: string, port = 7125): Promise<PrinterStatus> {
+  requirePrinterHost(host);
   const { port: p, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${p}/printer/status`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Auth-Token": token },
@@ -1071,17 +1111,18 @@ export function firstLayerCheck(symptom: string): Promise<FirstLayerResponse> {
 }
 
 // ---- Scale Doctor (analysis-only preview) ----
-export interface ScaleResult {
+export interface ScaleResult extends NotChecked {
   available: boolean;
   reason?: string;
   scale_percent?: number;
   original_dimensions?: { x: number; y: number; z: number };
   scaled_dimensions?: { x: number; y: number; z: number };
-  fits_build_volume?: boolean;
+  /** null = not checked (the model's physical size is not established). */
+  fits_build_volume?: boolean | null;
   estimated_material_delta?: { grams: number; basis: string };
   estimated_cost_delta?: { amount: number | null; basis: string };
   risks?: string[];
-  recommendation?: "likely safe" | "caution" | "not recommended";
+  recommendation?: "likely safe" | "caution" | "not recommended" | "not checked";
   explanation?: string;
 }
 export function scalePreview(path: string, scalePercent: number): Promise<ScaleResult> {
@@ -1103,7 +1144,7 @@ export interface ScaleOption {
   dimensions_by_part: ScalePartDims[];
   explanation: string;
 }
-export interface ScaleOptionsResult {
+export interface ScaleOptionsResult extends NotChecked {
   available: boolean;
   schema_version?: number;
   reason?: string;
@@ -1455,6 +1496,8 @@ export interface WatchCandidate {
   name: string;
   size_bytes: number;
   age_seconds: number;
+  /** Exact modification time as text (nanoseconds). */
+  modified_ns?: string;
   complete: boolean;
   state: string;
   job?: {
@@ -1481,6 +1524,61 @@ export interface WatchResult {
 
 export function watchFolder(folder: string, projectPath?: string): Promise<WatchResult> {
   return post("/watch_folder", { folder, project_path: projectPath ?? "" }, "watch folder");
+}
+
+export interface JobCheckEntry {
+  role: "original" | "prepared" | "sliced";
+  path: string;
+  /** Without it the file is only fingerprinted. */
+  expected?: { size_bytes: number; sha256: string | null };
+}
+
+export interface JobCheckFile {
+  role: JobCheckEntry["role"];
+  path: string;
+  status: "recorded" | "same" | "changed" | "missing" | "unreadable" | "unverified";
+  observed?: { size_bytes: number; sha256: string | null; mtime_ns?: string };
+  reason?: string;
+}
+
+/** Read-only: size and SHA-256 of a job's files, compared with what was recorded. */
+export function jobCheck(files: JobCheckEntry[]): Promise<{ schema_version: string; files: JobCheckFile[] }> {
+  return post("/job_check", { files }, "job check");
+}
+
+export type ReceiptStatus = "unchanged" | "changed" | "missing" | "not_checked";
+export type ReceiptStage = "original" | "prepared" | "sliced";
+
+export interface ReceiptStep {
+  from: ReceiptStage;
+  to: ReceiptStage;
+  from_value: number | boolean | number[] | null;
+  to_value: number | boolean | number[] | null;
+  status: ReceiptStatus;
+  detail: string;
+  next_action: string | null;
+}
+
+export interface ReceiptFact {
+  id: "nozzles" | "layer_height" | "supports" | "prime_tower";
+  label: string;
+  status: ReceiptStatus;
+  steps: ReceiptStep[];
+}
+
+export interface SettingsReceipt {
+  schema_version: string;
+  scope: "project";
+  scope_note: string;
+  stages: Record<ReceiptStage, { state: "read" | "unreadable" | "not_provided"; reason?: string; note?: string }>;
+  facts: ReceiptFact[];
+  summary: string;
+  separate_from: string;
+}
+
+/** Read-only: the declared settings of the project, its prepared copy and the sliced G-code, side by side. */
+export function settingsReceipt(originalPath: string, preparedPath?: string | null, slicedPath?: string | null): Promise<SettingsReceipt> {
+  return post("/settings_receipt", { original_path: originalPath, prepared_path: preparedPath ?? "", sliced_path: slicedPath ?? "" }, "settings receipt");
 }
 
 export function sliceProvenance(projectPath: string, gcodePath: string): Promise<ProvenanceResult> {
@@ -2249,6 +2347,7 @@ export interface NozzleStatus {
  *  probe:true call whose (possibly slower-arriving) response replaces it via
  *  the shared accept/drop decision (R2-D2), never the other way around. */
 export function nozzleStatus(host: string, port = 7125, probe = false): Promise<NozzleStatus> {
+  if (probe && !isPrinterSetUp(host)) return Promise.reject(new PrinterNotSetUpError()); // a live read contacts the printer
   return post("/nozzles/status", { host, port, probe }, "nozzle status");
 }
 

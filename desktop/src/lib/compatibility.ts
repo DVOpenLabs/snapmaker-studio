@@ -45,3 +45,15 @@ export function countFindings(findings: CompatibilityFinding[]): CompatCounts {
   }
   return c;
 }
+
+/** Why Prepare is off for a compatibility result, from the engine's one eligibility record:
+ *  "unreadable" = Studio cannot open it as a project (project.unreadable); "blocked" = readable
+ *  but Studio would refuse to prepare it (prepare.blocked). Either one turns every Prepare entry
+ *  point off. */
+export type PrepareGate = "open" | "blocked" | "unreadable";
+export function prepareGate(findings: CompatibilityFinding[] | null | undefined): PrepareGate {
+  const ids = new Set((findings ?? []).map((f) => f.id));
+  if (ids.has("project.unreadable")) return "unreadable";
+  if (ids.has("prepare.blocked")) return "blocked";
+  return "open";
+}
