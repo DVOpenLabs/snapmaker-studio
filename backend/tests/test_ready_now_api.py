@@ -431,6 +431,26 @@ def test_failed_placement_is_not_cached_as_done(tmp_path, monkeypatch):
     assert calls["n"] == 2
 
 
+def test_an_unavailable_placement_is_not_cached_as_done(tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+    from snapstudio_api import service
+    from snapstudio_core import plate_placement
+    f = tmp_path / "a.3mf"
+    shutil.copy(Path(__file__).parent / "fixtures" / "painted" / "orcaslicer-2.4.2-painted-cube.3mf", f)
+    service._READY_CACHE.clear()
+    calls = {"n": 0}
+
+    def unavailable(*a, **k):
+        calls["n"] += 1
+        return {"available": False, "reason": "too large to measure", "items": [], "off_plate": []}
+
+    monkeypatch.setattr(plate_placement, "assess", unavailable)
+    target = {"key": ("test",), "bed": None, "name": None, "height": None}
+    service._ready_analysis(str(f), target, need_placement=True)
+    service._ready_analysis(str(f), target, need_placement=True)
+    assert calls["n"] == 2                      # tried again, not remembered as done
+
 def test_a_same_size_replacement_with_the_same_timestamp_is_not_served_stale(tmp_path, monkeypatch):
     import os
     from snapstudio_api import service

@@ -106,7 +106,8 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     # belongs to the condition. The risk list, Biggest risk, Next, the printer line and the counts all derive from this.
     contribs: list = []
     recs: list = []
-    for label, doc in (("Size fit (dimensions only)", bed_fit), ("Multi-Material Doctor", mm), ("First Layer Doctor", first_layer)):
+    bed_label = "Bed fit (size and placement)" if (bed_fit or {}).get("placement_checked") else "Size fit (dimensions only)"
+    for label, doc in ((bed_label, bed_fit), ("Multi-Material Doctor", mm), ("First Layer Doctor", first_layer)):
         contribs.extend(C.doctor_contributions(doc, label))
         if doc and doc.get("available", True):
             recs.extend(doc.get("fixes") or [])
@@ -158,6 +159,10 @@ def build(predict=None, bed_fit=None, mm=None, first_layer=None, health=None,
     # finding: it is listed as "not verified" and keeps the report from saying "found nothing".
     spacing_unverified = bool(spacing and spacing.get("status") == "unknown")
     not_verified = ["object spacing"] if spacing_unverified else []
+    # A bed-fit result that could not be produced (unidentified printer, nothing measurable) is not "no risk":
+    # say it was not verified. (A size that is not established is reported by its own not_checked finding above.)
+    if bed_fit and not avail["bed_fit"] and bed_fit.get("status") != "not_checked":
+        not_verified.append("bed fit")
 
     seen_r = set()
     recommendations = [r for r in recs if not (r in seen_r or seen_r.add(r))]

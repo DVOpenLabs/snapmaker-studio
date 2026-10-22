@@ -25,6 +25,12 @@ BED_HEIGHT = "bed-height"
 BED_FOOTPRINT = "bed-footprint"
 BED_NEAR_FULL = "bed-near-full"
 BED_PRIME_TOWER = "bed-prime-tower-room"
+# --- where the placed instances sit (placement, per instance / plate); never carries community guidance ---
+PLACEMENT_OFF_PLATE = "placement-off-plate"
+PLACEMENT_BELOW_PLATE = "placement-below-plate"
+PLACEMENT_OVER_HEIGHT = "placement-over-height"
+PLACEMENT_PLATE_OVERSIZED = "placement-plate-oversized"
+PLACEMENT_NOT_JUDGED = "placement-not-judged"
 # --- first layer ---
 FIRST_LAYER_ADHESION = "first-layer-adhesion"
 FIRST_LAYER_BED_FLATNESS = "first-layer-bed-flatness"
@@ -65,6 +71,9 @@ DOCTOR_LABEL = {
     TOOLHEAD_FIT: "Multi-Material Doctor", FILAMENT_METADATA: "Multi-Material Doctor", PAINTED_REGIONS: "Multi-Material Doctor",
     BED_HEIGHT: "Size fit (dimensions only)", BED_FOOTPRINT: "Size fit (dimensions only)",
     BED_NEAR_FULL: "Size fit (dimensions only)", BED_PRIME_TOWER: "Size fit (dimensions only)",
+    PLACEMENT_OFF_PLATE: "Placement (where instances sit)", PLACEMENT_BELOW_PLATE: "Placement (where instances sit)",
+    PLACEMENT_OVER_HEIGHT: "Placement (where instances sit)", PLACEMENT_PLATE_OVERSIZED: "Placement (where instances sit)",
+    PLACEMENT_NOT_JUDGED: "Placement (where instances sit)",
     FIRST_LAYER_ADHESION: "First Layer Doctor", FIRST_LAYER_BED_FLATNESS: "First Layer Doctor",
     FIRST_LAYER_CORNER_LIFT: "First Layer Doctor", FIRST_LAYER_ORIENTATION: "First Layer Doctor",
     PRINTER_FAILURE_HISTORY: "Printer Doctor", FIRMWARE_NOT_READY: "Printer Doctor",
