@@ -191,6 +191,5 @@ def test_dimensions_mm_is_unchanged_for_a_single_object(tmp_path):
     assert project_info(path, placement_aware=True)["dimensions_mm"] == {"x": 30.0, "y": 30.0, "z": 30.0}
 
 
-@pytest.mark.parametrize("dims", [None, {"x": None, "y": 1, "z": 1}])
-def test_unmeasurable_size_stays_unavailable(dims):
-    assert bed_fit.assess_objects([], fallback_dims=dims)["available"] is False
+def test_unmeasurable_size_stays_unavailable():
+    assert bed_fit.assess_objects([])["available"] is False

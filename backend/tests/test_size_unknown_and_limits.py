@@ -103,7 +103,7 @@ def test_object_size_ignores_scale_and_turn_on_the_first_item(tmp_path):
     assert placed[0]["dimensions"] == {"x": 20.0, "y": 20.0, "z": 20.0}
 
 
-def test_a_scaled_instance_beyond_the_bed_is_caught_by_placement_not_size(tmp_path):
+def test_a_scaled_instance_beyond_the_bed_is_not_checked_not_judged(tmp_path):
     path = project(tmp_path, [box_object("1", 100, 100, 10)], [("1", "3 0 0 0 3 0 0 0 1 10 10 0")])
     result = service.bed_fit(path)
     # RC2 guard: a scaled item's size is not established, so the Bed-Fit API withholds its verdict. The placed
@@ -277,7 +277,7 @@ def test_the_caches_survive_many_threads(tmp_path):
     assert errors == []
 
 
-def test_a_cube_scaled_to_300_mm_tall_is_over_height_by_placement(tmp_path):
+def test_a_cube_scaled_to_300_mm_tall_is_not_checked(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 0")], name="zscale.3mf")
     result = service.bed_fit(path)
     assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established
@@ -312,7 +312,7 @@ def test_the_size_check_counts_only_the_parts_that_print(tmp_path):
     assert service.bed_fit(path2)["overall_level"] == "risk"
 
 
-def test_a_part_sunk_below_the_plane_is_a_point_to_check_in_the_bed_fit(tmp_path):
+def test_a_scaled_part_sunk_below_the_plane_is_not_checked(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")], name="sunk.3mf")
     result = service.bed_fit(path)
     assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established

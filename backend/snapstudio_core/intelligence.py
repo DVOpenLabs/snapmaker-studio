@@ -134,7 +134,7 @@ def project_info(path: str, placement_aware: bool = False) -> dict:
         pass  # geometry/materials are best-effort; diagnosis still stands
 
     # SIZE and PLACEMENT are different facts and are kept apart here.
-    #   object_sizes_mm  how big each object is (per object, millimetres, before any build item
+    #   object_sizes_mm  how big each object is (per object, in file units; millimetres only when geometry_basis is established, before any build item
     #                    moves, turns or scales it). Says nothing about where anything sits.
     #   placed           where each instance sits and on which plate (placed bounds).
     #   dimensions_mm    kept for existing readers: the overall extents of all the mesh data

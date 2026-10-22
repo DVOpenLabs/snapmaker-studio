@@ -76,9 +76,11 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
   // 5. Bed fit BY SIZE: each object against the real connected printer bed, else the U1 default.
   //    A size says nothing about position; placement is its own card. When the file does not establish
   //    its physical size, the numbers are not judged against the bed at all.
-  if (dims && unsure) {
+  if (unsure) {
     rows.push({ key: "bedfit", label: "Bed fit", icon: Ruler, level: "warn", status: "Not checked",
-      detail: `${basis!.summary} The ${dims.x} × ${dims.y} × ${dims.z} numbers stored in the file are not judged against the bed.` });
+      detail: dims
+        ? `${basis!.summary} The ${dims.x} × ${dims.y} × ${dims.z} numbers stored in the file are not judged against the bed.`
+        : `${basis!.summary} The sizes stored in the file are not judged against the bed.` });
   } else {
     const fit = sizeRow(objects, dims, fitBed, bedSource, unmeasured);
     if (fit) {

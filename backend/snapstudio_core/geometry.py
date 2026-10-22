@@ -17,7 +17,6 @@ from pathlib import Path
 
 from . import roles as _roles
 from .container import ThreeMF
-from . import roles as _roles
 from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
 
