@@ -23,11 +23,18 @@ function eventLabel(action: string): string {
   return action;
 }
 
-const FILTERS: { label: string; match: (v: string | null) => boolean }[] = [
+export const FILTERS: { label: string; match: (p: { verdict: string | null; prepare_blocked?: boolean }) => boolean }[] = [
   { label: "All", match: () => true },
-  { label: "Profile compatible", match: (v) => v === "READY" },
-  { label: "Needs prep", match: (v) => v !== "READY" },
+  { label: "Profile compatible", match: (p) => p.verdict === "READY" && !p.prepare_blocked },
+  { label: "Needs prep", match: (p) => p.verdict !== "READY" && !p.prepare_blocked },
+  { label: "Review in Orca", match: (p) => !!p.prepare_blocked },
 ];
+
+/** Header counts use the same predicates as the filters, so the three always agree. */
+export function libraryCounts(rows: { verdict: string | null; prepare_blocked?: boolean }[]) {
+  const by = (label: string) => rows.filter((p) => FILTERS.find((f) => f.label === label)!.match(p)).length;
+  return { total: rows.length, ready: by("Profile compatible"), needPrep: by("Needs prep"), review: by("Review in Orca") };
+}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
@@ -84,7 +91,7 @@ function LibraryCard({ p, onOpen, onDelete, simple }: {
             </span>
             <span className="truncate font-medium">{p.name}</span>
           </button>
-          {p.verdict && <StatusBadge verdict={p.verdict as Verdict} />}
+          {p.verdict && <StatusBadge verdict={p.verdict as Verdict} prepareBlocked={p.prepare_blocked} />}
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
@@ -147,11 +154,10 @@ export default function Projects() {
   });
 
   const shown = useMemo(
-    () => (data ?? []).filter((p) => FILTERS[filter].match(p.verdict)),
+    () => (data ?? []).filter((p) => FILTERS[filter].match(p)),
     [data, filter]
   );
-  const total = data?.length ?? 0;
-  const readyCount = (data ?? []).filter((p) => p.verdict === "READY").length;
+  const { total, ready: readyCount, needPrep, review } = libraryCounts(data ?? []);
 
   const openProject = (p: LibraryProject) => {
     setFile(p.source_path);
@@ -170,7 +176,8 @@ export default function Projects() {
               <span>·</span>
               <CheckCircle2 className="h-3.5 w-3.5 text-ready" />
               <span>{readyCount} profile compatible</span>
-              {total - readyCount > 0 && <span>· {total - readyCount} need prep</span>}
+              {needPrep > 0 && <span>· {needPrep} need prep</span>}
+              {review > 0 && <span>· {review} to review in Orca</span>}
             </span>
           ) : (
             simple ? "Everything you've worked on, ready to revisit." : "Your prepared and checked designs."
@@ -236,7 +243,7 @@ export default function Projects() {
               <EmptyState
                 icon={FolderKanban}
                 title="Your design library starts here"
-                description="All your models, checked and scored."
+                description="All your models, with what Studio found."
                 action={<Button size="sm" onClick={() => nav("/")}><Plus className="h-4 w-4" /> Open your first model</Button>}
               />
             ) : (

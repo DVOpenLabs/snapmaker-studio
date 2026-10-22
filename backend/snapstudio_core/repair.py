@@ -2,7 +2,7 @@ from __future__ import annotations
 import copy
 from .container import ThreeMF
 from .config_io import load_project_settings, dump_project_settings
-from .rules import load_rules, apply_clamps
+from .rules import load_rules, apply_clamps, clamp_explanation
 from .profile import load_profile, apply_swap
 from .filaments import apply_remap, filament_count, conform_filament_arrays
 from .preserve import machine_compat_keys, prepare_preserved_values
@@ -39,8 +39,7 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         change["reason"] = (
             orca_import.RAFT_EXPANSION_REASON if change["key"] == "raft_first_layer_expansion"
             else f"U1 compatibility clamp: {change['old']} → {change['new']}")
-        # Explanation and provenance are one record. apply_clamps creates the
-        # complete evidence pair before this step adds the action reason.
+        change["explanation"] = clamp_explanation(change)
 
     # U1 supports >4 filament colours (verified: real U1 files carry 8 colours
     # with 4 toolheads). Never auto-cap; preserve all filament arrays in every
@@ -167,6 +166,14 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 report["project_materials_declarations_withdrawn"] = restored
                 if declared:
                     declared["new"] = copy.deepcopy(work["different_settings_to_system"])
+
+    # Whatever declared above, the key left out of the copy is not declared in it.
+    if mode in ("preserve", "u1", "optimize"):
+        late = orca_import.withdraw_nozzle_volume_type_declaration(work)
+        if late:
+            report.setdefault("orca_compatibility", []).extend(late)
+            if report.get("preset_deviations_declared"):
+                report["preset_deviations_declared"]["new"] = copy.deepcopy(work["different_settings_to_system"])
 
     # ThreeMF is in-memory here. Replacing the parts even for dry runs lets the
     # caller validate the exact would-be project without writing an output file.

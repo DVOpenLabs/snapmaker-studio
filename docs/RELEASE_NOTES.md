@@ -1,59 +1,83 @@
-# Snapmaker Studio v1.5.1 — clearer Prepare, easier spool choices, accessible controls
+# Snapmaker Studio v1.6.0 — A job you can pick up again, and sizes Studio will not guess
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-A small release on top of v1.5.0. It makes Project Materials easier to use with a real spool inventory,
-says why Studio changed a setting, and makes two screens work properly from the keyboard and with a
-screen reader. Your original files are still never modified, and Studio still does not slice or start prints.
+This release keeps a job's files together so you can pick it up after a restart, says "not checked" when it
+cannot establish a model's real size, makes printer setup explicit, and prepares more projects made in Bambu
+Studio.
 
-## Project Materials
+## A job you can pick up again
 
-- **Choose any spool from your inventory.** Each slot can open your provider's whole spool list, searchable
-  by vendor, material, color or id, showing color, vendor, material, spool id, weight status and the status
-  of the mapped Orca preset.
-- **Studio says when a spool leaves the preset alone.** If you pick a spool but no Orca preset, the slot and
-  the review now say: "Spool selected, but no Orca preset selected. The project's existing filament preset
-  will remain."
-- **Forget a saved mapping.** A mapping Studio remembered for one spool, or for similar spools, now has a
-  **Forget saved mapping** button. The confirmation says what is forgotten and what is not changed (your
-  inventory, your Orca presets and the project).
-- **A file Studio could not read is no longer treated as damaged.** If another program briefly holds the
-  saved-mappings file, Studio now waits and retries, and if it still cannot read the file it changes nothing
-  and tells you to try again. Before, a brief lock could cause the file to be set aside as damaged.
+- **This job keeps its project, prepared copy and sliced G-code together.** After a restart Studio shows what
+  it recorded, checks the files only when you ask, and reopens only what is unchanged (plus a changed file you
+  name).
+- **Every file says where it stands:** recorded, checked, reopened or left out. A file that was not reopened
+  keeps its old fingerprint, labelled as the earlier record. A saved fingerprint is history, not proof that a
+  file was reopened or is unchanged.
+- **A settings receipt on After slicing** for the original, the prepared copy and the sliced file, with the
+  sliced file's settings read strictly from its G-code.
+- **Refreshed Home, This job and After slicing screens.**
 
-## Prepare: why a setting changed
+## Explicit printer setup
 
-- The Prepare summary now shows a short reason under each setting Studio changed for the U1, and labels where
-  the statement comes from: **Studio's check** (Studio did or checked it itself) or **Verify in Snapmaker
-  Orca** (advice to check it there; it makes no claim about how Snapmaker Orca behaves).
-- Lists that Studio had to repair (for example one value per filament) say exactly what was done.
+- A profile with no printer address is "not set up" until you save one in Settings. Studio no longer looks up
+  `U1.local` on its own, and "Not set up" and "Could not reach <address>" are different messages.
+- The address you type is a draft until you press Save.
+- Printer controls are unchanged: Studio does not contact a printer on its own until you set one up, and anything that controls it
+  still waits for your confirmation. Studio never starts a print by itself.
+- The interface loads no fonts from the internet. Studio says your files and checks stay on this computer. Studio does not contact a printer on its own until you set one up, and features you start yourself (the
+  update check, the model browser, Auto-detect) can reach beyond this computer.
 
-## Easier to use with a keyboard or screen reader
+## Sizes Studio will not guess
 
-- **Printer actions.** The confirmation for Start, Cancel print and Emergency stop is now a proper dialog:
-  it has a name and description, starts on **Cancel**, and Escape only ever dismisses it. It names the printer
-  (and the file for Start) and is withdrawn if the printer changes or can no longer take the action.
-- **Tool tabs.** The tab rows for Compatibility / Source Check and Print Quality / First Layer now work with
-  the arrow keys, Home and End, show a clear focus outline, and wrap on narrow windows. Moving along the row
-  does not open or re-run a tool; Enter, Space or a click does.
+Bed fit, the readiness "Fits the print bed" check, the print-success estimate, the first-layer footprint checks
+and the Scale Doctor used the raw numbers stored in a 3MF mesh. A file that declares inches, or that rotates or
+scales its objects through a placement transform, could be reported at the wrong size.
 
-## User guide
+Studio now first decides whether those numbers are the physical size. When that is not established, each of
+these says **"not checked"** and why, instead of a verdict, and a project whose bed fit is not checked does not
+show as ready. STL files are unchanged (assumed millimetres).
 
-- The in-app Help and Get Started pages link to the new task-first user guide, which now shows where each
-  statement comes from and which version of Studio it was checked against.
-- The guide's screenshots were captured from v1.5.0 and have not been retaken.
+**Not covered yet:** the Object placement card and layout still read raw coordinates; volume, material and cost
+for files that declare a non-millimetre unit are not corrected; declared units are not converted; and a
+near-identity scale can be labelled "rotated".
 
-## Not in this release
+## More projects prepare — and refusals are plain
 
-- No change to what Studio writes into a prepared copy beyond the explanations above.
-- No new printer actions. Studio does not start prints; anything sent to your printer is something you confirm.
+- Six more per-object settings from Bambu Studio projects are kept when Snapmaker Orca 2.4.0 reads them in the
+  same words: infill pattern, skeleton and skin infill density, top and bottom shell layers, and brim type. Every
+  value is checked first; anything else is still refused rather than guessed.
+- A project that uses the same part more than once in one object is no longer refused as corrupt.
+- A project Studio can read but would refuse to prepare is called that everywhere — the Doctor, Ready Now, the
+  library, the Validation Center and the command line — and points you to review the original in Snapmaker Orca.
+  When Prepare refuses a file, the message says which settings or structure, on which object, and what to do next.
+- Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. Your original is never modified.
+- A project with blank (`nil`) per-part values is named in plain language and not prepared. This is a precaution:
+  opening such a file in the Snapmaker Orca 2.4.1 interface did not show it failing to load, so Studio does not
+  claim that blank values stop Orca from loading a file.
+
+## What was checked, and what was not
+
+Snapmaker Orca 2.4.1 opened prepared copies of test projects in an isolated profile. **That is loading only:**
+nothing was sliced and nothing was printed. Four of the six newly kept per-object settings showed their prepared
+values there; the two infill densities could not be located in the interface and are not confirmed. A repeated
+part loaded and listed its parts.
+
+Read-only checks against a real Snapmaker U1 passed (78/78), including the Spoolman- and Bambuddy-seeded provider
+checks, with no printer-control action called. This printer's four toolheads all carry the same 0.4 mm nozzle, no
+real SpoolEase device has been tested, and the Linux-installed app was not run against the real printer.
+
+**Known limitation.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch.
+
+Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
+is something you confirm.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.5.1_x64-setup.exe` — 21,962,736 bytes — SHA256 `8955097365b12e9eb1405a098c1f6ab345d56d397681a67f0cb08257d1471be3`
-- Linux: `snapmaker-studio_1.5.1_amd64_abf20bf0f74d.deb` — 25,954,272 bytes — SHA256 `c5766900437fa9826eefdb970c0ed21894b4f5f4b4795518993677ca6eeed08b`
+- Windows: `Snapmaker.Studio_1.6.0_x64-setup.exe` — 22,444,501 bytes — SHA256 `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0`
+- Linux: `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` — 26,004,974 bytes — SHA256 `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc`
 
 Neither installer is code-signed yet; verify the hash before you run it. Verification for this
 release is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.1/docs/TRUST_STATUS.md).
+[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.6.0/docs/TRUST_STATUS.md).

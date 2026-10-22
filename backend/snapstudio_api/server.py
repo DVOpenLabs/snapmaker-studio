@@ -20,6 +20,7 @@ from snapstudio_core.errors import SnapStudioError
 from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
 from . import service
+from . import scene_jobs
 from . import request_validation as rv
 from .request_validation import ValidationError
 
@@ -185,7 +186,11 @@ def _make_handler(token: str):
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token")
 
         def _send(self, code: int, obj: dict):
-            body = json.dumps(obj).encode("utf-8")
+            self._send_bytes(code, json.dumps(obj).encode("utf-8"))
+
+        def _send_bytes(self, code: int, body: bytes):
+            """Send an already-serialized JSON body. The scene routes use this so a body that was
+            size-checked once (<= 8 MiB) is not serialized a second time."""
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -202,7 +207,13 @@ def _make_handler(token: str):
             (with its traceback) in the local engine log and answered as 500 with only its class name, so a report can say
             what failed without anything private leaving the machine."""
             if isinstance(exc, SnapStudioError):
-                self._send(422, {"error": str(exc), "refusal": type(exc).__name__})
+                body = {"error": str(exc), "refusal": type(exc).__name__}
+                # A refusal may carry its raw technical wording separately, so the
+                # `error` stays a sentence a person can act on.
+                details = getattr(exc, "details", None)
+                if isinstance(details, str) and details:
+                    body["details"] = details
+                self._send(422, body)
                 return
             _log_unexpected(exc)
             self._send(500, {"error": "internal error", "kind": type(exc).__name__})
@@ -335,6 +346,24 @@ def _make_handler(token: str):
                     self._send(200, service.watch_folder(
                         rv.require_path_string(data, "folder"),
                         project_path=rv.optional_str(data, "project_path", "") or None))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/job_check":
+                try:
+                    files = data.get("files") if isinstance(data, dict) else None
+                    self._send(200, service.job_check(files))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/settings_receipt":
+                try:
+                    self._send(200, service.settings_receipt(
+                        rv.require_path_string(data, "original_path"),
+                        rv.optional_str(data, "prepared_path", "") or None,
+                        rv.optional_str(data, "sliced_path", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
@@ -1320,6 +1349,17 @@ def _make_handler(token: str):
                     self._send(404, {"error": "unknown job"})
                 else:
                     self._send(200, status)
+            elif self.path in scene_jobs.ROUTES:
+                # scene/1: bounded, cancellable, authenticated (the token was checked above).
+                try:
+                    status, body = scene_jobs.handle(self.path, data)
+                    if isinstance(body, bytes):
+                        self._send_bytes(status, body)
+                    else:
+                        self._send(status, body)
+                except Exception as exc:
+                    _log_unexpected(exc)
+                    self._send(500, {"error": "INTERNAL", "message": "The scene could not be built."})
             elif self.path == "/shutdown":
                 # Graceful half of the L4 zero-orphan sequence (see
                 # sidecar::shutdown_sidecar): reply first, THEN stop the
@@ -1384,6 +1424,10 @@ def serve(host: str = "127.0.0.1", port: int = 0) -> None:
     _watch_parent_then_exit()
     _lifeline.start_parent_lifeline()
     httpd, token = build_server(host, port)
+    try:
+        scene_jobs.sweep_stale()   # leftovers of engines that are gone; never a live engine's folder
+    except Exception:  # noqa: BLE001 - housekeeping must not stop the engine starting
+        pass
     actual_port = httpd.server_address[1]
     print(json.dumps({"port": actual_port, "token": token}), flush=True)  # handshake line
     try:

@@ -27,6 +27,7 @@ import NotFound from "@/routes/NotFound";
 import { ModelDownloadListener } from "@/components/ModelDownloadListener";
 import { useTheme } from "@/store/theme";
 import { useSession } from "@/store/session";
+import { trackJob } from "@/store/job";
 import { launchFile, maybeAutoCheckUpdate } from "@/api";
 import { useSliced } from "@/store/sliced";
 import { useUpdateCheckStore } from "@/store/updateCheck";
@@ -41,6 +42,9 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
+
+  // Note which files belong to the job in hand, so it can be picked up after a restart.
+  useEffect(() => trackJob(), []);
 
   // A model handed to Studio on the command line — a file association, "Open
   // with", or an automated run — should be open when the window appears, rather

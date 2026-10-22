@@ -30,6 +30,10 @@ _VALID = {
 
 def _make(path, cfg: dict):
     with zipfile.ZipFile(path, "w") as z:
+        # the parts every readable 3MF project has; without them Studio reports it unreadable
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
+        z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr(SETTINGS, json.dumps(cfg))
 
 
@@ -66,8 +70,10 @@ def test_bad_values_flagged_with_severity_and_range(tmp_path):
 def test_valid_u1_project_is_clean(tmp_path):
     p = str(tmp_path / "good.3mf"); _make(p, _VALID)
     res = cc.check(p)
-    assert res["findings"] == []
-    assert "No known" in res["summary"]
+    # The fixture has no countable objects, so object spacing stays "not verified"
+    # (unknown is never treated as a single object); nothing else is flagged.
+    assert [f["id"] for f in res["findings"]] == ["layout.object_spacing"]
+    assert not [f for f in res["findings"] if f["severity"] == "error"]
 
 
 def test_relative_e_without_reset_flagged(tmp_path):
@@ -101,13 +107,48 @@ def test_source_bytes_unchanged(tmp_path):
     assert _sha(p) == before
 
 
+_REQUIRED_PARTS = {
+    "[Content_Types].xml": "<Types/>",
+    "_rels/.rels": "<Relationships/>",
+    "3D/3dmodel.model": '<model unit="millimeter"><build/></model>',
+}
+
+
+def _geometry_only(path, omit=None, settings=False):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, body in _REQUIRED_PARTS.items():
+            if name != omit:
+                z.writestr(name, body)
+        if settings:
+            z.writestr(SETTINGS, json.dumps(_VALID))
+
+
 def test_bare_model_without_settings(tmp_path):
+    # a structurally valid geometry-only 3MF stays clean
     p = str(tmp_path / "bare.3mf")
-    with zipfile.ZipFile(p, "w") as z:
-        z.writestr("3D/3dmodel.model", "<model/>")
+    _geometry_only(p)
     res = cc.check(p)
     assert res["findings"] == []
     assert "bare model" in res["summary"]
+
+
+@pytest.mark.parametrize("missing", sorted(_REQUIRED_PARTS))
+@pytest.mark.parametrize("settings", [False, True])
+def test_missing_required_part_is_unreadable(tmp_path, missing, settings):
+    p = str(tmp_path / "broken.3mf")
+    _geometry_only(p, omit=missing, settings=settings)
+    res = cc.check(p)
+    found = [f for f in res["findings"] if f["id"] == "project.unreadable"]
+    assert len(found) == 1 and found[0]["severity"] == "error"
+    assert missing in found[0]["evidence"]
+    assert "bare model" not in res["summary"]
+
+
+def test_unreadable_finding_id_is_what_the_desktop_gate_keys_on():
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    src = open(os.path.join(root, "desktop", "src", "lib", "compatibility.ts"),
+               encoding="utf-8").read()
+    assert 'ids.has("project.unreadable")) return "unreadable"' in src
 
 
 @pytest.mark.skipif(not os.environ.get("SNAPSTUDIO_REAL_MULTICOLOR_FIXTURE"),

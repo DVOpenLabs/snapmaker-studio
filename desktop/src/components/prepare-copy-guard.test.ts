@@ -6,8 +6,8 @@ const BANNED_PATTERNS = [/\bsafe\b/i, /print-ready/i, /guaranteed/i];
 const sources = import.meta.glob([
   "./PrepareModeChooser.tsx",
   "./PrepareSettingsSummary.tsx",
-  "../lib/evidenceKind.ts",
   "./FirstPrintCard.tsx",
+  "./PrintRiskSignals.tsx",
   "../routes/Compatibility.tsx",
   "../routes/DesignInsights.tsx",
   "../routes/LiveWorkspace.tsx",

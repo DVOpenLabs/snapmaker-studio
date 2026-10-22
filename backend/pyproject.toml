@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snapmaker-studio"
-version = "1.5.1"
+version = "1.6.0"
 description = "Snapmaker Studio engine — a local-first workflow platform for modern 3D printing: understand, validate, and prepare designs print-ready (Bambu/Orca/STL today; Snapmaker U1 as the first printer target)."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -22,6 +22,8 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Test-only: validates the committed scene/1 JSON Schema with a real validator (never imported by the engine).
+test = ["pytest>=8", "jsonschema>=4.18,<5"]
 
 [project.scripts]
 u1convert = "u1convert.cli:cli"

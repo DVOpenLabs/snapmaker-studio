@@ -46,15 +46,16 @@ export default function LiveWorkspace() {
   const meshQ = useQuery({ queryKey: ["mesh", file?.path], queryFn: () => apiMesh(file!.path), enabled: !!file && doctor.status === "done" });
   const insQ = useQuery({ queryKey: ["insights", file?.path], queryFn: () => apiInsights(file!.path), enabled: !!file && doctor.status === "done" });
   const toolFitQ = useQuery({ queryKey: ["toolhead-fit", file?.path, u1Host], queryFn: () => apiToolheadFit(file!.path, u1Host), enabled: !!file && doctor.status === "done", retry: false, staleTime: 30000 });
-  // Honest readiness report — the single source of truth for the score/headline (the raw
-  // doctor verdict/score only means profile compatibility).
+  // Honest readiness report — the single source of truth for the headline (the raw
+  // doctor verdict only means profile compatibility).
   const repQ = useQuery({ queryKey: ["report", file?.path], queryFn: () => apiReport(file!.path), enabled: !!file && doctor.status === "done" });
 
   // No file in session (e.g. hard refresh) — send the user back to start.
   if (!file) return <Navigate to="/" replace />;
 
   const d = doctor.data;
-  const rv = readinessView(repQ.data);   // honest readiness (score/headline authority)
+  const prepareBlocked = !!d?.prepare_blocked;
+  const rv = readinessView(repQ.data);   // honest readiness (headline authority)
   const TypeIcon = file.ext === "stl" ? FileBox : Boxes;
   const converting = convert.status === "loading";
 
@@ -69,29 +70,25 @@ export default function LiveWorkspace() {
           <h2 className="truncate text-xl font-semibold tracking-tight">{file.name}</h2>
           <p className="truncate text-xs text-muted-foreground">{file.path}</p>
         </div>
-        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} />}
+        {doctor.status === "done" && d?.verdict && <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />}
         <div className="ml-auto flex gap-2">
           <Button variant="secondary" size="sm" onClick={openFile}>
             <FolderOpen className="h-4 w-4" /> Open another
           </Button>
-          <Button onClick={() => runConvert()} disabled={converting || preview.status === "loading" || doctor.status === "loading"}>
+          <Button onClick={() => runConvert()} disabled={prepareBlocked || converting || preview.status === "loading" || doctor.status === "loading"}>
             {converting ? <Spinner /> : <Wand2 className="h-4 w-4" />} Prepare U1 copy
           </Button>
         </div>
       </div>
 
-      {/* Readiness verdict + score + issues — kept directly under the header CTA so the
+      {/* Readiness verdict + issues — kept directly under the header CTA so the
           decision data sits next to the "Prepare U1 copy" action it informs. */}
       {doctor.status === "done" && d && (
         <Card>
           <CardContent className="space-y-4 p-6">
             <div className="flex items-center gap-5">
-              <div className={cn("flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 text-2xl font-bold",
-                rv.tone === "ready" ? "border-ready/40 text-ready" : "border-repairable/40 text-repairable")}>
-                {rv.scoreCap ?? d.score ?? "—"}
-              </div>
               <div className="space-y-1.5">
-                <StatusBadge verdict={d.verdict as Verdict} />
+                <StatusBadge verdict={d.verdict as Verdict} prepareBlocked={d.prepare_blocked} />
                 <p className="text-sm font-medium">{rv.headline}</p>
                 <p className="text-sm text-muted-foreground">{rv.atRisk[0] ?? d.recommended_action}</p>
               </div>
@@ -125,7 +122,7 @@ export default function LiveWorkspace() {
         <Card>
           <CardContent className="space-y-3 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold"><HeartPulse className="h-4 w-4 text-primary" /> Design Health</div>
-            <DesignHealth mesh={meshQ.data} dims={insQ.data?.dimensions_mm} mode="advanced" />
+            <DesignHealth mesh={meshQ.data} dims={insQ.data?.dimensions_mm} objects={insQ.data?.object_sizes_mm} unmeasured={insQ.data?.objects_unmeasured} mode="advanced" />
           </CardContent>
         </Card>
       )}
@@ -168,9 +165,9 @@ export default function LiveWorkspace() {
         </Card>
       )}
 
-      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} />}
+      {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}
-      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={() => runConvert("preserve")} onPrepareRecommended={() => runConvert("recommended")} />}
+      {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={prepareBlocked ? undefined : () => runConvert("preserve")} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
       {preview.status === "error" && <p className="text-sm text-risk">{preview.error}</p>}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_300px]">
@@ -230,7 +227,7 @@ export default function LiveWorkspace() {
                 <div className="pt-1">
                   <OrcaHandoff outputPath={convert.data.output_path} originalPath={file?.path} />
                 </div>
-                {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={() => runConvert("recommended")} />}
+                {convert.data.settings_summary && <PrepareSettingsSummary summary={convert.data.settings_summary} mode={convert.data.prepare_mode} isStl={file.ext === "stl"} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}
               </CardContent>
             </Card>
           )}
@@ -241,7 +238,7 @@ export default function LiveWorkspace() {
                   <AlertTriangle className="h-5 w-5" /> Preparation failed
                 </div>
                 <p className="text-sm text-muted-foreground">{convert.error}</p>
-                <Button variant="secondary" size="sm" onClick={() => runConvert()} disabled={preview.status === "loading"}>
+                <Button variant="secondary" size="sm" onClick={() => runConvert()} disabled={prepareBlocked || preview.status === "loading"}>
                   <RotateCw className="h-4 w-4" /> Retry
                 </Button>
               </CardContent>
@@ -330,7 +327,6 @@ export default function LiveWorkspace() {
                   <>
                     <div className="flex justify-between"><dt>U1 compatible</dt><dd className="text-foreground">{d.is_compatible ? "yes" : "no"}</dd></div>
                     {d.filament_count != null && <div className="flex justify-between"><dt>Filaments</dt><dd className="text-foreground">{d.filament_count}</dd></div>}
-                    {d.score != null && <div className="flex justify-between"><dt>Score</dt><dd className="text-foreground">{d.score}</dd></div>}
                   </>
                 )}
               </dl>

@@ -11,24 +11,36 @@ import { open3mfDialog, compatibilityCheck, convert, type CompatibilityResult, t
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
+import { PrepareRefusal } from "@/components/PrepareRefusal";
 import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
 import type { MaterialSelection } from "@/lib/projectMaterials";
 import { Copy, Stethoscope } from "lucide-react";
-import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings } from "@/lib/compatibility";
+import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
 import { isExt } from "@/lib/modelPath";
+import { useSession } from "@/store/session";
 import { PlacementCard } from "@/components/PlacementCard";
 import { PreflightCard } from "@/components/PreflightCard";
 
 export default function Compatibility() {
   const { path, fromSession, override } = useModelPath(isExt("3mf"));
   const [result, setResult] = useState<CompatibilityResult | null>(null);
-  const [prep, setPrep] = useState<Awaited<ReturnType<typeof convert>> | null>(null);
+  const [prepState, setPrep] = useState<Awaited<ReturnType<typeof convert>> | null>(null);
   const [prepareMode, setPrepareMode] = useState<PrepareMode>("preserve");
-  const [preview, setPreview] = useState<ConversionResult | null>(null);
+  const [previewState, setPreview] = useState<ConversionResult | null>(null);
   // True while Project Materials holds choices: Prepare then goes through its review step, so a plain one is not offered beside it.
   const [materialsActive, setMaterialsActive] = useState(false);
   const requestGeneration = useRef(0);
+  // The engine says Studio cannot prepare this project (unreadable, or readable but refused): every
+  // Prepare entry point (button, mode chooser, Project Materials) stays off and the copy says why.
+  const gate = prepareGate(result?.findings);
+  const blocked = gate !== "open";
+  // The current eligibility, readable from callbacks and late results that closed over an older render.
+  const blockedRef = useRef(blocked);
+  blockedRef.current = blocked;
+  // A preparation or preview result is never shown or acted on while Prepare is closed.
+  const prep = blocked ? null : prepState;
+  const preview = blocked ? null : previewState;
 
   const checkM = useMutation({
     mutationFn: (p: string) => compatibilityCheck(p),
@@ -38,14 +50,37 @@ export default function Compatibility() {
   const prepM = useMutation({
     mutationFn: ({ path: requestPath, mode, materials }: { path: string; mode: PrepareMode; generation: number; materials?: MaterialSelection[] }) =>
       convert(requestPath, undefined, mode, false, materials),
-    onMutate: () => setPrep(null),
-    onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current) setPrep(d); },
+    // The store hands back the revision this request belongs to; it is the only thing that lets its result in later.
+    onMutate: (variables) => { setPrep(null); return { revision: useSession.getState().beginPrepare(variables.path) }; },
+    onSuccess: (d, variables, started) => {
+      if (variables.generation !== requestGeneration.current || blockedRef.current) return;
+      setPrep(d);
+      // Share it with This job and After slicing; the store accepts it only for the project that is open and only if validated.
+      useSession.getState().publishPrepared(started?.revision, variables.path, d);
+    },
   });
   const previewM = useMutation({
     mutationFn: ({ path: requestPath }: { path: string; generation: number }) => convert(requestPath, undefined, "preserve", true),
     onMutate: () => setPreview(null),
-    onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current) setPreview(d); },
+    onSuccess: (d, variables) => { if (variables.generation === requestGeneration.current && !blockedRef.current) setPreview(d); },
   });
+
+  // Every Prepare and preview entry goes through these, so none can send a request once eligibility has closed.
+  const startPrepare = (requestPath: string, mode: PrepareMode) => {
+    if (blockedRef.current) return;
+    prepM.mutate({ path: requestPath, mode, generation: ++requestGeneration.current });
+  };
+  const startPreview = (requestPath: string) => {
+    if (blockedRef.current) return;
+    previewM.mutate({ path: requestPath, generation: ++requestGeneration.current });
+  };
+  // Eligibility closing clears what was prepared or previewed and invalidates anything still in flight.
+  useEffect(() => {
+    if (!blocked) return;
+    requestGeneration.current++;
+    setPrep(null);
+    setPreview(null);
+  }, [blocked]);
 
   // Reuse a 3MF already open in the session: check it automatically instead of
   // forcing the user to re-pick the file they just opened.
@@ -99,10 +134,13 @@ export default function Compatibility() {
 
       {/* Project Materials is a normal part of preparing a model, not a compatibility finding: it appears
           whenever the engine reports filament slots, whether or not the settings check found anything. */}
-      {path && (
+      {path && !blocked && (
         <ProjectMaterialsCard path={path} mode={prepareMode} busy={prepM.isPending}
           onActiveChange={setMaterialsActive}
-          onPrepare={(materials) => prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials })} />
+          onPrepare={async (materials) => {
+            if (blockedRef.current) throw new Error("Studio cannot prepare a U1 copy of this project.");
+            return prepM.mutateAsync({ path, mode: prepareMode, generation: ++requestGeneration.current, materials });
+          }} />
       )}
 
       {/* What Prepare did - success, a refusal or a failure - is shown whether or not the settings check has
@@ -110,7 +148,7 @@ export default function Compatibility() {
           finish without anything on screen. The compatibility findings below stay conditional. */}
       {path && (prep || prepM.isError) && (
         <div className="space-y-3" data-testid="prepare-outcome">
-      {prepM.isError && <p className="text-sm text-risk">Couldn't prepare a copy: {(prepM.error as Error).message}</p>}
+      {prepM.isError && <PrepareRefusal error={prepM.error} />}
 
       {prep && prep.blocked && <BlockedPanel result={prep} onBack={() => setPrep(null)} />}
       {prep && !prep.blocked && !prep.output_path && (
@@ -132,7 +170,7 @@ export default function Compatibility() {
             Snapmaker Orca and use <b>Arrange all plates</b> before slicing; objects may sit outside a plate.
           </p>
           <ProjectMaterialsFidelity summary={prep.settings_summary?.project_materials} />
-          {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+          {prep.settings_summary && <PrepareSettingsSummary summary={prep.settings_summary} mode={prep.prepare_mode} isStl={false} onPrepareRecommended={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("recommended"); startPrepare(path, "recommended"); } }} />}
           {prep.errors && prep.errors.length > 0 && (
             <ul className="space-y-1 text-xs text-muted-foreground">
               {prep.errors.map((e: string, i: number) => <li key={i}>• {e}</li>)}
@@ -191,14 +229,17 @@ export default function Compatibility() {
 
           {counts && counts.total > 0 && (
             <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-              <p className="text-sm">
-                This model may be fine, but the project settings are for another printer. Studio can
-                prepare a U1 profile copy so Orca opens it with U1-compatible settings.
+              <p className="text-sm" data-testid={blocked ? "prepare-blocked-copy" : undefined}>
+                {gate === "unreadable"
+                  ? "Studio cannot read this file as a project, so it cannot prepare a U1 copy. Re-export the project from the slicer that made it and open the new file."
+                  : blocked
+                  ? "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it, or remove the settings listed above in the slicer that made it and export it again."
+                  : "This model may be fine, but the project settings are for another printer. Studio can prepare a U1 profile copy so Orca opens it with U1-compatible settings."}
               </p>
-              <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={() => path && previewM.mutate({ path, generation: ++requestGeneration.current })} previewing={previewM.isPending || prepM.isPending} />
-              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path) { setPrepareMode("preserve"); prepM.mutate({ path, mode: "preserve", generation: ++requestGeneration.current }); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path) { setPrepareMode("recommended"); prepM.mutate({ path, mode: "recommended", generation: ++requestGeneration.current }); } }} />}
+              <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} blocked={blocked} onCustom={() => path && startPreview(path)} previewing={previewM.isPending || prepM.isPending} />
+              {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("preserve"); startPrepare(path, "preserve"); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("recommended"); startPrepare(path, "recommended"); } }} />}
               {previewM.isError && <p className="text-sm text-risk">Couldn&apos;t review settings: {(previewM.error as Error).message}</p>}
-              <Button size="sm" onClick={() => path && prepM.mutate({ path, mode: prepareMode, generation: ++requestGeneration.current })} disabled={prepM.isPending || previewM.isPending || !path || materialsActive}>
+              <Button size="sm" onClick={() => path && startPrepare(path, prepareMode)} disabled={blocked || prepM.isPending || previewM.isPending || !path || materialsActive}>
                 {prepM.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus className="h-4 w-4" />}
                 Prepare U1 copy
               </Button>

@@ -4,26 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { intelligenceReport, type IntelligenceReport as Report } from "@/api";
 import { AlertTriangle, ArrowRight, ChevronDown, CheckCircle2, Stethoscope, Sparkles, GitCompareArrows, Users } from "lucide-react";
 
-// The Studio Intelligence Report — the product. One screen that answers, in 15s:
-// will it print, what it costs, what to sell it for, the profit, the biggest
-// risk, and the next action. The seven Doctors become the supporting evidence.
-function scoreColor(s?: number | null): string {
-  if (s == null) return "--muted-foreground";
-  if (s >= 75) return "--stage-validate";   // green
-  if (s >= 50) return "--doctor-cost";       // amber
-  return "--risk";                            // red/magenta
-}
+// The Studio Intelligence Report: one screen with the risks Studio found, what it
+// costs, the biggest risk and the next action. The Doctors are the supporting
+// evidence. It shows no headline score: nothing here is calibrated against print
+// outcomes, so a number would read as a measure of print readiness (#92).
 
-// Advisory readiness shown as a word, never a bare "100%" that reads as a guarantee.
-function readinessLabel(s?: number | null): string {
-  if (s == null) return "—";
-  if (s >= 75) return "Few risks";
-  if (s >= 50) return "Some risks";
-  return "Several risks";
-}
-
-export function IntelligenceReport({ filePath, host, data }: { filePath?: string; host?: string | null; data?: Report }) {
-  const [open, setOpen] = useState(false);
+export function IntelligenceReport({ filePath, host, data, defaultOpen = false }: { filePath?: string; host?: string | null; data?: Report; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const { data: fetched, isLoading } = useQuery({
     queryKey: ["report", filePath, host],
     queryFn: () => intelligenceReport(filePath as string, host),
@@ -42,15 +29,8 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
   return (
     <Card className="overflow-hidden border-primary/30">
       <CardContent className="space-y-4 p-5">
-        {/* hero: Studio Intelligence Score + headline metrics */}
+        {/* header + headline metrics */}
         <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-2xl"
-               style={{ backgroundColor: `hsl(var(${scoreColor(r.studio_score)}) / 0.12)`, boxShadow: `inset 0 0 0 2px hsl(var(${scoreColor(r.studio_score)}) / 0.5)` }}>
-            <span className="text-2xl font-extrabold tabular-nums" style={{ color: `hsl(var(${scoreColor(r.studio_score)}))` }}>
-              {r.studio_score ?? "—"}
-            </span>
-            <span className="text-[9px] uppercase tracking-wide text-muted-foreground">/ 100</span>
-          </div>
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-semibold">
               <Stethoscope className="h-4 w-4 text-primary" /> Studio Intelligence Report
@@ -63,13 +43,20 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {metric("Readiness (est.)", readinessLabel(r.print_success_score), scoreColor(r.print_success_score))}
+          {(r.risks_found ?? 0) === 0 && (r.not_verified?.length ?? 0) > 0
+            ? metric("Not verified", r.not_verified!.join(", ").replace(/^./, (c) => c.toUpperCase()), "--doctor-cost")
+            : metric("Risks found", String(r.risks_found ?? 0), (r.risks_found ?? 0) > 0 ? "--doctor-cost" : undefined)}
           {metric("Material cost", r.cost != null ? `${cur}${r.cost}` : "—", "--doctor-cost")}
-          {metric("Printer", r.printer_compatibility ?? "Unknown")}
+          {metric("Printer", r.printer_status ?? "Not checked")}
         </div>
         <p className="text-[11px] text-muted-foreground opacity-70">
-          Advisory readiness estimate — not a guarantee of print success. Review settings before printing.
+          {(r.risks_found ?? 0) === 0 && (r.not_verified?.length ?? 0) > 0
+            ? "Advisory: Studio could not verify everything listed as not verified, and this is not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing."
+            : "Advisory: a count of the risks Studio found, not a measure of how likely the print is to succeed. Verify in Snapmaker Orca before printing."}
         </p>
+        {(r.not_verified?.length ?? 0) > 0 && (r.risks_found ?? 0) > 0 && (
+          <p className="text-[11px] text-muted-foreground">Not verified by Studio: {r.not_verified!.join(", ")}. Check it in Snapmaker Orca.</p>
+        )}
 
         {/* Pricing is a secondary, opt-in estimate — not the headline on a readiness screen. */}
         {(r.suggested_price != null || r.margin_pct != null) && (
@@ -81,18 +68,6 @@ export function IntelligenceReport({ filePath, host, data }: { filePath?: string
               <a href="/doctor/pricing" className="text-primary hover:underline">View pricing estimate</a>
             </p>
           </details>
-        )}
-
-        {/* Expected Improvement — clearly an estimate */}
-        {r.expected_improvement && r.expected_improvement.after_fixes > r.expected_improvement.current && (
-          <div className="flex items-center gap-3 rounded-md border border-border p-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-bold tabular-nums text-muted-foreground">{r.expected_improvement.current}%</span>
-              <ArrowRight className="h-4 w-4 text-primary" />
-              <span className="font-bold tabular-nums" style={{ color: "hsl(var(--stage-validate))" }}>{r.expected_improvement.after_fixes}%</span>
-            </div>
-            <span className="text-xs text-muted-foreground">expected print success after the recommended fixes <span className="opacity-70">(estimate)</span></span>
-          </div>
         )}
 
         {/* biggest risk + the one next action */}
