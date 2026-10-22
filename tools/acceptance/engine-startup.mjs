@@ -14,13 +14,26 @@ export const DEFAULT_TIMEOUT_MS = 60000;
 const STDERR_TAIL_BYTES = 1500;
 const STDOUT_CAP = 65536;
 
-/** Stop a process tree by the PID this script started. */
+const KILL_TIMEOUT_MS = 10000;
+
+/** Stop a process tree by the PID this script started. Bounded; true only when the stop command succeeded. */
 export function stopTree(pid) {
-  if (!pid) return;
+  if (!pid) return false;
   try {
-    if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
-    else process.kill(pid, "SIGKILL");
-  } catch { /* already gone */ }
+    if (process.platform === "win32") {
+      const r = spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", timeout: KILL_TIMEOUT_MS });
+      return r.status === 0;
+    }
+    process.kill(pid, "SIGKILL");
+    return true;
+  } catch { return false; }
+}
+
+/** Stop a child this script spawned. A child that already exited is never targeted: its PID may have been reused by an
+ *  unrelated process. Returns true when nothing is left running (already exited, or the stop command succeeded). */
+export function stopChild(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return true;
+  return stopTree(child.pid);
 }
 
 const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -67,13 +80,15 @@ export function startEngine({ command, args, cwd, env, repoRoot, timeoutMs = DEF
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (stop) stopTree(child.pid);
+      if (stop) stopChild(child);
       fn(value);
     };
-    const timer = setTimeout(
-      () => settle(reject, new Error(`engine did not report its port within ${timeoutMs} ms; stopped the process this run started (pid ${child.pid})`), true),
-      timeoutMs,
-    );
+    const timer = setTimeout(() => {
+      const stopped = stopChild(child);
+      settle(reject, new Error(`engine did not report its port within ${timeoutMs} ms; ` + (stopped
+        ? `stopped the process this run started (pid ${child.pid})`
+        : `could not confirm it stopped: the process this run started (pid ${child.pid}) may still be running`)), false);
+    }, timeoutMs);
     child.once("error", (e) => settle(reject, new Error(e?.code === "ENOENT"
       ? `engine executable not found: ${basename(String(command))} (set PYTHON to a Python 3.13+ interpreter)`
       : `engine could not be started: ${e?.code ?? e?.message}`), true));

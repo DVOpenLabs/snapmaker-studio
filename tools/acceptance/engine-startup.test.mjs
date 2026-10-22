@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { startEngine, boundedTail, resolveTimeout, DEFAULT_TIMEOUT_MS, stopTree } from "./engine-startup.mjs";
+import { startEngine, boundedTail, resolveTimeout, DEFAULT_TIMEOUT_MS, stopTree, stopChild } from "./engine-startup.mjs";
 
 // Hard per-test ceiling: a regression (a child that is never stopped) fails the test instead of hanging node --test.
 const HARD_MS = 15000;
@@ -88,4 +88,30 @@ test("the engine timeout setting must be a positive whole number", { timeout: HA
   assert.equal(resolveTimeout("250"), 250);
   for (const bad of ["-5", "0", "abc", "1.5", "NaN", "1e3x"]) assert.throws(() => resolveTimeout(bad), /positive whole number/, bad);
   await assert.rejects(run(process.execPath, ["-e", "0"], -1), /positive whole number/);
+});
+
+test("stopChild never targets a child that already exited (its PID may be reused)", { timeout: HARD_MS }, async () => {
+  const s = script("quick.mjs", "process.exit(0);");
+  const { spawn } = await import("node:child_process");
+  const c = spawn(process.execPath, [s], { stdio: "ignore" });
+  await new Promise((r) => c.once("close", r));
+  // A fake PID that would be a real process if it were targeted: this test process itself.
+  const fake = { exitCode: c.exitCode, signalCode: c.signalCode, pid: process.pid };
+  assert.equal(stopChild(fake), true);
+  assert.ok(alive(process.pid), "the test process was not signalled");
+});
+
+test("stopChild stops a live child and reports success", { timeout: HARD_MS }, async () => {
+  const s = script("live.mjs", "setInterval(() => {}, 1000);");
+  const { spawn } = await import("node:child_process");
+  const c = spawn(process.execPath, [s], { stdio: "ignore" });
+  try {
+    assert.equal(stopChild(c), true);
+    for (let i = 0; i < 50 && alive(c.pid); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(alive(c.pid), false);
+  } finally { if (alive(c.pid)) stopTree(c.pid); }
+});
+
+test("stopTree on a missing PID reports failure instead of claiming success", () => {
+  assert.equal(stopTree(0), false);
 });

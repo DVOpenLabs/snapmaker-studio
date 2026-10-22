@@ -28,7 +28,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveTimeout, startEngine, stopTree } from "./engine-startup.mjs";
+import { resolveTimeout, startEngine, stopChild } from "./engine-startup.mjs";
 
 if (process.platform !== "win32") { console.error("This check is written for Windows (taskkill, npx.cmd)."); process.exit(2); }
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,7 +43,9 @@ let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
-  for (const c of children) stopTree(c.pid);
+  for (const c of children) {
+    if (!stopChild(c)) console.error(`could not confirm that pid ${c.pid} (started by this run) stopped; check for a leftover process`);
+  }
 }
 process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => { cleanup(); process.exit(130); });
