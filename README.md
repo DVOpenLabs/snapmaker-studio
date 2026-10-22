@@ -524,7 +524,7 @@ is the first printer target; the workflow is built to grow across ecosystems.
   and complexity, detected materials/colors, object and plate counts, and the source
   ecosystem. No guesswork, no fake data.
 - **Validation Center** — a readiness check that answers the questions a novice
-  actually has: *will it print, what's preserved, what changes, and what's at risk?* —
+  actually has: *what could Studio check, what's preserved, what changes, and what's at risk?* —
   now backed by the Design Health geometry checks above.
 - **Prepare** — make a U1 profile copy in one click — review in Orca before slicing.
   Originals are never overwritten; every change is recorded.
