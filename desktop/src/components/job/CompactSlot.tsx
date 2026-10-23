@@ -62,6 +62,9 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
               <>{" "}<StatusBadge status={status}
                 confirmedByYou={!!choice.preset?.confirmed && (!!choice.preset?.needsSayso || choice.preset?.source === "user")} /></>
             )}
+            {slot.close_call && (
+              <> <span className="rounded-full bg-repairable/15 px-2 py-px text-[11px] font-semibold text-repairable-text" data-testid="close-call">Close call</span></>
+            )}
           </p>
         </div>
         <button type="button" aria-expanded={open} aria-controls={panel} data-testid="slot-toggle"
@@ -76,43 +79,51 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
       {slot.usage && slot.usage.verdict !== "referenced" && (
         <p className="text-[11px] text-muted-foreground" data-testid="slot-usage" data-verdict={slot.usage.verdict}>{USAGE_COPY[slot.usage.verdict]}</p>
       )}
-      {slot.close_call && (
-        <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="close-call">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{COPY.closeCall}
-        </p>
-      )}
       {spoolFlags.length > 0 && <Flags reasons={spoolFlags} testId="spool-flags" />}
       {spool?.mapping.stale && <p className="text-xs font-medium text-repairable" data-testid="stale-mapping">{COPY.stale}</p>}
       {choice.preset?.source === "user" && !choice.keepOwn && (
         <p className="text-xs font-medium text-repairable" data-testid="manual-check">{MANUAL_CHECK}</p>
       )}
       {choice.preset && !choice.preset.confirmed && !choice.keepOwn && (
-        <div className="flex flex-wrap items-center gap-2" data-testid="needs-confirmation">
-          <p className="min-w-0 flex-1 text-xs text-repairable">{choice.preset.note ?? spool?.mapping.reason}</p>
-          <Button size="sm" onClick={() => dispatch({ type: "confirmPreset", slot: slot.slot })}>
-            <Check className="h-3.5 w-3.5" aria-hidden="true" /> {choice.preset.needsSayso ? "Confirm this is a U1 preset" : "Confirm this preset"}
-          </Button>
+        <div data-testid="needs-confirmation">
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 text-xs text-repairable-text">This preset needs your confirmation.</p>
+            <Button size="sm" onClick={() => dispatch({ type: "confirmPreset", slot: slot.slot })}>
+              <Check className="h-3.5 w-3.5" aria-hidden="true" /> {choice.preset.needsSayso ? "Confirm this is a U1 preset" : "Confirm this preset"}
+            </Button>
+          </div>
+          {(choice.preset.note ?? spool?.mapping.reason) && (
+            <details className="text-[11px] text-muted-foreground"><summary className="cursor-pointer select-none">Why</summary>
+              <p className="mt-1">{choice.preset.note ?? spool?.mapping.reason}</p></details>
+          )}
         </div>
       )}
       {!choice.preset && !choice.keepOwn && slot.suggestion && (
-        <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="suggestion">
-          <StatusBadge status={slot.suggestion.status} />
-          <span className="min-w-0 flex-1">Suggested: {slot.suggestion.base_name}. <span className="text-muted-foreground">{slot.suggestion.reason}</span></span>
-          <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "pickPreset", slot: slot.slot, name: slot.suggestion!.base_name })}>
-            Use this preset
-          </Button>
+        <div data-testid="suggestion">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="min-w-0 flex-1">Suggested preset: <span className="font-medium">{slot.suggestion.base_name}</span> <StatusBadge status={slot.suggestion.status} /></span>
+            <Button size="sm" variant="secondary" onClick={() => dispatch({ type: "pickPreset", slot: slot.slot, name: slot.suggestion!.base_name })}>
+              Use this preset
+            </Button>
+          </div>
+          {slot.suggestion.reason && (
+            <details className="text-[11px] text-muted-foreground"><summary className="cursor-pointer select-none">Why this suggestion</summary>
+              <p className="mt-1">{slot.suggestion.reason}</p></details>
+          )}
         </div>
       )}
       {spool && !choice.preset && !choice.keepOwn && (
-        <p className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
+        <div className="flex items-start gap-1.5 text-xs text-repairable" data-testid="spool-without-preset">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            {slot.settings_id
-              ? `${SPOOL_WITHOUT_PRESET} ${SPOOL_PRESET_CAVEAT}${isForeignPreset(slot.settings_id) ? ` ${SPOOL_FOREIGN_PRESET_HINT}` : ""}`
-              : SPOOL_WITHOUT_PRESET_NONE_EXISTING}
+          <div>
+            {slot.settings_id ? SPOOL_WITHOUT_PRESET : SPOOL_WITHOUT_PRESET_NONE_EXISTING}
             {!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}
-          </span>
-        </p>
+            {slot.settings_id && (
+              <details className="mt-0.5 text-[11px] text-muted-foreground"><summary className="cursor-pointer select-none">More</summary>
+                <span className="mt-1 block">{SPOOL_PRESET_CAVEAT}{isForeignPreset(slot.settings_id) ? ` ${SPOOL_FOREIGN_PRESET_HINT}` : ""}</span></details>
+            )}
+          </div>
+        </div>
       )}
       {choice.keepOwn && (
         <p className="text-xs text-muted-foreground" data-testid="keep-own-notice">{slot.settings_id ? KEEP_OWN_NOTICE : KEEP_OWN_NOTICE_NONE_EXISTING}</p>
@@ -120,6 +131,11 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
 
       {open && (
         <div id={panel} className="space-y-2 border-t border-border pt-2" data-testid="slot-panel">
+          {slot.close_call && (
+            <p className="flex items-start gap-1.5 text-xs text-repairable-text" data-testid="close-call-note">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{COPY.closeCall}
+            </p>
+          )}
           {slot.candidates.length > 0 ? (
             <ul className="m-0 list-none space-y-1.5 p-0" aria-label={`Spool candidates for slot ${n}`}>
               {slot.candidates.map((c) => (

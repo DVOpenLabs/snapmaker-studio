@@ -125,7 +125,7 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
       )}
 
       {showColours && preview && (
-        <div className="grid min-h-0 flex-1 gap-3 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(180px,240px)]">
+        <div className="grid min-h-0 flex-1 gap-3 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(150px,190px)]">
           <div className="relative h-[calc(100vh-24rem)] min-h-[300px] max-h-[560px] overflow-hidden rounded-lg border border-border bg-muted/30" data-testid="colour-view">
             <Suspense fallback={<p className="p-4 text-sm text-muted-foreground" role="status">Starting the 3D view…</p>}>
               <ModelViewer preview={preview} colourFor={colourFor} highlightSlot={highlight} resetKey={resetKey} onLost={onLost}

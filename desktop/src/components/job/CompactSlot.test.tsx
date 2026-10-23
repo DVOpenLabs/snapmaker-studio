@@ -123,6 +123,21 @@ describe("compact slot row", () => {
     expect((screen.getByRole("button", { name: /Review/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("keeps the engine's long wording in details: the line stays short, the words stay available", () => {
+    const sug = { status: "needs_confirmation" as const, preset_name: "P", base_name: "Generic PLA", reason: "Generic PLA is installed for this nozzle. Studio suggests it but does not choose between presets for you." };
+    render(<Harness a={analysis([slot({ suggestion: sug, close_call: true })])} />);
+    const box = screen.getByTestId("suggestion");
+    const d = within(box).getByText("Why this suggestion").closest("details")!;
+    expect(d.open).toBe(false);
+    expect(d.textContent).toContain("does not choose between presets for you");
+    expect(box.textContent).toContain("Suggested preset: Generic PLA");
+    // close call: a chip on the line, the sentence once the person opens the row to choose
+    expect(screen.getByTestId("close-call").textContent).toBe("Close call");
+    expect(screen.queryByTestId("close-call-note")).toBeNull();
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    expect(screen.getByTestId("close-call-note").textContent).toMatch(/very close/);
+  });
+
   it("says a spool without a preset leaves the project's preset alone, collapsed or not", () => {
     render(<Harness a={analysis()} />);
     fireEvent.click(screen.getByTestId("slot-toggle"));
