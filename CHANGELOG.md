@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **One job screen.** Opening a project lands on one screen: the model in the middle, the target, materials and copy settings in a pane beside it, and a single button for the next step (create the U1 copy, open it in Snapmaker Orca, compare the slice). The copy's file name and folder, and the settings comparison after slicing, show up in the same place. Opening or restoring a job never prepares, opens Orca or slices by itself, and every existing check still applies.
+- **Colour preview.** For a millimetre 3MF, Studio draws the model by the filament that prints each part, links each filament to its toolhead, and lets you compare the project's own colours, the spool colours you have chosen so far, and the colours read back from the copy Studio wrote. It is read-only. More than four colours stay visible, each in its own colour, and Studio does not remove or merge them. Surface the project does not assign is shown grey. When a preview cannot be built or drawn (another unit, an unreadable file, too much detail, no 3D graphics) Studio says why and shows the plate instead. A file with no filament information is labelled shape only.
+
 ### Changed
 - **Print risk signals replace the readiness percentage.** The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each risk it found, once per condition, with what it means and what to do, and says what it did and did not check. Community guidance attaches only to the conditions it actually fits.
 
