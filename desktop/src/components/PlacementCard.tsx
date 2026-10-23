@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Move, Copy } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, Move, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/store/toast";
@@ -7,16 +7,8 @@ import { placementCheck, preparePlaced } from "@/api";
 import type { PlacementCheck, PlacementFix } from "@/api";
 import { blockedReason, itemLabel, overhangText, placementVerdict } from "@/lib/placement";
 
-/**
- * Where the objects actually sit.
- *
- * A project made for another printer carries its objects at that printer's
- * coordinates. A small part can be well within the U1's size limits and still
- * land off the plate — every size check passes and Snapmaker Orca just says
- * "out of bounds". This card names the object, the edge and the millimetres,
- * and offers a fix that writes a new copy.
- */
-export function PlacementCard({ path }: { path: string }) {
+/** Fetches the check for one path and owns the "move onto the plate" fix; the card and the job screen both read it. */
+export function usePlacement(path: string) {
   const showToast = useToast((s) => s.show);
   const [check, setCheck] = useState<PlacementCheck | null>(null);
   const [failed, setFailed] = useState(false);
@@ -35,10 +27,6 @@ export function PlacementCard({ path }: { path: string }) {
     return () => { alive = false; };
   }, [path]);
 
-  // A failed check must not block the page around it; the other Doctors on this
-  // route still have something to say.
-  if (failed) return null;
-
   const runFix = async () => {
     setFixing(true);
     try {
@@ -55,6 +43,23 @@ export function PlacementCard({ path }: { path: string }) {
     }
   };
 
+  return { check, failed, fix, fixing, runFix };
+}
+
+/**
+ * Where the objects actually sit.
+ *
+ * A project made for another printer carries its objects at that printer's
+ * coordinates. A small part can be well within the U1's size limits and still
+ * land off the plate — every size check passes and Snapmaker Orca just says
+ * "out of bounds". This card names the object, the edge and the millimetres,
+ * and offers a fix that writes a new copy.
+ */
+export function PlacementCard({ path }: { path: string }) {
+  const { check, failed, fix, fixing, runFix } = usePlacement(path);
+  // A failed check must not block the page around it; the other Doctors on this
+  // route still have something to say.
+  if (failed) return null;
   return <PlacementView check={check} fix={fix} fixing={fixing} onFix={runFix} />;
 }
 
@@ -75,8 +80,11 @@ export function PlacementView({ check, fix, fixing, onFix }: {
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           {verdict.tone === "ok" ? (
             <CheckCircle2 className="h-4 w-4 text-ready" aria-hidden="true" />
-          ) : verdict.tone === "unknown" ? (
+          ) : verdict.tone === "unknown" && !check ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : verdict.tone === "unknown" ? (
+            // The check came back and could not judge: finished, not loading.
+            <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           ) : (
             <AlertTriangle className="h-4 w-4 text-risk" aria-hidden="true" />
           )}

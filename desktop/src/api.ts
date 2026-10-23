@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
+import type { PaintedPreview } from "@/lib/paintedPreview";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
@@ -1392,6 +1393,8 @@ export interface PlacedInstances {
 
 export interface PlacementItem {
   object_id: string;
+  /** Where the instance sits, in the same frame the fit is judged in. */
+  bounds_mm?: { min: number[]; max: number[] };
   // One object can be used by several build items; these tell the instances apart.
   item_index?: number;
   instance_index?: number;
@@ -1411,6 +1414,9 @@ export interface PlacementCheck {
   plate_count?: number;
   /** False when positions across plates are not established by Studio (multi-plate projects). */
   placement_established?: boolean;
+  /** The printable rectangle the fit is judged against. */
+  bed?: { min_x: number; min_y: number; max_x: number; max_y: number };
+  bed_name?: string;
   item_count?: number;
   items: PlacementItem[];
   off_plate: PlacementItem[];
@@ -1442,6 +1448,17 @@ export async function placementCheck(path: string): Promise<PlacementCheck> {
     body: JSON.stringify({ path }),
   });
   if (!r.ok) throw new Error(`placement check failed (${r.status})`);
+  return r.json();
+}
+
+export async function paintedPreview(path: string): Promise<PaintedPreview> {
+  const { port, token } = await apiInfo();
+  const r = await fetch(`http://127.0.0.1:${port}/painted_preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) throw new Error(`painted preview failed (${r.status})`);
   return r.json();
 }
 

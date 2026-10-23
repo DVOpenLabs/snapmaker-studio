@@ -1,180 +1,252 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, CircleDot, FileCheck2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { AlertTriangle, FileCheck2, FolderOpen, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PlacementCard } from "@/components/PlacementCard";
-import { PreflightCard } from "@/components/PreflightCard";
+import { FlatCards } from "@/components/ui/card";
 import { ColorPlanCard } from "@/components/ColorPlanCard";
-import { FidelityCard } from "@/components/FidelityCard";
-import { FixLedgerCard } from "@/components/FixLedgerCard";
-import { OrcaHandoff } from "@/components/OrcaHandoff";
-import { OrcaRoundTrip } from "@/components/OrcaRoundTrip";
-import { SlicedJobCards } from "@/components/SlicedJobCards";
-import { JobHeader } from "@/components/JobHeader";
-import { useSession } from "@/store/session";
+import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
+import { usePlacement } from "@/components/PlacementCard";
+import { PreflightCard } from "@/components/PreflightCard";
+import { PrepareModeChooser } from "@/components/PrepareModeChooser";
+import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
+import { ProjectMaterialsCard } from "@/components/ProjectMaterialsCard";
+import { CompactSlotRow } from "@/components/job/CompactSlot";
+import { CopyResult } from "@/components/job/CopyResult";
+import { JobBar } from "@/components/job/JobBar";
+import { PaneTabs, type PaneTab } from "@/components/job/PaneTabs";
+import { ModelPane } from "@/components/job/ModelPane";
+import { SliceCompare } from "@/components/job/SliceCompare";
+import { useOpenFile } from "@/hooks/useOpenFile";
+import { useEligibility } from "@/hooks/useEligibility";
+import { usePrepare } from "@/hooks/usePrepare";
+import { usePreviewFetcher } from "@/hooks/usePreviewFetcher";
+import { GATE_COPY } from "@/lib/compatibility";
+import { deriveJourney, type StageId } from "@/lib/journey";
+import type { PrepareMode } from "@/api";
+import type { MaterialSelection } from "@/lib/projectMaterials";
+import { useSession, type FileRef } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 
+type View = "model" | "copy" | "slice";
+type TabId = "target" | "materials" | "settings";
+
 /**
- * One job, moving through its stages.
+ * One job, from the file you opened to the slice that came back.
  *
- * Studio grew as a set of Doctors, each with its own page, and each of them is
- * genuinely useful — but a person with a model in front of them does not have a
- * "Doctor" problem, they have a *this print* problem, and answering it meant
- * visiting five pages in the right order and knowing what that order was.
+ * The model and its plate are in the middle. Beside them, three tabs hold what you decide: the
+ * target printer, the materials, and the copy's settings. One button in the bar does the next
+ * thing; the result of each stage replaces the middle in place rather than stacking below it.
  *
- * This is the same work in one place, in the order it actually happens. The
- * individual pages stay exactly where they were: an expert who wants the colour
- * planner on its own still has it, and nothing here hides detail — it just stops
- * requiring navigation to see the shape of the thing.
+ * The screen is keyed to the open project, so opening another project, or the same path again,
+ * starts it over: choices, previews and results made for the earlier one never carry across.
  */
 export default function Cockpit() {
-  const project = useSession((s) => s.file);
-  const convert = useSession((s) => s.convert);
-  const sliced = useSliced((s) => s.path);
-  const slicedName = useSliced((s) => s.name);
-
-  // Same test as After slicing and the job header: a copy Studio wrote and validated this session.
-  // Behaviour change from before: a blocked or unvalidated result no longer offers the Orca handoff.
-  const prepared: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && convert.data.validated_ok
-    ? (convert.data.output_path || convert.data.output) : undefined;
-
-  // A copy was written but its own validation did not pass: say so, keep the record of what was written.
-  const unvalidatedPath: string | undefined = convert.status === "done" && convert.data && !convert.data.blocked && !convert.data.validated_ok
-    ? (convert.data.output_path || convert.data.output) : undefined;
-
-  if (!project) {
-    return (
-      <div className="flex flex-col gap-5">
-        <Header />
-        <Card>
-          <CardContent className="space-y-2 p-5">
-            <p className="text-sm font-medium">Open a model to start</p>
-            <p className="text-sm text-muted-foreground">
-              Drop an <code>.stl</code> or <code>.3mf</code> onto this window, or open one
-              from <Link className="underline" to="/projects">My designs</Link>. Studio reads
-              it, checks it against your printer, and stays with the job until it is on the
-              plate.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <JobHeader />
-
-      <Stage number={1} title="Before slicing"
-             detail="What this project is, and how it compares to the printer Studio can see.">
-        <PlacementCard path={project.path} />
-        <PreflightCard path={project.path} />
-        <ColorPlanCard path={project.path} />
-      </Stage>
-
-      <Stage id="job-stage-prepared" number={2} title="Prepared"
-             detail="What Studio changed, what survived, and the way back.">
-        {prepared ? (
-          <>
-            <FidelityCard original={project.path} prepared={prepared} />
-            <FixLedgerCard source={project.path} output={prepared} />
-            <OrcaHandoff outputPath={prepared} />
-          </>
-        ) : unvalidatedPath ? (
-          <>
-            <Card>
-              <CardContent className="space-y-2 p-5">
-                <p className="text-sm font-medium">A copy was written, but its check found issues.</p>
-                <p className="text-sm text-muted-foreground">
-                  Studio did not confirm it, so it is not offered to Snapmaker Orca. Your original was not changed.
-                  See what remains in <Link className="underline" to="/workspace">the workspace</Link>.
-                </p>
-              </CardContent>
-            </Card>
-            <FixLedgerCard source={project.path} output={unvalidatedPath} />
-          </>
-        ) : (
-          <Card>
-            <CardContent className="space-y-2 p-5">
-              <p className="text-sm">Nothing prepared yet.</p>
-              <p className="text-sm text-muted-foreground">
-                Preparing writes a new copy and never touches your original. Do it from{" "}
-                <Link className="underline" to="/workspace">the workspace</Link>, and the
-                result appears here.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </Stage>
-
-      <Stage number={3} title="After slicing"
-             detail="Snapmaker Orca slices. Studio picks the result back up and checks what the printer will actually do.">
-        <OrcaRoundTrip />
-        {sliced ? (
-          <>
-            <SlicedJobCards path={sliced} projectPath={project.path} />
-          </>
-        ) : (
-          <Card>
-            <CardContent className="space-y-2 p-5">
-              <p className="text-sm">No sliced job yet.</p>
-              <p className="text-sm text-muted-foreground">
-                Slice the prepared copy in Snapmaker Orca. If you told Studio where Orca
-                saves its exports, the job appears here on its own — otherwise open it from{" "}
-                <Link className="underline" to="/after-slicing">After Slicing</Link>.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </Stage>
-
-      {sliced && (
-        <p className="text-xs text-muted-foreground">
-          Checking <span className="font-medium">{slicedName}</span>. Studio does not slice
-          and never sends anything on its own.
-        </p>
-      )}
-    </div>
-  );
+  const file = useSession((s) => s.file);
+  const identity = useIdentity(file);
+  if (!file) return <NoJob />;
+  return <JobScreen key={identity} file={file} />;
 }
 
-function Header({ name }: { name?: string }) {
+/** A number that changes whenever a different project is opened, including the same path opened again. */
+function useIdentity(file: FileRef | null): number {
+  const last = useRef<{ file: FileRef | null; n: number }>({ file, n: 0 });
+  if (last.current.file !== file) last.current = { file, n: last.current.n + 1 };
+  return last.current.n;
+}
+
+function NoJob() {
+  const open = useOpenFile();
   return (
-    <div className="flex flex-wrap items-end justify-between gap-2">
+    <div className="mx-auto flex max-w-xl flex-col gap-5 pt-6">
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <FileCheck2 className="h-5 w-5" aria-hidden="true" />
-          {name ? `This job — ${name}` : "This job"}
+          <FileCheck2 className="h-5 w-5 text-primary" aria-hidden="true" /> This job
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          One job, from the file you downloaded to the moment it is ready to send. Every
-          stage is also its own page if you would rather work that way.
+        <p className="mt-1 text-sm text-muted-foreground">
+          Open a model. Studio reads it on this computer, helps you choose materials, makes a U1 copy and, when you bring the
+          slice back, compares it.
         </p>
       </div>
-      <Button asChild variant="secondary" size="sm">
-        <Link to="/compatibility">
-          Open the full checks <ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
-        </Link>
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={() => void open()}><FolderOpen className="h-4 w-4" aria-hidden="true" /> Open project</Button>
+        <span className="text-xs text-muted-foreground">or drop an <code>.stl</code> / <code>.3mf</code> on this window, or pick one from <Link className="underline" to="/projects">My designs</Link>.</span>
+      </div>
+      <JobWorkspaceCard />
     </div>
   );
 }
 
-function Stage({ id, number, title, detail, children }: {
-  id?: string; number: number; title: string; detail: string; children: React.ReactNode;
-}) {
+const VIEW_OF: Record<StageId, View> = { open: "model", materials: "model", copy: "model", orca: "copy", compare: "slice" };
+
+function JobScreen({ file }: { file: FileRef }) {
+  const doctor = useSession((s) => s.doctor);
+  const convert = useSession((s) => s.convert);
+  const runDoctor = useSession((s) => s.runDoctor);
+  const sliced = useSliced((s) => s.path);
+
+  // Studio will not prepare this project: the project check says so, or the engine's eligibility record does (unreadable, or readable but refused).
+  const eligibility = useEligibility(file.path, file.ext);
+  const gate = eligibility.status === "ready" ? eligibility.gate : "open";
+  // The file cannot be used as a project at all (the engine's own HIGH_RISK verdict: missing, broken, or not a 3MF). A transport failure or an unavailable
+  // compatibility check says nothing about the file, so only the verdict counts. The same guard closes every way of preparing it, and anything still in flight.
+  const unusable = doctor.data?.verdict === "HIGH_RISK";
+  const closed = !!doctor.data?.prepare_blocked || gate !== "open" || unusable;
+  const ctl = usePrepare(closed);
+  const openAnother = useOpenFile();
+  const placement = usePlacement(file.path);
+  const fetchPreview = usePreviewFetcher(file.path);
+  const [mode, setMode] = useState<PrepareMode>("preserve");
+  const [holding, setHolding] = useState(false);
+  const [selections, setSelections] = useState<MaterialSelection[]>([]);
+  const [tab, setTab] = useState<TabId>("materials");
+
+  // A copy Studio wrote and validated for this project in this session (the shared store only accepts those).
+  const data = convert.status === "done" ? convert.data : null;
+  const preparedPath: string | null = data && !data.blocked && data.validated_ok ? (data.output_path || data.output || null) : null;
+  // Either the shared session holds an unvalidated copy, or this screen's own Prepare wrote one the store refused to publish.
+  const r = ctl.result;
+  const unvalidatedPath: string | null = data && !data.blocked && !data.validated_ok ? (data.output_path || data.output || null)
+    : !preparedPath && r && !r.blocked && r.output_path && !r.validated_ok ? r.output_path : null;
+  const prepared = preparedPath ? { path: preparedPath, name: data.output_name || preparedPath.split(/[\\/]/).pop() || preparedPath, summary: data.settings_summary, mode: (data.prepare_mode ?? "preserve") as PrepareMode } : null;
+
+  const prepareFailed = !!ctl.error || !!ctl.result?.blocked || (!!ctl.result && !ctl.result.blocked && !ctl.result.output_path);
+  const journey = deriveJourney({
+    hasProject: true,
+    check: { status: doctor.status !== "done" ? doctor.status : eligibility.status === "checking" ? "loading" : "done", prepareBlocked: closed },
+    materialsHolding: holding,
+    preparing: ctl.pending || convert.status === "loading",
+    prepareFailed,
+    prepared: !!prepared,
+    unvalidated: !!unvalidatedPath,
+    hasSliced: !!sliced,
+  });
+
+  // The middle follows the journey: what the current stage produced is what is shown, until the person picks another.
+  const showsOutcome = !!prepared || !!unvalidatedPath || prepareFailed;
+  const auto: View = journey.current === "compare" ? "slice" : showsOutcome ? "copy" : "model";
+  const [view, setView] = useState<View>(auto);
+  useEffect(() => { setView(auto); }, [auto]);
+
+  const create = () => {
+    setView("copy");
+    ctl.start(file.path, mode).catch(() => { /* shown by the result area */ });
+  };
+  const reviewMaterials = () => {
+    setTab("materials"); setView("model");
+    requestAnimationFrame(() => document.getElementById("materials-review")?.focus());
+  };
+  const goStage = (id: StageId) => {
+    setView(VIEW_OF[id]);
+    if (id === "materials") setTab("materials");
+    if (id === "copy" && !prepared) setTab("settings");
+  };
+
+  const plateCount = placement.check?.available ? placement.check.plate_count ?? 1 : null;
+  const plates = plateCount ? `${plateCount} ${plateCount === 1 ? "plate" : "plates"}` : null;
+
+  const tabs: PaneTab[] = [
+    {
+      id: "target", label: "Target", lazy: true,
+      el: <FlatCards><div className="space-y-5"><PreflightCard path={file.path} /><ColorPlanCard path={file.path} /></div></FlatCards>,
+    },
+    {
+      id: "materials", label: "Materials", badge: holding ? "chosen" : null,
+      el: (
+        <FlatCards>
+          <div className="peer empty:hidden">
+            {!closed && eligibility.status !== "checking" && (
+              <ProjectMaterialsCard bare slotView={CompactSlotRow} path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
+                onPrepare={(materials) => ctl.start(file.path, mode, materials)} />
+            )}
+          </div>
+          <p className="hidden text-sm text-muted-foreground peer-empty:block" data-testid="no-materials">
+            {closed ? "Materials are not offered for this project."
+              : eligibility.status === "checking" ? "Checking the project…" : "This file has no filament slots to choose materials for."}
+          </p>
+        </FlatCards>
+      ),
+    },
+    {
+      id: "settings", label: "Copy settings",
+      el: (
+        <FlatCards>
+          <div className="space-y-4">
+            <PrepareModeChooser mode={mode} onModeChange={setMode} blocked={closed}
+              onCustom={() => ctl.startPreview(file.path)} previewing={ctl.previewing || ctl.pending} />
+            {ctl.previewError ? <p className="text-sm text-risk" role="alert">Couldn&apos;t review settings: {(ctl.previewError as Error).message}</p> : null}
+            {ctl.preview && (
+              <PrepareSettingsSummary summary={ctl.preview.settings_summary} mode={ctl.preview.prepare_mode} isStl={false} preview
+                onPreparePreserve={holding ? undefined : () => { setMode("preserve"); ctl.start(file.path, "preserve").catch(() => {}); setView("copy"); }}
+                onPrepareRecommended={holding ? undefined : () => { setMode("recommended"); ctl.start(file.path, "recommended").catch(() => {}); setView("copy"); }} />
+            )}
+            {holding && <p className="text-xs text-muted-foreground">You have material choices. Use Review materials so they are applied to the copy.</p>}
+            <p className="text-xs text-muted-foreground">Creating a copy writes a new file. Your original is never modified.</p>
+          </div>
+        </FlatCards>
+      ),
+    },
+  ];
+
   return (
-    <section id={id} tabIndex={id ? -1 : undefined} aria-label={`${number}. ${title}`} className="flex flex-col gap-3 outline-none">
-      <div className="flex items-start gap-2">
-        <CircleDot className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <div>
-          <h3 className="text-sm font-semibold">
-            <span className="text-muted-foreground">{number}. </span>{title}
-          </h3>
-          <p className="text-xs text-muted-foreground">{detail}</p>
+    <div className="flex min-h-0 flex-col gap-4" data-testid="job-screen">
+      <JobBar name={file.name} path={file.path} ext={file.ext} plates={plates}
+        // The comparison is already on screen: its button would only press itself.
+        journey={view === "slice" && journey.primary.kind === "compare" ? { ...journey, primary: { kind: "none", label: "" } } : journey}
+        onView={goStage} preparedPath={preparedPath} busy={ctl.pending}
+        actions={{ create, reviewMaterials, compare: () => setView("slice"), recheck: () => void runDoctor() }} />
+
+      {doctor.status === "error" && (
+        <p className="flex items-start gap-2 rounded-md border border-risk/40 bg-risk/5 p-3 text-sm" role="alert">
+          <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-risk" aria-hidden="true" />
+          Studio could not read this project: {doctor.error ?? "the check failed"}. Try Check again, or open it again.
+        </p>
+      )}
+      {closed && (
+        // The one place the refusal is said. The model area and Materials stay quiet; an unusable file gets a way out instead of a link to checks that cannot run on it.
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-md border border-risk/40 bg-risk/5 p-3 text-sm" role="alert" data-testid="job-blocked">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-risk" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            {doctor.data?.prepare_blocked_summary
+              || (unusable && doctor.data?.recommended_action)
+              || (gate === "unreadable" ? GATE_COPY.unreadable : "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it.")}
+            {!unusable && gate !== "unreadable" && <>{" "}<Link className="underline" to="/compatibility">See the full checks</Link>.</>}
+          </span>
+          {(unusable || gate === "unreadable") && (
+            <Button size="sm" variant="secondary" onClick={() => void openAnother()} data-testid="open-another">
+              <FolderOpen className="h-4 w-4" aria-hidden="true" /> Open another project
+            </Button>
+          )}
         </div>
+      )}
+
+      <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
+        <section aria-label={view === "model" ? "Model" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
+          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} fileUnreadable={unusable || gate === "unreadable"} />}
+          {view === "copy" && (
+            ctl.pending ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Creating the U1 copy…
+              </p>
+            ) : (
+              <>
+                <CopyResult projectPath={file.path} prepared={prepared} unvalidatedPath={unvalidatedPath} ctl={ctl}
+                  onCreateAnother={holding ? undefined : create}
+                  onPrepareRecommended={holding ? undefined : () => { setMode("recommended"); ctl.start(file.path, "recommended").catch(() => {}); }} />
+                {!prepared && !unvalidatedPath && !prepareFailed && (
+                  <p className="text-sm text-muted-foreground" data-testid="no-copy-yet">
+                    No U1 copy yet. Create U1 copy writes a new file and never touches your original.
+                  </p>
+                )}
+              </>
+            )
+          )}
+          {view === "slice" && <SliceCompare projectPath={file.path} preparedPath={preparedPath} />}
+        </section>
+
+        <aside aria-label="Job settings" className="flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-card px-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-15rem)] lg:self-start">
+          <PaneTabs label="Job settings" tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} />
+        </aside>
       </div>
-      <div className="flex flex-col gap-4 border-l border-border pl-5">{children}</div>
-    </section>
+    </div>
   );
 }

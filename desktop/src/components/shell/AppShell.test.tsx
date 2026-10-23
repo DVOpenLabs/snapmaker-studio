@@ -96,14 +96,14 @@ describe("narrow navigation", () => {
 
   it("choosing a recent project closes the drawer and focuses the page, even when the route does not change", async () => {
     vi.mocked(api.library).mockResolvedValue([{ id: 1, name: "Bracket.3mf", source_path: "C:\w\Bracket.3mf" }] as any);
-    mount("/workspace");
+    mount("/this-print");
     await act(async () => {});
     act(() => { fireEvent.click(screen.getByRole("button", { name: "Menu" })); });
     await act(async () => {});
     const recent = within(screen.getByRole("dialog")).getByRole("button", { name: "Bracket.3mf" });
     act(() => { fireEvent.click(recent); });
-    // Started on /workspace and the recent opens /workspace: the pathname does not change.
-    expect(screen.getByTestId("path").textContent).toBe("/workspace");
+    // Started on the job screen and the recent opens the job screen: the pathname does not change.
+    expect(screen.getByTestId("path").textContent).toBe("/this-print");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("main"));
   });

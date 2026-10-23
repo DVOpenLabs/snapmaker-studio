@@ -296,6 +296,12 @@ describe("review and blocked", () => {
     schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true, errors: [],
     settings_summary: {} as any, ...over });
 
+  it("opens the review as a labelled region and moves focus to it, so it is not left below the fold", () => {
+    render(<ReviewPanel review={{ status: "done", result: result() }} providerLabel={null} onPrepare={() => {}} onBack={() => {}} />);
+    const region = screen.getByRole("region", { name: "Review before preparing" });
+    expect(document.activeElement).toBe(region);
+  });
+
   it("shows the engine's plain-language lines, and says spool facts are not file-verified", () => {
     const lines = ["Slot 1: Yoopai PLA+ Red #124 mapped to 'Generic PLA @U1'. Colour changed to Red. Temperature, flow and cooling come from the installed Generic PLA @U1 preset."];
     render(<ReviewPanel review={{ status: "done", result: result({ settings_summary: { project_materials: { fidelity: {

@@ -574,6 +574,12 @@ def placement_check(path: str) -> dict:
     return plate_placement.assess(path)
 
 
+def painted_preview(path: str) -> dict:
+    """Read-only: the project's geometry split by filament slot, for the 3D view. Never raises for a UI caller."""
+    from snapstudio_core import painted_preview as pp
+    return pp.build(path)
+
+
 def prepare_placed(path: str, out_dir: str | None = None) -> dict:
     """Write a new copy with the whole arrangement moved onto the U1 plate.
 

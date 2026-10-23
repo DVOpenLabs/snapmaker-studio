@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Loader2, Layers, AlertTriangle, Info, Check } from "lucide-react";
 import {
   confirmMaterialMapping, convert, materialPresets, projectMaterials, projectMaterialsInventory, removeMaterialMapping,
@@ -70,7 +70,7 @@ export function StatusBadge({ status, confirmedByYou = false }: { status: Preset
   );
 }
 
-function Swatch({ colour }: { colour: string | null }) {
+export function Swatch({ colour }: { colour: string | null }) {
   return <span data-testid="swatch" aria-hidden className="inline-block h-4 w-4 shrink-0 rounded-sm border border-border" style={{ backgroundColor: colour ?? "transparent" }} />;
 }
 
@@ -416,6 +416,21 @@ export function ProjectMaterialsFidelity({ summary }: { summary: ProjectMaterial
   );
 }
 
+/** The review opens below the rows, often off-screen in a scrolling pane: bring it into view and put focus on it. */
+function ReviewBox({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <div ref={ref} tabIndex={-1} role="region" aria-label={COPY.review}
+      className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="review">
+      {children}
+    </div>
+  );
+}
+
 export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: {
   review: ReviewState; providerLabel: string | null; onPrepare: () => void; onBack: () => void; busy?: boolean;
 }) {
@@ -434,7 +449,7 @@ export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: 
   if (review.result.blocked) return <BlockedPanel result={review.result} onBack={onBack} />;
   const summary = review.result.settings_summary?.project_materials;
   return (
-    <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3" data-testid="review">
+    <ReviewBox>
       <p className="text-sm font-semibold">{COPY.review}</p>
       <ProjectMaterialsFidelity summary={summary} />
       <p className="text-[11px] text-muted-foreground">
@@ -444,7 +459,7 @@ export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: 
         <Button size="sm" onClick={onPrepare} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{COPY.prepare}</Button>
         <Button size="sm" variant="secondary" onClick={onBack}>{COPY.back}</Button>
       </div>
-    </div>
+    </ReviewBox>
   );
 }
 
@@ -468,6 +483,10 @@ export interface ViewProps {
   forget?: { candidate: MaterialCandidate; busy: boolean; returnFocusTo: () => HTMLElement | null; onCancel: () => void; onConfirm: () => void } | null;
   onForget?: (candidate: MaterialCandidate, opener: HTMLButtonElement) => void;
   forgetNote?: { kind: "ok" | "error"; text: string } | null;
+  /** Drop the title and subtitle: a parent that already names this area (a tab) supplies them. */
+  bare?: boolean;
+  /** How one slot is drawn. The job screen passes its compact row; the default is the detailed expert row. */
+  slotView?: ComponentType<SlotRowProps>;
 }
 
 export function ProjectMaterialsView(p: ViewProps) {
@@ -501,11 +520,14 @@ export function ProjectMaterialsView(p: ViewProps) {
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{beyondToolheadsNote((analysis.slots ?? []).length, analysis.toolheads, analysis.beyond_toolheads)}
           </p>
         )}
-        {(analysis.slots ?? []).map((slot) => (
-          <SlotRow key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
+        {(analysis.slots ?? []).map((slot) => {
+          const Row = p.slotView ?? SlotRow;
+          return (
+          <Row key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
             providerLabel={p.providerLabel} dispatch={p.dispatch} onForget={p.onForget} forgetDisabled={!!p.forget}
             loadInventory={analysis.provider?.available ? p.loadInventory : undefined} />
-        ))}
+          );
+        })}
         {p.forgetNote && (
           <p className={`text-xs ${p.forgetNote.kind === "error" ? "text-risk" : "text-muted-foreground"}`}
             role={p.forgetNote.kind === "error" ? "alert" : "status"} data-testid="forget-note">{p.forgetNote.text}</p>
@@ -516,7 +538,7 @@ export function ProjectMaterialsView(p: ViewProps) {
         )}
         {p.review.status === "idle" ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={p.onReview} disabled={selections.length === 0 || pending.length > 0}>Review &amp; prepare</Button>
+            <Button size="sm" id="materials-review" onClick={p.onReview} disabled={selections.length === 0 || pending.length > 0}>Review &amp; prepare</Button>
             {selections.length > 0 && <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => p.dispatch({ type: "reset" })}>Clear all choices</button>}
             {pending.length > 0 && <span className="text-xs text-repairable" data-testid="confirm-first">{COPY.confirmFirst}</span>}
             {selections.length === 0 && pending.length === 0 && <span className="text-xs text-muted-foreground">Nothing chosen. Prepare works as usual without this.</span>}
@@ -531,10 +553,12 @@ export function ProjectMaterialsView(p: ViewProps) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div>
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Layers className="h-4 w-4 text-primary" />{COPY.title}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{COPY.subtitle}</p>
-        </div>
+        {p.bare ? null : (
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Layers className="h-4 w-4 text-primary" />{COPY.title}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{COPY.subtitle}</p>
+          </div>
+        )}
         {body}
       </CardContent>
     </Card>
@@ -551,10 +575,14 @@ interface CardProps {
   onPrepare: (selections: MaterialSelection[]) => void | Promise<ConversionResult | void>;
   /** Lets the parent know whether Project Materials holds choices, so a plain Prepare is not offered beside them. */
   onActiveChange?: (active: boolean) => void;
+  /** The choices Prepare would be sent, as they change (and empty when this card goes away): lets a parent show them. */
+  onSelectionsChange?: (selections: MaterialSelection[]) => void;
   busy?: boolean;
+  bare?: boolean;
+  slotView?: ComponentType<SlotRowProps>;
 }
 
-export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy }: CardProps) {
+export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, onSelectionsChange, busy, bare, slotView }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
   const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
@@ -606,6 +634,10 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   const selections = useMemo(() => buildSelections(choices), [choices]);
   const holding = holdsChoices(choices);
   useEffect(() => { onActiveChange?.(holding); }, [holding, onActiveChange]);
+  useEffect(() => {
+    onSelectionsChange?.(selections);
+    return () => onSelectionsChange?.([]);
+  }, [selections, onSelectionsChange]);
   // Any change to the choices, the preparation mode, the project or the provider invalidates a review: it was
   // computed for exactly those. A review still in flight is discarded too (see the generation check below).
   const reviewGen = useRef(0);
@@ -723,7 +755,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   }
 
   return (
-    <ProjectMaterialsView load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
+    <ProjectMaterialsView bare={bare} slotView={slotView} load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
       onPrepare={doPrepare} busy={busy || preparing} warning={warning} loadInventory={loadInventory}
       onForget={(candidate, opener) => { setForgetNote(null); setForget({ candidate, opener }); }}

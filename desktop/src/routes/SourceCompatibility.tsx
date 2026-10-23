@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/layout";
 import { openModelDialog, sourceCompatibility, type SourceCompatibilityReport } from "@/api";
 import { useSession } from "@/store/session";
 import { readiness, summaryLine, wizardSteps } from "@/lib/sourceWizard";
+import { JOB_ROUTE } from "@/lib/routes";
 
 // Source Check: tell a beginner what kind of file/project they have, what Studio can
 // read, what it can't convert yet, and the safe next step for your U1. Read-only + advisory.
@@ -30,7 +31,7 @@ export default function SourceCompatibility() {
   function openInStudio() {
     if (!path) return;
     setFile(path);
-    nav("/workspace");
+    nav(JOB_ROUTE);
   }
 
   const ready = report ? readiness(report) : null;

@@ -7,6 +7,7 @@ import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { PRIMARY_NAV, SECONDARY_NAV, SIMPLE_SECONDARY_NAV, BEGINNER_NAV, MORE_NAV } from "@/lib/nav";
+import { JOB_ROUTE } from "@/lib/routes";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return cn(
@@ -89,7 +90,7 @@ export function Sidebar({ className, id, onNavigate }: { className?: string; id?
               <button
                 key={p.id}
                 data-closes-menu
-                onClick={() => { setFile(p.source_path); nav("/workspace"); }}
+                onClick={() => { setFile(p.source_path); nav(JOB_ROUTE); }}
                 title={p.source_path}
                 className={navClass({ isActive: false }) + " w-full text-left"}
               >

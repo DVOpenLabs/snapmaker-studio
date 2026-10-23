@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/Toaster";
 import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 import { shouldResetScroll } from "@/lib/scrollReset";
+import { JOB_ROUTE } from "@/lib/routes";
 
 function titleFor(path: string): string {
   if (path === "/") return "Home";
@@ -89,7 +90,7 @@ export function AppShell() {
         const model = e.payload.paths.find((p) => /\.(stl|3mf)$/i.test(p));
         if (!model) return;
         setFile(model);
-        nav("/workspace");
+        nav(JOB_ROUTE);
       });
       cleanup = () => { un.then((f) => f()); };
     } catch {

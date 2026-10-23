@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "@/store/session";
 import { useModelDownloads } from "@/store/modelDownloads";
 import type { AddedItem } from "@/lib/modelDownloads";
+import { JOB_ROUTE } from "@/lib/routes";
 
 /** Presentational card: "Added from <site>", the file, what Studio detected, and the next step. */
 export function AddedFromView({
@@ -59,7 +60,7 @@ export function AddedFromCard({ item }: { item: AddedItem }) {
       item={item}
       onCheck={go("/doctor/project")}
       onPrepare={go("/compatibility")}
-      onOpen={go("/workspace")}
+      onOpen={go(JOB_ROUTE)}
       onDismiss={() => dismiss(item.path)}
     />
   );

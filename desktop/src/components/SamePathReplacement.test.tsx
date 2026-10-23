@@ -225,7 +225,7 @@ describe("every page that shows the G-code checks re-reads them on a replacement
   });
 
   it("both pages use the shared cards instead of mounting the four cards themselves", () => {
-    const pages = import.meta.glob("../routes/{AfterSlicing,Cockpit}.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+    const pages = import.meta.glob(["../routes/AfterSlicing.tsx", "./job/SliceCompare.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
     expect(Object.keys(pages).length).toBe(2);
     for (const [page, text] of Object.entries(pages)) {
       expect(text, page).toContain("<SlicedJobCards");

@@ -51,6 +51,12 @@ export function countFindings(findings: CompatibilityFinding[]): CompatCounts {
  *  but Studio would refuse to prepare it (prepare.blocked). Either one turns every Prepare entry
  *  point off. */
 export type PrepareGate = "open" | "blocked" | "unreadable";
+/** What to tell the person when Prepare is off for this gate. One wording for every screen that offers Prepare. */
+export const GATE_COPY: Record<Exclude<PrepareGate, "open">, string> = {
+  unreadable: "Studio cannot read this file as a project, so it cannot prepare a U1 copy. Re-export the project from the slicer that made it and open the new file.",
+  blocked: "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it, or remove the settings listed above in the slicer that made it and export it again.",
+};
+
 export function prepareGate(findings: CompatibilityFinding[] | null | undefined): PrepareGate {
   const ids = new Set((findings ?? []).map((f) => f.id));
   if (ids.has("project.unreadable")) return "unreadable";
