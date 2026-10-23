@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
+import type { PaintedPreview } from "@/lib/paintedPreview";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
@@ -1447,6 +1448,17 @@ export async function placementCheck(path: string): Promise<PlacementCheck> {
     body: JSON.stringify({ path }),
   });
   if (!r.ok) throw new Error(`placement check failed (${r.status})`);
+  return r.json();
+}
+
+export async function paintedPreview(path: string): Promise<PaintedPreview> {
+  const { port, token } = await apiInfo();
+  const r = await fetch(`http://127.0.0.1:${port}/painted_preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) throw new Error(`painted preview failed (${r.status})`);
   return r.json();
 }
 

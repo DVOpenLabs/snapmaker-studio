@@ -17,12 +17,19 @@ vi.mock("@/components/ColorPlanCard", () => ({ ColorPlanCard: () => <div data-te
 vi.mock("@/components/FidelityCard", () => ({ FidelityCard: () => null }));
 vi.mock("@/components/FixLedgerCard", () => ({ FixLedgerCard: () => null }));
 vi.mock("@/components/JobWorkspaceCard", () => ({ JobWorkspaceCard: () => <div data-testid="job-record" /> }));
+// The model pane has its own tests. Here only what the job screen hands it matters.
+vi.mock("@/components/job/ModelPane", () => ({
+  ModelPane: (p: { path: string; selections: { slot: number; colour: string | null }[]; preparedPath: string | null }) => (
+    <div data-testid="model-pane" data-path={p.path} data-prepared={p.preparedPath ?? ""} data-choices={p.selections.map((s) => `${s.slot}:${s.colour}`).join(",")} />
+  ),
+}));
 vi.mock("@/components/job/SliceCompare", () => ({ SliceCompare: (p: { preparedPath: string | null }) => <div data-testid="slice-compare">{p.preparedPath ?? "none"}</div> }));
 // Project Materials has its own tests. Here only the contract with the job screen matters: it hands choices to Prepare.
 vi.mock("@/components/ProjectMaterialsCard", () => ({
-  ProjectMaterialsCard: (p: { onPrepare: (m: unknown[]) => Promise<unknown>; onActiveChange?: (a: boolean) => void; busy?: boolean }) => (
+  ProjectMaterialsCard: (p: { onPrepare: (m: unknown[]) => Promise<unknown>; onActiveChange?: (a: boolean) => void; onSelectionsChange?: (s: unknown[]) => void; busy?: boolean }) => (
     <div data-testid="materials" data-busy={String(!!p.busy)}>
       <button onClick={() => p.onActiveChange?.(true)}>choose</button>
+      <button onClick={() => p.onSelectionsChange?.([{ slot: 1, colour: "#112233" }])}>pick a colour</button>
       <button onClick={() => void p.onPrepare([{ slot: 0 }]).catch(() => {})}>prepare with choices</button>
     </div>
   ),
@@ -295,5 +302,20 @@ describe("This job: old results never look current", () => {
     fireEvent.click(within(screen.getByRole("list", { name: "Job progress" })).getByRole("button", { name: /Open project/ }));
     expect(screen.getByRole("button", { name: "Compare slice" })).toBeTruthy();
     expect(document.querySelectorAll("[data-primary]")).toHaveLength(1);
+  });
+});
+
+describe("This job: the model pane", () => {
+  it("is given the open project and the material choices made so far, and not another project's", async () => {
+    await openChecked(A);
+    const pane = () => screen.getByTestId("model-pane");
+    expect(pane().getAttribute("data-path")).toBe(A.path);
+    expect(pane().getAttribute("data-choices")).toBe("");
+    await act(async () => { fireEvent.click(screen.getByText("pick a colour")); });
+    expect(pane().getAttribute("data-choices")).toBe("1:#112233");
+    // Opening another project starts the screen over: A's choices are not shown against B.
+    await open(B); await settle();
+    expect(screen.getByTestId("model-pane").getAttribute("data-path")).toBe(B.path);
+    expect(screen.getByTestId("model-pane").getAttribute("data-choices")).toBe("");
   });
 });

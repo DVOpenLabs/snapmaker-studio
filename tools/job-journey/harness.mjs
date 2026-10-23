@@ -5,6 +5,7 @@
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -45,9 +46,12 @@ export async function launch() {
   const browser = await chromium.launch({ channel: "msedge", headless: true });
 
   const isLocal = (u) => /^(data:|blob:|about:)/.test(u) || ["localhost", "127.0.0.1"].includes(new URL(u).hostname);
-  async function newPage({ theme = "light", width = 1280, height = 800, reducedMotion = "no-preference" } = {}) {
+  async function newPage({ theme = "light", width = 1280, height = 800, reducedMotion = "no-preference", provider = null } = {}) {
     const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion, serviceWorkers: "block" });
-    await ctx.addInitScript((t) => { localStorage.setItem("theme", t); localStorage.setItem("u1Host", "127.0.0.1"); }, theme);
+    await ctx.addInitScript(([t, prov]) => {
+      localStorage.setItem("theme", t); localStorage.setItem("u1Host", "127.0.0.1");
+      if (prov) { localStorage.setItem("materialProviderKind", JSON.stringify("spoolman")); localStorage.setItem("materialProviderUrl", JSON.stringify(prov)); }
+    }, [theme, provider]);
     await ctx.route((url) => !isLocal(url.href), async (route) => {
       const h = new URL(route.request().url()).hostname;
       if (!KNOWN_FONT_HOSTS.includes(h)) violations.push(`off-machine ${h}`);
@@ -70,6 +74,15 @@ export async function launch() {
     return { ctx, page, go, openProject };
   }
   const fixture = (name) => { const dst = join(work, name.split("/").pop()); copyFileSync(join(repo, "backend", "tests", "fixtures", name), dst); return dst; };
-  const close = async () => { await browser.close().catch(() => {}); cleanup(); };
-  return { newPage, fixture, work, violations, errors, close, handshake, UI };
+  // A synthetic spool list on loopback, in the shape Spoolman answers. Invented spools only; it answers GET /api/v1/spool and nothing else.
+  const servers = [];
+  const fakeSpools = (spools) => new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      if (req.url?.startsWith("/api/v1/spool")) { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(spools)); }
+      else { res.writeHead(404); res.end("{}"); }
+    });
+    server.listen(0, "127.0.0.1", () => { servers.push(server); resolve({ address: `127.0.0.1:${server.address().port}`, close: () => server.close() }); });
+  });
+  const close = async () => { await browser.close().catch(() => {}); for (const sv of servers) sv.close(); cleanup(); };
+  return { newPage, fakeSpools, fixture, work, violations, errors, close, handshake, UI };
 }

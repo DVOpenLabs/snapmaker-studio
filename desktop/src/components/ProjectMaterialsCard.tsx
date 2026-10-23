@@ -555,11 +555,13 @@ interface CardProps {
   onPrepare: (selections: MaterialSelection[]) => void | Promise<ConversionResult | void>;
   /** Lets the parent know whether Project Materials holds choices, so a plain Prepare is not offered beside them. */
   onActiveChange?: (active: boolean) => void;
+  /** The choices Prepare would be sent, as they change (and empty when this card goes away): lets a parent show them. */
+  onSelectionsChange?: (selections: MaterialSelection[]) => void;
   busy?: boolean;
   bare?: boolean;
 }
 
-export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, busy, bare }: CardProps) {
+export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, onSelectionsChange, busy, bare }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
   const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
@@ -611,6 +613,10 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, bu
   const selections = useMemo(() => buildSelections(choices), [choices]);
   const holding = holdsChoices(choices);
   useEffect(() => { onActiveChange?.(holding); }, [holding, onActiveChange]);
+  useEffect(() => {
+    onSelectionsChange?.(selections);
+    return () => onSelectionsChange?.([]);
+  }, [selections, onSelectionsChange]);
   // Any change to the choices, the preparation mode, the project or the provider invalidates a review: it was
   // computed for exactly those. A review still in flight is discarded too (see the generation check below).
   const reviewGen = useRef(0);

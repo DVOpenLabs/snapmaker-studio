@@ -13,7 +13,7 @@ import { ProjectMaterialsCard } from "@/components/ProjectMaterialsCard";
 import { CopyResult } from "@/components/job/CopyResult";
 import { JobBar } from "@/components/job/JobBar";
 import { PaneTabs, type PaneTab } from "@/components/job/PaneTabs";
-import { PlateView } from "@/components/job/PlateView";
+import { ModelPane } from "@/components/job/ModelPane";
 import { SliceCompare } from "@/components/job/SliceCompare";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { useEligibility } from "@/hooks/useEligibility";
@@ -21,6 +21,7 @@ import { usePrepare } from "@/hooks/usePrepare";
 import { GATE_COPY } from "@/lib/compatibility";
 import { deriveJourney, type StageId } from "@/lib/journey";
 import type { PrepareMode } from "@/api";
+import type { MaterialSelection } from "@/lib/projectMaterials";
 import { useSession, type FileRef } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 
@@ -89,6 +90,7 @@ function JobScreen({ file }: { file: FileRef }) {
   const placement = usePlacement(file.path);
   const [mode, setMode] = useState<PrepareMode>("preserve");
   const [holding, setHolding] = useState(false);
+  const [selections, setSelections] = useState<MaterialSelection[]>([]);
   const [tab, setTab] = useState<TabId>("materials");
 
   // A copy Studio wrote and validated for this project in this session (the shared store only accepts those).
@@ -146,7 +148,7 @@ function JobScreen({ file }: { file: FileRef }) {
         <FlatCards>
           <div className="peer empty:hidden">
             {!closed && (
-              <ProjectMaterialsCard bare path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding}
+              <ProjectMaterialsCard bare path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
                 onPrepare={(materials) => ctl.start(file.path, mode, materials)} />
             )}
           </div>
@@ -206,8 +208,8 @@ function JobScreen({ file }: { file: FileRef }) {
       )}
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-        <section aria-label={view === "model" ? "Plate" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
-          {view === "model" && <PlateView placement={placement} />}
+        <section aria-label={view === "model" ? "Model" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
+          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} />}
           {view === "copy" && (
             ctl.pending ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
