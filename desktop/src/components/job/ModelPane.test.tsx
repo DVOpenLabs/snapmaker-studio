@@ -200,8 +200,9 @@ describe("ModelPane", () => {
     expect((await screen.findByTestId("preview-unavailable")).textContent).toContain("Open it again");
     cleanup();
     render(pane({ fileUnreadable: true, fetcher: async () => preview({ available: false, state: "unreadable", reason: "Studio could not read this file.", slots: [], meshes: [], instances: [] }, 0) }));
-    expect(await screen.findByTestId("plate-view")).toBeTruthy();
+    expect(await screen.findByTestId("nothing-to-show")).toBeTruthy();
     expect(screen.queryByTestId("preview-unavailable")).toBeNull();
+    expect(screen.queryByTestId("plate-view")).toBeNull();              // the refusal is the banner's alone
   });
 
   it("when the copy goes away (a new Prepare starts) its colours are no longer shown", async () => {

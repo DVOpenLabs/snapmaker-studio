@@ -138,10 +138,17 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
         </div>
       )}
 
-      {(surface === "plate" || original.status === "failed" || (original.status === "done" && !preview) || lost) && (
+      {/* A file the screen already refuses is said once, at the top. Here there is nothing to draw and nothing to add. */}
+      {fileUnreadable && !preview && !lost && original.status !== "loading" && (
+        <p className="flex min-h-[220px] items-center justify-center rounded-lg border border-border bg-muted/30 p-3 text-center text-sm text-muted-foreground" data-testid="nothing-to-show">
+          Nothing to show for this file.
+        </p>
+      )}
+
+      {!(fileUnreadable && !preview && !lost) && (surface === "plate" || original.status === "failed" || (original.status === "done" && !preview) || lost) && (
         <>
-          {/* An unreadable file is already said at the top of the screen and by the plate. Any other unreadable reason (for example, the file changed while it was read) is the preview's alone to say. */}
-          {(message || lost) && original.status !== "loading" && !(original.status === "done" && original.preview.state === "unreadable" && fileUnreadable && !lost) && (
+          {/* Any other unreadable reason (for example, the file changed while it was read) is the preview's alone to say. */}
+          {(message || lost) && original.status !== "loading" && (
             <p className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-sm" role="status" data-testid="preview-unavailable">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span>{lost ? `${LOSS_COPY[lost]} The plate view below is unaffected.` : message}</span>

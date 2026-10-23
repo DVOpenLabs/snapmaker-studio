@@ -87,10 +87,12 @@ function JobScreen({ file }: { file: FileRef }) {
   // Studio will not prepare this project: the project check says so, or the engine's eligibility record does (unreadable, or readable but refused).
   const eligibility = useEligibility(file.path, file.ext);
   const gate = eligibility.status === "ready" ? eligibility.gate : "open";
-  const closed = !!doctor.data?.prepare_blocked || gate !== "open";
-  // The file cannot be read at all (the engine's own verdict). Nothing built from its contents is offered for it.
-  const unreadable = !closed && doctor.data?.verdict === "HIGH_RISK" && typeof doctor.data.recommended_action === "string";
+  // The file cannot be used as a project at all (the engine's own HIGH_RISK verdict: missing, broken, or not a 3MF). A transport failure or an unavailable
+  // compatibility check says nothing about the file, so only the verdict counts. The same guard closes every way of preparing it, and anything still in flight.
+  const unusable = doctor.data?.verdict === "HIGH_RISK";
+  const closed = !!doctor.data?.prepare_blocked || gate !== "open" || unusable;
   const ctl = usePrepare(closed);
+  const openAnother = useOpenFile();
   const placement = usePlacement(file.path);
   const fetchPreview = usePreviewFetcher(file.path);
   const [mode, setMode] = useState<PrepareMode>("preserve");
@@ -152,13 +154,13 @@ function JobScreen({ file }: { file: FileRef }) {
       el: (
         <FlatCards>
           <div className="peer empty:hidden">
-            {!closed && !unreadable && eligibility.status !== "checking" && (
+            {!closed && eligibility.status !== "checking" && (
               <ProjectMaterialsCard bare slotView={CompactSlotRow} path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
                 onPrepare={(materials) => ctl.start(file.path, mode, materials)} />
             )}
           </div>
           <p className="hidden text-sm text-muted-foreground peer-empty:block" data-testid="no-materials">
-            {closed || unreadable ? "Materials are not offered because Studio cannot prepare this project."
+            {closed ? "Materials are not offered for this project."
               : eligibility.status === "checking" ? "Checking the project…" : "This file has no filament slots to choose materials for."}
           </p>
         </FlatCards>
@@ -199,23 +201,27 @@ function JobScreen({ file }: { file: FileRef }) {
           Studio could not read this project: {doctor.error ?? "the check failed"}. Try Check again, or open it again.
         </p>
       )}
-      {!closed && doctor.data?.verdict === "HIGH_RISK" && typeof doctor.data.recommended_action === "string" && (
-        <p className="flex items-start gap-2 rounded-md border border-risk/40 bg-risk/5 p-3 text-sm" role="alert" data-testid="job-high-risk">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-risk" aria-hidden="true" />
-          <span>{doctor.data.recommended_action}</span>
-        </p>
-      )}
       {closed && (
-        <p className="flex items-start gap-2 rounded-md border border-risk/40 bg-risk/5 p-3 text-sm" role="alert" data-testid="job-blocked">
+        // The one place the refusal is said. The model area and Materials stay quiet; an unusable file gets a way out instead of a link to checks that cannot run on it.
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-md border border-risk/40 bg-risk/5 p-3 text-sm" role="alert" data-testid="job-blocked">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-risk" aria-hidden="true" />
-          <span>{doctor.data?.prepare_blocked_summary || (gate === "unreadable" ? GATE_COPY.unreadable : "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it.")}{" "}
-            <Link className="underline" to="/compatibility">See the full checks</Link>.</span>
-        </p>
+          <span className="min-w-0 flex-1">
+            {doctor.data?.prepare_blocked_summary
+              || (unusable && doctor.data?.recommended_action)
+              || (gate === "unreadable" ? GATE_COPY.unreadable : "Studio can read this project but cannot prepare a U1 copy of it yet. Open the original in Snapmaker Orca to review it.")}
+            {!unusable && gate !== "unreadable" && <>{" "}<Link className="underline" to="/compatibility">See the full checks</Link>.</>}
+          </span>
+          {(unusable || gate === "unreadable") && (
+            <Button size="sm" variant="secondary" onClick={() => void openAnother()} data-testid="open-another">
+              <FolderOpen className="h-4 w-4" aria-hidden="true" /> Open another project
+            </Button>
+          )}
+        </div>
       )}
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
         <section aria-label={view === "model" ? "Model" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
-          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} fileUnreadable={unreadable || gate === "unreadable"} />}
+          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} fileUnreadable={unusable || gate === "unreadable"} />}
           {view === "copy" && (
             ctl.pending ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">

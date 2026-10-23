@@ -219,11 +219,10 @@ describe("This job: creating the copy", () => {
     expect(screen.getByTestId("copy-name").textContent).toBe("m_U1.3mf");
   });
 
-  it("an unusable file shows the engine's plain recommendation, and the engine still decides what Create does", async () => {
-    vi.mocked(api.doctor).mockResolvedValue({ verdict: "HIGH_RISK", prepare_blocked: false, recommended_action: "This file is not a 3MF project and cannot be diagnosed." } as any);
+  it("a check that could not run is not a verdict about the file", async () => {
+    vi.mocked(api.doctor).mockRejectedValue(new Error("service down"));
     await openChecked();
-    expect(screen.getByTestId("job-high-risk").textContent).toContain("cannot be diagnosed");
-    expect((screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("job-blocked")).toBeNull();            // a failed read is not a verdict about the file
   });
 
   it("a failed check offers Check again and does not start a preparation", async () => {
@@ -374,11 +373,12 @@ describe("This job: what opening a project does and does not touch", () => {
     expect(preflightMounted).toHaveBeenCalled();
   });
 
-  it("an unreadable file offers no materials, and says why", async () => {
+  it("an unusable file offers no materials, and the refusal is said once", async () => {
     vi.mocked(api.doctor).mockResolvedValue({ verdict: "HIGH_RISK", prepare_blocked: false, recommended_action: "This file is not a 3MF project." } as any);
     await openChecked();
     expect(screen.queryByTestId("materials")).toBeNull();
     expect(screen.getByTestId("no-materials").textContent).toMatch(/not offered/);
+    expect(screen.getAllByText(/This file is not a 3MF project\./)).toHaveLength(1);
   });
 
   it("a G-code sliced for project A is not shown as project B's slice", async () => {
@@ -388,5 +388,110 @@ describe("This job: what opening a project does and does not touch", () => {
     await open(B); await settle();
     expect(screen.queryByTestId("slice-compare")).toBeNull();
     expect(screen.getByRole("button", { name: "Create U1 copy" })).toBeTruthy();
+  });
+});
+
+const UNUSABLE = { verdict: "HIGH_RISK", prepare_blocked: false, recommended_action: "This file is not a 3MF project and cannot be diagnosed." } as any;
+const primaryButton = () => screen.getByRole("button", { name: "Create U1 copy" }) as HTMLButtonElement;
+
+describe("This job: a project the engine already calls unusable is not prepared", () => {
+  it.each([
+    ["not a ZIP .3mf", () => vi.mocked(api.compatibilityCheck).mockRejectedValue(new Error("not a zip"))],
+    ["a missing file", () => vi.mocked(api.compatibilityCheck).mockRejectedValue(new Error("no such file"))],
+    ["an eligibility answer that looks open", () => vi.mocked(api.compatibilityCheck).mockResolvedValue({ findings: [] } as any)],
+  ])("%s: the verdict closes Create, the mode and settings controls and every start, and sends no request", async (_label, setup) => {
+    setup();
+    vi.mocked(api.doctor).mockResolvedValue(UNUSABLE);
+    await openChecked();
+    expect(screen.getByTestId("job-blocked").textContent).toContain("cannot be diagnosed");
+    expect(primaryButton().disabled).toBe(true);
+    fireEvent.click(primaryButton());
+    expect(screen.queryByTestId("materials")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Copy settings" }));
+    expect((screen.getByRole("button", { name: "Review settings" }) as HTMLButtonElement).disabled).toBe(true);
+    for (const radio of screen.getAllByRole("radio")) expect((radio as HTMLInputElement).disabled).toBe(true);
+    expect(api.convert).not.toHaveBeenCalled();
+  });
+
+  it("says the refusal once and offers a way out: open another project", async () => {
+    vi.mocked(api.doctor).mockResolvedValue(UNUSABLE);
+    vi.mocked(api.openModelDialog).mockResolvedValue(B.path);
+    await openChecked();
+    expect(screen.getAllByText(/cannot be diagnosed/)).toHaveLength(1);
+    expect(screen.queryByTestId("job-high-risk")).toBeNull();
+    expect(screen.queryByRole("link", { name: "See the full checks" })).toBeNull();  // nothing the checks could add for a file that is not a project
+    await act(async () => { fireEvent.click(screen.getByTestId("open-another")); await Promise.resolve(); });
+    await settle();
+    expect(api.openModelDialog).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "b.3mf" })).toBeTruthy();
+    expect(api.convert).not.toHaveBeenCalled();                                 // opening another project prepares nothing
+  });
+
+  it("controls: a readable or repairable project is still prepared", async () => {
+    vi.mocked(api.doctor).mockResolvedValue({ verdict: "REPAIRABLE", prepare_blocked: false, recommended_action: "Prepare a U1 profile copy." } as any);
+    vi.mocked(api.convert).mockResolvedValue(copyOf(A));
+    await openChecked();
+    expect(screen.queryByTestId("job-blocked")).toBeNull();
+    expect(primaryButton().disabled).toBe(false);
+    create(); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");
+  });
+
+  it("control: an STL (never an unusable-archive verdict) is prepared", async () => {
+    vi.mocked(api.doctor).mockResolvedValue({ verdict: "CONVERTIBLE", prepare_blocked: false, recommended_action: "Create a U1 profile copy." } as any);
+    vi.mocked(api.convert).mockResolvedValue({ blocked: false, validated_ok: true, output_path: "C:\work\m_U1.3mf", output_name: "m_U1.3mf", prepare_mode: "preserve", settings_summary: null } as any);
+    view();
+    await act(async () => { useSession.getState().setFile("C:\work\m.stl"); });
+    await settle();
+    expect(primaryButton().disabled).toBe(false);
+    create(); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("m_U1.3mf");
+  });
+
+  it("control: an unavailable compatibility service alone does not make a usable project unreadable", async () => {
+    vi.mocked(api.compatibilityCheck).mockRejectedValue(new Error("service unavailable"));
+    vi.mocked(api.convert).mockResolvedValue(copyOf(A));
+    await openChecked();
+    expect(screen.queryByTestId("job-blocked")).toBeNull();
+    expect(primaryButton().disabled).toBe(false);
+    expect(screen.getByTestId("materials")).toBeTruthy();
+    create(); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");
+  });
+
+  it("control: a transport failure of the project check is a failed check, not an unusable project", async () => {
+    vi.mocked(api.doctor).mockRejectedValue(new Error("connection refused"));
+    await openChecked();
+    expect(screen.queryByTestId("job-blocked")).toBeNull();
+    expect(screen.queryByTestId("open-another")).toBeNull();
+    expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy();
+  });
+
+  it("the verdict arriving while a copy is being made drops that copy: it is never published as the current one", async () => {
+    let finish!: (v: unknown) => void;
+    vi.mocked(api.convert).mockReturnValue(new Promise((r) => { finish = r; }) as any);
+    await openChecked();
+    create(); await settle();
+    expect(screen.getByText("Creating the U1 copy…")).toBeTruthy();
+    vi.mocked(api.doctor).mockResolvedValue(UNUSABLE);
+    await act(async () => { await useSession.getState().runDoctor(); });
+    await settle();
+    await act(async () => { finish(copyOf(A)); await Promise.resolve(); });
+    await settle();
+    expect(screen.queryByText("Creating the U1 copy…")).toBeNull();
+    expect(screen.queryByTestId("copy-name")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open in Orca" })).toBeNull();
+    expect(useSession.getState().convert.status).not.toBe("done");              // the shared store never took it either
+    expect(primaryButton().disabled).toBe(true);
+  });
+
+  it("opening another project after the guard closed starts clean: nothing from the refused one carries over", async () => {
+    vi.mocked(api.doctor).mockResolvedValueOnce(UNUSABLE).mockResolvedValue({ verdict: "READY", prepare_blocked: false } as any);
+    await openChecked(A);
+    expect(primaryButton().disabled).toBe(true);
+    await open(B); await settle();
+    expect(screen.getByRole("heading", { name: "b.3mf" })).toBeTruthy();
+    expect(screen.queryByTestId("job-blocked")).toBeNull();
+    expect(primaryButton().disabled).toBe(false);
   });
 });
