@@ -40,7 +40,8 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
     ? [colourWord(spool), [spool.vendor, materialText(spool)].filter(Boolean).join(" "), `#${spool.spool_id}`].filter(Boolean).join(" · ")
     : null;
   const presetName = choice.keepOwn ? "Keeps the project's filament" : choice.preset ? choice.preset.name : null;
-  const spoolFlags = spool ? splitReasons(spool).decision : [];
+  // The preset-confirmation reason is the engine's state at selection time; the confirmation block below follows the person's own choice.
+  const spoolFlags = spool ? splitReasons(spool).decision.filter((r) => r.code !== "preset_needs_confirmation") : [];
 
   return (
     <div className="space-y-1.5 rounded-md border border-border p-2.5" data-slot={n} data-compact>
@@ -51,7 +52,7 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
             Slot {n}{" "}
             <span className="font-normal text-muted-foreground">
               · {material}{sourceColour ? ` · ${sourceColour[0].toUpperCase() + sourceColour.slice(1)}` : ""}
-              {slot.required_g !== null ? ` · ${slot.required_g} g needed` : ""}
+              {slot.required_g !== null ? ` · ${slot.required_g} g needed${slot.required_source ? ` (${slot.required_source})` : ""}` : ""}
             </span>
           </p>
           <p className="text-xs text-muted-foreground" data-testid="slot-choice">
@@ -67,9 +68,9 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
             )}
           </p>
         </div>
-        <button type="button" aria-expanded={open} aria-controls={panel} data-testid="slot-toggle"
+        <button type="button" aria-expanded={open} aria-controls={open ? panel : undefined} data-testid="slot-toggle"
           aria-label={`${chosen ? "Change" : "Choose"} materials for slot ${n}`}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => { if (open) { setBrowsing(false); setPicking(false); } setOpen((v) => !v); }}
           className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
           {open ? "Done" : chosen ? "Change" : "Choose"}
         </button>
@@ -92,7 +93,10 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
               <Check className="h-3.5 w-3.5" aria-hidden="true" /> {choice.preset.needsSayso ? "Confirm this is a U1 preset" : "Confirm this preset"}
             </Button>
           </div>
-          {(choice.preset.note ?? spool?.mapping.reason) && (
+          {choice.preset.needsSayso && (choice.preset.note ?? spool?.mapping.reason) && (
+            <p className="text-[11px] text-muted-foreground" data-testid="sayso-note">{choice.preset.note ?? spool?.mapping.reason}</p>
+          )}
+          {!choice.preset.needsSayso && (choice.preset.note ?? spool?.mapping.reason) && (
             <details className="text-[11px] text-muted-foreground"><summary className="cursor-pointer select-none">Why</summary>
               <p className="mt-1">{choice.preset.note ?? spool?.mapping.reason}</p></details>
           )}
@@ -118,6 +122,11 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
           <div>
             {slot.settings_id ? SPOOL_WITHOUT_PRESET : SPOOL_WITHOUT_PRESET_NONE_EXISTING}
             {!spool.colour ? " This spool has no colour recorded, so nothing about this slot will change." : ""}
+            {slot.settings_id && isForeignPreset(slot.settings_id) && (
+              <span className="mt-0.5 block font-medium" data-testid="foreign-preset">
+                The project&apos;s preset, &ldquo;{slot.settings_id}&rdquo;, looks like another printer&apos;s. Choosing a spool does not choose a preset: open Change to pick an installed one.
+              </span>
+            )}
             {slot.settings_id && (
               <details className="mt-0.5 text-[11px] text-muted-foreground"><summary className="cursor-pointer select-none">More</summary>
                 <span className="mt-1 block">{SPOOL_PRESET_CAVEAT}{isForeignPreset(slot.settings_id) ? ` ${SPOOL_FOREIGN_PRESET_HINT}` : ""}</span></details>
@@ -136,6 +145,7 @@ export function CompactSlotRow({ slot, choice, presets, providerLabel, dispatch,
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{COPY.closeCall}
             </p>
           )}
+          {slot.settings_id && <p className="text-[11px] text-muted-foreground" data-testid="project-preset">The project now names &ldquo;{slot.settings_id}&rdquo; for this slot.</p>}
           {slot.candidates.length > 0 ? (
             <ul className="m-0 list-none space-y-1.5 p-0" aria-label={`Spool candidates for slot ${n}`}>
               {slot.candidates.map((c) => (

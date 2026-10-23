@@ -146,6 +146,53 @@ describe("compact slot row", () => {
     expect(screen.getByTestId("spool-without-preset").textContent).toMatch(/no Orca preset selected/);
   });
 
+  it("says on the line, not behind details, that the project's own preset looks like another printer's", () => {
+    render(<Harness a={analysis([slot({ settings_id: "Generic PLA @BBL H2D" })])} />);
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: /Yoopai/ }));
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    const fp = screen.getByTestId("foreign-preset");
+    expect(fp.closest("details")).toBeNull();
+    expect(fp.textContent).toContain("Generic PLA @BBL H2D");
+    expect(fp.textContent).toMatch(/does not choose a preset/);
+    // not shown for a preset that is not foreign
+    cleanup();
+    render(<Harness a={analysis([slot({ settings_id: "Snapmaker PLA @U1" })])} />);
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: /Yoopai/ }));
+    expect(screen.queryByTestId("foreign-preset")).toBeNull();
+  });
+
+  it("does not keep showing the engine's preset-confirmation reason once the person has confirmed", () => {
+    const c = candidate({ mapping: NAMED, reasons: [
+      { code: "material_exact", text: "Material matches: PLA" },
+      { code: "preset_needs_confirmation", text: "Preset needs confirmation: the provider only names it" },
+    ] });
+    render(<Harness a={analysis([slot({ candidates: [c] })])} />);
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: /Yoopai/ }));
+    // still offered inside the panel on the candidate, where the choice is made
+    expect(screen.getAllByText(/the provider only names it/).length).toBe(1);
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    expect(screen.queryByTestId("spool-flags")).toBeNull();
+    expect(screen.getByTestId("needs-confirmation")).toBeTruthy();
+    fireEvent.click(within(screen.getByTestId("needs-confirmation")).getByRole("button", { name: /Confirm/ }));
+    expect(screen.queryByTestId("needs-confirmation")).toBeNull();
+    expect(screen.queryByText(/Preset needs confirmation/)).toBeNull();
+  });
+
+  it("closing the row closes its pickers, and shows the source of an estimated amount", () => {
+    render(<Harness a={analysis()} />);
+    expect(screen.getAllByText(/180 g needed \(the source file's own slice\)/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    fireEvent.click(screen.getByText(/Choose an installed preset/));
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("slot-toggle")); // Done
+    expect(screen.getByTestId("slot-toggle").getAttribute("aria-controls")).toBeNull();
+    fireEvent.click(screen.getByTestId("slot-toggle"));
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
   it("holds no interactive control inside another interactive control", () => {
     const withSaved = candidate({ mapping: mapping({ status: "proven", match_source: "saved_spool", preset_name: "P", base_name: "P", reason: "" }) });
     const { container } = render(<Harness a={analysis([slot({ candidates: [withSaved] })])} />);
