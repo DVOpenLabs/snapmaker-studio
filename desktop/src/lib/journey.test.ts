@@ -98,4 +98,9 @@ describe("journey stages", () => {
   it("a sliced file without an open project is not a comparison", () => {
     expect(states({ hasProject: false, hasSliced: true }).compare).toBe("todo");
   });
+
+  it("a copy never puts Open in Orca forward for a project Studio now says it cannot prepare", () => {
+    const j = deriveJourney({ ...base, prepared: true, check: { status: "done", prepareBlocked: true } });
+    expect(j.primary.kind).toBe("none");
+  });
 });

@@ -125,6 +125,7 @@ export default function ModelViewer({ preview, colourFor, highlightSlot, resetKe
       controls.dispose();
       disposeModelScene(scene);
       renderer.dispose();
+      renderer.forceContextLoss();           // free the GPU context now rather than waiting for the browser to collect it
       canvas.remove();
       delete el.dataset.drawn;
     };

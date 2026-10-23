@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useSliced } from "@/store/sliced";
 import { doctor as apiDoctor, convert as apiConvert, diff as apiDiff, type ConversionResult, type PrepareMode, type SettingsSummary } from "@/api";
 
 export interface FileRef {
@@ -62,6 +63,8 @@ export const useSession = create<SessionState>((set, get) => ({
   diff: blank(),
 
   setFile: (path) => {
+    // A sliced file opened beside another project is not this project's slice.
+    if (get().file?.path !== path) useSliced.getState().clear();
     requestGeneration++;
     prepareRevision++;
     set({ file: toFileRef(path), doctor: blank(), convert: blank(), diff: blank(), prepareMode: "preserve", settingsSummary: null, preview: blank() });

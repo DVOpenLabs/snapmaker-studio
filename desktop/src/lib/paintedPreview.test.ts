@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  NEUTRAL, beyondHeads, colourOf, coverageClaim, decodeFloat32, draftColours, legend, percent, unavailableCopy,
+  NEUTRAL, objectCount, beyondHeads, colourOf, coverageClaim, decodeFloat32, draftColours, legend, percent, unavailableCopy,
   type PaintedPreview, type PreviewSlot,
 } from "@/lib/paintedPreview";
 
@@ -55,7 +55,13 @@ describe("legend", () => {
     expect(legend(p, { 1: "#FF0000" })[0].changed).toBe(false);
   });
 
-  it("shares are of painted surface and sum to one", () => {
+  it("a slot with a little paint is measured by all the surface it prints, not by the paint alone", () => {
+    // Slot 1: 90 of default surface and 5 painted; slot 2: 10 painted. By total surface that is 90% / 10%... of 100.
+    const rows = legend(preview([{ ...slot(1, "#f00", 90), painted_area_mm2: 5 }, slot(2, "#0f0", 10)]), {});
+    expect(rows.map((r) => r.share)).toEqual([0.9, 0.1]);
+  });
+
+  it("shares are of surface and sum to one", () => {
     const rows = legend(preview([slot(1, "#f00", 30), slot(2, "#0f0", 10)]), {});
     expect(rows.map((r) => r.share)).toEqual([0.75, 0.25]);
   });
@@ -107,6 +113,16 @@ describe("unavailableCopy", () => {
   });
   it("an available preview needs no message", () => {
     expect(unavailableCopy(preview([]), false)).toBe("");
+  });
+});
+
+describe("objectCount", () => {
+  it("counts placed objects, so a three-part object is one", () => {
+    const p = preview([slot(1, "#f00")]);
+    p.instances = [0, 1, 2].map((i) => ({ id: `m${i}`, object_node: "top1", mesh: `m#${i}`, world_mm: [], label: "Object 5", instance_index: 0, instance_count: 1 }));
+    expect(objectCount(p)).toBe(1);
+    p.instances.push({ id: "m9", object_node: "top2", mesh: "m#9", world_mm: [], label: "Object 6", instance_index: 0, instance_count: 1 });
+    expect(objectCount(p)).toBe(2);
   });
 });
 

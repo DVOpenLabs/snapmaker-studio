@@ -310,3 +310,62 @@ def test_the_same_file_gives_the_same_answer():
 def test_the_response_names_no_local_path():
     blob = json.dumps(pp.build(str(ORCA_CUBE)))
     assert str(FIXTURES) not in blob and "\\Users\\" not in blob
+
+
+# --- review repairs: what is not drawn, what is not guessed, what is bounded ----------------------
+
+import scene_fixtures as sf  # noqa: E402
+
+
+def test_a_project_with_a_modifier_or_negative_part_is_declined_not_drawn_as_printing_surface(tmp_path):
+    path = sf.bambu_project(tmp_path / "mod.3mf", parts=3, items=[("100", sf.tf(10, 10, 0))], plates=[(1, [("100", None)])],
+                            roles=["normal_part", "modifier_part", "negative_part"])
+    got = pp.build(str(path))
+    assert (got["available"], got["state"]) == (False, "unsupported")
+    assert "modifiers" in got["reason"] and got["meshes"] == []
+
+
+def test_a_prusa_modifier_volume_inside_a_mesh_is_declined(tmp_path):
+    path = sf.prusa_project(tmp_path / "mod.3mf", volumes=[(0, 11, "ModelPart"), (12, 23, "ParameterModifier")])
+    assert pp.build(str(path))["state"] == "unsupported"
+
+
+def test_an_unrecognised_unit_is_declined_and_never_drawn_as_guessed_millimetres(tmp_path):
+    path = three_mf(tmp_path / "odd.3mf", model_xml([cube_object("1")], [("1", tf(0, 0, 0))], unit="furlong"))
+    got = pp.build(str(path))
+    assert (got["available"], got["state"]) == (False, "unsupported")
+    assert "unit" in got["reason"] and got["meshes"] == []
+
+
+def test_the_drawn_triangle_budget_counts_every_placed_copy(tmp_path, monkeypatch):
+    items = [("1", tf(i * 15, 0, 0)) for i in range(6)]
+    path = three_mf(tmp_path / "six.3mf", model_xml([cube_object("1")], items))
+    assert pp.build(str(path))["counts"]["triangles_drawn"] == 6 * 12
+    monkeypatch.setattr(pp, "MAX_RENDERED_TRIANGLES", 6 * 12 - 1)
+    got = pp.build(str(path))
+    assert (got["available"], got["state"]) == (False, "limit")
+    assert "every placed copy" in got["reason"]
+
+
+def test_a_file_replaced_while_it_is_being_read_is_refused_not_mixed(tmp_path, monkeypatch):
+    path = plain_cube_3mf(tmp_path / "a.3mf")
+    real, calls = pp._stamp, []
+
+    def moving(p):
+        calls.append(1)
+        stamp = real(p)
+        return stamp if len(calls) == 1 else (stamp[0] + 1, stamp[1])
+
+    monkeypatch.setattr(pp, "_stamp", moving)
+    got = pp.build(str(path))
+    assert (got["available"], got["state"]) == (False, "unreadable")
+    assert "changed while" in got["reason"]
+
+
+def test_a_multi_part_object_is_one_object_node_however_many_meshes_it_has(tmp_path):
+    path = sf.bambu_project(tmp_path / "three.3mf", parts=3, items=[("100", sf.tf(10, 10, 0))], plates=[(1, [("100", None)])])
+    got = pp.build(str(path))
+    assert got["state"] == "ok"
+    assert len(got["instances"]) == 3
+    assert len({i["object_node"] for i in got["instances"]}) == 1
+

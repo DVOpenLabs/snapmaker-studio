@@ -5,7 +5,7 @@ import { PlateView } from "@/components/job/PlateView";
 import type { usePlacement } from "@/components/PlacementCard";
 import type { ViewerLoss } from "@/components/job/ModelViewer";
 import {
-  beyondHeads, colourOf, coverageClaim, draftColours, legend, percent, unavailableCopy,
+  beyondHeads, colourOf, coverageClaim, draftColours, legend, objectCount, percent, unavailableCopy,
   type LegendRow, type PaintedPreview, type PreviewMode,
 } from "@/lib/paintedPreview";
 
@@ -29,7 +29,7 @@ const COVERAGE_COPY = {
 function usePreview(path: string | null, fetcher: Fetch): Load {
   const [state, setState] = useState<Load>({ status: "loading" });
   useEffect(() => {
-    if (!path) return;
+    if (!path) { setState({ status: "loading" }); return; }   // nothing to read: never keep the previous file's answer
     let alive = true;
     setState({ status: "loading" });
     fetcher(path).then(
@@ -69,15 +69,15 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
   const draft = useMemo(() => draftColours(selections), [selections]);
   // The colours of the copy Studio actually wrote, read back from that file.
   const copyColours = useMemo(() => {
-    if (!preview || written.status !== "done" || !written.preview.available) return null;
+    if (!preview || !preparedPath || written.status !== "done" || !written.preview.available) return null;
     const out: Record<number, string> = {};
     for (const s of written.preview.slots) if (s.colour) out[s.slot] = s.colour.toUpperCase();
     return Object.keys(out).length > 0 ? out : null;
-  }, [preview, written]);
+  }, [preview, preparedPath, written]);
 
   const hasDraft = !!preview && legend(preview, draft).some((r) => r.changed);
   // A mode that is no longer available falls back to Original rather than showing a stale comparison.
-  const effective: PreviewMode = mode === "proposed" && !hasDraft ? "original" : mode === "copy" && !copyColours ? "original" : mode;
+  const effective: PreviewMode = mode === "proposed" && !hasDraft ? "original" : mode === "copy" && (!copyColours || !preparedPath) ? "original" : mode;
   const overrides = effective === "copy" ? copyColours ?? {} : draft;
   const rows = useMemo(() => (preview ? legend(preview, overrides) : []), [preview, overrides]);
   const colourFor = useMemo(() => colourOf(rows, effective === "original" ? "original" : "proposed"), [rows, effective]);
@@ -123,11 +123,11 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
       )}
 
       {showColours && preview && (
-        <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(180px,240px)]">
+        <div className="grid min-h-0 flex-1 gap-3 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(180px,240px)]">
           <div className="relative h-[calc(100vh-24rem)] min-h-[300px] max-h-[560px] overflow-hidden rounded-lg border border-border bg-muted/30" data-testid="colour-view">
             <Suspense fallback={<p className="p-4 text-sm text-muted-foreground" role="status">Starting the 3D view…</p>}>
               <ModelViewer preview={preview} colourFor={colourFor} highlightSlot={highlight} resetKey={resetKey} onLost={onLost}
-                label={`3D view of the project, ${preview.instances.length} ${preview.instances.length === 1 ? "object" : "objects"}: ${preview.instances.map((i) => i.label).join("; ")}. Drag to turn, scroll to zoom, arrow keys to move.`} />
+                label={`3D view of the project, ${objectCount(preview)} ${objectCount(preview) === 1 ? "object" : "objects"}: ${objectLabels(preview).join("; ")}. Drag to turn, scroll to zoom, arrow keys to move.`} />
             </Suspense>
           </div>
           {rows.length > 0
@@ -138,7 +138,8 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
 
       {(surface === "plate" || original.status === "failed" || (original.status === "done" && !preview) || lost) && (
         <>
-          {(message || lost) && original.status !== "loading" && (
+          {/* An unreadable file is already said once, at the top of the screen and by the plate; a third time is noise. */}
+          {(message || lost) && original.status !== "loading" && !(original.status === "done" && original.preview.state === "unreadable" && !lost) && (
             <p className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-sm" role="status" data-testid="preview-unavailable">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span>{lost ? `${LOSS_COPY[lost]} The plate view below is unaffected.` : message}</span>
@@ -154,12 +155,18 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
           <ul className="mt-1.5 list-disc space-y-1 pl-4">
             <li data-testid="coverage-note">{COVERAGE_COPY[coverageClaim(preview)]}</li>
             {preview.notes.slice(1).map((n) => <li key={n}>{n}</li>)}
-            <li>{preview.instances.length === 1 ? "1 object placed." : `${preview.instances.length} objects placed: ${preview.instances.map((i) => i.label).join("; ")}.`}</li>
+            <li>{objectCount(preview) === 1 ? "1 object placed." : `${objectCount(preview)} objects placed: ${objectLabels(preview).join("; ")}.`}</li>
           </ul>
         </details>
       )}
     </div>
   );
+}
+
+function objectLabels(p: PaintedPreview): string[] {
+  const seen = new Map<string, string>();
+  for (const i of p.instances) if (!seen.has(i.object_node ?? i.id)) seen.set(i.object_node ?? i.id, i.label);
+  return [...seen.values()];
 }
 
 function Seg({ on, children, ...rest }: { on: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {

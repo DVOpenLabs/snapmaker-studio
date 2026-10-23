@@ -92,6 +92,17 @@ describe("buildModelScene", () => {
     expect([...scene.materials.values()].every((m) => m.emissive.getHex() === 0)).toBe(true);
   });
 
+  it("disposal releases every geometry, including one no instance uses, and the bed", () => {
+    const p = synthetic({ meshes: [...synthetic().meshes, { key: "unused#2", parts: [{ slot: 1, triangles: 1, positions_f32le_base64: floats(...TRI) }] }] });
+    const scene = buildModelScene(p, () => "#fff");
+    const disposed: unknown[] = [];
+    for (const g of scene.owned) g.addEventListener("dispose", () => disposed.push(g));
+    scene.bed!.addEventListener("dispose", () => disposed.push("bed"));
+    disposeModelScene(scene);
+    expect(disposed).toHaveLength(scene.owned.length + 1);
+    expect(scene.owned).toHaveLength(5 + 1 + 1);                    // five slot parts, the unused part, the bed outline
+  });
+
   it("an instance whose mesh was not returned is skipped, not drawn at the origin", () => {
     const p = synthetic({ instances: [{ ...synthetic().instances[0], mesh: "missing#9" }] });
     expect(buildModelScene(p, () => "#fff").instances).toBe(0);

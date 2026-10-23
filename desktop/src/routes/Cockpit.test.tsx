@@ -12,7 +12,8 @@ vi.mock("@/components/PlacementCard", () => ({
   usePlacement: () => ({ check: null, failed: false, fix: null, fixing: false, runFix: vi.fn() }),
   PlacementView: () => <div data-testid="placement-view" />,
 }));
-vi.mock("@/components/PreflightCard", () => ({ PreflightCard: () => <div data-testid="preflight" /> }));
+const preflightMounted = vi.hoisted(() => vi.fn());
+vi.mock("@/components/PreflightCard", () => ({ PreflightCard: () => { preflightMounted(); return <div data-testid="preflight" />; } }));
 vi.mock("@/components/ColorPlanCard", () => ({ ColorPlanCard: () => <div data-testid="colorplan" /> }));
 vi.mock("@/components/FidelityCard", () => ({ FidelityCard: () => null }));
 vi.mock("@/components/FixLedgerCard", () => ({ FixLedgerCard: () => null }));
@@ -362,5 +363,30 @@ describe("This job: when things change or fail underneath", () => {
     create(); await settle();
     expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");
     expect(api.openInOrca).not.toHaveBeenCalled();
+  });
+});
+
+describe("This job: what opening a project does and does not touch", () => {
+  it("opening a job does not run the printer comparison; it runs when the Target tab is opened", async () => {
+    await openChecked();
+    expect(preflightMounted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Target" }));
+    expect(preflightMounted).toHaveBeenCalled();
+  });
+
+  it("an unreadable file offers no materials, and says why", async () => {
+    vi.mocked(api.doctor).mockResolvedValue({ verdict: "HIGH_RISK", prepare_blocked: false, recommended_action: "This file is not a 3MF project." } as any);
+    await openChecked();
+    expect(screen.queryByTestId("materials")).toBeNull();
+    expect(screen.getByTestId("no-materials").textContent).toMatch(/not offered/);
+  });
+
+  it("a G-code sliced for project A is not shown as project B's slice", async () => {
+    await openChecked(A);
+    await act(async () => { useSliced.setState({ path: "C:\out\a.gcode", name: "a.gcode" }); });
+    expect(screen.getByTestId("slice-compare")).toBeTruthy();
+    await open(B); await settle();
+    expect(screen.queryByTestId("slice-compare")).toBeNull();
+    expect(screen.getByRole("button", { name: "Create U1 copy" })).toBeTruthy();
   });
 });

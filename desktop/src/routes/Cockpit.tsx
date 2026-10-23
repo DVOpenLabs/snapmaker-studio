@@ -87,6 +87,8 @@ function JobScreen({ file }: { file: FileRef }) {
   const eligibility = useEligibility(file.path, file.ext);
   const gate = eligibility.status === "ready" ? eligibility.gate : "open";
   const closed = !!doctor.data?.prepare_blocked || gate !== "open";
+  // The file cannot be read at all (the engine's own verdict). Nothing built from its contents is offered for it.
+  const unreadable = !closed && doctor.data?.verdict === "HIGH_RISK" && typeof doctor.data.recommended_action === "string";
   const ctl = usePrepare(closed);
   const placement = usePlacement(file.path);
   const fetchPreview = usePreviewFetcher(file.path);
@@ -141,7 +143,7 @@ function JobScreen({ file }: { file: FileRef }) {
 
   const tabs: PaneTab[] = [
     {
-      id: "target", label: "Target",
+      id: "target", label: "Target", lazy: true,
       el: <FlatCards><div className="space-y-5"><PreflightCard path={file.path} /><ColorPlanCard path={file.path} /></div></FlatCards>,
     },
     {
@@ -149,13 +151,14 @@ function JobScreen({ file }: { file: FileRef }) {
       el: (
         <FlatCards>
           <div className="peer empty:hidden">
-            {!closed && (
+            {!closed && !unreadable && eligibility.status !== "checking" && (
               <ProjectMaterialsCard bare path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
                 onPrepare={(materials) => ctl.start(file.path, mode, materials)} />
             )}
           </div>
           <p className="hidden text-sm text-muted-foreground peer-empty:block" data-testid="no-materials">
-            {closed ? "Materials are not offered because Studio cannot prepare this project." : "This file has no filament slots to choose materials for."}
+            {closed || unreadable ? "Materials are not offered because Studio cannot prepare this project."
+              : eligibility.status === "checking" ? "Checking the project…" : "This file has no filament slots to choose materials for."}
           </p>
         </FlatCards>
       ),

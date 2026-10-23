@@ -22,7 +22,7 @@ export interface PreviewSlot {
 export interface PreviewPart { slot: number | null; triangles: number; positions_f32le_base64: string }
 export interface PreviewMesh { key: string; parts: PreviewPart[] }
 export interface PreviewInstance {
-  id: string; mesh: string; world_mm: number[]; label: string;
+  id: string; object_node?: string; mesh: string; world_mm: number[]; label: string;
   instance_index: number; instance_count: number; build_index?: number | null;
 }
 
@@ -68,7 +68,8 @@ export interface LegendRow {
 }
 
 export function legend(preview: PaintedPreview, draft: Record<number, string>): LegendRow[] {
-  const total = preview.slots.reduce((sum, s) => sum + (s.from_painting ? s.painted_area_mm2 : s.area_mm2), 0);
+  // Every slot is measured the same way: the surface of the mesh that prints in it, of one copy of each mesh.
+  const total = preview.slots.reduce((sum, s) => sum + s.area_mm2, 0);
   return preview.slots.map((s) => {
     const original = s.colour ? s.colour.toUpperCase() : null;
     const proposed = draft[s.slot] ?? original;
@@ -79,7 +80,7 @@ export function legend(preview: PaintedPreview, draft: Record<number, string>): 
       proposed,
       changed: !!draft[s.slot] && draft[s.slot] !== original,
       used: s.area_mm2 > 0 || s.painted_area_mm2 > 0,
-      share: total > 0 ? (s.from_painting ? s.painted_area_mm2 : s.area_mm2) / total : null,
+      share: total > 0 ? s.area_mm2 / total : null,
       paintedAreaMm2: s.painted_area_mm2,
     };
   });
@@ -96,6 +97,11 @@ export function colourOf(rows: LegendRow[], mode: PreviewMode): (slot: number | 
 }
 
 /** Slots past the U1's four that something actually prints in. A listed but unused fifth colour is the Materials pane's concern. */
+/** Placed objects, not meshes: a multi-part object is one object however many meshes it is made of. */
+export function objectCount(p: PaintedPreview): number {
+  return new Set(p.instances.map((i) => i.object_node ?? i.id)).size;
+}
+
 export function beyondHeads(rows: LegendRow[]): LegendRow[] {
   return rows.filter((r) => r.head === null && r.used);
 }

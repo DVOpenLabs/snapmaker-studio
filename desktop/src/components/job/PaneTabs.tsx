@@ -1,4 +1,4 @@
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface PaneTab {
@@ -6,6 +6,8 @@ export interface PaneTab {
   label: string;
   /** A short mark beside the label (for example the number of choices held). */
   badge?: string | null;
+  /** Mount the panel only once the tab has been opened, then keep it. For a panel that reads from the network on mount. */
+  lazy?: boolean;
   el: ReactNode;
 }
 
@@ -20,6 +22,8 @@ export function PaneTabs({ tabs, active, onChange, label }: {
   tabs: PaneTab[]; active: string; onChange: (id: string) => void; label: string;
 }) {
   const uid = useId();
+  const [opened, setOpened] = useState<Set<string>>(() => new Set([active]));
+  if (!opened.has(active)) setOpened(new Set(opened).add(active));
   const refs = useRef(new Map<string, HTMLButtonElement>());
   const tabId = (id: string) => `${uid}-tab-${id}`;
   const panelId = (id: string) => `${uid}-panel-${id}`;
@@ -60,7 +64,7 @@ export function PaneTabs({ tabs, active, onChange, label }: {
       {tabs.map((t) => (
         <div key={t.id} id={panelId(t.id)} role="tabpanel" aria-labelledby={tabId(t.id)} hidden={t.id !== active}
           tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto py-4 outline-none">
-          {t.el}
+          {t.lazy && !opened.has(t.id) ? null : t.el}
         </div>
       ))}
     </div>

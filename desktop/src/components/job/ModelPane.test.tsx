@@ -162,13 +162,46 @@ describe("ModelPane", () => {
   it.each([
     ["limit", "This project is too detailed to preview in full."],
     ["unsupported", "This project is not in millimetres."],
-    ["unreadable", "Studio could not read this file."],
   ] as const)("a %s answer shows its plain reason and the plate instead of a drawing", async (state, reason) => {
     render(pane({ fetcher: async () => preview({ available: false, state, reason, slots: [], meshes: [], instances: [] }, 0) }));
     expect((await screen.findByTestId("preview-unavailable")).textContent).toContain(reason);
     expect(screen.getByTestId("plate-view")).toBeTruthy();
     expect(screen.queryByTestId("viewer-stub")).toBeNull();
     expect(screen.queryByTestId("legend")).toBeNull();
+  });
+
+  it("an unreadable file is not told a third time: the plate and the screen's banner already say it", async () => {
+    render(pane({ fetcher: async () => preview({ available: false, state: "unreadable", reason: "Studio could not read this file.", slots: [], meshes: [], instances: [] }, 0) }));
+    expect(await screen.findByTestId("plate-view")).toBeTruthy();
+    expect(screen.queryByTestId("preview-unavailable")).toBeNull();
+  });
+
+  it("when the copy goes away (a new Prepare starts) its colours are no longer shown", async () => {
+    const written = preview(); written.slots[0].colour = "#ABCDEF";
+    const fetcher = async (p: string) => (p.endsWith("_U1.3mf") ? written : preview());
+    const { rerender } = render(pane({ fetcher, preparedPath: "C:\work\a_U1.3mf" }));
+    await screen.findByTestId("viewer-stub");
+    fireEvent.click(await screen.findByRole("button", { name: "U1 copy" }));
+    expect(pick(1)).toBe("#ABCDEF");
+    rerender(pane({ fetcher, preparedPath: null }));
+    expect(pick(1)).toBe("#FF0000");                                   // back to the project's own colour
+    expect(screen.queryByRole("button", { name: "U1 copy" })).toBeNull();
+    // A second copy later does not resurrect the first one's colours before its own answer is in.
+    let hang = false;
+    const slow = (p: string) => (hang && p.endsWith("_U1.3mf") ? new Promise<PaintedPreview>(() => {}) : fetcher(p));
+    rerender(pane({ fetcher: slow, preparedPath: null }));
+    await flush();
+    hang = true;
+    rerender(pane({ fetcher: slow, preparedPath: "C:\work\a_U1.3mf" }));
+    expect((screen.getByRole("button", { name: "U1 copy" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("counts objects, not meshes: a three-part object is one object", async () => {
+    const p = preview();
+    p.instances = [0, 1, 2].map((i) => ({ ...p.instances[0], id: `m${i}`, object_node: "top1", label: "Object 5" }));
+    render(pane({ fetcher: async () => p }));
+    await screen.findByTestId("viewer-stub");
+    expect(screen.getByTestId("preview-notes").textContent).toContain("1 object placed.");
   });
 
   it("a failed request is a calm sentence and the plate, never a stack or an error code", async () => {

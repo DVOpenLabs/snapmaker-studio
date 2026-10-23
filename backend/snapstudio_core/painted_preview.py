@@ -29,6 +29,7 @@ a different slot table (the project's, or the person's draft) without asking for
 from __future__ import annotations
 
 import base64
+import os
 from array import array
 
 from . import paint_codec
@@ -44,6 +45,8 @@ SCHEMA = "paintedpreview/1"
 MAX_TRIANGLES_OUT = 120_000
 #: Painted facets and their attribute text are bounded before anything is decoded.
 MAX_PAINTED_FACETS = pc.MAX_PAINTED_TRIANGLES
+#: What the viewer actually draws: the split triangles of each mesh times the placed instances that use it.
+MAX_RENDERED_TRIANGLES = 600_000
 MAX_NOTES = 8
 
 _STATES = ("ok", "unsupported", "unreadable", "limit")
@@ -61,12 +64,12 @@ class _Refusal(Exception):
 def _refuse(state: str, reason: str) -> dict:
     return {"schema": SCHEMA, "available": False, "state": state, "reason": reason, "kind": None,
             "bed": None, "slots": [], "unknown_default": False, "meshes": [], "instances": [],
-            "counts": {"triangles_out": 0, "painted_triangles": 0, "leaves": 0, "malformed": 0},
+            "counts": {"triangles_out": 0, "painted_triangles": 0, "leaves": 0, "malformed": 0, "triangles_drawn": 0},
             "limits": _limits(), "notes": []}
 
 
 def _limits() -> dict:
-    return {"max_triangles_out": MAX_TRIANGLES_OUT, "max_painted_facets": MAX_PAINTED_FACETS,
+    return {"max_triangles_out": MAX_TRIANGLES_OUT, "max_painted_facets": MAX_PAINTED_FACETS, "max_rendered_triangles": MAX_RENDERED_TRIANGLES,
             "max_leaves_per_facet": paint_codec.MAX_LEAVES_PER_TRIANGLE}
 
 
@@ -127,7 +130,7 @@ def _instances(sc: dict) -> list[dict]:
         label = f"Object {top['resource']['object_id']}" if total <= 1 else \
             f"Object {top['resource']['object_id']} · instance {index + 1} of {total}"
         mk = n["mesh_key"]
-        out.append({"id": n["id"], "mesh": f"{mk['part']}#{mk['object_id']}", "world_mm": list(n["world_mm"]),
+        out.append({"id": n["id"], "object_node": top["id"], "mesh": f"{mk['part']}#{mk['object_id']}", "world_mm": list(n["world_mm"]),
                     "build_index": n.get("build_index"), "label": label, "instance_index": index,
                     "instance_count": total, "plate_id": (n.get("plate") or {}).get("plate_id"),
                     "bounds_mm": n.get("bounds_mm")})
@@ -202,10 +205,28 @@ def _dialect(tm: ThreeMF, model_parts: list[str]) -> tuple[str | None, bool]:
     return None, False
 
 
+def _stamp(path: str):
+    try:
+        st = os.stat(path)
+        return (st.st_size, st.st_mtime_ns)
+    except OSError:
+        return None
+
+
 def _build(path: str) -> dict:
+    before = _stamp(path)
     sc = scene.build_scene_dict(path)
     is_3mf = path.lower().endswith(".3mf")
     notes: list[str] = [_BASE_NOTE]
+    codes = {lim.get("code") for lim in sc.get("limitations", [])}
+    if codes & {"UNSUPPORTED_UNIT", "NON_MM_SOURCE_UNIT"}:
+        raise _Refusal("unsupported", "This project's unit is not a millimetre Studio can rely on, and Studio draws the preview only for "
+                                      "millimetre projects. It does not guess or convert units.")
+    if "UNKNOWN_VOLUME_ROLE" in codes or any(
+            n.get("mesh_key") is not None and (n.get("role_context") not in (None, "part") or n.get("has_non_part_volumes"))
+            for n in sc.get("nodes", [])):
+        raise _Refusal("unsupported", "This project has modifiers, negative parts or helper volumes that do not print as surface. "
+                                      "Studio does not draw those, so it does not draw this project's colours.")
 
     if is_3mf:
         odd = [s for s in sc.get("sources", []) if s.get("unit") != "millimeter" or s.get("mm_per_unit") != 1.0]
@@ -271,7 +292,18 @@ def _build(path: str) -> dict:
             raise _Refusal("unsupported", "Studio could not match this project's painting to its geometry, so it does not draw it.")
 
     counts["triangles_out"] = out.total
+    uses: dict[str, int] = {}
+    for inst in instances:
+        uses[inst["mesh"]] = uses.get(inst["mesh"], 0) + 1
+    rendered = sum(sum(len(b) // 9 for b in parts.values()) * uses.get(key, 0) for key, parts in out.parts.items())
+    if rendered > MAX_RENDERED_TRIANGLES:
+        raise _Refusal("limit", f"Drawn once for every placed copy this project is {rendered:,} triangles, more than the {MAX_RENDERED_TRIANGLES:,} "
+                                "Studio draws. Studio shows the preview only when it can show all of it.")
+    counts["triangles_drawn"] = rendered
+    if _stamp(path) != before or before is None:
+        raise _Refusal("unreadable", "The file changed while Studio was reading it, so the preview was not drawn. Open it again.")
     slot_rows = _slot_rows(declared, slots)
+    notes = notes[:MAX_NOTES - 2]
     if unknown_default:
         notes.append("Some surface has no filament stated by the project; it is drawn in a neutral colour, not assumed to be slot 1.")
     if counts["malformed"]:
@@ -284,7 +316,7 @@ def _build(path: str) -> dict:
     return {"schema": SCHEMA, "available": True, "state": "ok", "reason": None, "kind": kind,
             "bed": {"polygon_mm": bed.get("polygon_mm"), "height_mm": bed.get("height_mm")} if bed else None,
             "slots": slot_rows, "unknown_default": bool(unknown_default), "meshes": meshes, "instances": instances,
-            "counts": counts, "limits": _limits(), "notes": notes[:MAX_NOTES]}
+            "counts": counts, "limits": _limits(), "notes": notes}
 
 
 def _read_settings(tm: ThreeMF):

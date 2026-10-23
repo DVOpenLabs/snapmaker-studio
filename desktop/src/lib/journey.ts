@@ -111,7 +111,7 @@ function primaryFor(f: JourneyFacts, closed: boolean, checking: boolean): Primar
   if (!f.hasProject) return { kind: "none", label: STAGE_LABEL.open };
   if (f.check.status === "error") return { kind: "retry-check", label: "Check again" };
   if (f.hasSliced) return { kind: "compare", label: STAGE_LABEL.compare };
-  if (f.prepared) return { kind: "open-orca", label: STAGE_LABEL.orca };
+  if (f.prepared && !closed) return { kind: "open-orca", label: STAGE_LABEL.orca };
   if (closed) return { kind: "none", label: STAGE_LABEL.copy, disabledReason: "Studio cannot prepare a U1 copy of this project." };
   if (f.preparing) return { kind: "create", label: STAGE_LABEL.copy, disabledReason: "Creating the copy…" };
   if (f.materialsHolding) return { kind: "review-materials", label: "Review materials" };

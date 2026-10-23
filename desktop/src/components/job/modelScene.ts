@@ -20,6 +20,9 @@ export interface ModelScene {
   instances: number;
   /** Distinct geometries: repeated instances share one. */
   geometries: number;
+  /** Everything GPU-side that must be released, including geometry no instance used. */
+  owned: BufferGeometry[];
+  bed: LineBasicMaterial | null;
 }
 
 export function buildModelScene(preview: PaintedPreview, colourFor: (slot: number | null) => string, bedColour = "#c8ced6"): ModelScene {
@@ -72,11 +75,15 @@ export function buildModelScene(preview: PaintedPreview, colourFor: (slot: numbe
     root.add(group);
   }
 
+  let bedMaterial: LineBasicMaterial | null = null;
+  let bedGeometry: BufferGeometry | null = null;
   const polygon = preview.bed?.polygon_mm;
   if (polygon && polygon.length >= 3) {
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute(polygon.flatMap(([x, y]) => [x, y, 0]), 3));
-    const bed = new LineLoop(g, new LineBasicMaterial({ color: new Color(bedColour) }));
+    bedMaterial = new LineBasicMaterial({ color: new Color(bedColour) });
+    bedGeometry = g;
+    const bed = new LineLoop(g, bedMaterial);
     bed.name = "bed";
     root.add(bed);
   }
@@ -89,7 +96,9 @@ export function buildModelScene(preview: PaintedPreview, colourFor: (slot: numbe
   key.name = "light-key";
   root.add(sky, key);
 
-  return { root, materials, triangles, box: { min, max }, instances, geometries: geometry.size };
+  const owned = [...geometry.values()].flatMap((parts) => parts.map((p) => p.geometry));
+  if (bedGeometry) owned.push(bedGeometry);
+  return { root, materials, triangles, box: { min, max }, instances, geometries: geometry.size, owned, bed: bedMaterial };
 }
 
 /** Recolour in place (Original ↔ Proposed, or a new choice) without touching the geometry. A highlighted slot keeps its
@@ -115,12 +124,9 @@ export function drawnColours(scene: ModelScene): string {
 }
 
 export function disposeModelScene(scene: ModelScene) {
-  const seen = new Set<BufferGeometry>();
-  scene.root.traverse((o) => {
-    const g = (o as Mesh).geometry as BufferGeometry | undefined;
-    if (g && !seen.has(g)) { seen.add(g); g.dispose(); }
-  });
+  for (const g of scene.owned) g.dispose();
   for (const m of scene.materials.values()) m.dispose();
+  scene.bed?.dispose();
 }
 
 export { NEUTRAL };

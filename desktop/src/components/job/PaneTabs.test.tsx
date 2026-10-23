@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaneTabs } from "@/components/job/PaneTabs";
 
 function Harness() {
@@ -59,6 +59,23 @@ describe("PaneTabs", () => {
     expect(screen.getByText("second")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /One/ }));
     expect((screen.getByLabelText("kept") as HTMLInputElement).value).toBe("spool 4");
+  });
+
+  it("a lazy tab is not mounted until it is first opened, and stays mounted after", () => {
+    const mounts = vi.fn();
+    function Probe() { React.useEffect(() => { mounts(); }, []); return <p>probe</p>; }
+    function Lazy() {
+      const [active, setActive] = useState("a");
+      return <PaneTabs label="x" active={active} onChange={setActive} tabs={[
+        { id: "a", label: "One", el: <p>first</p> }, { id: "b", label: "Two", lazy: true, el: <Probe /> }]} />;
+    }
+    render(<Lazy />);
+    expect(mounts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(mounts).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("tab", { name: "One" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(mounts).toHaveBeenCalledTimes(1);
   });
 
   it("shows a badge beside the label", () => {
