@@ -76,6 +76,9 @@ param(
     # supplied the run also proves that equivalent facts produce equal decisions
     # in the installed build rather than only in the test suite.
     [string]$BambuddyUrl,
+    # The SHA-256 of the bundled frozen engine (snapstudio-api.exe) in the candidate's own installed tree. When given, the
+    # RUNNING engine's image must match it, which binds the acceptance run to that exact engine build.
+    [string]$ExpectedSidecarSha256,
     [int]$SpoolEasePort = 9403,
     # Ports for the two throwaway probe servers this script owns. One counts the
     # requests it receives, which is how "no provider is configured" becomes a
@@ -164,10 +167,21 @@ $paintedSettings = @'
 $paintedParts = @'
 <config><object id="1"><part id="1" subtype="normal_part"><metadata key="extruder" value="2"/></part></object><object id="2"><part id="2" subtype="normal_part"><metadata key="extruder" value="3"/></part></object><plate><metadata key="plater_id" value="1"/></plate></config>
 '@
+# The two parts every 3MF package requires. Studio's readability rule (the Doctor, the traits behind Ready Now,
+# Compatibility and Prepare all use one) treats an archive without them as not a project, so a test file built
+# without them is refused before any painting is read.
+$paintedContentTypes = @'
+<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>
+'@
+$paintedRels = @'
+<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>
+'@
 if (Test-Path $paintedWork) { Remove-Item $paintedWork -Force }
 Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
 $zip = [System.IO.Compression.ZipFile]::Open($paintedWork, "Create")
 foreach ($entry in @(
+    @{ name = "[Content_Types].xml"; body = $paintedContentTypes },
+    @{ name = "_rels/.rels"; body = $paintedRels },
     @{ name = "3D/3dmodel.model"; body = $paintedModel },
     @{ name = "Metadata/project_settings.config"; body = $paintedSettings },
     @{ name = "Metadata/model_settings.config"; body = $paintedParts })) {
@@ -177,6 +191,41 @@ foreach ($entry in @(
     $writer.Dispose()
 }
 $zip.Dispose()
+
+# --- geometry-basis fixtures -------------------------------------------------------------------------
+#
+# Three small single-object projects with the same 10 x 20 x 30 box. They differ only in what the file
+# says about physical size, which is what Studio must not guess:
+#   acceptance_geom_mm.3mf      millimetres, no transform      -> the size is established, verdicts stay
+#   acceptance_geom_inch.3mf    unit="inch" (really 254 x 508 x 762 mm) -> not checked
+#   acceptance_geom_scaled.3mf  build item scaled x20 (really 200 x 400 x 600 mm) -> not checked
+# The "routes" phase asks the installed sidecar about each and asserts scoped not_checked/unknown answers
+# for the last two and unchanged answers for the first. The files are not model data of anyone's.
+function New-GeometryFixture([string]$Name, [string]$Unit, [string]$ItemTransform) {
+    $verts = @(@(0,0,0), @(10,0,0), @(10,20,0), @(0,20,0), @(0,0,30), @(10,0,30), @(10,20,30), @(0,20,30))
+    $tris = @(@(0,2,1), @(0,3,2), @(4,5,6), @(4,6,7), @(0,1,5), @(0,5,4), @(2,3,7), @(2,7,6), @(1,2,6), @(1,6,5), @(3,0,4), @(3,4,7))
+    $vx = ($verts | ForEach-Object { '<vertex x="{0}" y="{1}" z="{2}"/>' -f $_[0], $_[1], $_[2] }) -join ''
+    $tx = ($tris | ForEach-Object { '<triangle v1="{0}" v2="{1}" v3="{2}"/>' -f $_[0], $_[1], $_[2] }) -join ''
+    $tf = if ($ItemTransform) { ' transform="' + $ItemTransform + '"' } else { '' }
+    $model = '<?xml version="1.0" encoding="UTF-8"?><model unit="' + $Unit + '" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>' + $vx + '</vertices><triangles>' + $tx + '</triangles></mesh></object></resources><build><item objectid="1"' + $tf + '/></build></model>'
+    $path = Join-Path $WorkDir $Name
+    if (Test-Path $path) { Remove-Item $path -Force }
+    $z = [System.IO.Compression.ZipFile]::Open($path, "Create")
+    foreach ($e in @(
+        @{ name = "[Content_Types].xml"; body = $paintedContentTypes },
+        @{ name = "_rels/.rels"; body = $paintedRels },
+        @{ name = "3D/3dmodel.model"; body = $model })) {
+        $it = $z.CreateEntry($e.name)
+        $w = New-Object System.IO.StreamWriter($it.Open())
+        $w.Write($e.body.Trim())
+        $w.Dispose()
+    }
+    $z.Dispose()
+    return $path
+}
+$geomMmWork = New-GeometryFixture "acceptance_geom_mm.3mf" "millimeter" ""
+$geomInchWork = New-GeometryFixture "acceptance_geom_inch.3mf" "inch" ""
+$geomScaledWork = New-GeometryFixture "acceptance_geom_scaled.3mf" "millimeter" "20 0 0 0 20 0 0 0 20 0 0 0"
 
 $gcodeWork = Join-Path $WorkDir "acceptance_job.gcode"
 @'
@@ -308,6 +357,19 @@ Add-Check "Probe servers this run owns are up" $probeAlive "count $ProbePort, re
     $sidecars = @(Get-HarnessSidecarProcesses -Lane $lane)
     Add-Check "Sidecar boots from the install directory" ($sidecars.Count -ge 1) `
         "$($sidecars.Count) process(es)"
+
+    # The running engine must be the frozen executable this installer shipped: same image as the installed file, and (when the
+    # candidate's own installed-tree hash is supplied) the same bytes the candidate build recorded. Never a source checkout.
+    $installedSidecarHash = if (Test-Path $sidecarExe) { (Get-FileHash $sidecarExe -Algorithm SHA256).Hash } else { $null }
+    $runningHashes = @($sidecars | ForEach-Object { (Get-FileHash -LiteralPath $_.ExecutablePath -Algorithm SHA256).Hash } | Sort-Object -Unique)
+    # (The launcher already requires the running image path to sit inside this lane's install dir; this records which file that is.)
+    Add-Check "Running engine process is the installed sidecar file" `
+        ($null -ne $installedSidecarHash -and $runningHashes.Count -ge 1 -and @($runningHashes | Where-Object { $_ -ne $installedSidecarHash }).Count -eq 0) `
+        "running image(s) $($runningHashes -join ',') ; installed file $installedSidecarHash"
+    # Binding to the candidate build is not optional: without the candidate's recorded hash this check fails by design.
+    Add-Check "Running engine matches the candidate's recorded sidecar hash" `
+        ($ExpectedSidecarSha256 -and $runningHashes.Count -ge 1 -and @($runningHashes | Where-Object { $_ -ne $ExpectedSidecarSha256.ToUpperInvariant() }).Count -eq 0) `
+        $(if ($ExpectedSidecarSha256) { "expected $($ExpectedSidecarSha256.ToUpperInvariant())" } else { "no -ExpectedSidecarSha256 supplied: the run is not bound to a candidate build" })
 
     $cdp = $appHandle.CdpUrl
     $node = Join-Path $PSScriptRoot "checks.mjs"
@@ -568,6 +630,29 @@ Add-Check "Probe servers this run owns are up" $probeAlive "count $ProbePort, re
         $code = Invoke-Phase "provider-spoolease-restored" $sampleWork $gcodeWork
         Add-Check "SpoolEase settings restore without the session key" ($code -eq 0)
     }
+
+    # --- the job screen, in the installed build ---------------------------------------------------------------------
+    #
+    # A fresh app launch with no project: the native Open picker (plain Win32 messages to the app's own dialog, never UI
+    # Automation), the one primary action, painted preview modes, materials with explicit review, a separate U1 copy and its
+    # read-back, an unreadable and a moved-away project, valid controls and project switching. Synthetic files and a mock
+    # Spoolman only. Snapmaker Orca is never opened from here.
+    Stop-Tracked
+    # Detection only (never a kill): Snapmaker Orca processes that exist before the journey, by pid and start time.
+    $orcaBefore = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'snapmaker-orca*' } | ForEach-Object { "$($_.ProcessId)@$($_.CreationDate.ToUniversalTime().ToString('o'))" })
+    $jobApp = Start-App -Settle 12 -Label "job-journey"
+    $jobWork = Join-Path $WorkDir "job-journey"
+    $jobEnv = @{} + $probeEnv
+    $jobEnv.SNAPSTUDIO_ACCEPT_APP_PID = [string]$jobApp.Process.Id
+    $jobEnv.SNAPSTUDIO_ACCEPT_NATIVE_OPEN = (Join-Path $PSScriptRoot "native-open.ps1")
+    $cubeSource = Join-Path $repo "backend\tests\fixtures\painted\orcaslicer-2.4.2-painted-cube.3mf"
+    $jj = Invoke-HarnessNode -Lane $script:lane -Environment $jobEnv `
+        -ArgumentList @((Join-Path $PSScriptRoot "job-journey.mjs"), $jobApp.CdpUrl, $outDir, $jobWork, $cubeSource, $geomMmWork)
+    $jj.Output | ForEach-Object { Write-Host "    $_" }
+    Add-Check "Installed job journey: picker, materials, copy, refusals and switching" ($jj.ExitCode -eq 0)
+    $orcaAfter = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'snapmaker-orca*' } | ForEach-Object { "$($_.ProcessId)@$($_.CreationDate.ToUniversalTime().ToString('o'))" })
+    $orcaNew = @($orcaAfter | Where-Object { $orcaBefore -notcontains $_ })
+    Add-Check "No Snapmaker Orca process appeared during the job journey" ($orcaNew.Count -eq 0) "$($orcaBefore.Count) before, $($orcaAfter.Count) after, $($orcaNew.Count) new (detection only; nothing is ever stopped)"
 
     Stop-Tracked
 }
