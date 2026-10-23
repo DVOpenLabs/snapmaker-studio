@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Loader2, Layers, AlertTriangle, Info, Check } from "lucide-react";
 import {
   confirmMaterialMapping, convert, materialPresets, projectMaterials, projectMaterialsInventory, removeMaterialMapping,
@@ -416,6 +416,21 @@ export function ProjectMaterialsFidelity({ summary }: { summary: ProjectMaterial
   );
 }
 
+/** The review opens below the rows, often off-screen in a scrolling pane: bring it into view and put focus on it. */
+function ReviewBox({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <div ref={ref} tabIndex={-1} role="region" aria-label={COPY.review}
+      className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="review">
+      {children}
+    </div>
+  );
+}
+
 export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: {
   review: ReviewState; providerLabel: string | null; onPrepare: () => void; onBack: () => void; busy?: boolean;
 }) {
@@ -434,7 +449,7 @@ export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: 
   if (review.result.blocked) return <BlockedPanel result={review.result} onBack={onBack} />;
   const summary = review.result.settings_summary?.project_materials;
   return (
-    <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3" data-testid="review">
+    <ReviewBox>
       <p className="text-sm font-semibold">{COPY.review}</p>
       <ProjectMaterialsFidelity summary={summary} />
       <p className="text-[11px] text-muted-foreground">
@@ -444,7 +459,7 @@ export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: 
         <Button size="sm" onClick={onPrepare} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{COPY.prepare}</Button>
         <Button size="sm" variant="secondary" onClick={onBack}>{COPY.back}</Button>
       </div>
-    </div>
+    </ReviewBox>
   );
 }
 
