@@ -18,6 +18,7 @@ import { SliceCompare } from "@/components/job/SliceCompare";
 import { useOpenFile } from "@/hooks/useOpenFile";
 import { useEligibility } from "@/hooks/useEligibility";
 import { usePrepare } from "@/hooks/usePrepare";
+import { usePreviewFetcher } from "@/hooks/usePreviewFetcher";
 import { GATE_COPY } from "@/lib/compatibility";
 import { deriveJourney, type StageId } from "@/lib/journey";
 import type { PrepareMode } from "@/api";
@@ -88,6 +89,7 @@ function JobScreen({ file }: { file: FileRef }) {
   const closed = !!doctor.data?.prepare_blocked || gate !== "open";
   const ctl = usePrepare(closed);
   const placement = usePlacement(file.path);
+  const fetchPreview = usePreviewFetcher(file.path);
   const [mode, setMode] = useState<PrepareMode>("preserve");
   const [holding, setHolding] = useState(false);
   const [selections, setSelections] = useState<MaterialSelection[]>([]);
@@ -209,7 +211,7 @@ function JobScreen({ file }: { file: FileRef }) {
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
         <section aria-label={view === "model" ? "Model" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
-          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} />}
+          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} />}
           {view === "copy" && (
             ctl.pending ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">

@@ -104,7 +104,7 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
                   title={hasDraft ? undefined : "Pick a spool colour in Materials to compare it here."}>Your choices</Seg>
                 {preparedPath && (
                   <Seg on={effective === "copy"} disabled={!copyColours} onClick={() => setMode("copy")}
-                    title={copyColours ? undefined : "Studio could not read the colours back from the copy."}>U1 copy</Seg>
+                    title={copyColours ? undefined : written.status === "loading" ? "Reading the copy…" : "Studio could not read the colours back from the copy."}>U1 copy</Seg>
                 )}
               </div>
               <button type="button" onClick={() => setResetKey((k) => k + 1)}
@@ -130,7 +130,9 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
                 label={`3D view of the project, ${preview.instances.length} ${preview.instances.length === 1 ? "object" : "objects"}: ${preview.instances.map((i) => i.label).join("; ")}. Drag to turn, scroll to zoom, arrow keys to move.`} />
             </Suspense>
           </div>
-          <Legend rows={rows} mode={effective} onHighlight={setHighlight} unknownDefault={preview.unknown_default} />
+          {rows.length > 0
+            ? <Legend rows={rows} mode={effective} onHighlight={setHighlight} unknownDefault={preview.unknown_default} />
+            : <p className="text-xs text-muted-foreground" data-testid="shape-only">Shape only. This file does not say which filament prints where, so there are no colours to show.</p>}
         </div>
       )}
 

@@ -135,7 +135,8 @@ describe("ModelPane", () => {
     fireEvent.click(screen.getByText("About this preview"));
     expect(screen.getByTestId("coverage-note").textContent).toMatch(/Shape only/);
     expect(screen.getByTestId("coverage-note").textContent).toMatch(/no painted coverage to check/);
-    expect(within(screen.getByTestId("legend")).queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryByTestId("legend")).toBeNull();
+    expect(screen.getByTestId("shape-only").textContent).toMatch(/Shape only/);
   });
 
   it("lists every placed instance so repeated objects are told apart", async () => {

@@ -19,7 +19,7 @@ const { chromium } = require("playwright-core");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const KNOWN_FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
-export async function launch() {
+export async function launch({ chromiumArgs = [] } = {}) {
   const children = [];
   const violations = [];
   const errors = [];
@@ -43,7 +43,7 @@ export async function launch() {
   let ready = false;
   for (let i = 0; i < 80 && !ready; i++) { try { ready = (await fetch(`${UI}/`, { signal: AbortSignal.timeout(2000) })).ok; } catch { /* not yet */ } if (!ready) await sleep(500); }
   if (!ready) { cleanup(); throw new Error(`UI did not come up on ${UI}`); }
-  const browser = await chromium.launch({ channel: "msedge", headless: true });
+  const browser = await chromium.launch({ channel: "msedge", headless: true, args: chromiumArgs });
 
   const isLocal = (u) => /^(data:|blob:|about:)/.test(u) || ["localhost", "127.0.0.1"].includes(new URL(u).hostname);
   async function newPage({ theme = "light", width = 1280, height = 800, reducedMotion = "no-preference", provider = null } = {}) {

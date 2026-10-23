@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 1, token: "t" }) }));
 vi.mock("@/api", () => ({
-  doctor: vi.fn(), convert: vi.fn(), diff: vi.fn(), detectOrca: vi.fn(), openInOrca: vi.fn(), openModelDialog: vi.fn(), compatibilityCheck: vi.fn(),
+  doctor: vi.fn(), convert: vi.fn(), diff: vi.fn(), detectOrca: vi.fn(), openInOrca: vi.fn(), openModelDialog: vi.fn(), compatibilityCheck: vi.fn(), paintedPreview: vi.fn(),
 }));
 vi.mock("@/components/PlacementCard", () => ({
   usePlacement: () => ({ check: null, failed: false, fix: null, fixing: false, runFix: vi.fn() }),
@@ -317,5 +317,50 @@ describe("This job: the model pane", () => {
     await open(B); await settle();
     expect(screen.getByTestId("model-pane").getAttribute("data-path")).toBe(B.path);
     expect(screen.getByTestId("model-pane").getAttribute("data-choices")).toBe("");
+  });
+});
+
+describe("This job: when things change or fail underneath", () => {
+  it("control: with no choices held, a finished copy does offer another", async () => {
+    vi.mocked(api.convert).mockResolvedValue(copyOf(A));
+    await openChecked();
+    create(); await settle();
+    expect(screen.getByRole("button", { name: /Create another copy/ })).toBeTruthy();
+  });
+
+  it("choices made while a copy is being created are not applied to it, and a second plain copy is not offered over them", async () => {
+    let finish!: (v: unknown) => void;
+    vi.mocked(api.convert).mockImplementation(() => new Promise((r) => { finish = r; }) as any);
+    await openChecked();
+    create(); await settle();
+    expect(vi.mocked(api.convert).mock.calls[0][4]).toBeUndefined();            // the request carried no materials
+    fireEvent.click(screen.getByRole("button", { name: "choose" }));            // …and the person now chooses some
+    await act(async () => { finish(copyOf(A)); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");        // the copy is the one that was asked for
+    expect(screen.queryByRole("button", { name: /Create another copy/ })).toBeNull();   // choices held: use Review materials
+    expect(api.convert).toHaveBeenCalledTimes(1);
+  });
+
+  it("an expired session is said plainly, nothing is shown as created, and the next attempt works", async () => {
+    vi.mocked(api.convert).mockRejectedValueOnce(new Error("Studio's local engine rejected this session (401). Reopen the app."));
+    vi.mocked(api.convert).mockResolvedValueOnce(copyOf(A));
+    await openChecked();
+    create(); await settle();
+    expect(screen.getByTestId("prepare-refusal").textContent).toContain("rejected this session");
+    expect(screen.queryByTestId("copy-name")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open in Orca" })).toBeNull();
+    expect(useSession.getState().convert.status).not.toBe("done");
+    // Create is available again.
+    fireEvent.click(document.querySelector("[data-primary]")!); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");
+  });
+
+  it("a project with no printer set up, and one whose slicer is not found, can still be opened and given a copy", async () => {
+    vi.mocked(api.detectOrca).mockResolvedValue(null as any);
+    vi.mocked(api.convert).mockResolvedValue(copyOf(A));
+    await openChecked();
+    create(); await settle();
+    expect(screen.getByTestId("copy-name").textContent).toBe("a_U1.3mf");
+    expect(api.openInOrca).not.toHaveBeenCalled();
   });
 });

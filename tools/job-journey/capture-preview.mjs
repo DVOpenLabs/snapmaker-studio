@@ -60,7 +60,8 @@ try {
     await page.waitForSelector('[data-testid="copy-result"]', { timeout: 60000 }).catch(() => log.push("no slab copy"));
     await page.getByRole("button", { name: /Open project/ }).first().click().catch(() => {});
     await page.waitForTimeout(1500);
-    const copyBtn = page.getByRole("button", { name: "U1 copy" });
+    const copyBtn = page.getByRole("button", { name: "U1 copy", exact: true });
+    await page.waitForSelector('[aria-label="Colours to show"] button:not([disabled]):has-text("U1 copy")', { timeout: 20000 }).catch(() => {});
     if (await copyBtn.count()) { await copyBtn.click(); await page.waitForTimeout(500); await page.screenshot({ path: join(out, `${theme}-5-copy-colours.png`) }); log.push(`${theme} copy drawn: ` + await page.locator('[data-testid="model-viewer"]').evaluate((e) => e.dataset.drawn).catch(() => "none")); }
     else log.push(`${theme}: no U1 copy toggle`);
     await ctx.close();
