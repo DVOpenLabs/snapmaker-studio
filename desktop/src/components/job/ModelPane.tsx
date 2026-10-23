@@ -49,6 +49,8 @@ export interface ModelPaneProps {
   preparedPath: string | null;
   placement: ReturnType<typeof usePlacement>;
   fetcher?: Fetch;
+  /** The screen already says, once, that this file cannot be read; the preview need not say it again. */
+  fileUnreadable?: boolean;
 }
 
 /**
@@ -56,7 +58,7 @@ export interface ModelPaneProps {
  * chosen, with the plate fit one click away. When the colour preview cannot be built or drawn it says why and
  * shows the plate instead.
  */
-export function ModelPane({ path, selections, preparedPath, placement, fetcher = paintedPreview }: ModelPaneProps) {
+export function ModelPane({ path, selections, preparedPath, placement, fetcher = paintedPreview, fileUnreadable = false }: ModelPaneProps) {
   const original = usePreview(path, fetcher);
   const written = usePreview(preparedPath, fetcher);
   const [mode, setMode] = useState<PreviewMode>("original");
@@ -138,8 +140,8 @@ export function ModelPane({ path, selections, preparedPath, placement, fetcher =
 
       {(surface === "plate" || original.status === "failed" || (original.status === "done" && !preview) || lost) && (
         <>
-          {/* An unreadable file is already said once, at the top of the screen and by the plate; a third time is noise. */}
-          {(message || lost) && original.status !== "loading" && !(original.status === "done" && original.preview.state === "unreadable" && !lost) && (
+          {/* An unreadable file is already said at the top of the screen and by the plate. Any other unreadable reason (for example, the file changed while it was read) is the preview's alone to say. */}
+          {(message || lost) && original.status !== "loading" && !(original.status === "done" && original.preview.state === "unreadable" && fileUnreadable && !lost) && (
             <p className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-sm" role="status" data-testid="preview-unavailable">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span>{lost ? `${LOSS_COPY[lost]} The plate view below is unaffected.` : message}</span>
@@ -191,7 +193,7 @@ function Legend({ rows, mode, onHighlight, unknownDefault }: { rows: LegendRow[]
   return (
     <div className="flex min-h-0 flex-col gap-2" data-testid="legend">
       <h3 className="flex items-baseline justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Filaments <span className="font-normal normal-case tracking-normal">share of surface</span>
+        Filaments <span className="font-normal normal-case tracking-normal">share of stated surface</span>
       </h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {rows.map((r) => (

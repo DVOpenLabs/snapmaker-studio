@@ -62,7 +62,7 @@ export interface LegendRow {
   changed: boolean;
   /** False when the project lists the slot but nothing prints in it. */
   used: boolean;
-  /** The share of painted surface (or of all surface, for an unpainted project) this slot prints, 0..1. */
+  /** This slot's share of the surface that has a stated filament (one copy of each mesh), 0..1. */
   share: number | null;
   paintedAreaMm2: number;
 }
@@ -96,12 +96,12 @@ export function colourOf(rows: LegendRow[], mode: PreviewMode): (slot: number | 
   };
 }
 
-/** Slots past the U1's four that something actually prints in. A listed but unused fifth colour is the Materials pane's concern. */
 /** Placed objects, not meshes: a multi-part object is one object however many meshes it is made of. */
 export function objectCount(p: PaintedPreview): number {
   return new Set(p.instances.map((i) => i.object_node ?? i.id)).size;
 }
 
+/** Slots past the U1's four that something actually prints in. A listed but unused fifth colour is the Materials pane's concern. */
 export function beyondHeads(rows: LegendRow[]): LegendRow[] {
   return rows.filter((r) => r.head === null && r.used);
 }

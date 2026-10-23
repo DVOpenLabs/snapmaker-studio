@@ -368,4 +368,3 @@ def test_a_multi_part_object_is_one_object_node_however_many_meshes_it_has(tmp_p
     assert got["state"] == "ok"
     assert len(got["instances"]) == 3
     assert len({i["object_node"] for i in got["instances"]}) == 1
-

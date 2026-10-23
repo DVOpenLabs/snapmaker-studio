@@ -170,8 +170,12 @@ describe("ModelPane", () => {
     expect(screen.queryByTestId("legend")).toBeNull();
   });
 
-  it("an unreadable file is not told a third time: the plate and the screen's banner already say it", async () => {
-    render(pane({ fetcher: async () => preview({ available: false, state: "unreadable", reason: "Studio could not read this file.", slots: [], meshes: [], instances: [] }, 0) }));
+  it("an unreadable preview of a file the screen already calls unreadable is not told again, but any other unreadable reason is", async () => {
+    const changed = preview({ available: false, state: "unreadable", reason: "The file changed while Studio was reading it. Open it again.", slots: [], meshes: [], instances: [] }, 0);
+    render(pane({ fetcher: async () => changed }));
+    expect((await screen.findByTestId("preview-unavailable")).textContent).toContain("Open it again");
+    cleanup();
+    render(pane({ fileUnreadable: true, fetcher: async () => preview({ available: false, state: "unreadable", reason: "Studio could not read this file.", slots: [], meshes: [], instances: [] }, 0) }));
     expect(await screen.findByTestId("plate-view")).toBeTruthy();
     expect(screen.queryByTestId("preview-unavailable")).toBeNull();
   });

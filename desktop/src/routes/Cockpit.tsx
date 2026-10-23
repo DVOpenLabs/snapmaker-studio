@@ -214,7 +214,7 @@ function JobScreen({ file }: { file: FileRef }) {
 
       <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
         <section aria-label={view === "model" ? "Model" : view === "copy" ? "U1 copy" : "Slice comparison"} className="min-w-0">
-          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} />}
+          {view === "model" && <ModelPane path={file.path} selections={selections} preparedPath={preparedPath} placement={placement} fetcher={fetchPreview} fileUnreadable={unreadable || gate === "unreadable"} />}
           {view === "copy" && (
             ctl.pending ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
