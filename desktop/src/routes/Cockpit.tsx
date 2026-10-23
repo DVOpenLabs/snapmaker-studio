@@ -10,6 +10,7 @@ import { PreflightCard } from "@/components/PreflightCard";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
 import { ProjectMaterialsCard } from "@/components/ProjectMaterialsCard";
+import { CompactSlotRow } from "@/components/job/CompactSlot";
 import { CopyResult } from "@/components/job/CopyResult";
 import { JobBar } from "@/components/job/JobBar";
 import { PaneTabs, type PaneTab } from "@/components/job/PaneTabs";
@@ -152,7 +153,7 @@ function JobScreen({ file }: { file: FileRef }) {
         <FlatCards>
           <div className="peer empty:hidden">
             {!closed && !unreadable && eligibility.status !== "checking" && (
-              <ProjectMaterialsCard bare path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
+              <ProjectMaterialsCard bare slotView={CompactSlotRow} path={file.path} mode={mode} busy={ctl.pending} onActiveChange={setHolding} onSelectionsChange={setSelections}
                 onPrepare={(materials) => ctl.start(file.path, mode, materials)} />
             )}
           </div>

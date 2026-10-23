@@ -147,6 +147,30 @@ describe("ModelPane", () => {
     expect(screen.getByTestId("preview-notes").textContent).toContain("2 objects placed: Object 1 · instance 1 of 2; Object 1 · instance 2 of 2");
   });
 
+  it("keeps surface percentages out of the default legend and says what they count in a details section", async () => {
+    render(pane({ fetcher: async () => preview({ unknown_default: true }, 5) }));
+    await screen.findByTestId("viewer-stub");
+    const legend = screen.getByTestId("legend");
+    const details = within(legend).getByTestId("legend-shares") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    // no percentage anywhere in the legend outside the details
+    const outside = legend.cloneNode(true) as HTMLElement;
+    outside.querySelector("[data-testid=legend-shares]")!.remove();
+    expect(outside.textContent).not.toMatch(/%/);
+    for (const b of within(legend).getAllByRole("button")) expect(b.getAttribute("aria-label")).not.toMatch(/%/);
+    // inside: the figures, with the scope in full
+    expect(details.textContent).toMatch(/%/);
+    const scope = within(details).getByTestId("legend-shares-scope").textContent!;
+    expect(scope).toMatch(/one copy of each mesh/);
+    expect(scope).toMatch(/only the surface that has a stated filament/);
+    expect(scope).toMatch(/Grey \(unassigned\) surface is left out/);
+    expect(scope).toMatch(/not an amount of filament/);
+    // the warnings are not folded away
+    expect(screen.getByTestId("beyond-heads")).toBeTruthy();
+    expect(screen.getByTestId("unknown-default")).toBeTruthy();
+    expect(details.contains(screen.getByTestId("beyond-heads"))).toBe(false);
+  });
+
   it("hovering or focusing a legend row highlights that slot, and leaving clears it", async () => {
     render(pane({ fetcher: async () => preview() }));
     const stub = await screen.findByTestId("viewer-stub");

@@ -598,3 +598,18 @@ export function blockedFacts(result: { blocked?: boolean; errors?: string[]; set
     message: result.errors?.[0] ?? null,
   };
 }
+
+/**
+ * Reasons that matter at the moment of choosing: something does not match, an amount is unknown or short, a colour
+ * could not be compared. The rest (what matched, raw colour distances) is detail for whoever asks for it.
+ */
+const DECISION_REASON_CODES = new Set([
+  "material_differs", "material_unstated", "material_family_differs", "subtype_differs", "weight_short",
+  "weight_enough_untrusted", "amount_unknown", "amount_needed_unknown", "colour_unknown", "preset_needs_confirmation",
+]);
+
+export function splitReasons(c: Pick<MaterialCandidate, "reasons">): { decision: MaterialReason[]; detail: MaterialReason[] } {
+  const decision: MaterialReason[] = [], detail: MaterialReason[] = [];
+  for (const r of c.reasons) (DECISION_REASON_CODES.has(r.code) ? decision : detail).push(r);
+  return { decision, detail };
+}

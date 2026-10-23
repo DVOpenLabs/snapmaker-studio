@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentType } from "react";
 import { Loader2, Layers, AlertTriangle, Info, Check } from "lucide-react";
 import {
   confirmMaterialMapping, convert, materialPresets, projectMaterials, projectMaterialsInventory, removeMaterialMapping,
@@ -70,7 +70,7 @@ export function StatusBadge({ status, confirmedByYou = false }: { status: Preset
   );
 }
 
-function Swatch({ colour }: { colour: string | null }) {
+export function Swatch({ colour }: { colour: string | null }) {
   return <span data-testid="swatch" aria-hidden className="inline-block h-4 w-4 shrink-0 rounded-sm border border-border" style={{ backgroundColor: colour ?? "transparent" }} />;
 }
 
@@ -470,6 +470,8 @@ export interface ViewProps {
   forgetNote?: { kind: "ok" | "error"; text: string } | null;
   /** Drop the title and subtitle: a parent that already names this area (a tab) supplies them. */
   bare?: boolean;
+  /** How one slot is drawn. The job screen passes its compact row; the default is the detailed expert row. */
+  slotView?: ComponentType<SlotRowProps>;
 }
 
 export function ProjectMaterialsView(p: ViewProps) {
@@ -503,11 +505,14 @@ export function ProjectMaterialsView(p: ViewProps) {
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{beyondToolheadsNote((analysis.slots ?? []).length, analysis.toolheads, analysis.beyond_toolheads)}
           </p>
         )}
-        {(analysis.slots ?? []).map((slot) => (
-          <SlotRow key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
+        {(analysis.slots ?? []).map((slot) => {
+          const Row = p.slotView ?? SlotRow;
+          return (
+          <Row key={slot.slot} slot={slot} choice={choices[slot.slot] ?? emptyChoice} presets={p.presets}
             providerLabel={p.providerLabel} dispatch={p.dispatch} onForget={p.onForget} forgetDisabled={!!p.forget}
             loadInventory={analysis.provider?.available ? p.loadInventory : undefined} />
-        ))}
+          );
+        })}
         {p.forgetNote && (
           <p className={`text-xs ${p.forgetNote.kind === "error" ? "text-risk" : "text-muted-foreground"}`}
             role={p.forgetNote.kind === "error" ? "alert" : "status"} data-testid="forget-note">{p.forgetNote.text}</p>
@@ -559,9 +564,10 @@ interface CardProps {
   onSelectionsChange?: (selections: MaterialSelection[]) => void;
   busy?: boolean;
   bare?: boolean;
+  slotView?: ComponentType<SlotRowProps>;
 }
 
-export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, onSelectionsChange, busy, bare }: CardProps) {
+export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, onSelectionsChange, busy, bare, slotView }: CardProps) {
   const provider = useProvider();
   const args = providerArgs(provider);
   const argsKey = JSON.stringify([args.provider, args.provider_url, args.slot_map, args.slot_base, args.provider_key]);
@@ -734,7 +740,7 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, on
   }
 
   return (
-    <ProjectMaterialsView bare={bare} load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
+    <ProjectMaterialsView bare={bare} slotView={slotView} load={load} analysis={analysis} presets={presets} providerLabel={providerLabel} choices={choices}
       dispatch={dispatch} review={review} onReview={onReview} onBack={() => setReview({ status: "idle" })}
       onPrepare={doPrepare} busy={busy || preparing} warning={warning} loadInventory={loadInventory}
       onForget={(candidate, opener) => { setForgetNote(null); setForget({ candidate, opener }); }}

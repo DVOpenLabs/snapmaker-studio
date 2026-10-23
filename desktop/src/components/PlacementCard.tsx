@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Move, Copy } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, Move, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/store/toast";
@@ -80,8 +80,11 @@ export function PlacementView({ check, fix, fixing, onFix }: {
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           {verdict.tone === "ok" ? (
             <CheckCircle2 className="h-4 w-4 text-ready" aria-hidden="true" />
-          ) : verdict.tone === "unknown" ? (
+          ) : verdict.tone === "unknown" && !check ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : verdict.tone === "unknown" ? (
+            // The check came back and could not judge: finished, not loading.
+            <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           ) : (
             <AlertTriangle className="h-4 w-4 text-risk" aria-hidden="true" />
           )}

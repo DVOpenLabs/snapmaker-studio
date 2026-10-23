@@ -34,7 +34,8 @@ export function PlateView({ placement }: { placement: ReturnType<typeof usePlace
           <PlateSvg model={model} />
         )}
       </div>
-      {!failed && (
+      {/* An unavailable check is said once, in the plate area above; the card would only repeat it. */}
+      {!failed && !(check && !check.available) && (
         <FlatCards>
           <PlacementView check={check} fix={fix} fixing={fixing} onFix={runFix} />
         </FlatCards>

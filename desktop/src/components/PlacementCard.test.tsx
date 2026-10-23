@@ -28,5 +28,15 @@ describe("PlacementCard", () => {
     expect(html).toContain("Every object sits inside the U1&#x27;s printable area.");
     expect(html).toContain("text-ready");
   });
-});
 
+  it("looks finished, not loading, when the check came back unable to judge", () => {
+    const html = render(check({ available: false, reason: "This file could not be read." }));
+    expect(html).toContain("This file could not be read.");
+    expect(html).not.toContain("animate-spin");
+  });
+
+  it("looks loading only while there is no answer yet", () => {
+    const html = renderToStaticMarkup(<PlacementView check={null} fix={null} fixing={false} onFix={() => {}} />);
+    expect(html).toContain("animate-spin");
+  });
+});

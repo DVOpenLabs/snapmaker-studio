@@ -192,9 +192,7 @@ function Legend({ rows, mode, onHighlight, unknownDefault }: { rows: LegendRow[]
   const changedWord = mode === "copy" ? "in the copy" : "your choice";
   return (
     <div className="flex min-h-0 flex-col gap-2" data-testid="legend">
-      <h3 className="flex items-baseline justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Filaments <span className="font-normal normal-case tracking-normal">share of stated surface</span>
-      </h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filaments</h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {rows.map((r) => (
           <li key={r.slot}>
@@ -202,7 +200,7 @@ function Legend({ rows, mode, onHighlight, unknownDefault }: { rows: LegendRow[]
               onMouseEnter={() => onHighlight(r.slot)} onMouseLeave={() => onHighlight(null)}
               onFocus={() => onHighlight(r.slot)} onBlur={() => onHighlight(null)}
               className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-              aria-label={`${r.head ? `Toolhead ${r.head}` : `Slot ${r.slot}, no toolhead`}: ${r.original ?? "no colour listed"}${r.changed && mode !== "original" ? `, ${changedWord} ${r.proposed}` : ""}, ${r.used ? percent(r.share) : "unused"}`}>
+              aria-label={`${r.head ? `Toolhead ${r.head}` : `Slot ${r.slot}, no toolhead`}: ${r.original ?? "no colour listed"}${r.changed && mode !== "original" ? `, ${changedWord} ${r.proposed}` : ""}, ${r.used ? "used" : "unused"}`}>
               <Swatch colour={r.original} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{r.head ? `Head ${r.head}` : `Slot ${r.slot}`}</span>
@@ -212,11 +210,27 @@ function Legend({ rows, mode, onHighlight, unknownDefault }: { rows: LegendRow[]
                 </span>
               </span>
               {r.changed && mode !== "original" && <Swatch colour={r.proposed} />}
-              <span className="text-xs tabular-nums text-muted-foreground">{r.used ? percent(r.share) : "unused"}</span>
+              {!r.used && <span className="text-xs text-muted-foreground">unused</span>}
             </button>
           </li>
         ))}
       </ul>
+      {rows.some((r) => r.used) && (
+        <details className="text-xs text-muted-foreground" data-testid="legend-shares">
+          <summary className="cursor-pointer select-none">Surface share per filament</summary>
+          <ul className="mt-1 list-none space-y-0.5 p-0">
+            {rows.filter((r) => r.used).map((r) => (
+              <li key={r.slot} className="flex justify-between gap-2 tabular-nums">
+                <span>{r.head ? `Head ${r.head}` : `Slot ${r.slot}`}</span><span>{percent(r.share)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1" data-testid="legend-shares-scope">
+            Counted on one copy of each mesh, over only the surface that has a stated filament. Grey (unassigned) surface is left out.
+            This is not an amount of filament.
+          </p>
+        </details>
+      )}
       {beyond.length > 0 && (
         <p className="flex items-start gap-1.5 rounded-md bg-repairable/10 p-2 text-xs text-repairable-text" role="note" data-testid="beyond-heads">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
