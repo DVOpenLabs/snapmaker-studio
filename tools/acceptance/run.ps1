@@ -194,13 +194,14 @@ $zip.Dispose()
 
 # --- geometry-basis fixtures -------------------------------------------------------------------------
 #
-# Three small single-object projects with the same 10 x 20 x 30 box. They differ only in what the file
-# says about physical size, which is what Studio must not guess:
-#   acceptance_geom_mm.3mf      millimetres, no transform      -> the size is established, verdicts stay
+# Four small single-object projects with the same 10 x 20 x 30 box. They differ only in what the file
+# says about physical size, which is what Studio must not guess (and, for the first two, where it sits):
+#   acceptance_geom_mm_onplate.3mf  the same box translated onto the plate  -> the passing bed-fit control
+#   acceptance_geom_mm.3mf      millimetres, no transform (corner at the origin, off the plate) -> size established; bed fit reports the placement
 #   acceptance_geom_inch.3mf    unit="inch" (really 254 x 508 x 762 mm) -> not checked
 #   acceptance_geom_scaled.3mf  build item scaled x20 (really 200 x 400 x 600 mm) -> not checked
 # The "routes" phase asks the installed sidecar about each and asserts scoped not_checked/unknown answers
-# for the last two and unchanged answers for the first. The files are not model data of anyone's.
+# for the last two, a passing bed fit for the on-plate file and the placement finding for the origin-corner one. The files are not model data of anyone's.
 function New-GeometryFixture([string]$Name, [string]$Unit, [string]$ItemTransform) {
     $verts = @(@(0,0,0), @(10,0,0), @(10,20,0), @(0,20,0), @(0,0,30), @(10,0,30), @(10,20,30), @(0,20,30))
     $tris = @(@(0,2,1), @(0,3,2), @(4,5,6), @(4,6,7), @(0,1,5), @(0,5,4), @(2,3,7), @(2,7,6), @(1,2,6), @(1,6,5), @(3,0,4), @(3,4,7))
@@ -224,6 +225,8 @@ function New-GeometryFixture([string]$Name, [string]$Unit, [string]$ItemTransfor
     return $path
 }
 $geomMmWork = New-GeometryFixture "acceptance_geom_mm.3mf" "millimeter" ""
+# The same box moved onto the plate (a pure translation, so the basis stays established): the passing bed-fit control.
+$geomMmOnPlateWork = New-GeometryFixture "acceptance_geom_mm_onplate.3mf" "millimeter" "1 0 0 0 1 0 0 0 1 130 125 0"
 $geomInchWork = New-GeometryFixture "acceptance_geom_inch.3mf" "inch" ""
 $geomScaledWork = New-GeometryFixture "acceptance_geom_scaled.3mf" "millimeter" "20 0 0 0 20 0 0 0 20 0 0 0"
 

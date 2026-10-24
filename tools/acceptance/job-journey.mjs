@@ -139,8 +139,9 @@ async function safeShot(name) {
   const body = await page.locator("body").innerText();
   const values = await page.evaluate(() => [...document.querySelectorAll("input, textarea")].map((e) => e.value).join(" "));
   const unsafe = /(?<![A-Za-z])[A-Za-z]:[\\/]|[\\/]Users[\\/]|studioclean|[\\/]AppData[\\/]/i.test(body + " " + values);
-  if (unsafe) { record(`Screenshot ${name} skipped (page text carried a path)`, true, "not captured"); return; }
+  if (unsafe) { record(`Screenshot ${name} skipped (page text carried a path)`, true, "not captured"); return false; }
   await page.screenshot({ path: join(outDir, `${name}.png`) });
+  return true;
 }
 
 let interceptionProven = false;
@@ -214,7 +215,16 @@ try {
   const after = listing();
   const created = after.filter((n) => !before.includes(n));
   record("The copy is a NEW separate file; the original is untouched", created.length >= 1 && created.every((n) => n !== basename(cube)) && sha(cube) === hashes.cube, `${created.length} new file(s)`);
-  await safeShot("job-03-copy-result");
+  // The screenshot is only evidence of the result if the card is on screen when it is taken: bring its top to the top
+  // of its scroll container, then assert that the card really intersects the viewport rather than trusting whatever
+  // scroll position earlier steps left. A card taller than the viewport still passes (its top part is what shows).
+  await page.evaluate(() => document.querySelector('[data-testid="copy-result"]')?.scrollIntoView({ block: "start" })); await sleep(600);
+  const cardInView = await page.evaluate(() => {
+    const r = document.querySelector('[data-testid="copy-result"]')?.getBoundingClientRect();
+    return !!r && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight;
+  });
+  const copyShot = cardInView ? await safeShot("job-03-copy-result") : false;
+  record("The result card is on screen for the copy-result screenshot", cardInView, copyShot ? "screenshot captured" : cardInView ? "card in view; screenshot skipped (page text carried a path)" : "card not in view; no screenshot");
   await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll("main, [class*=overflow]").forEach((e) => { try { e.scrollTop = 0; } catch { /* ignore */ } }); }); await sleep(400);
   const u1 = page.getByRole("button", { name: /^U1 copy$/ }).first();
   const stage = page.getByRole("button", { name: /^Open project/ }).first();

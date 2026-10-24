@@ -43,6 +43,7 @@
 import { chromium } from "playwright-core";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import * as geo from "./geometry-expect.mjs";
 
 const [, , phase, cdpUrl, outDir, samplePath, gcodePath, paintedPath, spoolmanUrl] = process.argv;
 
@@ -406,10 +407,16 @@ async function phaseStartup(page) {
   await shot(page, "01-dashboard");
 }
 
-/** Routes + predicates for the three geometry-basis fixtures that run.ps1 writes next to the sample. */
+/** A route entry's verify function and metadata from a list of named expectations (see geometry-expect.mjs). */
+function expecting(expectations, fixture) {
+  return [(b) => geo.failedExpectations(expectations, b).length === 0, { fixture, expectations }];
+}
+
+/** Routes + predicates for the geometry-basis fixtures that run.ps1 writes next to the sample. */
 function geometryRoutes() {
   const dir = dirname(samplePath);
   const mm = join(dir, "acceptance_geom_mm.3mf");
+  const onPlate = join(dir, "acceptance_geom_mm_onplate.3mf");
   const inch = join(dir, "acceptance_geom_inch.3mf");
   const scaled = join(dir, "acceptance_geom_scaled.3mf");
   const host = { host: "", port: 7125 };
@@ -418,16 +425,13 @@ function geometryRoutes() {
   const fitCheck = (b) => (b.checks ?? []).find((c) => c.name === "Fits the print bed");
   const notChecked = (code, scope) => (b) => b.status === "not_checked" && b.scope === scope && reasonIs(b, code);
   const out = [];
-  for (const [file, code] of [[inch, "unit_not_millimeter"], [scaled, "transform_scaled"]]) {
+  for (const [file, code, fixture] of [[inch, "unit_not_millimeter", "inch"], [scaled, "transform_scaled", "scaled"]]) {
     out.push(
-      ["/bed_fit", { path: file, ...host },
-        (b) => b.available === false && !("overall_level" in b) && notChecked(code, "bed fit")(b)],
+      ["/bed_fit", { path: file, ...host }, ...expecting(geo.bedNotEstablished(code), fixture)],
       ["/report", { path: file },
         (b) => fitCheck(b)?.status === "not_checked" && b.ready === false && b.print_setup_ready === false
           && b.geometry_basis?.established === false],
-      ["/predict_success", { path: file, ...host },
-        (b) => b.available === true && b.likelihood === null && b.band === "unknown"
-          && notChecked(code, "the print-success estimate")(b)],
+      ["/predict_success", { path: file, ...host }, ...expecting(geo.predictNotEstablished(code), fixture)],
       ["/first_layer", { path: file, ...host },
         (b) => b.available === false && !("overall_level" in b) && notChecked(code, "first-layer footprint checks")(b)],
       ["/scale_preview", { path: file, scale_percent: 150 },
@@ -440,12 +444,14 @@ function geometryRoutes() {
     );
   }
   out.push(
-    ["/bed_fit", { path: mm, ...host },
-      (b) => b.available === true && b.overall_level === "ok" && !("status" in b)],
+    // The origin-corner box fits by size but sits off the plate: the stable placement finding is the expected answer.
+    ["/bed_fit", { path: mm, ...host }, ...expecting(geo.bedOffPlate, "mm (origin corner, off-plate control)")],
+    // The same box placed on the plate is the passing control. Neither answer is accepted for the other fixture.
+    ["/bed_fit", { path: onPlate, ...host }, ...expecting(geo.bedOnPlate, "mm_onplate")],
     ["/report", { path: mm },
       (b) => fitCheck(b)?.status === "pass" && b.geometry_basis?.established === true],
-    ["/predict_success", { path: mm, ...host },
-      (b) => b.available === true && typeof b.likelihood === "number" && b.band !== "unknown" && !("status" in b)],
+    ["/predict_success", { path: mm, ...host }, ...expecting(geo.predictEstablished, "mm")],
+    ["/predict_success", { path: onPlate, ...host }, ...expecting(geo.predictEstablished, "mm_onplate")],
     ["/first_layer", { path: mm, ...host },
       (b) => b.available === true && ["ok", "warn", "risk"].includes(b.overall_level)],
     ["/scale_preview", { path: mm, scale_percent: 150 },
@@ -482,10 +488,12 @@ async function phaseRoutes(page) {
     ["/color_plan", { path: paintedPath },
       (b) => (b.painted?.coexistence?.pairs ?? []).length > 0
         && (b.painted?.coexistence?.pairs ?? []).every((p) => p.verdict === "separate")],
-    // Geometry basis (the correction in v1.6.0 RC2). Three boxes that differ only in what the file says about
-    // physical size. A declared-inch or build-scaled file must get scoped not_checked / unknown answers and no
-    // affirmative fit, readiness or confidence; the valid millimetre file must keep its established verdicts.
-    // Assertions are on structured fields (status, scope, reasons, null likelihood), never on a word like "Fits".
+    // Geometry basis (the correction in v1.6.0 RC2). Four boxes that differ only in what the file says about
+    // physical size or where it sits (millimetres at the origin corner, off the plate; millimetres on the plate; inch; scaled).
+    // A declared-inch or build-scaled file must get scoped not_checked answers and no affirmative fit or readiness;
+    // the valid millimetre files must keep their established verdicts (the corner box reports its placement).
+    // Assertions are on structured fields (status, scope, reasons, findings), never on a word like "Fits".
+    // The successpredict/3 answer carries signals/checked/not_checked, not a likelihood or band.
     ...geometryRoutes(),
     ["/project_cost", { path: samplePath }, (b) => b.available === false && Boolean(b.reason)],
     ["/ecosystem_advice", { path: samplePath }, (b) => Boolean(b.primary?.why?.length)],
@@ -555,15 +563,26 @@ async function phaseRoutes(page) {
     ["/slice_provenance", { project_path: samplePath, gcode_path: gcodePath },
       (b) => ["confirmed", "likely", "ambiguous", "no_match", "unknown"].includes(b.verdict)],
   ];
-  for (const [route, body, verify] of routes) {
+  const geometryEvidence = [];
+  for (const [route, body, verify, meta] of routes) {
+    // Entries with a fixture identity keep it in the record, along with the status, the failed expectations and a
+    // path-free rendering of the response, so a failure explains itself.
+    const label = meta ? `Engine route ${route} [${meta.fixture}]` : `Engine route ${route}`;
     try {
       const { status, body: payload } = await callRoute(page, route, body);
-      record(`Engine route ${route}`, status === 200 && verify(payload),
-        status === 200 ? "" : `HTTP ${status}`);
+      const ok = status === 200 && verify(payload);
+      if (!meta) { record(label, ok, status === 200 ? "" : `HTTP ${status}`); continue; }
+      const failed = status === 200 ? geo.failedExpectations(meta.expectations, payload) : [];
+      const shown = geo.describeResponse(payload);
+      geometryEvidence.push({ route, fixture: meta.fixture, status, failed, response: geo.describeFields(payload) });
+      record(label, ok, `HTTP ${status}; ${ok ? "all expectations held" : status === 200 ? `failed: ${failed.join(" | ") || "(none named)"}` : `expectations not evaluated (HTTP ${status})`}; ${shown}`);
     } catch (e) {
-      record(`Engine route ${route}`, false, String(e).slice(0, 90));
+      const shownError = geo.redact(e).slice(0, 160);
+      if (meta) geometryEvidence.push({ route, fixture: meta.fixture, status: "unavailable", failed: [], error: shownError });
+      record(label, false, `${meta ? `fixture ${meta.fixture}; ` : ""}${shownError}`);
     }
   }
+  if (geometryEvidence.length) writeFileSync(join(outDir, "geometry-responses.json"), JSON.stringify(geometryEvidence, null, 1));
 }
 
 async function phasePostSlice(page) {
