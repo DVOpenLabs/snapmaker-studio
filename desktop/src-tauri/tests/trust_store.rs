@@ -157,3 +157,25 @@ fn lockfile_resolves_rustls_webpki_to_a_release_that_rejects_the_distrusted_emsi
         assert!(ok, "rustls-webpki {v} still accepts distrusted emSign intermediates (needs >= 0.103.16)");
     }
 }
+
+#[test]
+fn lockfile_resolves_rustls_to_a_release_with_the_october_2026_tls_fixes() {
+    // RUSTSEC-2026-0285 (fixed in 0.23.45) and RUSTSEC-2026-0346, -0348, -0349 (fixed in 0.23.46).
+    let lock = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock")).expect("Cargo.lock");
+    let mut lines = lock.lines();
+    let mut found = Vec::new();
+    while let Some(line) = lines.next() {
+        if line == "name = \"rustls\"" {
+            found.push(lines.next().and_then(|l| l.strip_prefix("version = \"")).and_then(|l| l.strip_suffix('"')).expect("version").to_owned());
+        }
+    }
+    assert!(!found.is_empty(), "rustls is not in the lockfile");
+    for v in &found {
+        // Build metadata is ignored; a pre-release never counts as the fixed release.
+        let core = v.split('+').next().unwrap();
+        let p: Vec<u64> = core.split('.').map(|x| x.parse().unwrap_or(0)).collect();
+        assert!(p.len() == 3 && !core.contains('-'), "rustls {v} is not a plain release version");
+        let ok = (p[0], p[1]) == (0, 23) && p[2] >= 46 || (p[0], p[1]) > (0, 23);
+        assert!(ok, "rustls {v} has open TLS advisories (needs >= 0.23.46)");
+    }
+}
