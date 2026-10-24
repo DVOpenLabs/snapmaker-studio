@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { redact, formatResult } from "./redact.mjs";
 
 const [, , cdpUrl, outDir, workDir, cubeSource, plainProject] = process.argv;
 const APP_PID = process.env.SNAPSTUDIO_ACCEPT_APP_PID;
@@ -28,13 +29,13 @@ mkdirSync(outDir, { recursive: true });
 mkdirSync(workDir, { recursive: true });
 
 const results = [];
-// Result details carry basenames only: any drive path (either separator, escaped or not) is replaced before it is logged or saved.
-// A path may contain spaces, so the redaction runs to the next quote, bracket or line end (privacy over diagnostic detail).
-const scrub = (s) => String(s).replace(/[A-Za-z]:[\\/]+[^"'<>|\r\n]*/g, "<path>").replace(/[\\/]+Users[\\/]+[^"'<>|\r\n]*/gi, "<path>");
+// Result details carry basenames only: paths are replaced before they are logged or saved, by the sanitizer shared with
+// checks.mjs (redact.mjs states exactly which path forms it covers; privacy over diagnostic detail).
+const scrub = redact;
 const record = (name, ok, detail = "") => {
-  detail = scrub(detail);
-  results.push({ name, ok: !!ok, detail });
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
+  const shown = formatResult(name, ok, detail);
+  results.push({ name, ok: !!ok, detail: shown.detail });
+  console.log(shown.line);
   return !!ok;
 };
 

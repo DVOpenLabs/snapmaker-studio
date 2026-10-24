@@ -573,13 +573,12 @@ async function phaseRoutes(page) {
       const ok = status === 200 && verify(payload);
       if (!meta) { record(label, ok, status === 200 ? "" : `HTTP ${status}`); continue; }
       const failed = status === 200 ? geo.failedExpectations(meta.expectations, payload) : [];
-      const shown = geo.describeResponse(payload);
-      geometryEvidence.push({ route, fixture: meta.fixture, status, failed, response: geo.describeFields(payload) });
-      record(label, ok, `HTTP ${status}; ${ok ? "all expectations held" : status === 200 ? `failed: ${failed.join(" | ") || "(none named)"}` : `expectations not evaluated (HTTP ${status})`}; ${shown}`);
+      geometryEvidence.push(geo.routeEvidence({ route, fixture: meta.fixture, status, failed, payload }));
+      record(label, ok, geo.routeDetail({ status, ok, failed, payload }));
     } catch (e) {
-      const shownError = geo.redact(e).slice(0, 160);
-      if (meta) geometryEvidence.push({ route, fixture: meta.fixture, status: "unavailable", failed: [], error: shownError });
-      record(label, false, `${meta ? `fixture ${meta.fixture}; ` : ""}${shownError}`);
+      const err = geo.routeError({ route, fixture: meta?.fixture, error: e });
+      if (meta) geometryEvidence.push(err.evidence);
+      record(label, false, `${meta ? `fixture ${meta.fixture}; ` : ""}${err.text}`);
     }
   }
   if (geometryEvidence.length) writeFileSync(join(outDir, "geometry-responses.json"), JSON.stringify(geometryEvidence, null, 1));

@@ -4,6 +4,8 @@
 // Each expectation is [label, predicate]. A route record that fails names the labels that were false, so a failure
 // says which claim broke instead of "HTTP 200" with nothing after it.
 
+import { redact } from "./redact.mjs";
+
 export const SUCCESS_SCHEMA = "successpredict/3";
 export const PREDICT_SCOPE = "the print risk signals that rest on the model's size";
 export const OFF_PLATE_ID = "placement-off-plate";
@@ -102,15 +104,8 @@ export const bedNotEstablished = (code) => [
   [`geometry basis not established for ${code}, reason equals the basis summary`, refusedFor(code)],
 ];
 
-// Windows drive paths, UNC paths and posix home/mount paths. Each match runs to the next double quote or end of line, so
-// spaces and apostrophes inside a folder name cannot end it early (over-redacting trailing text is the safe direction).
-// A drive letter must not follow another letter, so a URL such as http://127.0.0.1:7125/ is left alone.
-const PATHISH = /(?<![A-Za-z])[A-Za-z]:[\\/][^"\r\n]*|\\\\[^"\r\n]*|\/(?:Users|home|media|mnt|Volumes|root)\/[^"\r\n]*/g;
-
-/** Replaces anything path-like in text with <path>. Applied to every response and error that reaches an evidence record. */
-export function redact(text) {
-  return String(text).replace(PATHISH, "<path>");
-}
+// Path redaction is shared with job-journey.mjs (see redact.mjs for exactly what is covered).
+export { redact };
 
 const redactDeep = (v) => (typeof v === "string" ? redact(v) : isList(v) ? v.map(redactDeep)
   : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, redactDeep(x)])) : v);
@@ -134,7 +129,26 @@ export function describeFields(body) {
   return redactDeep(keep);
 }
 
-/** A path-free one-line rendering of a response for a route record. Always valid JSON: every kept field is bounded. */
+/** A path-free one-line rendering of a response for a route record. Always valid JSON (not length-capped). */
 export function describeResponse(body) {
   return JSON.stringify(describeFields(body));
+}
+
+/** The record detail for a geometry route that answered. Every part that can carry response text is sanitized. */
+export function routeDetail({ status, ok, failed, payload }) {
+  const verdict = ok ? "all expectations held"
+    : status === 200 ? `failed: ${failed.join(" | ") || "(none named)"}` : `expectations not evaluated (HTTP ${status})`;
+  // describeResponse already sanitizes the response text; the labels in `verdict` are fixed strings from this file.
+  return `HTTP ${status}; ${verdict}; ${describeResponse(payload)}`;
+}
+
+/** The structured evidence entry for a geometry route that answered. */
+export function routeEvidence({ route, fixture, status, failed, payload }) {
+  return { route, fixture, status, failed, response: describeFields(payload) };
+}
+
+/** The error text and structured evidence entry for a geometry route whose call threw. */
+export function routeError({ route, fixture, error }) {
+  const text = redact(error).slice(0, 160);
+  return { text, evidence: { route, fixture, status: "unavailable", failed: [], error: text } };
 }
