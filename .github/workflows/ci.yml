@@ -90,9 +90,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+      - name: Node.js security floor
+        run: node "${{ github.workspace }}/scripts/check-node-floor.mjs"
+      - name: Node.js security floor tests
+        run: node --test "${{ github.workspace }}/scripts/check-node-floor.test.mjs"
       - name: Install
         run: npm ci
       - name: Unit tests

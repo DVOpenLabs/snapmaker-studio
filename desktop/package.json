@@ -4,10 +4,16 @@
   "version": "1.5.0",
   "description": "Snapmaker Studio — the local-first workflow platform for modern 3D printing. Understand any design, check if it will print, get it ready, and monitor your Snapmaker U1.",
   "type": "module",
+  "engines": {
+    "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1 <27"
+  },
   "scripts": {
     "dev": "vite",
+    "check:node": "node ../scripts/check-node-floor.mjs",
+    "prebuild": "npm run check:node",
     "build": "tsc && vite build",
     "tauri": "tauri",
+    "pretest": "npm run check:node",
     "test": "vitest run",
     "build:sidecar": "pwsh ./scripts/build-sidecar.ps1",
     "build:sidecar:linux": "bash ./scripts/build-sidecar.sh",
