@@ -1,0 +1,392 @@
+{
+ "description": "Responses of the v1.7.0 RC1 candidate's frozen sidecar (snapstudio-api.exe) to the acceptance geometry fixtures. Synthetic 10x20x30 box; paths removed.",
+ "sidecar_sha256": "49FF00CFEF5770D5E6173E1B01FFAFF62DEF9A28ED2112385AAB74C7161225B8",
+ "responses": [
+  {
+   "fixture": "mm",
+   "route": "/bed_fit",
+   "status": 200,
+   "body": {
+    "schema_version": "bedfit/1",
+    "available": true,
+    "bed_known": false,
+    "bed_source": "the Snapmaker U1",
+    "bed_mm_source": "profile",
+    "measured_against": {
+     "printer_id": "snapmaker_u1",
+     "display_name": "Snapmaker U1",
+     "manufacturer": "Snapmaker",
+     "model": "U1",
+     "verification_level": "hardware_verified",
+     "verification_label": "Hardware verified",
+     "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+     "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+     "tool_count": 4,
+     "build_volume_mm": {
+      "x": 270.0,
+      "y": 270.0,
+      "z": 270.05
+     },
+     "known_unknowns": [
+      "free storage on the printer \u2014 the firmware reports no sizes",
+      "how much filament is left on a loaded spool \u2014 the printer tracks which spool, not what remains"
+     ],
+     "not_verified": [],
+     "source_refs": [
+      {
+       "kind": "hardware",
+       "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+       "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+      },
+      {
+       "kind": "repository",
+       "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json \u2014 the known-good U1 machine preset extracted from a reference project"
+      }
+     ]
+    },
+    "bed_mm": {
+     "x": 270.0,
+     "y": 270.0,
+     "z": 270.05
+    },
+    "dims_mm": {
+     "x": 10.0,
+     "y": 20.0,
+     "z": 30.0
+    },
+    "basis": "size_and_placement",
+    "subject": null,
+    "placement_checked": true,
+    "overall_level": "risk",
+    "overall_text": "By size, this model is small enough for the Snapmaker U1's bed, but the placement is a problem \u2014 see the placement finding below.",
+    "findings": [
+     {
+      "level": "risk",
+      "text": "By placement: 1 object falls outside the Snapmaker U1's plate, but the whole arrangement fits \u2014 moving it as one piece brings everything back on, keeping the creator's layout, rotation and scale.",
+      "id": "placement-off-plate",
+      "action": "Move the arrangement onto the plate (Studio can save a corrected copy), or review the project in Snapmaker Orca."
+     }
+    ],
+    "fixes": [
+     "Move the arrangement onto the plate (Studio can save a corrected copy), or review the project in Snapmaker Orca."
+    ],
+    "objects_checked": 1,
+    "objects_unmeasured": 0,
+    "objects_by_size": [
+     {
+      "object_id": "1",
+      "part": "3D/3dmodel.model",
+      "level": "ok",
+      "dims_mm": {
+       "x": 10.0,
+       "y": 20.0,
+       "z": 30.0
+      },
+      "findings": [],
+      "fixes": []
+     }
+    ]
+   }
+  },
+  {
+   "fixture": "mm",
+   "route": "/predict_success",
+   "status": 200,
+   "body": {
+    "schema_version": "successpredict/3",
+    "available": true,
+    "signals": [],
+    "checked": [
+     "design validation",
+     "colors against toolheads",
+     "first-layer risk"
+    ],
+    "not_checked": [
+     "printer health",
+     "printer history for the same file name"
+    ],
+    "limitations": [
+     "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your slicer settings, how the filament has been stored, how clean or level the bed is, or how the printer behaves mid-print.",
+     "Studio does not slice. Verify in Snapmaker Orca before you print."
+    ],
+    "summary": "Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed."
+   }
+  },
+  {
+   "fixture": "mm_onplate",
+   "route": "/bed_fit",
+   "status": 200,
+   "body": {
+    "schema_version": "bedfit/1",
+    "available": true,
+    "bed_known": false,
+    "bed_source": "the Snapmaker U1",
+    "bed_mm_source": "profile",
+    "measured_against": {
+     "printer_id": "snapmaker_u1",
+     "display_name": "Snapmaker U1",
+     "manufacturer": "Snapmaker",
+     "model": "U1",
+     "verification_level": "hardware_verified",
+     "verification_label": "Hardware verified",
+     "verification_meaning": "A physical machine of this kind answered these questions, read-only, and the answers were recorded.",
+     "verification_note": "Read read-only from a physical Snapmaker U1 on a LAN during the beta.23 and v0.7.x acceptance work.",
+     "tool_count": 4,
+     "build_volume_mm": {
+      "x": 270.0,
+      "y": 270.0,
+      "z": 270.05
+     },
+     "known_unknowns": [
+      "free storage on the printer \u2014 the firmware reports no sizes",
+      "how much filament is left on a loaded spool \u2014 the printer tracks which spool, not what remains"
+     ],
+     "not_verified": [],
+     "source_refs": [
+      {
+       "kind": "hardware",
+       "detail": "read-only LAN session against a physical Snapmaker U1 on Moonraker port 7125",
+       "recorded": "docs/internal/evidence/0.7.2.json (hardware 26/26)"
+      },
+      {
+       "kind": "repository",
+       "detail": "backend/snapstudio_core/data/profiles/snapmaker_u1.json \u2014 the known-good U1 machine preset extracted from a reference project"
+      }
+     ]
+    },
+    "bed_mm": {
+     "x": 270.0,
+     "y": 270.0,
+     "z": 270.05
+    },
+    "dims_mm": {
+     "x": 10.0,
+     "y": 20.0,
+     "z": 30.0
+    },
+    "basis": "size_and_placement",
+    "subject": null,
+    "placement_checked": true,
+    "overall_level": "ok",
+    "overall_text": "By size, this model fits the Snapmaker U1's bed, and the placement check found nothing off the plate.",
+    "findings": [
+     {
+      "level": "ok",
+      "text": "By size, this model fits the Snapmaker U1's 270\u00d7270\u00d7270 mm bed with room to spare (10\u00d720\u00d730 mm)."
+     },
+     {
+      "level": "ok",
+      "text": "By placement, every placed instance sits inside the plate."
+     }
+    ],
+    "fixes": [],
+    "objects_checked": 1,
+    "objects_unmeasured": 0,
+    "objects_by_size": [
+     {
+      "object_id": "1",
+      "part": "3D/3dmodel.model",
+      "level": "ok",
+      "dims_mm": {
+       "x": 10.0,
+       "y": 20.0,
+       "z": 30.0
+      },
+      "findings": [],
+      "fixes": []
+     }
+    ]
+   }
+  },
+  {
+   "fixture": "mm_onplate",
+   "route": "/predict_success",
+   "status": 200,
+   "body": {
+    "schema_version": "successpredict/3",
+    "available": true,
+    "signals": [],
+    "checked": [
+     "design validation",
+     "colors against toolheads",
+     "first-layer risk"
+    ],
+    "not_checked": [
+     "printer health",
+     "printer history for the same file name"
+    ],
+    "limitations": [
+     "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your slicer settings, how the filament has been stored, how clean or level the bed is, or how the printer behaves mid-print.",
+     "Studio does not slice. Verify in Snapmaker Orca before you print."
+    ],
+    "summary": "Studio's checks did not flag anything in what they covered: design validation, colors against toolheads, first-layer risk. That is not a sign the print will succeed."
+   }
+  },
+  {
+   "fixture": "inch",
+   "route": "/bed_fit",
+   "status": 200,
+   "body": {
+    "schema_version": "bedfit/1",
+    "available": false,
+    "status": "not_checked",
+    "reason": "The file declares its unit as inch, but Studio reads its numbers as millimetres and does not convert them.",
+    "scope": "bed fit",
+    "geometry_basis": {
+     "schema_version": "geometry-basis/1",
+     "established": false,
+     "reasons": [
+      "unit_not_millimeter"
+     ],
+     "unit": {
+      "unit": null,
+      "source": "declared"
+     },
+     "objects_total": 1,
+     "unchecked_objects": [],
+     "summary": "The file declares its unit as inch, but Studio reads its numbers as millimetres and does not convert them.",
+     "withheld": [
+      "bed fit",
+      "the size-based readiness check",
+      "the print risk signals",
+      "first-layer footprint checks",
+      "the Scale Doctor size preview"
+     ]
+    }
+   }
+  },
+  {
+   "fixture": "inch",
+   "route": "/predict_success",
+   "status": 200,
+   "body": {
+    "schema_version": "successpredict/3",
+    "available": true,
+    "status": "not_checked",
+    "reason": "The file declares its unit as inch, but Studio reads its numbers as millimetres and does not convert them.",
+    "scope": "the print risk signals that rest on the model's size",
+    "geometry_basis": {
+     "schema_version": "geometry-basis/1",
+     "established": false,
+     "reasons": [
+      "unit_not_millimeter"
+     ],
+     "unit": {
+      "unit": null,
+      "source": "declared"
+     },
+     "objects_total": 1,
+     "unchecked_objects": [],
+     "summary": "The file declares its unit as inch, but Studio reads its numbers as millimetres and does not convert them.",
+     "withheld": [
+      "bed fit",
+      "the size-based readiness check",
+      "the print risk signals",
+      "first-layer footprint checks",
+      "the Scale Doctor size preview"
+     ]
+    },
+    "signals": [],
+    "checked": [
+     "colors against toolheads"
+    ],
+    "not_checked": [
+     "design validation",
+     "first-layer risk",
+     "printer health",
+     "printer history for the same file name"
+    ],
+    "limitations": [
+     "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your slicer settings, how the filament has been stored, how clean or level the bed is, or how the printer behaves mid-print.",
+     "Studio does not slice. Verify in Snapmaker Orca before you print."
+    ],
+    "summary": "Studio's checks did not flag anything in what they covered: colors against toolheads. That is not a sign the print will succeed."
+   }
+  },
+  {
+   "fixture": "scaled",
+   "route": "/bed_fit",
+   "status": 200,
+   "body": {
+    "schema_version": "bedfit/1",
+    "available": false,
+    "status": "not_checked",
+    "reason": "Part of the model is scaled or reshaped by its placement transform, and Studio measured it before that transform. 1 of 1 placed object affected.",
+    "scope": "bed fit",
+    "geometry_basis": {
+     "schema_version": "geometry-basis/1",
+     "established": false,
+     "reasons": [
+      "transform_scaled"
+     ],
+     "unit": {
+      "unit": "millimeter",
+      "source": "declared"
+     },
+     "objects_total": 1,
+     "unchecked_objects": [
+      "1#1"
+     ],
+     "summary": "Part of the model is scaled or reshaped by its placement transform, and Studio measured it before that transform. 1 of 1 placed object affected.",
+     "withheld": [
+      "bed fit",
+      "the size-based readiness check",
+      "the print risk signals",
+      "first-layer footprint checks",
+      "the Scale Doctor size preview"
+     ]
+    }
+   }
+  },
+  {
+   "fixture": "scaled",
+   "route": "/predict_success",
+   "status": 200,
+   "body": {
+    "schema_version": "successpredict/3",
+    "available": true,
+    "status": "not_checked",
+    "reason": "Part of the model is scaled or reshaped by its placement transform, and Studio measured it before that transform. 1 of 1 placed object affected.",
+    "scope": "the print risk signals that rest on the model's size",
+    "geometry_basis": {
+     "schema_version": "geometry-basis/1",
+     "established": false,
+     "reasons": [
+      "transform_scaled"
+     ],
+     "unit": {
+      "unit": "millimeter",
+      "source": "declared"
+     },
+     "objects_total": 1,
+     "unchecked_objects": [
+      "1#1"
+     ],
+     "summary": "Part of the model is scaled or reshaped by its placement transform, and Studio measured it before that transform. 1 of 1 placed object affected.",
+     "withheld": [
+      "bed fit",
+      "the size-based readiness check",
+      "the print risk signals",
+      "first-layer footprint checks",
+      "the Scale Doctor size preview"
+     ]
+    },
+    "signals": [],
+    "checked": [
+     "colors against toolheads"
+    ],
+    "not_checked": [
+     "design validation",
+     "first-layer risk",
+     "printer health",
+     "printer history for the same file name"
+    ],
+    "limitations": [
+     "Studio checks only what it lists under \u201cStudio checked.\u201d It cannot know your slicer settings, how the filament has been stored, how clean or level the bed is, or how the printer behaves mid-print.",
+     "Studio does not slice. Verify in Snapmaker Orca before you print."
+    ],
+    "summary": "Studio's checks did not flag anything in what they covered: colors against toolheads. That is not a sign the print will succeed."
+   }
+  }
+ ]
+}
