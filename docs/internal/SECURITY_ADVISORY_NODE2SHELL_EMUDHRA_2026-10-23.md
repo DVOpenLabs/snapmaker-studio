@@ -116,6 +116,28 @@ Limits: this is a shell-only build. The Python sidecar in this build is an empty
 payload; it was not signed, packaged or run. A byte scan shows absence of the root's name, not of every certificate that could
 chain to it. The rebuilt executable is a verification artifact on this machine only and was not distributed.
 
+## Follow-up: rustls TLS advisories (2026-10-23, stacked on the patch above)
+
+Sources: RustSec database (cargo-audit 0.22.2, 1351 advisories, commit `84d943a6deeb`, the same head when re-fetched), `cargo info` and the crates.io index. Registry: `rustls 0.23.46` is published, not a pre-release, and is the newest 0.23.x (the registry's only newer line is `0.24.0-dev.2`).
+
+| Advisory | Fixed in | Applies to Studio? |
+|---|---|---|
+| RUSTSEC-2026-0285 TLS 1.3 handshake message accepted at the wrong encryption level | 0.23.45 | Client-side handshake code is used by the update check. The advisory says the transcript stays authenticated, so the effect is limited. Patched. |
+| RUSTSEC-2026-0346 `Debug` of client session values leaks secrets | 0.23.46 | Only for a custom `ClientSessionStore` that formats the values; Studio has none. Patched anyway. |
+| RUSTSEC-2026-0348 Brotli certificate decompression allocates up to 1 GiB | 0.23.46 | Not applicable by configuration: the `brotli` feature is off (`cargo tree -e features` shows only `ring`, `std`, `tls12`, `logging`). Patched anyway. |
+| RUSTSEC-2026-0349 unauthenticated ServerHello can downgrade later key exchange | 0.23.46 | Client-side, and the state it poisons would persist: `ureq 2.12.1` keeps one process-wide TLS configuration with rustls's default in-memory session store, so an entry written by a forged answer would survive across update checks (manual, or the opt-in daily check) until Studio restarts. The harm the advisory describes is loss of post-quantum confidentiality, and the `ring` provider used here offers only classical groups (X25519, secp256r1, secp384r1), so the hybrid group is never offered. Effect here: low, limited to a public release-metadata response. Patched. |
+
+Reach: in the shipped binary `rustls` enters only through `ureq 2.12.1` (the update check); the trust-store test also depends on it directly as a dev-dependency. RUSTSEC-2026-0347 (ECH) is unaffected below 0.23.44, so it was never present at 0.23.43 and 0.23.46 also covers it. `cargo update -p rustls --precise 0.23.46` changed two lines of `Cargo.lock` (version and checksum `48e13bd8…8fdf`, which matches the SHA-256 of the downloaded crate) and nothing else, so `webpki-roots 1.0.10` and `rustls-webpki 0.103.16` from the patch above are unchanged. No Cargo.toml change, no advisory suppression, TLS verification and hostname checking untouched.
+
+| Check | Result |
+|---|---|
+| `cargo test --locked` | 50 unit + 9 trust-store tests pass (the new `lockfile_resolves_rustls_to_a_release_with_the_october_2026_tls_fixes` fails on the previous lock, 0.23.43, and passes on this one; valid-chain, wrong-hostname and unknown-issuer tests pass on 0.23.46) |
+| `cargo check --locked --all-targets` | clean |
+| `cargo audit` | RUSTSEC-2026-0285, -0346, -0348, -0349 no longer reported; -0381 and -0382 still not reported. Still reported: quick-xml 0.39.4 (-0194, -0195, patched >= 0.41.0, arrives through the Tauri build tooling; not changed). Warnings unchanged: unmaintained `proc-macro-error` and five `unic-*` crates, unsound `anyhow` 1.0.102, `glib` 0.18.5, `tokio` 1.52.3. |
+| Release-profile shell build (rustc 1.91.1, cargo 1.91.1, `cargo build --release --locked`, isolated target dir, 2026-10-23 22:16) | exit 0; `snapmaker-studio-desktop.exe`, 11,193,856 bytes, SHA-256 `AED4201D97866ECF29ED609F84C4A41443E2F61F7C4D9451CD7B8D4CFB9E638A`; byte scan: 0 matches for `emSign ECC Root CA - G3`, 1 each for the C3, C1 and G1 roots, `rustls-0.23.46` present and `rustls-0.23.43` absent, `rustls-webpki-0.103.16` present and `0.103.15` absent |
+
+The scan is supporting evidence, not proof. This executable is **shell-only**: the sidecar is an empty placeholder, the front end is the existing `dist`, and it was not signed, packaged or run. It is not an installer and no user is remediated by it. The v1.7.0 RC1 candidate and v1.6.0 payloads still embed the old stack.
+
 ## Verdicts
 
 | Component | Verdict |
@@ -141,9 +163,8 @@ now restricted to this repository.
 2. Apply the same lock and workflow changes to `release/v1.7.0` and any other maintained line. The v1.7.0 RC1 candidate still embeds
    the removed root and the old verifier; fixing it is a non-document change and needs a new candidate.
 3. Decide whether to ship the fix in a patch release; previously distributed installers are not changed by a lockfile update.
-4. Separate TLS findings on the same path, not part of these incidents and not changed here: rustls 0.23.43 has RUSTSEC-2026-0285,
-   -0346, -0348 and -0349 (fixed in 0.23.46); `cargo update -p rustls --precise 0.23.46` is the likely fix. quick-xml 0.39.4
-   (RUSTSEC-2026-0194, -0195) arrives through the Tauri build tooling.
+4. rustls 0.23.43 findings (RUSTSEC-2026-0285, -0346, -0348, -0349) are fixed by the follow-up above (0.23.46). quick-xml 0.39.4
+   (RUSTSEC-2026-0194, -0195, fixed in 0.41.0) arrives through the Tauri build tooling and is not changed.
 5. Review the acceptance and hardware harnesses' use of the machine's Node; they have no floor check of their own.
 6. Windows and Linux system trust stores need the vendors' root-program updates (for example the NSS 3.131.1 removal);
    this repository cannot change them. No machine-wide trust change was made.
