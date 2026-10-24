@@ -27,7 +27,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
+      - name: Node.js security floor
+        run: node "${{ github.workspace }}/scripts/check-node-floor.mjs"
       - name: Build (validates content, screenshots, hotspots and walkthroughs)
         run: node tools/build.mjs
       - name: The committed public/index.html is current

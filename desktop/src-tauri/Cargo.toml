@@ -18,6 +18,13 @@ serde_json = "1"
 # only where it is invoked.
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
+# Trust-store regression test (tests/trust_store.rs). The same crates and features the update check already uses, so
+# the test inspects the roots the shipped binary embeds and verifies chains through the same rustls verifier.
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+sha2 = "0.10"
+webpki-roots = "0.26.11"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
