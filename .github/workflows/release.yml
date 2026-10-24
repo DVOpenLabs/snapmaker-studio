@@ -100,6 +100,7 @@ jobs:
           $metaPath = Join-Path $dir "cargo-metadata.json"
           cargo metadata --locked --format-version 1 --manifest-path desktop/src-tauri/Cargo.toml | Set-Content -Encoding utf8 $metaPath
           $meta = Get-Content -Raw $metaPath | ConvertFrom-Json
+          # This digest is per-OS: the Linux build sorts and terminates lines differently, so the two are not comparable.
           $graph = @($meta.packages | ForEach-Object { "{0} {1} {2}" -f $_.name, $_.version, $(if ($_.source) { $_.source } else { "path" }) } | Sort-Object)
           $graphPath = Join-Path $dir "cargo-resolved-packages.txt"
           $graph | Set-Content -Encoding utf8 $graphPath
