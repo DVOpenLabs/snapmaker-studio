@@ -127,7 +127,7 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - name: Node.js security floor
-        run: node "${{ github.workspace }}/scripts/check-node-floor.mjs"
+        run: node "$GITHUB_WORKSPACE/scripts/check-node-floor.mjs"
 
       - name: Install backend (for the sidecar freeze)
         working-directory: backend
