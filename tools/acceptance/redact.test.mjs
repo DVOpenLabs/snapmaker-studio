@@ -1,6 +1,10 @@
 // node --test tools/acceptance/redact.test.mjs
 // Pure tests for the shared evidence sanitizer and the formatters that feed it. Nothing here imports job-journey.mjs or
 // checks.mjs (both run browser and fixture start-up code on import); the wiring is checked by reading their source.
+//
+// SYNTHETIC FIXTURES: every path below is made up from fictional names (Avery, Fictional Workshop, Sample Models,
+// fileserver, O'Brien) and assembled from readable segments by synthetic-paths.mjs, so the repository tracks no
+// absolute-path literal. None of these identities is real.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -8,42 +12,44 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { redact, formatResult } from "./redact.mjs";
 import * as geo from "./geometry-expect.mjs";
+import { win, winSlash, unc, posix } from "./synthetic-paths.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = (f) => readFileSync(join(here, f), "utf8");
 const recorded = JSON.parse(readFileSync(join(here, "fixtures", "sidecar-geometry-responses.json"), "utf8"));
 const get = (fixture, route) => structuredClone(recorded.responses.find((r) => r.fixture === fixture && r.route === route).body);
 
-// Every private fragment below must be gone after redaction.
-const PRIVATE = /Brien|private|customer|models|Models|nas01|share|Kunal|kunal|Disk|someone|AppData|STL|\.3mf/;
+const FILE = "secret-sample-widget.3mf";
+// Every fictional fragment below must be gone after redaction.
+const PRIVATE = /Brien|Avery|avery|Workshop|workshop|Fictional|Sample Models|Models|fileserver|share|Disk|AppData|widget|\.3mf/;
 
 const LOCAL_PATHS = [
-  // reproductions from the review
-  "D:\\Models\\O'Brien\\private-design.3mf",
-  "open /tmp/customer-models/private-design.3mf failed",
-  "open /var/tmp/private-design.3mf failed",
+  // the two reproductions from the review, with fictional names
+  win("D:", "Models", "O'Brien", FILE),
+  `open ${posix("tmp", "workshop-files", FILE)} failed`,
+  `open ${posix("var", "tmp", FILE)} failed`,
   // windows
-  "Could not read D:\\STL Files\\O'Brien\\private\\model.3mf",
-  "Could not read D:\\Kunal's Models\\x.3mf",
-  "C:/Users/someone/AppData/x.3mf",
-  "C:\\\\double\\\\separators\\\\private-design.3mf",
+  `Could not read ${win("D:", "Fictional Workshop", "O'Brien", "private", FILE)}`,
+  `Could not read ${win("D:", "Avery's Sample Models", FILE)}`,
+  winSlash("C:", "Users", "Avery", "AppData", FILE),
+  win("C:", "", "double", "", "separators", FILE),
   // UNC
-  "failed \\\\nas01\\O'Brien\\share\\private-design.3mf",
-  "failed \\\\?\\C:\\Users\\someone\\private-design.3mf",
+  `failed ${unc("fileserver", "O'Brien", "share", FILE)}`,
+  `failed ${unc("?", win("C:", "Users", "Avery", FILE))}`,
   // posix
-  "open /Users/O'Brien/My Models/private-design.3mf",
-  "open /home/someone/models/private-design.3mf",
-  "open /media/kunal/Kunal's Disk/private-design.3mf",
-  "open /mnt/c/Users/kunal/private-design.3mf",
-  "open /Volumes/Kunal's Disk/private-design.3mf",
-  "open /root/private-design.3mf",
-  "open /var/folders/zz/customer models/private-design.3mf",
-  "open /TMP/Customer-Models/private-design.3mf",
+  `open ${posix("Users", "O'Brien", "Sample Models", FILE)}`,
+  `open ${posix("home", "avery", "models", FILE)}`,
+  `open ${posix("media", "avery", "Avery's Disk", FILE)}`,
+  `open ${posix("mnt", "c", "Users", "avery", FILE)}`,
+  `open ${posix("Volumes", "Avery's Disk", FILE)}`,
+  `open ${posix("root", FILE)}`,
+  `open ${posix("var", "folders", "zz", "workshop files", FILE)}`,
+  `open ${posix("TMP", "Workshop-Files", FILE)}`,
   // quoted and file URLs
-  "read '/tmp/customer-models/private-design.3mf'",
-  "read (/var/tmp/O'Brien/private-design.3mf)",
-  "file:///C:/Users/someone/private-design.3mf",
-  "file:///tmp/customer-models/private-design.3mf",
+  `read '${posix("tmp", "workshop-files", FILE)}'`,
+  `read (${posix("var", "tmp", "O'Brien", FILE)})`,
+  `file:///${winSlash("C:", "Users", "Avery", FILE)}`,
+  `file://${posix("tmp", "workshop-files", FILE)}`,
 ];
 
 test("local paths are redacted whole: spaces, apostrophes, UNC and POSIX roots cannot expose a suffix", () => {
@@ -52,9 +58,9 @@ test("local paths are redacted whole: spaces, apostrophes, UNC and POSIX roots c
     assert.match(out, /<path>/, text);
     assert.doesNotMatch(out, PRIVATE, `${text} -> ${out}`);
   }
-  assert.equal(redact("D:\\Models\\O'Brien\\private-design.3mf"), "<path>");
-  assert.equal(redact("open /tmp/customer-models/private-design.3mf failed"), "open <path>");
-  assert.equal(redact("open /var/tmp/private-design.3mf failed"), "open <path>");
+  assert.equal(redact(win("D:", "Models", "O'Brien", FILE)), "<path>");
+  assert.equal(redact(`open ${posix("tmp", "workshop-files", FILE)} failed`), "open <path>");
+  assert.equal(redact(`open ${posix("var", "tmp", FILE)} failed`), "open <path>");
 });
 
 test("URLs stay intact, including URLs with /tmp and /var segments", () => {
@@ -71,25 +77,25 @@ test("URLs stay intact, including URLs with /tmp and /var segments", () => {
 });
 
 test("mixed URL and local-path text does not leak the local path", () => {
-  const a = redact("GET http://127.0.0.1:7125/tmp/status failed reading /tmp/customer-models/private-design.3mf");
+  const a = redact(`GET http://127.0.0.1:7125/tmp/status failed reading ${posix("tmp", "workshop-files", FILE)}`);
   assert.equal(a, "GET http://127.0.0.1:7125/tmp/status failed reading <path>");
-  const b = redact("request to https://example.com/var/x failed; file D:\\Models\\O'Brien\\private-design.3mf");
+  const b = redact(`request to https://example.com/var/x failed; file ${win("D:", "Models", "O'Brien", FILE)}`);
   assert.equal(b, "request to https://example.com/var/x failed; file <path>");
-  const c = redact("open /var/tmp/private-design.3mf via http://127.0.0.1:7125/tmp/x");
+  const c = redact(`open ${posix("var", "tmp", FILE)} via http://127.0.0.1:7125/tmp/x`);
   assert.doesNotMatch(c, PRIVATE);
   assert.match(c, /<path>/);
 });
 
 test("paths inside JSON-encoded text are redacted, including after an escaped newline or tab", () => {
   for (const text of [
-    "boom\nD:\\Clients\\Acme\\private-design.3mf",
-    "boom\tD:\\Models\\O'Brien\\private-design.3mf",
-    "boom\r\nC:/Users/someone/private-design.3mf",
-    "boom\n/Users/O'Brien/private-design.3mf",
-    "boom\n/home/someone/private-design.3mf",
-    "boom\n/tmp/customer-models/private-design.3mf",
-    "boom\t/var/tmp/private-design.3mf",
-    "boom\n\\\\nas01\\share\\private-design.3mf",
+    `boom\n${win("D:", "Fictional Workshop", "Acme", FILE)}`,
+    `boom\t${win("D:", "Models", "O'Brien", FILE)}`,
+    `boom\r\n${winSlash("C:", "Users", "Avery", FILE)}`,
+    `boom\n${posix("Users", "O'Brien", FILE)}`,
+    `boom\n${posix("home", "avery", FILE)}`,
+    `boom\n${posix("tmp", "workshop-files", FILE)}`,
+    `boom\t${posix("var", "tmp", FILE)}`,
+    `boom\n${unc("fileserver", "share", FILE)}`,
   ]) {
     const encoded = JSON.stringify([text]);
     assert.match(encoded, /\\[nrt]/, "the fixture really is JSON-escaped");
@@ -110,12 +116,12 @@ test("paths inside JSON-encoded text are redacted, including after an escaped ne
 });
 
 test("the sanitizer is pure: repeated calls give the same answer and carry no regex state", () => {
-  const text = "open /tmp/a/private-design.3mf and D:\\x\\y";
+  const text = `open ${posix("tmp", "a", FILE)} and ${win("D:", "x", "y")}`;
   const first = redact(text);
   for (let i = 0; i < 5; i++) assert.equal(redact(text), first);
   assert.equal(redact(undefined), "undefined");
   assert.equal(redact(null), "null");
-  assert.equal(redact(new Error("boom at /var/tmp/private-design.3mf")), "Error: boom at <path>");
+  assert.equal(redact(new Error(`boom at ${posix("var", "tmp", FILE)}`)), "Error: boom at <path>");
   assert.equal(redact(""), "");
 });
 
@@ -149,8 +155,8 @@ test("geometry evidence output (response summary, record detail, error entry) is
     assert.equal(err.evidence.status, "unavailable");
   }
   // primitive bodies and non-200 answers
-  assert.doesNotMatch(geo.describeResponse("open /tmp/customer-models/private-design.3mf"), PRIVATE);
-  assert.doesNotMatch(geo.routeDetail({ status: 500, ok: false, failed: [], payload: "D:\\Models\\O'Brien\\private-design.3mf" }), PRIVATE);
+  assert.doesNotMatch(geo.describeResponse(`open ${posix("tmp", "workshop-files", FILE)}`), PRIVATE);
+  assert.doesNotMatch(geo.routeDetail({ status: 500, ok: false, failed: [], payload: win("D:", "Models", "O'Brien", FILE) }), PRIVATE);
   assert.match(geo.routeDetail({ status: 500, ok: false, failed: [], payload: {} }), /expectations not evaluated \(HTTP 500\)/);
   // a normal answer keeps its diagnostic content
   const good = get("mm", "/bed_fit");

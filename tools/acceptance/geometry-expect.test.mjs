@@ -7,6 +7,13 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as geo from "./geometry-expect.mjs";
+import { win, winSlash, unc, posix } from "./synthetic-paths.mjs";
+
+// SYNTHETIC FIXTURES: the paths in the redaction tests use fictional names (Avery, Fictional Workshop, Sample Models,
+// fileserver) and are assembled from readable segments by synthetic-paths.mjs, so no absolute-path literal is tracked.
+// None of these identities is real.
+const FILE = "secret-sample-widget.3mf";
+const FRAGMENTS = /Brien|Avery|avery|Workshop|Fictional|Sample Models|fileserver|share|Disk|AppData|widget|private|\.3mf/;
 
 const recorded = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures", "sidecar-geometry-responses.json"), "utf8"));
 const get = (fixture, route) => structuredClone(recorded.responses.find((r) => r.fixture === fixture && r.route === route).body);
@@ -128,13 +135,14 @@ test("predict_success: incorrectly established geometry is refused", () => {
 
 test("describeResponse keeps the fields that explain a failure and no paths", () => {
   const body = get("inch", "/predict_success");
-  body.reason = "Could not read C:\\Users\\someone\\private\\model.3mf at all";
-  body.geometry_basis.summary = "D:/work/secret.3mf";
+  body.reason = `Could not read ${win("C:", "Fictional Workshop", "private", FILE)} at all`;
+  body.geometry_basis.summary = winSlash("D:", "sample-work", FILE);
   const shown = geo.describeResponse(body);
   assert.match(shown, /successpredict\/3/);
   assert.match(shown, /unit_not_millimeter/);
   assert.match(shown, /not_checked/);
-  assert.doesNotMatch(shown, /Users|someone|private|secret|work\//);
+  assert.doesNotMatch(shown, FRAGMENTS);
+  assert.doesNotMatch(shown, /sample-work/);
   assert.equal(typeof JSON.parse(shown), "object");
   assert.equal(geo.describeResponse(undefined), '{"value":"undefined"}');
 });
@@ -227,52 +235,52 @@ test("established predict_success: any signal, malformed or not, is refused for 
 
 test("redaction: spaced, UNC, posix-home and primitive-body paths never reach the evidence", () => {
   const dirty = [
-    "Could not read D:\\STL Files\\private\\model.3mf at all",
-    "failed \\\\nas01\\share\\My Models\\x.3mf",
-    "open /Users/someone/My Models/x.3mf failed",
-    "open /home/someone/models/x.3mf failed",
-    "C:/Users/someone/AppData/x.3mf",
+    `Could not read ${win("D:", "Fictional Workshop", "private", FILE)} at all`,
+    `failed ${unc("fileserver", "share", "Sample Models", FILE)}`,
+    `open ${posix("Users", "avery", "Sample Models", FILE)} failed`,
+    `open ${posix("home", "avery", "models", FILE)} failed`,
+    winSlash("C:", "Users", "Avery", "AppData", FILE),
   ];
   for (const text of dirty) {
     const out = geo.redact(text);
-    assert.doesNotMatch(out, /STL|private|model\.3mf|nas01|share|My Models|someone|AppData/, out);
+    assert.doesNotMatch(out, FRAGMENTS, out);
     assert.match(out, /<path>/);
     const body = get("inch", "/predict_success");
     body.reason = text;
     body.geometry_basis.reasons = [text];
     const shown = geo.describeResponse(body);
-    assert.doesNotMatch(shown, /STL|private|nas01|My Models|someone|AppData/, shown);
-    assert.doesNotMatch(JSON.stringify(geo.describeFields(body)), /STL|private|nas01|My Models|someone|AppData/);
-    assert.doesNotMatch(geo.describeResponse(text), /STL|private|nas01|My Models|someone|AppData/);
-    assert.doesNotMatch(JSON.stringify(geo.describeFields(text)), /STL|private|nas01|My Models|someone|AppData/);
+    assert.doesNotMatch(shown, FRAGMENTS, shown);
+    assert.doesNotMatch(JSON.stringify(geo.describeFields(body)), FRAGMENTS);
+    assert.doesNotMatch(geo.describeResponse(text), FRAGMENTS);
+    assert.doesNotMatch(JSON.stringify(geo.describeFields(text)), FRAGMENTS);
   }
-  assert.equal(geo.redact(new Error("boom at D:\\a b\\c.txt")), "Error: boom at <path>");
+  assert.equal(geo.redact(new Error(`boom at ${win("D:", "a b", "c.txt")}`)), "Error: boom at <path>");
   assert.equal(geo.redact("plain text"), "plain text");
 });
 
 test("redaction: apostrophes in folder names cannot end a path early, other mounts are covered, URLs survive", () => {
   for (const text of [
-    "Could not read D:\\STL Files\\O'Brien\\private\\model.3mf",
-    "Could not read D:\\Kunal's Models\\x.3mf",
-    "failed \\\\nas01\\O'Brien\\share\\x.3mf",
-    "open /Users/O'Brien/My Models/x.3mf",
-    "open /media/kunal/Kunal's Disk/x.3mf",
-    "open /mnt/c/Users/kunal/x.3mf",
-    "open /Volumes/Kunal's Disk/x.3mf",
-    "open /root/x.3mf",
+    `Could not read ${win("D:", "Fictional Workshop", "O'Brien", "private", FILE)}`,
+    `Could not read ${win("D:", "Avery's Sample Models", FILE)}`,
+    `failed ${unc("fileserver", "O'Brien", "share", FILE)}`,
+    `open ${posix("Users", "O'Brien", "Sample Models", FILE)}`,
+    `open ${posix("media", "avery", "Avery's Disk", FILE)}`,
+    `open ${posix("mnt", "c", "Users", "avery", FILE)}`,
+    `open ${posix("Volumes", "Avery's Disk", FILE)}`,
+    `open ${posix("root", FILE)}`,
   ]) {
     const out = geo.redact(text);
-    assert.doesNotMatch(out, /Brien|private|model|Kunal|Models|nas01|share|kunal|Disk|x\.3mf/, out);
+    assert.doesNotMatch(out, FRAGMENTS, out);
     assert.match(out, /<path>/);
     const body = get("inch", "/predict_success");
     body.reason = text;
     body.geometry_basis.summary = text;
     const shown = JSON.stringify(geo.describeFields(body));
-    assert.doesNotMatch(shown, /Brien|private|Kunal|Models|nas01|kunal|Disk|x\.3mf/, shown);
+    assert.doesNotMatch(shown, FRAGMENTS, shown);
   }
   const url = "request to http://127.0.0.1:7125/bed_fit failed: ECONNRESET";
   assert.equal(geo.redact(url), url, "a URL is not a drive path");
-  assert.equal(geo.redact("see D:\\x and http://127.0.0.1:7125/y"), "see <path>");
+  assert.equal(geo.redact(`see ${win("D:", "x")} and http://127.0.0.1:7125/y`), "see <path>");
 });
 
 test("route evidence keeps the inputs of every expectation, so a failure can be read from the file alone", () => {
