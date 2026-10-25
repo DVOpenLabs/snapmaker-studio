@@ -12,12 +12,23 @@ here is staged, and nothing is a mock-up.
 object, which edge, how many millimetres, why — fixes it in a new copy, proves
 what survived, and checks it against your actual printer.*
 
+**Known limitation (v1.7.0 release candidate).** The sample project is a minimal synthetic file written by
+Studio's self-check: its `[Content_Types].xml` and `_rels/.rels` parts are present but empty stubs
+(`<Types/>` and `<Relationships/>`), so nothing points a standard 3MF reader at `3D/3dmodel.model`, and its
+`model_settings.config` lists objects 2 to 4 that the model does not contain. In an isolated test, Snapmaker Orca
+2.4.1 answered "Loading of model file failed" for the unprepared sample; it loaded a differently built painted
+project that has a real relationship file. Which of these differences Orca rejects was **not isolated**, and the
+cause is not confirmed. Studio itself reads the sample fine. The line "Orca says out of bounds" is the story of a
+real downloaded project, not something this sample shows in Orca.
+
 ---
 
 ## 1. The beats
 
 ### 0:00 – 0:10 · The problem, in the user's words
-**On screen:** the sample project open in Snapmaker Orca, showing its error.
+**On screen:** Studio's own first frame (the recording starts in Studio and does not show Snapmaker Orca).
+This beat is narration only. Do not open `examples/demo_u1_showcase.3mf` in Orca on camera: Snapmaker Orca 2.4.1
+refuses that file, with a load failure rather than an out-of-bounds message (see the known limitation above).
 
 > I downloaded a model. I don't know if it's right for my U1 — and my slicer just
 > says out of bounds.

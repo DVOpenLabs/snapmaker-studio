@@ -29,6 +29,7 @@ Every *other* document must link here rather than restate these values.
 | Linux size (bytes) | 26,325,960 |
 | Linux SHA256 | `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc` |
 | Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382 |
+| Real-printer verification harness | Separate branch `verify/v1.7.0-rc2-hardware-harness`, commit [584906a](https://github.com/DVOpenLabs/snapmaker-studio/commit/584906a1ee0e9581ee915c8985481935517aca97); not part of the candidate packages; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 | Release URL | Not yet published — no v1.7.0 tag or GitHub release exists |
 | Trust status | CANDIDATE — verified, not published; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 

@@ -191,7 +191,7 @@ candidate; it does not show that a print succeeds.
 
 The read-only real-printer verification passed on its second attempt after the first failed on defects in the
 verification tooling; both are recorded in the trust status. The Snapmaker Orca loading checks are partial: a painted
-project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue, not yet investigated). No real
+project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue: the file is a minimal synthetic package with empty content-type and relationship stubs; the exact reason Orca rejects it is unconfirmed). No real
 SpoolEase device has been tested. Full detail:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
