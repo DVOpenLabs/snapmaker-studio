@@ -32,6 +32,8 @@ tooling, passed; both are recorded below. The Snapmaker Orca loading checks are 
 project that Orca 2.4.1 refuses is a known limitation shipped with this release (see the table and the list at the
 end of this section). Nothing here claims Orca hand-off, slicing or SpoolEase verification.
 
+**Published 2026-10-25T17:04:30Z** (from the GitHub release record): tag `v1.7.0` at `a98af8472c70b842d8c94309ca05c2d690b55973`, publish run [40214655926](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40214655926), read-only verify run [40214754181](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40214754181) passed; the published installer and `.deb` SHA256 digests equal [RELEASE_METADATA.md](RELEASE_METADATA.md) and `SHA256SUMS` verified against a fresh download.
+
 | Gate | Result |
 |---|---|
 | Backend suite (Python 3.13) | **3824 passed / 49 skipped** |
