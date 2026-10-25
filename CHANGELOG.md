@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- The bundled sample project `examples/demo_u1_showcase.3mf` and the self-check fixtures now carry real 3MF package parts (`[Content_Types].xml` and `_rels/.rels`) instead of empty stubs. Snapmaker Orca 2.4.1 refused the stubbed file with "Loading of model file failed"; with real parts it gets past that error (isolated testing reached Orca's preset prompt for the file's foreign printer settings; full plate loading was not confirmed). Studio's analysis of the sample is unchanged. Record: [docs/internal/orca-sample-isolation-2026-10-25.json](docs/internal/orca-sample-isolation-2026-10-25.json).
+
 ## [1.7.0] - 2026-10-25
 
 This entry describes v1.7.0, published from the exact bytes of release-candidate build run 40129442382 (never
