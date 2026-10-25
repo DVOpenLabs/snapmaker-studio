@@ -27,7 +27,7 @@ real downloaded project, not something this sample shows in Orca.
 ### 0:00 – 0:10 · The problem, in the user's words
 **On screen:** Studio's own first frame (the recording starts in Studio and does not show Snapmaker Orca).
 This beat is narration only. Do not open `examples/demo_u1_showcase.3mf` in Orca on camera: Snapmaker Orca 2.4.1
-refuses that file, with a load failure rather than an out-of-bounds message (see the known limitation above).
+refused the file shipped in v1.7.0, with a load failure rather than an out-of-bounds message (see the known limitation above). The corrected file on main gets past that error but its full load in Orca is unconfirmed, so the advice stands.
 
 > I downloaded a model. I don't know if it's right for my U1 — and my slicer just
 > says out of bounds.
