@@ -110,7 +110,7 @@
         "Open that copy (**Open a model**) and prepare it (**Prepare U1 copy**)."
       ],
       "success": ["A new `…_placed_U1.3mf` beside your original, and the card says **The object sits inside the U1's printable area.**"],
-      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (Studio also never moves multi-plate projects). Open the project in Orca and use **Arrange**; see the placement example." }],
+      "differs": [{ "if": "There is no Move button.", "then": "Either every object already fits, or one move cannot fix the layout (the Move button is not offered for multi-plate projects). Open the project in Orca and use **Arrange**; see the placement example." }],
       "notes": [{ "kind": "safe", "text": "The moved copy shifts the whole layout as one piece; the spacing between objects, their rotation, scale and height stay as the creator set them." }],
       "shot": "move-result",
       "problems": ["object-outside-area", "cannot-move-as-one-piece"], "keywords": ["move", "plate", "off the plate", "out of bounds", "placement", "hangs", "bed", "arrange"]
