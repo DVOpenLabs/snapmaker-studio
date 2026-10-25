@@ -49,6 +49,8 @@ test("the desktop source still carries every UI string the nozzle checks drive",
   const address = read("desktop/src/components/PrinterAddress.tsx");
   assert.match(address, /aria-label="Printer network name or IP"/);
   assert.match(address, /Save and connect/);
+  assert.match(address, /role="status"/);
+  assert.ok(address.includes("Set up: " + "${saved}"));
   assert.match(address, /e\.key === "Enter"/);
   assert.match(read("desktop/src/routes/Settings.tsx"), /isPrinterSetUp\(host\) \? <PrinterNozzleSettings/);
   assert.match(read("desktop/src/components/PrinterNozzleSettings.tsx"), /Nozzles · for \{canonical\}/);

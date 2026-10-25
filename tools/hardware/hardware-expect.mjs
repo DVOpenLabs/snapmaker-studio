@@ -2,7 +2,8 @@
 // wrong inputs (a predicate that cannot fail proves nothing). node --test tools/hardware/hardware-expect.test.mjs
 
 /** The U1's printable area, pinned here so the check does not take its expectation from the source it verifies.
- *  Provenance: the Snapmaker U1 machine preset printable_area polygon (0.5,1)-(270.5,272) gives an extent of 270 x 271 in the preset; the shipped profile records 270 x 270 and Studio names that.
+ *  Provenance: the Snapmaker U1 machine preset printable_area polygon 0.5x1 -> 270.5x271 (data/profiles/snapmaker_u1.json) is exactly
+ *  270 x 270, and the shipped printer profile records the same.
  *  hardware-expect.test.mjs compares this with the shipped profile so drift is caught at test time, not at run time. */
 export const U1_PRINTABLE_MM = { x: 270, y: 270 };
 

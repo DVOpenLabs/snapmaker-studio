@@ -333,7 +333,7 @@ function toolheadRow(page, n) {
  *  kept showing the pre-seed state. The card refetches on two things only:
  *  a host change, or a genuine remount. This forces the second, exactly as
  *  specified: navigate to "/" — the real Dashboard route ("/dashboard" is
- *  NotFound and was never the fix) — wait for its own heading, then navigate
+ *  NotFound and was never the fix) — wait for the Nozzles card to unmount (Home has no heading), then navigate
  *  back to "/settings", which mounts a fresh PrinterNozzleSettings instance
  *  and restarts its fetch. */
 async function forceNozzleCardRefetch(page) {
@@ -353,7 +353,7 @@ async function forceNozzleCardRefetch(page) {
  *  owner types into (Settings -> "Your Snapmaker U1") — to the supplied host,
  *  so the Nozzles card (and everything else keyed by `usePrinter`) actually
  *  points at this real printer instead of the "U1.local" placeholder it
- *  otherwise defaults to. Filling this field calls the store's own setHost(),
+ *  otherwise defaults to. Typing only edits a draft; pressing Enter calls the store's own setHost(),
  *  which persists to localStorage and reactively restarts the Nozzles card's
  *  fetch — no page reload needed. */
 async function setAppPrinterHost(page, host) {
@@ -366,7 +366,8 @@ async function setAppPrinterHost(page, host) {
   await field.fill(host);
   await field.press("Enter"); // typing only edits a draft; Studio looks the printer up after Save
   // The card must be for THIS host (a stored earlier address would already show a card): the page names the saved host.
-  await page.waitForFunction((h) => document.body.innerText.includes("Set up: " + h) && /Nozzles · for/.test(document.body.innerText), host, { timeout: 15000 });
+  await page.waitForFunction((h) => [...document.querySelectorAll('[role="status"]')].some((el) => el.textContent.trim() === "Set up: " + h)
+    && /Nozzles · for/.test(document.body.innerText), host, { timeout: 15000 });
   await page.waitForTimeout(500);
 }
 
