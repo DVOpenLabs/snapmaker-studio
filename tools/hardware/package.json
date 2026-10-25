@@ -5,5 +5,8 @@
   "description": "Read-only verification of the installed build against a real Snapmaker U1.",
   "dependencies": {
     "playwright-core": "^1.62.1"
+  },
+  "scripts": {
+    "test": "node --test hardware-expect.test.mjs"
   }
 }

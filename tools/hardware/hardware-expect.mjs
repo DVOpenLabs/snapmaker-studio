@@ -2,7 +2,7 @@
 // wrong inputs (a predicate that cannot fail proves nothing). node --test tools/hardware/hardware-expect.test.mjs
 
 /** The U1's printable area, pinned here so the check does not take its expectation from the source it verifies.
- *  Provenance: Snapmaker U1 machine preset printable_area 0.5x1 -> 270.5x271, which Studio rounds down to 270 x 270.
+ *  Provenance: the Snapmaker U1 machine preset printable_area polygon (0.5,1)-(270.5,272) gives an extent of 270 x 271 in the preset; the shipped profile records 270 x 270 and Studio names that.
  *  hardware-expect.test.mjs compares this with the shipped profile so drift is caught at test time, not at run time. */
 export const U1_PRINTABLE_MM = { x: 270, y: 270 };
 
@@ -22,14 +22,25 @@ export function g(n) {
  *   - it counts the deliberately off-plate object(s) as outside.
  * `plate` is the profile's build volume {x, y}; `travel` is what the printer reported {x, y, z}.
  */
-export function bedFitEvidenceOk(evidence, plate, travel) {
+export function bedFitEvidenceOk(evidence, plate, travel, expectedOutside = 1) {
   const text = String(evidence ?? "");
   const named = text.includes(`${g(plate.x)} × ${g(plate.y)} mm printable area`);
   const travelAsArea = [travel.x, travel.y, travel.z]
     .filter((v) => Number.isFinite(Number(v)) && Number(v) !== Number(plate.x) && Number(v) !== Number(plate.y))
     .some((v) => new RegExp(String.raw`${g(v)}(\.0)?\s*(×|x|mm)[^.]*(printable|area)`, "i").test(text));
   const outside = /(\d+) object\(s\) fall outside/.exec(text);
-  return named && !travelAsArea && Boolean(outside) && Number(outside[1]) >= 1;
+  return named && !travelAsArea && Boolean(outside) && Number(outside[1]) === Number(expectedOutside);
+}
+
+/** The whole bed.fit finding: the evidence text AND the finding's own verdict. The showcase has exactly one deliberate off-plate object. */
+export function bedFitFindingOk(finding, plate, travel, expectedOutside = 1) {
+  return Boolean(finding) && finding.result === "attention" && finding.confidence === "confirmed"
+    && bedFitEvidenceOk(finding.evidence, plate, travel, expectedOutside);
+}
+
+/** A provider's weight for the seeded spool: the exact figure the seed implies, and recorded ("tracked"), not merely positive. */
+export function providerWeightOk(slot, expectedG) {
+  return typeof slot?.remaining_g === "number" && slot.remaining_g === expectedG && slot.remaining_quality === "tracked";
 }
 
 /** True when the page is the Settings page with the printer set up: the Nozzles card rather than its placeholder. */

@@ -75,7 +75,8 @@
 // the JSON and assume 0 means clean.
 
 import { chromium } from "playwright-core";
-import { bedFitEvidenceOk, U1_PRINTABLE_MM } from "./hardware-expect.mjs";
+import { bedFitFindingOk, providerWeightOk, U1_PRINTABLE_MM } from "./hardware-expect.mjs";
+import { SPOOL } from "./seed-providers.mjs";
 import { writeFileSync, readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -364,7 +365,8 @@ async function setAppPrinterHost(page, host) {
   const field = page.getByLabel("Printer network name or IP");
   await field.fill(host);
   await field.press("Enter"); // typing only edits a draft; Studio looks the printer up after Save
-  await page.waitForFunction(() => /Nozzles · for/.test(document.body.innerText), null, { timeout: 15000 });
+  // The card must be for THIS host (a stored earlier address would already show a card): the page names the saved host.
+  await page.waitForFunction((h) => document.body.innerText.includes("Set up: " + h) && /Nozzles · for/.test(document.body.innerText), host, { timeout: 15000 });
   await page.waitForTimeout(500);
 }
 
@@ -546,7 +548,7 @@ const bedCheck = rows.find((r) => r.id === "bed.fit");
 // Studio judges placement against the profile's printable area and says so; the printer's axis travel
 // (bed above) is not a printable area and must not be presented as one. The showcase's off-plate object is deliberate.
 record("The bed check uses the printable area, not the printer's axis travel, and flags the deliberate off-plate object",
-  Boolean(bedCheck) && bedFitEvidenceOk(bedCheck.evidence, U1_PRINTABLE_MM, bed),
+  bedFitFindingOk(bedCheck, U1_PRINTABLE_MM, bed),
   bedCheck?.evidence ?? "");
 
 const toolheads = rows.find((r) => r.id === "materials.toolheads");
@@ -846,8 +848,7 @@ if (spoolmanUrl && bambuddyUrl) {
         && /PLA/i.test(String(a.slot?.has_material ?? "")),
       `${a.slot?.has_material} confirmed_by=${a.slot?.confirmed_by}`);
     record(`The provider supplies the weight the machine cannot know (${provider})`,
-      typeof a.slot?.remaining_g === "number" && a.slot.remaining_g > 0
-        && a.slot?.remaining_quality === "tracked",
+      providerWeightOk(a.slot, SPOOL.initialG - SPOOL.usedG),
       `${a.slot?.remaining_g} g ${a.slot?.remaining_quality}`);
     record(`Agreement is not reported as a disagreement (${provider})`,
       (a.slot?.conflicts ?? []).length === 0,
@@ -865,7 +866,7 @@ if (spoolmanUrl && bambuddyUrl) {
         && (c.slot?.conflicts ?? []).some((x) => /PETG/i.test(x)),
       (c.slot?.conflicts ?? []).join(" ").slice(0, 90));
     record(`A disagreement does not throw the weight away (${provider})`,
-      typeof c.slot?.remaining_g === "number" && c.slot.remaining_g > 0,
+      providerWeightOk(c.slot, SPOOL.initialG - SPOOL.usedG),
       `${c.slot?.remaining_g} g`);
   }
 

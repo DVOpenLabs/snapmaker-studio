@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bedFitEvidenceOk, nozzleCardPresent, g, U1_PRINTABLE_MM } from "./hardware-expect.mjs";
+import { bedFitEvidenceOk, bedFitFindingOk, providerWeightOk, nozzleCardPresent, g, U1_PRINTABLE_MM } from "./hardware-expect.mjs";
 import { SPOOL, seedSpoolman, seedBambuddy } from "./seed-providers.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -86,4 +86,23 @@ test("Bambuddy seed records a weighing for both spools", async () => {
     assert.equal(c.body.last_weighed_at, "2026-10-25T00:00:00.000");
   }
   assert.deepEqual(posts.map((c) => c.body.material), ["PLA", "PETG"]);
+});
+
+test("the whole bed.fit finding must be an attention/confirmed verdict, not just right-looking text", () => {
+  const ok = { result: "attention", confidence: "confirmed", evidence: real };
+  assert.ok(bedFitFindingOk(ok, plate, travel));
+  assert.ok(!bedFitFindingOk({ ...ok, result: "ok" }, plate, travel));
+  assert.ok(!bedFitFindingOk({ ...ok, confidence: "informational" }, plate, travel));
+  assert.ok(!bedFitFindingOk(undefined, plate, travel));
+});
+test("the off-plate count is the showcase's exactly one, not 'at least one'", () => {
+  assert.ok(!bedFitEvidenceOk("3 object(s) fall outside this printer's 270 × 270 mm printable area", plate, travel));
+});
+test("provider weight must be the seeded figure and recorded: positive-but-wrong or derived fails", () => {
+  const want = SPOOL.initialG - SPOOL.usedG;
+  assert.ok(providerWeightOk({ remaining_g: want, remaining_quality: "tracked" }, want));
+  assert.ok(!providerWeightOk({ remaining_g: 100, remaining_quality: "tracked" }, want));
+  assert.ok(!providerWeightOk({ remaining_g: want, remaining_quality: "derived" }, want));
+  assert.ok(!providerWeightOk({ remaining_g: "900", remaining_quality: "tracked" }, want));
+  assert.ok(!providerWeightOk(undefined, want));
 });
