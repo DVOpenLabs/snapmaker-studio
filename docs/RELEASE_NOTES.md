@@ -1,11 +1,11 @@
-# Snapmaker Studio v1.7.0 (release candidate) — One job screen, print risk signals and a colour preview
+# Snapmaker Studio v1.7.0 — One job screen, print risk signals and a colour preview
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-> **Release candidate — not published.** These notes describe the candidate named in
-> [RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md). No v1.7.0 tag, GitHub release or download exists yet. Until one
-> does, the published release is v1.6.0.
+> These notes describe the build named in
+> [RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md),
+> published unchanged from release-candidate run 40129442382. The previous release is v1.6.0.
 
 This release puts a project on one job screen, replaces the readiness percentage with a list of the risks Studio
 found, draws a read-only colour preview, tightens the checks that decide whether a project fits the plate, and
@@ -73,15 +73,14 @@ Ubuntu 22.04 and 24.04 (49/49 each).
 Spoolman and Bambuddy containers with synthetic spools. The first attempt failed on defects in the verification
 tooling, not the product; the tooling was corrected and reviewed before the second. **Snapmaker Orca:** a painted
 project and its prepared copies loaded in an isolated Orca 2.4.1 profile; the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even
-unprepared (known issue: the file is a minimal synthetic package with empty content-type and relationship stubs; the exact reason Orca rejects it is unconfirmed), so it proves nothing about its prepared copies. **Not checked:** any real SpoolEase device.
+unprepared (known issue: the file is a minimal synthetic package whose content-type and relationship parts are empty stubs, which isolated testing confirmed is what Orca 2.4.1 rejects; the file shipped in this release is unchanged), so it proves nothing about its prepared copies. **Not checked:** any real SpoolEase device.
 
 Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
 is something you confirm.
 
 ## Verify your download
 
-These values are for the release candidate. They apply to a v1.7.0 download once it is published; the candidate has
-no public download.
+These are the values of the v1.7.0 downloads on this release.
 
 - Windows: `Snapmaker.Studio_1.7.0_x64-setup.exe` — 22,748,251 bytes — SHA256 `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
 - Linux: `snapmaker-studio_1.7.0_amd64_210d86868882.deb` — 26,325,960 bytes — SHA256 `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc`
@@ -90,5 +89,5 @@ These values repeat the canonical record in
 [RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md) on purpose:
 this file becomes the GitHub release body, and a downloader must be able to verify a hash without opening a second page.
 
-Neither installer is code-signed yet; verify the hash before you run it. Verification status for this candidate is
+Neither installer is code-signed yet; verify the hash before you run it. Verification status for this build is
 in [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/TRUST_STATUS.md).

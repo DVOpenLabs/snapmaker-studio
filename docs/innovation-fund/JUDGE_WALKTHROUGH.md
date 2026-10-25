@@ -174,7 +174,7 @@ It installs the rewrapped build into an isolated directory with its own WebView2
 profile and engine data directory, drives the real application window over the
 Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
 is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
-only processes it started. For the v1.7.0 release candidate, this harness scored **54/54** —
+only processes it started. For v1.7.0, this harness scored **54/54** —
 [../internal/acceptance-1.7.0.json](../internal/acceptance-1.7.0.json).
 
 **A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
@@ -187,7 +187,7 @@ Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no
 temperature, motion, homing, pause, resume, cancel, emergency-stop or configuration
 call is made. The printer's address is replaced with a placeholder before anything
-reaches the evidence file. For the v1.7.0 release candidate the real-U1 check failed on its first attempt
+reaches the evidence file. For v1.7.0 the real-U1 check failed on its first attempt
 (verification-tooling defects, recorded in [../internal/hardware-1.7.0-attempt1-failed.json](../internal/hardware-1.7.0-attempt1-failed.json))
 and passed 76/76 on its second — [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json).
 

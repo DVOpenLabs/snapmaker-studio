@@ -77,16 +77,13 @@ recording, so it also shows what Studio says when it cannot reach one:
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.7.0 is a release candidate that has not been published.** No v1.7.0 tag, release or
-download exists yet, so the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases)
-still offers the previous published release (v1.6.0) as the current download. When
-v1.7.0 is published as a stable release (not a prerelease), GitHub's
-[latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest) will point at it.
+**v1.7.0 is the current stable release.** It was published from the exact bytes of release-candidate build run
+40129442382, never rebuilt. The [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases) is the authority for its
+publication time, and GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest) points at it.
 
-Verify it before you run it. These are the candidate's values and apply to a v1.7.0
-download once it is published:
+Verify it before you run it. These are the values of the v1.7.0 download:
 
-- Release: not yet published — [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases)
+- Release: [v1.7.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0)
 - Windows installer: `Snapmaker.Studio_1.7.0_x64-setup.exe`
   — 22,748,251 bytes — SHA256: `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
 - Linux package: `snapmaker-studio_1.7.0_amd64_210d86868882.deb`
@@ -133,7 +130,7 @@ sliced job back**.
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
 | ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.7.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.7.0/what-to-load.png) |
 
-From the v1.7.0 release candidate's own installed-application run (an acceptance copy of the candidate's installer, not a published release): the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From v1.7.0's own installed-application run (an acceptance copy of the v1.7.0 installer: same application files, separate install identity; the published installer is the same build): the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -167,7 +164,7 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-This section describes the **v1.7.0 release candidate**, which has not been published. The checks below
+This section describes **v1.7.0**. The checks below
 were run against the build named in [docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md) — checked by
 SHA256 — not against a development build. The Windows installed-application run used an acceptance copy
 of the candidate's installer (same application files, separate install identity) on a clean local
@@ -187,11 +184,11 @@ The installed-application acceptance run installs an acceptance-identity copy of
 this build, and checks that the user's data and the acceptance registration survive. That is the
 acceptance lane's upgrade, not the real installer's: the real installer's upgrade and uninstall were
 exercised on a disposable GitHub-hosted runner. The acceptance run is advisory evidence about this
-candidate; it does not show that a print succeeds.
+build; it does not show that a print succeeds.
 
 The read-only real-printer verification passed on its second attempt after the first failed on defects in the
 verification tooling; both are recorded in the trust status. The Snapmaker Orca loading checks are partial: a painted
-project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue: the file is a minimal synthetic package with empty content-type and relationship stubs; the exact reason Orca rejects it is unconfirmed). No real
+project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue: the file is a minimal synthetic package whose content-type and relationship parts are empty stubs, which isolated testing confirmed is what Orca 2.4.1 rejects; the file shipped in this release is unchanged). No real
 SpoolEase device has been tested. Full detail:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
@@ -204,7 +201,7 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
-## What's new in v1.7.0 (release candidate, not yet published)
+## What's new in v1.7.0
 
 **One job screen, print risk signals instead of a percentage, and a read-only colour preview.**
 
