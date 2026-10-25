@@ -16,17 +16,19 @@ benchmark projects, and by the creator's own Orca-made U1 file):
     cols     = compute_colum_count(plates)    origin(i) = ((i % cols) * stride_x, -(i // cols) * stride_y)
 
 An item's position is that origin plus its position in the bed's own frame. The rule is only used when it
-can be cross-checked: every build item's printing footprint must sit inside the cell the project's own plate
+can be cross-checked: every build item's whole bounding box must sit inside the cell the project's own plate
 record names for it. If any item fails that check, or its plate cannot be established, nothing is moved and
 the condition is reported as unresolved. Studio never guesses a grid.
 
 The tower is NOT moved. Its footprint is not in the project: the depth of a prime tower is decided by
 Snapmaker Orca when it plans the tool changes (purge volumes, ribs, brim, clearance). From the file Studio
 knows the corner, the width and the brim, which is enough to PROVE a tower is outside the printable area (its
-corner or its known width leaves it) or sits on an object (its corner is inside a printing footprint), and
-never enough to say it is inside or clear. So each plate's tower is reported as ``outside_proven``,
-``overlap_proven`` or ``unknown``, with the known extents and, clearly marked as an estimate, a square of the
-tower's width and its clearances; ``wipe_tower_x/y`` are never written. Nothing here claims a tower is safe.
+corner or its known width leaves it) or MAY sit on an object (its corner is inside an object's bounding box,
+which an L-shaped or ring-shaped object can contain without being under it), and never enough to say it is
+inside or clear. So each plate's tower is reported as ``outside_proven``, ``overlap_possible`` or ``unknown``,
+with the known extents and, clearly marked as an estimate, a square of the tower's width and its clearances.
+``wipe_tower_x/y`` are never changed, except that a project already authored on this very U1 plate keeps its
+creator's tower position. Nothing here claims a tower is safe.
 """
 from __future__ import annotations
 
@@ -104,6 +106,9 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
     target = stride_of(target_polygon)
     source = stride_of(placement.polygon_of(source_cfg))
     report["items_moved"] = 0
+    if multi and not items and not geometry_unresolved:
+        # the geometry could not be measured at all (for example a very large model): say so, not "unchanged"
+        geometry_unresolved = [{"item_index": 0, "reason": "the model geometry could not be measured"}]
 
     # which plate (index) each item sits on, from the project's own records
     plate_index: dict[int, int] = {}
@@ -126,7 +131,7 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
     if source is None or target is None:
         unresolved.append("the source or the U1 printable area is not a rectangle Studio can read")
 
-    # --- cross-check: the item's footprint centre is inside the cell its own record names ---------
+    # --- cross-check: the item's whole bounding box is inside the cell its own record names -------
     check = {"items": 0, "matched": 0, "mismatches": []}
     cells_ok = source is not None and not unresolved
     if multi and source is not None:
@@ -138,8 +143,8 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
             ox, oy = origin(plate_index[index], cols, source)
             lo, hi = item["bounds"]["min"], item["bounds"]["max"]
             cx, cy = (lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0
-            if ox + left - _TOLERANCE <= cx <= ox + right + _TOLERANCE \
-                    and oy + front - _TOLERANCE <= cy <= oy + back + _TOLERANCE:
+            if ox + left - _TOLERANCE <= lo[0] and hi[0] <= ox + right + _TOLERANCE \
+                    and oy + front - _TOLERANCE <= lo[1] and hi[1] <= oy + back + _TOLERANCE:
                 check["matched"] += 1
             else:
                 check["mismatches"].append(
@@ -150,7 +155,8 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
         report["formula_check"] = check
         if check["mismatches"]:
             unresolved.append(f"{len(check['mismatches'])} of {check['items']} build item(s) are not in "
-                              "the plate cell their record names on the source grid")
+                              "the plate cell their record names on the source grid (the whole object "
+                              "must be inside it)")
             cells_ok = False
 
     offsets: dict[int, tuple[float, float]] = {}
@@ -173,6 +179,8 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
     # --- apply the item translations (translation only, per build item) ---------------------------
     if offsets and report["status"] == "regridded":
         _apply_offsets(tm, offsets, report)
+        if report["status"] == "unresolved":
+            cells_ok = False  # the items are still on the source grid; the tower check must not assume the U1 grid
         report["plates"] = [plate_report[i] for i in sorted(plate_report)]
         for index in list(offsets):
             item = by_index.get(index)
@@ -283,7 +291,8 @@ def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, 
     """Per plate: what the file PROVES about the prime tower, and nothing it does not.
 
     ``outside_proven``: the corner, or the known width plus brim, leaves the U1 printable area.
-    ``overlap_proven``: the corner lies inside a printing footprint of that plate.
+    ``overlap_possible``: the corner lies inside the bounding box of an object on that plate (the box can
+    include empty bed, so this is a possibility, not proof).
     ``unknown``: neither is proven; the full footprint depends on Orca's tool-change planning.
     """
     enabled = work.get("enable_prime_tower")
@@ -337,7 +346,8 @@ def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, 
             record.update(status="outside_proven",
                           reason="its position and width already leave the U1 printable area")
         elif any(b[0] <= x <= b[2] and b[1] <= y <= b[3] for b in boxes):
-            record.update(status="overlap_proven", reason="its corner is inside an object on that plate")
+            record.update(status="overlap_possible",
+                          reason="its corner is inside the bounding box of an object on that plate")
         else:
             record["reason"] = ("the tower's depth is decided when Snapmaker Orca plans the tool changes, "
                                 "so whether it is inside the plate and clear of the objects is not known")
@@ -351,9 +361,12 @@ def _disclose(report: dict, multi: bool) -> None:
         moved = [p for p in report["plates"] if abs(p["delta"][0]) > _TOLERANCE or abs(p["delta"][1]) > _TOLERANCE
                  or abs(p["fit_shift"][0]) > _TOLERANCE or abs(p["fit_shift"][1]) > _TOLERANCE]
         for p in moved:
+            nudge = abs(p["fit_shift"][0]) > _TOLERANCE or abs(p["fit_shift"][1]) > _TOLERANCE
+            tail = (f"; this includes a fit adjustment of X {p['fit_shift'][0]:+g} mm, Y {p['fit_shift'][1]:+g} mm "
+                    "so the plate's objects sit inside the U1 plate") if nudge else ""
             lines.append(f"Repositioned plate {p['plate']} objects to the U1 plate layout "
-                         f"(X {p['delta'][0] + p['fit_shift'][0]:+g} mm, Y {p['delta'][1] + p['fit_shift'][1]:+g} mm; "
-                         "positions inside the plate, rotation and scale are unchanged).")
+                         f"(X {p['delta'][0] + p['fit_shift'][0]:+g} mm, Y {p['delta'][1] + p['fit_shift'][1]:+g} mm{tail}). "
+                         "The objects keep their positions relative to each other; rotation and scale are unchanged.")
         for p in report["plates"]:
             if not p["fits_u1_plate"]:
                 lines.append(f"Plate {p['plate']}'s objects are larger than the U1 plate, so they still "
@@ -363,8 +376,9 @@ def _disclose(report: dict, multi: bool) -> None:
             lines.append(f"Plate {t['plate']}'s prime tower is outside the U1 printable area ({t['reason']}); "
                          "Studio left it where it is because it cannot establish the tower's full footprint. "
                          "Move it in Snapmaker Orca's prime tower settings.")
-        elif t["status"] == "overlap_proven":
-            lines.append(f"Plate {t['plate']}'s prime tower sits on an object ({t['reason']}); Studio left it "
-                         "where it is because it cannot establish the tower's full footprint.")
+        elif t["status"] == "overlap_possible":
+            lines.append(f"Plate {t['plate']}'s prime tower may sit on an object ({t['reason']}, which can include "
+                         "empty bed); Studio left it where it is because it cannot establish the tower's full "
+                         "footprint.")
     for reason in report["unresolved"]:
         lines.append(f"Plate positions were left as the source had them: {reason}.")

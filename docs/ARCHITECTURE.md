@@ -68,10 +68,11 @@ processes** on graceful close, crash, or force-kill.
 - **`regrid`** — prepare-time layout correction, both modes: a multi-plate project's
   build items are translated onto the U1 plate grid (Orca's rule: stride =
   `int(bed) * 1.2`, `cols = compute_colum_count`, origin `(col*sx, -row*sy)`) only
-  when every item's footprint lies in the cell its own plate record names;
+  when every item's whole bounding box lies in the cell its own plate record names;
   otherwise nothing moves and it says why. Translation tokens only. Prime towers
-  are assessed (proven outside / on an object / unknown) and never moved, because
-  their depth is decided by Orca at slice time.
+  are assessed (proven outside / possibly on an object / unknown) and never moved
+  (a project already authored on the U1 plate keeps its creator's tower position),
+  because their depth is decided by Orca at slice time.
 - **`support_intent`** — the one exception to Recommended's starter-settings reset.
   Precedence: explicit disable (`enable_support` 0 in the project or on an object)
   > positive intent (painted support *enforcers*, `support_enforcer` volumes,

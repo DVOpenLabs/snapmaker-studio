@@ -105,6 +105,9 @@ def test_a_plate_that_needs_a_nudge_gets_the_minimal_fit(tmp_path, mode):
     plate = result.settings_summary["layout"]["plates"][1]
     assert plate["fits_u1_plate"] is True and plate["fit_shift"][1] < 0
     assert float(after[1][10]) <= 271 - 10 - 0.5 + 1e-6 and after[1][9] == "489"
+    # the disclosure names the fit adjustment instead of saying positions are unchanged
+    line = [d for d in result.settings_summary["placement_changes"] if d.startswith("Repositioned plate 2")][0]
+    assert "fit adjustment" in line and "relative to each other" in line and "inside the plate" not in line.split("fit adjustment")[0]
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -156,11 +159,11 @@ def test_a_tower_that_looks_fine_is_unknown_not_safe(tmp_path, mode):
         assert tower_values(result.output_path) == (["39.25", "39.25"], ["212.1", "212.1"])   # byte-identical
 
 
-def test_a_tower_whose_corner_is_inside_an_object_is_an_overlap_proven(tmp_path):
+def test_a_tower_whose_corner_is_inside_an_object_is_an_overlap_possible(tmp_path):
     src = rf.project(tmp_path, plates=1, bed=(270.0, 270.0), local=(165.0, 160.0),
                      cfg={"wipe_tower_x": ["165"], "wipe_tower_y": ["160"], "prime_tower_width": "30"})
     result = run(tmp_path, src, "preserve")
-    assert tower_records(result)[0]["status"] == "overlap_proven"
+    assert tower_records(result)[0]["status"] == "overlap_possible"
     assert tower_values(result.output_path) == (["165"], ["160"])
 
 
@@ -236,6 +239,20 @@ def test_painted_supports_with_global_enable_support_zero_or_one(tmp_path, enabl
     assert intent["decision"] == decision
     assert bool(set(SUPPORT) & declared) == (decision == "kept")
     assert rf.settings_of(result.output_path)["enable_support"] == enable           # the value is the creator's
+
+
+def test_global_off_with_an_object_switched_on_is_reported_per_object_not_off(tmp_path):
+    result, intent, declared = support_case(tmp_path, "object", cfg={"enable_support": "0"})
+    assert intent["decision"] == "per_object" and not (set(SUPPORT) & declared)
+    assert "set per object" in intent["statement"] and "Supports stay off" not in intent["statement"]
+
+
+def test_painted_enforcers_without_a_global_enable_support_key_are_not_called_kept(tmp_path):
+    src = rf.project(tmp_path, name="nokey.3mf", plates=1, bed=(270.0, 270.0), local=(135.5, 136.0),
+                     supports="paint", cfg={"enable_support": None})
+    result = run(tmp_path, src, "recommended")
+    intent = result.settings_summary.get("support_intent")
+    assert intent is None or intent["decision"] != "kept"
 
 
 def test_with_no_support_data_the_starter_reset_stands(tmp_path):

@@ -300,7 +300,7 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         summary["warnings"] = summary["warnings"] + [
             line for line in layout.get("disclosure") or []
             if line.startswith("Plate positions were left")
-            or ("prime tower is outside" in line) or ("prime tower sits on an object" in line)]
+            or ("prime tower is outside" in line) or ("prime tower may sit on an object" in line)]
     intent = outcome.report.get("support_intent")
     if intent:
         from . import support_intent as _support_intent

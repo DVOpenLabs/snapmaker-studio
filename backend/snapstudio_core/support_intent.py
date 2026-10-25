@@ -8,6 +8,8 @@ applies decides):
 1. **Explicit disable wins.** ``enable_support`` = 0 in the project's settings, or ``enable_support`` = 0 on any
    object, means supports are off and stay off. The model's painting or enforcers are then disclosed as
    unused; nothing is declared.
+   When a different object switches supports ON, the result is ``per_object``: Studio leaves every per-object
+   value as it is and says supports are set per object, rather than claiming they are off or kept as a whole.
 2. **Positive intent is kept.** Painted support *enforcers* (``paint_supports`` facets whose paint has the
    enforcer state), ``support_enforcer`` volumes, or ``enable_support`` = 1 on an object. The creator's
    ``enable_support`` / ``support_type`` / ``support_filament`` / ``support_interface_filament`` are declared
@@ -39,6 +41,7 @@ _MAX_DISTINCT_PAINT = 20000
 KEPT = "kept"
 DISABLED = "disabled"
 STARTER_RESET = "starter_reset"
+PER_OBJECT = "per_object"
 
 
 def _off(value) -> bool:
@@ -108,9 +111,14 @@ def detect(tm: ThreeMF, source_cfg: dict) -> dict:
         disabled.append("support switched off in the project's settings (enable_support = 0)")
 
     keys = [k for k in SUPPORT_KEYS if k in (source_cfg or {})]
-    if disabled:
+    object_on = any("individual object" in p for p in positive)
+    if disabled and object_on:
+        # global/other objects off, but at least one object switches supports ON: Orca honours the per-object
+        # value, which Studio does not touch. Do not claim supports are off or kept as a whole.
+        decision = PER_OBJECT
+    elif disabled:
         decision = DISABLED
-    elif positive and keys:
+    elif positive and "enable_support" in keys:
         decision = KEPT
     else:
         decision = STARTER_RESET
@@ -125,6 +133,10 @@ def statement(intent: dict) -> str:
         return ("This model marks where it needs support (" + ", ".join(intent["evidence"]) + "), so its "
                 "support settings (" + ", ".join(intent["keys"]) + ") were kept as the creator set them "
                 "rather than reset to the U1 starter's.")
+    if decision == PER_OBJECT:
+        return ("Supports are set per object in this project (" + "; ".join(intent["disable_evidence"]) + "; "
+                + ", ".join(intent["evidence"]) + "). Studio left those per-object settings as the creator set "
+                "them, so some objects may still be printed with supports; check each object in Snapmaker Orca.")
     if decision == DISABLED:
         extra = (f" The model also has {', '.join(intent['evidence'])}, which are not used while supports "
                  "are off." if intent["evidence"] else "")

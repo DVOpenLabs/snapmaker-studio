@@ -162,6 +162,27 @@ describe("PrepareSettingsSummary in Recommended mode", () => {
     expect(html).toContain("Studio's U1 starter settings replace the creator's print settings");
   });
 
+  it("shows the layout lines and the support decision the engine reports, once", () => {
+    const moved = "Repositioned plate 2 objects to the U1 plate layout (X -72 mm, Y +0 mm). The objects keep their positions relative to each other; rotation and scale are unchanged.";
+    const still = "Plate 3's objects are larger than the U1 plate, so they still will not fit it; Snapmaker Orca will show them outside.";
+    const html = renderToStaticMarkup(<PrepareSettingsSummary mode="recommended" summary={{
+      ...summary, warnings: [still],
+      placement_changes: [moved, still],
+      support_intent: { decision: "kept", statement: "This model marks where it needs support (painted support enforcers), so its support settings were kept as the creator set them." },
+    }} />).replace(/&#x27;/g, "'");
+    expect(html).toContain("Plate layout");
+    expect(html).toContain(moved);
+    expect(html.split(still).length - 1).toBe(1); // already under Warnings, not repeated under Plate layout
+    expect(html).toContain("kept as the creator set them");
+  });
+
+  it("stays quiet about supports when the starter reset applied with no blocker data", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary mode="recommended" summary={{
+      ...summary, support_intent: { decision: "starter_reset", statement: "Supports use the U1 starter settings, as this mode states." },
+    }} />);
+    expect(html).not.toContain("Supports use the U1 starter settings");
+  });
+
   it("keeps the Preserve wording and shows no supports line when there is no note", () => {
     const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, kept_count: 501 }} mode="preserve" />);
     expect(html).toContain("501 creator settings kept");

@@ -123,7 +123,7 @@ def project(tmp_path, name="multi.3mf", *, plates=2, bed=(330.0, 320.0), local=(
     for flag, state in (("paint", "4"), ("paint_blocker", "8")):
         if flag in wanted:
             part = entries[OBJECT_PART].decode("utf-8")
-            part = re.sub(r'(<triangle [^>]*?)(/>)', rf' paint_supports="{state}"', part, count=1)
+            part = re.sub(r'(<triangle [^>]*?)(/>)', rf'\1 paint_supports="{state}"\2', part, count=1)
             assert "paint_supports" in part
             entries[OBJECT_PART] = part.encode("utf-8")
 
@@ -134,5 +134,7 @@ def project(tmp_path, name="multi.3mf", *, plates=2, bed=(330.0, 320.0), local=(
     settings["different_settings_to_system"] = [
         "enable_support;support_filament;support_interface_filament;support_type", "", "", "", "", ""]
     settings.update(cfg or {})
+    for key in [k for k, v in settings.items() if v is None]:  # a cfg value of None removes the key
+        del settings[key]
     entries[SETTINGS] = json.dumps(settings, indent=4).encode("utf-8")
     return write(Path(tmp_path) / name, entries)
