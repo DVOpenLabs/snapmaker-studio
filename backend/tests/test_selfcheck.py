@@ -94,3 +94,23 @@ def test_the_table_is_plain_enough_to_paste_into_an_issue():
     assert "Snapmaker Studio self-check" in text
     assert "PASS" in text
     assert "checks passed" in text
+
+
+def test_the_fixtures_carry_real_package_parts_so_orca_will_open_them(tmp_path):
+    """Snapmaker Orca 2.4.1 refuses a 3MF whose [Content_Types].xml and _rels/.rels are
+    empty stubs ("Loading of model file failed"): nothing points the reader at the
+    model. Isolating that was done on 2026-10-25 by loading variants in an isolated
+    Orca profile; this keeps the minimal parts in place."""
+    import zipfile
+    from pathlib import Path
+
+    from snapstudio_core import selfcheck as sc
+
+    root = Path(__file__).resolve().parents[2]
+    paths = [sc.build_fixture(tmp_path), root / "examples" / "demo_u1_showcase.3mf"]
+    for path in paths:
+        with zipfile.ZipFile(path) as z:
+            rels = z.read("_rels/.rels").decode("utf-8")
+            types = z.read("[Content_Types].xml").decode("utf-8")
+        assert 'Target="/3D/3dmodel.model"' in rels, path.name
+        assert "relationships+xml" in types and "3dmanufacturing-3dmodel+xml" in types, path.name
