@@ -13,10 +13,10 @@ page is the status record only.
 
 | | |
 |---|---|
-| Version | **v1.7.0** — a release candidate, not yet published (the published stable release is the previous one) |
+| Version | **v1.7.0** — the current stable release |
 | Installer, size, SHA256 | [RELEASE_METADATA.md](RELEASE_METADATA.md) — canonical |
-| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **CANDIDATE** (verified against the recorded gates; not accepted, not published) |
-| Release | Not yet published — see the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases). Planned release path: `releases/tag/v1.7.0` — not yet created; no download is available. |
+| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **ACCEPTED** (the recorded gates passed against these exact bytes) |
+| Release | [releases/tag/v1.7.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0) — the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases) is the authority for the publication time. |
 
 The installer is not code-signed — verify the SHA256 before installing. See
 [windows-install.md](windows-install.md) and
@@ -52,7 +52,7 @@ build. What was done about that is in
 
 ## Hardware verification
 
-**v1.7.0 candidate — read-only, second attempt 76/76.** The first attempt failed
+**v1.7.0 — read-only, second attempt 76/76.** The first attempt failed
 (authoritative exit code 1, no total) because of defects in the verification tooling, not the
 product; both are recorded in [internal/hardware-1.7.0-attempt1-failed.json](internal/hardware-1.7.0-attempt1-failed.json)
 and [internal/hardware-1.7.0.json](internal/hardware-1.7.0.json). Nothing was started, uploaded or queued.

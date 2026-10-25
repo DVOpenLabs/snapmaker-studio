@@ -5,24 +5,32 @@ Honest, current verification state for the current release. A release is only ma
 published installer, and — from beta.24 onward — read-only verification against a
 real Snapmaker U1 have all passed and are recorded here.
 
+"The published installer" means the build the release workflow promotes: the installer and `.deb` are built once
+by the release-candidate workflow, the acceptance harness runs on an acceptance-identity copy of that installer
+(same application files, separate install identity), and `release-publish.yml` then re-downloads both packages and
+refuses to publish unless their SHA256 equals `RELEASE_METADATA.md`. ACCEPTED is therefore a statement about these
+exact bytes, and the workflow, not this page, makes the release public; the GitHub Releases page is the authority
+for the publication time. This clarifies how the status has always been applied (v1.6.0 was marked the same way); it
+does not relax the automated, installed-application or real-printer requirements.
+
 > Note: older entries below show `-Installer` for the acceptance harness. That is historical and no longer valid. The
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
-## v1.7.0 — CANDIDATE (verified against the gates below; not accepted, not published)
+## v1.7.0 — ACCEPTED
 
 **One job screen, print risk signals instead of a percentage, and a read-only colour preview.** The Windows
-installer and Linux `.deb` named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the candidate recorded here,
+installer and Linux `.deb` named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the build recorded here,
 verified by SHA256. Build:
 [run 40129442382](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382), commit
 `210d86868882293e974bcc4b7c1276096319e6c7`.
 
-**CANDIDATE here means the gates below passed against this build. It does not mean the release is accepted or
-published:** the status is left at CANDIDATE deliberately; marking it ACCEPTED is a separate decision made at
-publication, not by this record. The read-only real-printer verification has now been run: the first attempt
-**failed** and a second one, with corrected verification tooling, passed; both are recorded below. The Snapmaker
-Orca loading checks are partial. The merge, the tag and the publication are separate steps that had not happened
-when this was written. No v1.7.0 tag, GitHub release or download exists.
+**ACCEPTED here means the gates below passed against this build, which is the build the release workflow
+promotes to the public release; the GitHub Releases page is the authority for the publication time.** The read-only
+real-printer verification was run twice: the first attempt **failed** and a second one, with corrected verification
+tooling, passed; both are recorded below. The Snapmaker Orca loading checks are partial, and the bundled sample
+project that Orca 2.4.1 refuses is a known limitation shipped with this release (see the table and the list at the
+end of this section). Nothing here claims Orca hand-off, slicing or SpoolEase verification.
 
 | Gate | Result |
 |---|---|
@@ -41,7 +49,7 @@ when this was written. No v1.7.0 tag, GitHub release or download exists.
 | Real Snapmaker U1, read-only, attempt 2 (acceptance-identity copy of the installer, corrected verification tooling), with Spoolman 0.26.1 and Bambuddy 1.2.5.3 on session-owned containers | **76/76**, authoritative exit code 0, 18 of them provider checks — [internal/hardware-1.7.0.json](internal/hardware-1.7.0.json) |
 | Real Snapmaker U1, read-only, attempt 1 (earlier verification tooling) | **FAILED/ABORTED**, authoritative exit code 1, no `hardware.json` produced, no total — [internal/hardware-1.7.0-attempt1-failed.json](internal/hardware-1.7.0-attempt1-failed.json) |
 | Painted-cube project: unprepared control and its two prepared copies opened in Snapmaker Orca 2.4.1 (isolated profile, synthetic project, loading only) | all three loaded (the control and one prepared copy needed a rerun after automation-only interruptions); the real Orca profile was unchanged |
-| Bundled sample project `examples/demo_u1_showcase.3mf` (byte-identical to the Orca input) and its two prepared copies opened in Snapmaker Orca 2.4.1 | **did not load**: Orca answered "Loading of model file failed" for the unprepared sample as well, so this says nothing about its prepared copies. **Known issue:** Orca 2.4.1 refuses the bundled sample project. Observed differences: it is a minimal synthetic package whose `[Content_Types].xml` and `_rels/.rels` are empty stubs and whose `model_settings.config` names objects the model lacks; the painted project that loaded has a real relationship file. Which difference Orca rejects was not isolated, so the cause is unconfirmed; Studio reads the sample fine |
+| Bundled sample project `examples/demo_u1_showcase.3mf` (byte-identical to the Orca input) and its two prepared copies opened in Snapmaker Orca 2.4.1 | **did not load**: Orca answered "Loading of model file failed" for the unprepared sample as well, so this says nothing about its prepared copies. **Known issue:** Orca 2.4.1 refuses the bundled sample project. It is a minimal synthetic package whose `[Content_Types].xml` and `_rels/.rels` are empty stubs and whose `model_settings.config` names objects the model lacks. Isolated on 2026-10-25 by loading copies in an isolated Orca 2.4.1 profile: variants with real package parts (content types and a relationship to the model) get past the load error, while variants with the empty stubs are refused, whether or not the extra `model_settings.config` objects are kept. The empty stubs are the cause; the extra objects are not (one run per variant; the two stubs were changed together; record: [internal/orca-sample-isolation-2026-10-25.json](internal/orca-sample-isolation-2026-10-25.json)). With the real parts Orca proceeds to a project-preset prompt for the file's foreign printer settings; full plate loading of a corrected file was not confirmed by the automation. Studio reads the sample fine; the file shipped in this release is unchanged |
 
 ### Bindings
 
@@ -99,7 +107,7 @@ are not visible to it. Source-level regression tests read the roots the built bi
 - An earlier candidate (RC1) stopped at 53/54 on a stale harness expectation about two engine routes; it was
   replaced, not accepted. This candidate was checked with the repaired harness.
 - This is not remediation of anyone's installed copy: installed users keep their current binary until they install
-  a newer release, and none exists yet.
+  this release or a newer one.
 
 ## v1.6.0 — ACCEPTED
 

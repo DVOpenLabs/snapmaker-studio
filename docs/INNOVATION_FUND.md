@@ -36,13 +36,13 @@ entry would say, and what any judge reading the repository should be reading.
 
 ## The fund, as published today
 
-Re-read from the official page on **2026-08-23**. Source:
+Re-read from the official page on **2026-08-23**; the Phase 2 row was re-read on **2026-10-25**. Source:
 <https://www.snapmaker.com/innovation-fund>.
 
 | | |
 |---|---|
 | Phase 1 | 9 Jun – **7 Sep 2026**; community voting 22–30 Sep; **provisional results 9 Oct 2026**; review window closes 15 Oct; prizes by 13 Nov |
-| Phase 2 | Submissions 19 Oct – 14 Dec 2026; results 31 Dec; final 14 Jan 2027; prizes by 29 Jan |
+| Phase 2 | Submissions 28 Oct – 24 Dec 2026 ("Last day to submit"); results posted 14 Jan 2027; same open structure as Phase 1, including the two-week review window before results are final (official page, read 2026-10-25; it gives no prize date for Phase 2) |
 | Scoring | **80%** tech committee (Snapmaker product and engineering staff, invited industry experts, long-standing community members) + **20%** community vote |
 | Community vote | GitHub repository stars, community-channel likes, project-page upvotes |
 | Committee criteria | Innovation & Technical Depth · Openness & Quality · Practicality & Adaptability |
@@ -208,7 +208,7 @@ simply the machine it is verified against.
 
 ## Evidence
 
-Everything below was verified against the **v1.7.0 release-candidate build**, which is not yet published (the
+Everything below was verified against the **v1.7.0 build** that was then published unchanged (the
 installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).

@@ -49,9 +49,8 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 ## 3. What is being submitted
 
-**Release:** v1.7.0, a release candidate that has not been published (v1.6.0 remains the
-published stable build). v0.4.0 was the first verified against a real Snapmaker U1; the
-v1.7.0 candidate passed a read-only run against one on its second attempt (the first failed on defects in the verification tooling). Installer name, size and SHA256:
+**Release:** v1.7.0, the current stable release (the previous one is v1.6.0). v0.4.0 was the first verified against a real Snapmaker U1; the
+v1.7.0 build passed a read-only run against one on its second attempt (the first failed on defects in the verification tooling). Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
 [../TRUST_STATUS.md](../TRUST_STATUS.md).
 
@@ -72,7 +71,7 @@ Practicality & Adaptability. The remaining 20% is a community vote.
 
 ## 5. Evidence, in one table
 
-Verified against the v1.7.0 release-candidate build, which is not yet published (the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
+Verified against the v1.7.0 build, which was then published unchanged (the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer.
 
 | What | Result |

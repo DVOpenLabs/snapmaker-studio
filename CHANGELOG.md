@@ -4,10 +4,11 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [1.7.0] - 2026-10-24 (release candidate; not yet published)
+## [1.7.0] - 2026-10-25
 
-This entry describes release candidate v1.7.0. No tag, GitHub release or download exists for it yet; see
-[docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md) and [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+This entry describes v1.7.0, published from the exact bytes of release-candidate build run 40129442382 (never
+rebuilt); see [docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md) and [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+The GitHub Releases page is the authority for the publication time.
 
 ### Added
 - **One job screen.** Opening a project lands on one screen: the model in the middle, the target, materials and copy settings in a pane beside it, and a single button for the next step (create the U1 copy, open it in Snapmaker Orca, compare the slice). The copy's file name and folder, and the settings comparison after slicing, show up in the same place. Opening or restoring a job never prepares, opens Orca or slices by itself, and every existing check still applies.

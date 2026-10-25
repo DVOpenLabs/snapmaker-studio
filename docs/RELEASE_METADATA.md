@@ -30,15 +30,15 @@ Every *other* document must link here rather than restate these values.
 | Linux SHA256 | `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc` |
 | Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382 |
 | Real-printer verification harness | Separate branch `verify/v1.7.0-rc2-hardware-harness`, commit [584906a](https://github.com/DVOpenLabs/snapmaker-studio/commit/584906a1ee0e9581ee915c8985481935517aca97); not part of the candidate packages; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
-| Release URL | Not yet published — no v1.7.0 tag or GitHub release exists |
-| Trust status | CANDIDATE — verified, not published; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0 |
+| Trust status | ACCEPTED; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-**This is a release candidate, not a published release.** The values above are the bytes built by
-the build run named here from source commit `210d86868882293e974bcc4b7c1276096319e6c7`. No tag,
-GitHub release or download exists for v1.7.0 yet; until one does, the published
-release is [v1.6.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0), listed
-below. Once published, v1.7.0 is intended as a stable release (not a prerelease) and its
-hashes will also be published as `SHA256SUMS` on the release.
+**These are the bytes published as v1.7.0.** They were built once by the build run named here from source
+commit `210d86868882293e974bcc4b7c1276096319e6c7` and promoted, not rebuilt, by `release-publish.yml`, which
+re-hashes both artifacts against this file before it creates the release. v1.7.0 is a stable release,
+not a prerelease, and its hashes are also published as `SHA256SUMS` on the release. The GitHub Releases page is the
+authority for the publication time. The previous release,
+[v1.6.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0), is listed below.
 
 Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 `sha256sum <file>.deb` (Linux).
@@ -58,7 +58,7 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
 | Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-Until v1.7.0 is published, v1.6.0 is the published, current download.
+Superseded by v1.7.0, which is the current download.
 
 ## Superseded
 
