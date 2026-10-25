@@ -11,6 +11,10 @@ this file disagree, if a superseded hash survives in a download instruction, if 
 app manifests carry a different version, or if `TRUST_STATUS.md` does not lead with
 the release named here.
 
+A second, equally deliberate copy is the "Verify your download" block of `RELEASE_NOTES.md`, which is published as the
+GitHub release body and must carry both platforms' size and SHA256 inline (`RELEASE_CHECKLIST.md` §9). It must be
+kept identical to this file by hand when a candidate is rebuilt; no test checks it.
+
 Every *other* document must link here rather than restate these values.
 
 ## Current release
@@ -49,7 +53,9 @@ Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
 | Linux installer | `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` |
 | Linux size (bytes) | 26,004,974 |
 | Linux SHA256 | `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39413867451 |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
+| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
 Until v1.7.0 is published, v1.6.0 is the published, current download.
 

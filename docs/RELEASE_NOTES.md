@@ -81,8 +81,12 @@ is something you confirm.
 These values are for the release candidate. They apply to a v1.7.0 download once it is published; the candidate has
 no public download.
 
-The installer names, sizes and SHA256 values for the Windows and Linux candidate files are in
-[RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md), the canonical record.
+- Windows: `Snapmaker.Studio_1.7.0_x64-setup.exe` — 22,748,251 bytes — SHA256 `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
+- Linux: `snapmaker-studio_1.7.0_amd64_210d86868882.deb` — 26,325,960 bytes — SHA256 `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc`
+
+These values repeat the canonical record in
+[RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md) on purpose:
+this file becomes the GitHub release body, and a downloader must be able to verify a hash without opening a second page.
 
 Neither installer is code-signed yet; verify the hash before you run it. Verification status for this candidate is
 in [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/TRUST_STATUS.md).
