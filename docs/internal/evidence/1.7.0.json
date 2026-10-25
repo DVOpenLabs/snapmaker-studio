@@ -27,12 +27,14 @@
     "url": "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0"
   },
   "prepared": "2026-10-25",
+  "published_at": "2026-10-25T17:04:30Z",
+  "released": "2026-10-25",
   "schema_version": "evidence-snapshot/1",
   "screenshots_dir": "docs/screenshots/v1.7.0",
   "selfcheck": {
     "passed": 27,
     "total": 27
   },
-  "source": "recorded when the release target was frozen, before the v1.7.0 tag; the GitHub Releases page is the authority for the publication time",
+  "source": "recorded when the release target was frozen, before the v1.7.0 tag; released and published_at were added after publication from the GitHub release (publishedAt)",
   "version": "1.7.0"
 }
