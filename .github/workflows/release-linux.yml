@@ -142,9 +142,100 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      # Build provenance. This RECORDS what the build used; it does not pin it:
+      # the Rust toolchain, Python packages, apt packages and base image still
+      # float, so the recorded versions are facts about this run, not
+      # reproducible inputs. What is enforced: the build runs with `--locked`,
+      # and the job fails if either lockfile differs afterwards.
+      - name: Record build provenance (inputs, before the build)
+        id: prov_pre
+        run: |
+          set -euo pipefail
+          dir=/tmp/build-provenance
+          mkdir -p "$dir"
+          echo "PROVENANCE_DIR=$dir" >> "$GITHUB_ENV"
+          # Each value is captured by a plain assignment so that a failing
+          # command stops the step (errexit does not see a failure inside
+          # `echo "$(cmd)"` or `[ -n "$(cmd)" ]`).
+          dirty=$(git status --porcelain --untracked-files=no)
+          if [ -n "$dirty" ]; then
+            echo "Tracked files differ from the checked-out commit before the build:" >&2
+            echo "$dirty" >&2
+            exit 1
+          fi
+          sha256sum desktop/src-tauri/Cargo.lock desktop/package-lock.json > "$dir/lockfiles-before.txt"
+          src_commit=$(git rev-parse HEAD)
+          src_tree=$(git rev-parse 'HEAD^{tree}')
+          {
+            echo "commit=$src_commit"
+            echo "tree=$src_tree"
+            echo "ref=$GITHUB_REF"
+            echo "run_id=$GITHUB_RUN_ID"
+          } > "$dir/source.txt"
+          node_v=$(node -v)
+          npm_v=$(npm -v)
+          python_v=$(python3.13 -VV)
+          cargo_v=$(cargo -V)
+          rustc_v=$(rustc -vV)
+          tauri_v=$(cd desktop && npx tauri --version)
+          # The host runner image and the container image digest are not
+          # recorded here; /etc/os-release and the apt versions below describe
+          # the container as it was at build time.
+          {
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "image_os=${ImageOS:-}"
+            echo "image_version=${ImageVersion:-}"
+            echo "node=$node_v"
+            echo "npm=$npm_v"
+            echo "python=$python_v"
+            echo "cargo=$cargo_v"
+            echo "$rustc_v" | sed 's/^/rustc: /'
+            echo "tauri_cli=$tauri_v"
+          } > "$dir/toolchain.txt"
+          cp /etc/os-release "$dir/os-release.txt"
+          dpkg-query -W -f='${Package} ${Version}\n' build-essential libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev pkg-config desktop-file-utils python3.13 > "$dir/apt-packages.txt"
+          python3.13 -m pip list --format=json > "$dir/python-packages.json"
+          cargo metadata --locked --format-version 1 --manifest-path desktop/src-tauri/Cargo.toml > "$dir/cargo-metadata.json"
+          # The digest covers this OS's sorted, LF-terminated list; the Windows
+          # build's digest is computed differently, so the two are per-OS and
+          # are not meant to be compared with each other.
+          python3.13 - "$dir" <<'PY'
+          import hashlib, json, sys
+          d = sys.argv[1]
+          meta = json.load(open(d + "/cargo-metadata.json", encoding="utf-8"))
+          lines = sorted("%s %s %s" % (p["name"], p["version"], p.get("source") or "path") for p in meta["packages"])
+          text = "\n".join(lines) + "\n"
+          open(d + "/cargo-resolved-packages.txt", "w", encoding="utf-8").write(text)
+          digest = hashlib.sha256(text.encode()).hexdigest()
+          open(d + "/cargo-resolved-packages.sha256", "w", encoding="utf-8").write("%s  cargo-resolved-packages.txt (%d packages)\n" % (digest, len(lines)))
+          PY
+          cat "$dir/lockfiles-before.txt"
+
       - name: Build the desktop app + .deb package
         working-directory: desktop
-        run: npx tauri build --bundles deb
+        run: npx tauri build --bundles deb -- --locked
+
+      - name: Verify the lockfiles were not changed by the build
+        if: ${{ always() && steps.prov_pre.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          dir="$PROVENANCE_DIR"
+          sha256sum desktop/src-tauri/Cargo.lock desktop/package-lock.json > "$dir/lockfiles-after.txt"
+          cat "$dir/lockfiles-after.txt"
+          echo "build_command=npx tauri build --bundles deb -- --locked" > "$dir/build-command.txt"
+          diff "$dir/lockfiles-before.txt" "$dir/lockfiles-after.txt"
+          git diff --exit-code -- desktop/src-tauri/Cargo.lock desktop/package-lock.json
+          echo "lockfiles_unchanged=true" >> "$dir/build-command.txt"
+
+      - name: Upload build provenance
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-provenance-linux
+          path: /tmp/build-provenance
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Locate the produced .deb
         working-directory: desktop

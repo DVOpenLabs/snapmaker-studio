@@ -71,9 +71,60 @@ jobs:
         working-directory: desktop
         run: pwsh ./scripts/build-sidecar.ps1
 
+      # Build provenance. This RECORDS what the build used; it does not pin it:
+      # the Rust toolchain, Python packages and runner image still float, so the
+      # recorded versions are facts about this run, not reproducible inputs.
+      # What is enforced: the build runs with `--locked`, and the job fails if
+      # either lockfile differs afterwards.
+      - name: Record build provenance (inputs, before the build)
+        id: prov_pre
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $dir = Join-Path $env:RUNNER_TEMP "build-provenance"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          "PROVENANCE_DIR=$dir" >> $env:GITHUB_ENV
+          $dirty = git status --porcelain --untracked-files=no
+          if ($dirty) { throw "Tracked files differ from the checked-out commit before the build: $dirty" }
+          $locks = @("desktop/src-tauri/Cargo.lock", "desktop/package-lock.json")
+          $locks | ForEach-Object { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 $_).Hash.ToLower(), $_ } | Set-Content -Encoding utf8 (Join-Path $dir "lockfiles-before.txt")
+          @("commit=$(git rev-parse HEAD)", "tree=$(git rev-parse 'HEAD^{tree}')", "ref=$env:GITHUB_REF", "run_id=$env:GITHUB_RUN_ID") | Set-Content -Encoding utf8 (Join-Path $dir "source.txt")
+          $tools = @("runner_os=$env:RUNNER_OS", "runner_arch=$env:RUNNER_ARCH", "image_os=$env:ImageOS", "image_version=$env:ImageVersion", "node=$(node -v)", "npm=$(npm -v)", "python=$(python -VV)", "cargo=$(cargo -V)")
+          $tools += (rustc -vV | ForEach-Object { "rustc: $_" })
+          Push-Location desktop
+          $tools += "tauri_cli=$(npx tauri --version)"
+          Pop-Location
+          $tools | Set-Content -Encoding utf8 (Join-Path $dir "toolchain.txt")
+          python -m pip list --format=json | Set-Content -Encoding utf8 (Join-Path $dir "python-packages.json")
+          $metaPath = Join-Path $dir "cargo-metadata.json"
+          cargo metadata --locked --format-version 1 --manifest-path desktop/src-tauri/Cargo.toml | Set-Content -Encoding utf8 $metaPath
+          $meta = Get-Content -Raw $metaPath | ConvertFrom-Json
+          # This digest is per-OS: the Linux build sorts and terminates lines differently, so the two are not comparable.
+          $graph = @($meta.packages | ForEach-Object { "{0} {1} {2}" -f $_.name, $_.version, $(if ($_.source) { $_.source } else { "path" }) } | Sort-Object)
+          $graphPath = Join-Path $dir "cargo-resolved-packages.txt"
+          $graph | Set-Content -Encoding utf8 $graphPath
+          "{0}  cargo-resolved-packages.txt ({1} packages)" -f (Get-FileHash -Algorithm SHA256 $graphPath).Hash.ToLower(), $graph.Count | Set-Content -Encoding utf8 (Join-Path $dir "cargo-resolved-packages.sha256")
+          Get-Content (Join-Path $dir "lockfiles-before.txt")
+
       - name: Build installer
         working-directory: desktop
-        run: npx tauri build
+        run: npx tauri build -- --locked
+
+      - name: Verify the lockfiles were not changed by the build
+        if: ${{ always() && steps.prov_pre.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = $env:PROVENANCE_DIR
+          $locks = @("desktop/src-tauri/Cargo.lock", "desktop/package-lock.json")
+          $locks | ForEach-Object { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 $_).Hash.ToLower(), $_ } | Set-Content -Encoding utf8 (Join-Path $dir "lockfiles-after.txt")
+          "build_command=npx tauri build -- --locked" | Set-Content -Encoding utf8 (Join-Path $dir "build-command.txt")
+          Get-Content (Join-Path $dir "lockfiles-after.txt")
+          if (Compare-Object (Get-Content (Join-Path $dir "lockfiles-before.txt")) (Get-Content (Join-Path $dir "lockfiles-after.txt"))) { throw "A lockfile changed during the build." }
+          git diff --exit-code -- desktop/src-tauri/Cargo.lock desktop/package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw "A lockfile differs from the checked-out commit after the build." }
+          "lockfiles_unchanged=true" | Add-Content -Encoding utf8 (Join-Path $dir "build-command.txt")
 
       - name: Smoke-test the BUNDLED sidecar endpoints
         shell: pwsh
@@ -150,3 +201,12 @@ jobs:
           name: snapmaker-studio-installer
           path: desktop/src-tauri/target/release/bundle/nsis/*_x64-setup.exe
           if-no-files-found: error
+
+      - name: Upload build provenance
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-provenance-windows
+          path: ${{ runner.temp }}/build-provenance
+          if-no-files-found: warn
+          retention-days: 90

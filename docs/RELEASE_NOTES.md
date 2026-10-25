@@ -1,83 +1,94 @@
-# Snapmaker Studio v1.6.0 — A job you can pick up again, and sizes Studio will not guess
+# Snapmaker Studio v1.7.0 (release candidate) — One job screen, print risk signals and a colour preview
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-This release keeps a job's files together so you can pick it up after a restart, says "not checked" when it
-cannot establish a model's real size, makes printer setup explicit, and prepares more projects made in Bambu
-Studio.
+> **Release candidate — not published.** These notes describe the candidate named in
+> [RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md). No v1.7.0 tag, GitHub release or download exists yet. Until one
+> does, the published release is v1.6.0.
 
-## A job you can pick up again
+This release puts a project on one job screen, replaces the readiness percentage with a list of the risks Studio
+found, draws a read-only colour preview, tightens the checks that decide whether a project fits the plate, and
+updates the update check's TLS dependencies.
 
-- **This job keeps its project, prepared copy and sliced G-code together.** After a restart Studio shows what
-  it recorded, checks the files only when you ask, and reopens only what is unchanged (plus a changed file you
-  name).
-- **Every file says where it stands:** recorded, checked, reopened or left out. A file that was not reopened
-  keeps its old fingerprint, labelled as the earlier record. A saved fingerprint is history, not proof that a
-  file was reopened or is unchanged.
-- **A settings receipt on After slicing** for the original, the prepared copy and the sliced file, with the
-  sliced file's settings read strictly from its G-code.
-- **Refreshed Home, This job and After slicing screens.**
+## One job screen
 
-## Explicit printer setup
+- **Opening a project lands on one screen:** the model in the middle, the target, materials and copy settings in a
+  pane beside it, and a single button for the next step (create the U1 copy, open it in Snapmaker Orca, compare the
+  slice). The copy's file name and folder, and the settings comparison after slicing, appear in the same place.
+- Opening or restoring a job never prepares, opens Orca or slices by itself, and every existing check still applies.
 
-- A profile with no printer address is "not set up" until you save one in Settings. Studio no longer looks up
-  `U1.local` on its own, and "Not set up" and "Could not reach <address>" are different messages.
-- The address you type is a draft until you press Save.
-- Printer controls are unchanged: Studio does not contact a printer on its own until you set one up, and anything that controls it
-  still waits for your confirmation. Studio never starts a print by itself.
-- The interface loads no fonts from the internet. Studio says your files and checks stay on this computer. Studio does not contact a printer on its own until you set one up, and features you start yourself (the
-  update check, the model browser, Auto-detect) can reach beyond this computer.
+## A colour preview
 
-## Sizes Studio will not guess
+For a millimetre 3MF, Studio draws the model by the filament that prints each part, links each filament to its
+toolhead, and lets you compare the project's own colours, the spool colours you have chosen so far, and the colours
+read back from the copy Studio wrote. It is read-only. More than four colours stay visible, each in its own colour;
+Studio does not remove or merge them. Surface the project does not assign is shown grey. When a preview cannot be
+built (another unit, an unreadable file, too much detail, no 3D graphics) Studio says why and shows the plate
+instead.
 
-Bed fit, the readiness "Fits the print bed" check, the print-success estimate, the first-layer footprint checks
-and the Scale Doctor used the raw numbers stored in a 3MF mesh. A file that declares inches, or that rotates or
-scales its objects through a placement transform, could be reported at the wrong size.
+## Print risk signals replace the readiness percentage
 
-Studio now first decides whether those numbers are the physical size. When that is not established, each of
-these says **"not checked"** and why, instead of a verdict, and a project whose bed fit is not checked does not
-show as ready. STL files are unchanged (assumed millimetres).
+The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each
+risk it found, once per condition, with what it means and what to do, and says what it did and did not check.
+Community guidance attaches only to the conditions it actually fits.
 
-**Not covered yet:** the Object placement card and layout still read raw coordinates; volume, material and cost
-for files that declare a non-millimetre unit are not corrected; declared units are not converted; and a
-near-identity scale can be labelled "rotated".
+## Placement and size checks say what they did not check
 
-## More projects prepare — and refusals are plain
+- Bed fit reports each object's size and the instances' placement as separate facts; several small, separated
+  objects are no longer summed into one "too big" object.
+- A copy of a repeated object that hangs off the plate is no longer hidden by one that does not.
+- Placement and plate-fit checks are reported as **not checked** for projects whose physical size the file does not
+  establish (a non-millimetre unit, or a rotated or scaled object).
+- A project with several plates is no longer called ready just because each plate fits on its own.
+- Studio no longer recommends Arrange all plates as a fix; it says to review the project in Snapmaker Orca before
+  slicing.
+- When the bed-fit check could not run, the report says it was not verified instead of reading as a clean result.
+- Each setting Studio adjusts when it prepares a copy says why, and labels whether that statement is Studio's own
+  check or advice to verify the setting in Snapmaker Orca. The labels make no claim about how Snapmaker Orca behaves.
+- The cost line in the Business Doctors says "estimated cost".
 
-- Six more per-object settings from Bambu Studio projects are kept when Snapmaker Orca 2.4.0 reads them in the
-  same words: infill pattern, skeleton and skin infill density, top and bottom shell layers, and brim type. Every
-  value is checked first; anything else is still refused rather than guessed.
-- A project that uses the same part more than once in one object is no longer refused as corrupt.
-- A project Studio can read but would refuse to prepare is called that everywhere — the Doctor, Ready Now, the
-  library, the Validation Center and the command line — and points you to review the original in Snapmaker Orca.
-  When Prepare refuses a file, the message says which settings or structure, on which object, and what to do next.
-- Preparing a copy no longer leaves a `<name>.orig.3mf` file beside your original. Your original is never modified.
-- A project with blank (`nil`) per-part values is named in plain language and not prepared. This is a precaution:
-  opening such a file in the Snapmaker Orca 2.4.1 interface did not show it failing to load, so Studio does not
-  claim that blank values stop Orca from loading a file.
+## Security
+
+- The update check's TLS dependencies are updated (rustls 0.23.46, rustls-webpki 0.103.16), and it no longer trusts
+  the `emSign ECC Root CA - G3` root that webpki-roots 1.0.10 removed (RUSTSEC-2026-0381, the October 2026 eMudhra
+  disclosure).
+- The update check only follows `releases/latest` and `releases/tag/<tag>` links of this repository.
+- If you build Studio from source, Node.js 22.23.4 or a newer fixed line is required.
+
+This does not change what is already installed: people running an earlier release still have its binary until they
+install a newer one.
 
 ## What was checked, and what was not
 
-Snapmaker Orca 2.4.1 opened prepared copies of test projects in an isolated profile. **That is loading only:**
-nothing was sliced and nothing was printed. Four of the six newly kept per-object settings showed their prepared
-values there; the two infill densities could not be located in the interface and are not confirmed. A repeated
-part loaded and listed its parts.
+The candidate was built once by the project's release-candidate workflow. Its Windows installer and Linux `.deb`
+were re-downloaded and checked by SHA256 against the build manifest. The Windows installed-application acceptance
+run used an **acceptance copy** of the installer (same application files, separate install identity) on a clean
+local account and passed 54/54; that run includes an upgrade from an acceptance copy of v1.6.0, which is **not** a
+production upgrade. The real installer's own install, upgrade and uninstall were exercised only on a disposable
+GitHub-hosted runner. The Linux package passed its in-container acceptance run and clean-environment validation on
+Ubuntu 22.04 and 24.04 (49/49 each).
 
-Read-only checks against a real Snapmaker U1 passed (78/78), including the Spoolman- and Bambuddy-seeded provider
-checks, with no printer-control action called. This printer's four toolheads all carry the same 0.4 mm nozzle, no
-real SpoolEase device has been tested, and the Linux-installed app was not run against the real printer.
-
-**Known limitation.** Copies prepared from Compatibility may not appear in This job or the Prepared copy column of the settings receipt. The receipt can still compare the original project with sliced G-code. A fix is planned for the next patch.
+**Real printer:** read-only verification against a real Snapmaker U1 passed 76/76 on its second attempt, using real
+Spoolman and Bambuddy containers with synthetic spools. The first attempt failed on defects in the verification
+tooling, not the product; the tooling was corrected and reviewed before the second. **Snapmaker Orca:** a painted
+project and its prepared copies loaded in an isolated Orca 2.4.1 profile; the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even
+unprepared (known issue: the file is a minimal synthetic package with empty content-type and relationship stubs; the exact reason Orca rejects it is unconfirmed), so it proves nothing about its prepared copies. **Not checked:** any real SpoolEase device.
 
 Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
 is something you confirm.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.6.0_x64-setup.exe` — 22,444,501 bytes — SHA256 `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0`
-- Linux: `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` — 26,004,974 bytes — SHA256 `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc`
+These values are for the release candidate. They apply to a v1.7.0 download once it is published; the candidate has
+no public download.
 
-Neither installer is code-signed yet; verify the hash before you run it. Verification for this
-release is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.6.0/docs/TRUST_STATUS.md).
+- Windows: `Snapmaker.Studio_1.7.0_x64-setup.exe` — 22,748,251 bytes — SHA256 `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
+- Linux: `snapmaker-studio_1.7.0_amd64_210d86868882.deb` — 26,325,960 bytes — SHA256 `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc`
+
+These values repeat the canonical record in
+[RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md) on purpose:
+this file becomes the GitHub release body, and a downloader must be able to verify a hash without opening a second page.
+
+Neither installer is code-signed yet; verify the hash before you run it. Verification status for this candidate is
+in [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/TRUST_STATUS.md).

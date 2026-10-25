@@ -17,7 +17,7 @@ changed. Snapmaker Orca still does the slicing.**
 Free, open source, and local. No account, no cloud, nothing uploaded off your
 local network. Your original file is never modified.
 
-### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
+### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
 [![Watch the Snapmaker Studio demo](docs/media/demo-poster.jpg)](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4)
 
@@ -71,30 +71,32 @@ recording, so it also shows what Studio says when it cannot reach one:
 
 **Windows 10/11 (x64)** ✅ · **Linux x86_64 (.deb)** ✅ · **macOS** not supported.
 
-**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0)**
+**[⬇ Download for Windows](https://github.com/DVOpenLabs/snapmaker-studio/releases)**
 — one click, no Python, runs offline.
-**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0)**
+**[⬇ Download for Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases)**
 — one `.deb`, no Python, no Node, no Rust. Install guide:
 [docs/linux-install.md](docs/linux-install.md).
 
-**v1.6.0 is the current stable release** — not a prerelease, so this is also what
-GitHub's [latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest)
-points at. Every build ever published is on the
-[Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases).
+**v1.7.0 is a release candidate that has not been published.** No v1.7.0 tag, release or
+download exists yet, so the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases)
+still offers the previous published release (v1.6.0) as the current download. When
+v1.7.0 is published as a stable release (not a prerelease), GitHub's
+[latest release](https://github.com/DVOpenLabs/snapmaker-studio/releases/latest) will point at it.
 
-Verify it before you run it:
+Verify it before you run it. These are the candidate's values and apply to a v1.7.0
+download once it is published:
 
-- Release: [v1.6.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0)
-- Windows installer: `Snapmaker.Studio_1.6.0_x64-setup.exe`
-  — 22,444,501 bytes — SHA256: `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0`
-- Linux package: `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb`
-  — 26,004,974 bytes — SHA256: `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc`
+- Release: not yet published — [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases)
+- Windows installer: `Snapmaker.Studio_1.7.0_x64-setup.exe`
+  — 22,748,251 bytes — SHA256: `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
+- Linux package: `snapmaker-studio_1.7.0_amd64_210d86868882.deb`
+  — 26,325,960 bytes — SHA256: `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc`
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.6.0_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\Snapmaker.Studio_1.7.0_x64-setup.exe
 ```
 ```bash
-sha256sum snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb
+sha256sum snapmaker-studio_1.7.0_amd64_210d86868882.deb
 ```
 
 Neither installer is code-signed yet, so Windows SmartScreen will show "Unknown
@@ -127,11 +129,11 @@ sliced job back**.
 
 | The problem, named exactly | The fix, in a new copy — and where Studio says it can't tell |
 |---|---|
-| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.6.0/problem.png) | ![Choosing how to prepare a U1 copy — the original is never modified](docs/screenshots/v1.6.0/prepared.png) |
+| ![One object hangs 45 mm past the right edge](docs/screenshots/v1.7.0/problem.png) | ![Choosing how to prepare a U1 copy — the original is never modified](docs/screenshots/v1.7.0/prepared.png) |
 | **Painted colour, read before slicing** | **What to load — and where Studio says it cannot tell** |
-| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.6.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.6.0/what-to-load.png) |
+| ![Which filaments the painting uses, and what that means for four toolheads](docs/screenshots/v1.7.0/painted.png) | ![Each slot named, with the unknowns marked as unknown](docs/screenshots/v1.7.0/what-to-load.png) |
 
-From the v1.6.0 build's own installed-application run: the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
+From the v1.7.0 release candidate's own installed-application run (an acceptance copy of the candidate's installer, not a published release): the problem and prepared views on the sample project in [`examples/demo_u1_showcase.3mf`](examples/demo_u1_showcase.3mf); the painted view on the acceptance harness's dedicated multi-colour fixture; the what-to-load view on a sliced-job fixture the harness supplies to exercise that screen. Reproduce them with [docs/innovation-fund/JUDGE_WALKTHROUGH.md](docs/innovation-fund/JUDGE_WALKTHROUGH.md). Submission package: [docs/innovation-fund/FINAL_SUBMISSION.md](docs/innovation-fund/FINAL_SUBMISSION.md).
 
 ## Why this isn't a slicer, a dashboard, or a converter
 
@@ -165,42 +167,32 @@ its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Evidence
 
-Everything below was run against the v1.6.0 release-candidate build — the
-same application and Linux package published on the release page, checked by
-SHA256 — not against a development build. The Windows installed-application
-run used an acceptance copy of the release-candidate installer (same application
-files, separate install identity); the real installer itself was exercised only on a
-disposable GitHub-hosted runner. The installed-application
-acceptance run used an acceptance-identity copy of the Windows installer on a
-clean local account; the real installer's own upgrade and uninstall were
-exercised on a disposable GitHub-hosted runner. The backend and desktop test
-counts come from the source at the release commit, not from the installer. Commands, counts and full reports:
-[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+This section describes the **v1.7.0 release candidate**, which has not been published. The checks below
+were run against the build named in [docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md) — checked by
+SHA256 — not against a development build. The Windows installed-application run used an acceptance copy
+of the candidate's installer (same application files, separate install identity) on a clean local
+account; the real installer's own upgrade and uninstall were exercised on a disposable GitHub-hosted
+runner. The backend and desktop test counts come from the source at the candidate commit, not from the
+installer. Commands, counts and full reports: [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, driven through the real UI | **50/50** |
-| Read-only checks against a real Snapmaker U1, from the Windows-installed app | **78/78** |
+| Installed-application acceptance, driven through the real UI | **54/54** |
+| Read-only checks against a real Snapmaker U1 | **76/76** on the second attempt (the first failed on verification-tooling defects; recorded) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
-| Regression tests against genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
-| Backend / desktop / TypeScript / Rust | 3185 · 1091 · clean · clean |
+| Backend / desktop / TypeScript / Rust | 3824 · 1328 · clean · clean |
 
-The installed-application acceptance count (50/50) is a different total from
-v1.5.0's 45: this release's run also installs an acceptance-identity copy of
-v1.5.0, upgrades it to this build, and checks that the user's data and the
-acceptance registration survive — five more checks. That is the acceptance lane's
-upgrade, not the real installer's: the real installer's upgrade and uninstall were
-exercised on a disposable GitHub-hosted runner. See
-[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+The installed-application acceptance run installs an acceptance-identity copy of v1.6.0, upgrades it to
+this build, and checks that the user's data and the acceptance registration survive. That is the
+acceptance lane's upgrade, not the real installer's: the real installer's upgrade and uninstall were
+exercised on a disposable GitHub-hosted runner. The acceptance run is advisory evidence about this
+candidate; it does not show that a print succeeds.
 
-The real-U1 verification for this release ran read-only through the
-Windows-installed application itself, 78/78, with no printer-control action
-called, and with the Spoolman- and Bambuddy-seeded provider checks included (one
-spool that agrees with what the printer reports loaded and one that conflicts with
-it, for each provider, on disposable containers). No real SpoolEase device has been
-tested yet, this printer's four toolheads all carry the same 0.4 mm nozzle, and the
-Linux-installed app was not run against the real printer. Full detail:
+The read-only real-printer verification passed on its second attempt after the first failed on defects in the
+verification tooling; both are recorded in the trust status. The Snapmaker Orca loading checks are partial: a painted
+project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue: the file is a minimal synthetic package with empty content-type and relationship stubs; the exact reason Orca rejects it is unconfirmed). No real
+SpoolEase device has been tested. Full detail:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 Reproduce any of it yourself:
@@ -212,31 +204,30 @@ files produced structurally valid U1 profile copies ([PROOF.md](PROOF.md)); that
 number measures structure, not print success, and the checks above are the
 stronger evidence.
 
+## What's new in v1.7.0 (release candidate, not yet published)
+
+**One job screen, print risk signals instead of a percentage, and a read-only colour preview.**
+
+- **One job screen.** Opening a project lands on one screen: the model, the target, materials and copy
+  settings, and a single button for the next step. Opening or restoring a job never prepares, opens Orca
+  or slices by itself.
+- **Colour preview.** For a millimetre 3MF, Studio draws the model by the filament that prints each part
+  and compares the project's colours, your chosen spool colours and the colours read back from the copy.
+  It is read-only.
+- **Print risk signals replace the readiness percentage.** Studio lists each risk it found, once per
+  condition, and says what it did and did not check.
+- **Placement and plate-fit checks say "not checked"** when the file does not establish the physical
+  size, and a project with several plates is not called ready just because each plate fits alone.
+- **Update-check security.** Updated TLS dependencies, the `emSign ECC Root CA - G3` root removed from
+  the trusted set, and update links limited to this repository's releases.
+
+Full list: [CHANGELOG.md](CHANGELOG.md).
+
 ## What's new in v1.6.0
 
-**A job you can pick up again, sizes Studio will not guess, and more projects that prepare.**
-
-- **This job keeps its project, prepared copy and sliced G-code together.** After a restart Studio shows
-  what it recorded, checks the files only when you ask, and reopens only what is unchanged (plus a
-  changed file you name). Each file is labelled recorded, checked, reopened or left out; a saved
-  fingerprint is history, not proof.
-- **A settings receipt on After slicing** for the original, the prepared copy and the sliced file, and
-  refreshed Home, This job and After slicing screens.
-- **Explicit printer setup.** A profile with no printer address is "not set up" until you save one in
-  Settings; Studio no longer looks up `U1.local` on its own, and nothing controls the printer without your
-  confirmation. The interface loads no remote fonts.
-- **More Bambu Studio projects prepare** (six more per-object settings, repeated parts in one object), and
-  a project Studio cannot prepare is called that everywhere — the Doctor, Ready Now, the library and the
-  command line — with the reason in plain language.
-- **Sizes Studio cannot establish are "not checked".** A file that declares inches, or whose objects are
-  rotated or scaled by a placement transform, no longer gets a "fits", "ready" or "likely" verdict from raw
-  mesh numbers. The Object placement card and volume, material and cost for non-millimetre files are not
-  covered yet; see the [CHANGELOG](CHANGELOG.md).
-
-What was and was not checked: Snapmaker Orca 2.4.1 opened prepared copies in an isolated run, which is
-loading only — nothing was sliced or printed — and a file with blank (`nil`) per-part values also opened
-there, so Studio does not claim such values stop Orca from loading a file. Details:
-[docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
+Describes the current published release, v1.6.0 (its installer and SHA256 are under "Previous release" in
+[docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md)). A job you can pick up again, sizes Studio will not
+guess, and more projects that prepare. Full list: [CHANGELOG.md](CHANGELOG.md).
 
 ## What's new in v1.5.0
 

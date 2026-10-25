@@ -9,6 +9,98 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.7.0 — CANDIDATE (verified against the gates below; not accepted, not published)
+
+**One job screen, print risk signals instead of a percentage, and a read-only colour preview.** The Windows
+installer and Linux `.deb` named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the candidate recorded here,
+verified by SHA256. Build:
+[run 40129442382](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382), commit
+`210d86868882293e974bcc4b7c1276096319e6c7`.
+
+**CANDIDATE here means the gates below passed against this build. It does not mean the release is accepted or
+published:** the status is left at CANDIDATE deliberately; marking it ACCEPTED is a separate decision made at
+publication, not by this record. The read-only real-printer verification has now been run: the first attempt
+**failed** and a second one, with corrected verification tooling, passed; both are recorded below. The Snapmaker
+Orca loading checks are partial. The merge, the tag and the publication are separate steps that had not happened
+when this was written. No v1.7.0 tag, GitHub release or download exists.
+
+| Gate | Result |
+|---|---|
+| Backend suite (Python 3.13) | **3824 passed / 49 skipped** |
+| Desktop suite, `tsc`, production build | **1328 passed** (119 test files), `tsc` clean, build clean |
+| Rust: `cargo check --locked --all-targets`, `cargo test --locked` | clean; **50 + 9 passed** |
+| Node harness and Node-floor tests | **44/44** |
+| `u1convert selfcheck` | **27/27** |
+| Release-candidate build (Windows installer + Linux `.deb`), compiled with `--locked` | **pass** (all six jobs) |
+| Lockfiles unchanged by the build | **pass** — `Cargo.lock` and `package-lock.json` identical before and after, both platforms |
+| Windows default-path upgrade smoke, from the published v1.6.0 (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account; includes an upgrade from an acceptance-identity copy of v1.6.0) | **54/54** — run `h148402b001e04baaa851056b536285a6`, [internal/acceptance-1.7.0.json](internal/acceptance-1.7.0.json) |
+| Linux in-container acceptance (real GUI workflow, real window close) | **49/49** |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only, attempt 2 (acceptance-identity copy of the installer, corrected verification tooling), with Spoolman 0.26.1 and Bambuddy 1.2.5.3 on session-owned containers | **76/76**, authoritative exit code 0, 18 of them provider checks — [internal/hardware-1.7.0.json](internal/hardware-1.7.0.json) |
+| Real Snapmaker U1, read-only, attempt 1 (earlier verification tooling) | **FAILED/ABORTED**, authoritative exit code 1, no `hardware.json` produced, no total — [internal/hardware-1.7.0-attempt1-failed.json](internal/hardware-1.7.0-attempt1-failed.json) |
+| Painted-cube project: unprepared control and its two prepared copies opened in Snapmaker Orca 2.4.1 (isolated profile, synthetic project, loading only) | all three loaded (the control and one prepared copy needed a rerun after automation-only interruptions); the real Orca profile was unchanged |
+| Bundled sample project `examples/demo_u1_showcase.3mf` (byte-identical to the Orca input) and its two prepared copies opened in Snapmaker Orca 2.4.1 | **did not load**: Orca answered "Loading of model file failed" for the unprepared sample as well, so this says nothing about its prepared copies. **Known issue:** Orca 2.4.1 refuses the bundled sample project. Observed differences: it is a minimal synthetic package whose `[Content_Types].xml` and `_rels/.rels` are empty stubs and whose `model_settings.config` names objects the model lacks; the painted project that loaded has a real relationship file. Which difference Orca rejects was not isolated, so the cause is unconfirmed; Studio reads the sample fine |
+
+### Bindings
+
+- Verification harness used for real-printer attempt 2: a **separate branch**, `verify/v1.7.0-rc2-hardware-harness`, commit `584906a1ee0e9581ee915c8985481935517aca97` (on top of the docs commit `2ddb918`; only `tools/hardware/` changed; pushed to its own branch and not merged anywhere, and **not part of the candidate or its tag**; permanent link to the exact commit: <https://github.com/DVOpenLabs/snapmaker-studio/commit/584906a1ee0e9581ee915c8985481935517aca97>). File SHA256: `checks.mjs` `746592db446f1ca1fd2727715902808ec2617c34535357dab096f26b8e9f3caa`, `hardware-expect.mjs` `97572387e2313ad70022b8b5228432b73740035d010c831ee29c3e441c1be000`, `seed-providers.mjs` `791f9613ee6b152cdbfe3b9bb9bf2d25ed349640cb6a63194dc6e3a944fdd68d`. The candidate's own `tools/hardware/checks.mjs` at `210d868` is `eaf3d0bce79f44910d4b09e5bf0bc3a255f49fc3a3245d3b9594d094fcdce2c2`. The installer, bundled engine and candidate source were the same in both attempts; no product file changed.
+- Source `210d86868882293e974bcc4b7c1276096319e6c7` on `release/v1.7.0-rc2`; build run 40129442382 (all jobs green,
+  release-candidate manifest recorded; the run's head commit, the manifest's source commit and the build
+  provenance's commit agree).
+- Windows installer and Linux package: sizes and SHA256 values are in [RELEASE_METADATA.md](RELEASE_METADATA.md).
+- Bundled Windows engine (`snapstudio-api.exe`): 20,160,120 bytes, SHA256
+  `79cd418d23036d9d6f487e0814b87f7b150d8c62eacf6b7bbdcaa9e56c135225`; the acceptance run checked that the running
+  engine's image and the installed file both match it.
+- The upgrade baseline is the published v1.6.0 installer (SHA256 `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0`),
+  re-downloaded and verified in both the hosted smoke test and the acceptance run.
+- The acceptance harness is the source's own `tools/acceptance` at the candidate commit (staged by `git archive`
+  and compared file by file against the commit), with `playwright-core` 1.64.1 installed without a lockfile.
+  Its geometry checks use recorded sidecar responses, with a positive (on-plate) and a negative (off-plate)
+  control per fixture; all eight route records answered HTTP 200 and met their expectations.
+
+### Build provenance
+
+Both release builds ran `tauri build` with `-- --locked`, recorded their inputs and failed if a lockfile changed.
+`Cargo.lock` (`5afc0c3f…`) and `package-lock.json` (`2ba68722…`) were identical before and after the build on both
+platforms and identical to the source tree; the resolved Rust graph is 444 packages. Toolchains are recorded, not
+pinned: rustc and cargo 1.99.1, Node.js 22.23.4, Python 3.13.16 (Windows) and 3.13.17 (Linux). The records show
+what these builds used; they do not make the build reproducible.
+
+### Artifact inspection (TLS dependencies)
+
+The candidate's installer and `.deb` were extracted without being executed, and the desktop binaries were
+byte-scanned. Both embed rustls 0.23.46 and rustls-webpki 0.103.16. The published v1.6.0 installer, scanned as a
+positive control, embeds rustls 0.23.43 and rustls-webpki 0.103.15 and still contains the `emSign ECC Root CA - G3`
+public key; that key is absent from the candidate's binaries. **Limits:** a byte scan sees only bytes stored
+uncompressed, shows what was compiled in rather than what runs, and the packed Windows engine's internal libraries
+are not visible to it. Source-level regression tests read the roots the built binary embeds.
+
+### What this does not show
+
+- The acceptance-identity copy of the installer is not the production installer, and the lane's upgrade (an
+  acceptance copy of v1.6.0 to an acceptance copy of this build) is not a production upgrade. Production
+  registration, shortcuts and default-path install were exercised only on disposable GitHub-hosted runners.
+- Opening prepared copies in Snapmaker Orca was a loading-only check (2.4.1, isolated profile). The bundled sample
+  project could not be loaded by Orca even unprepared, so none of its prepared copies were verified. Studio's own
+  hand-off (launching Orca from the app) was not exercised against a real Orca, and nothing was sliced.
+- The real-printer run used an acceptance-identity copy of the installer, not the production installer, and was
+  read-only throughout: nothing was started, uploaded, queued, heated, moved or configured. Provider checks used real
+  Spoolman and Bambuddy containers with synthetic spools whose seeds record a consumption or weighing, so the weight
+  reads "tracked". That shows the adapters against those two programs and a real printer's readings, not anyone's real
+  inventory. No SpoolEase device was contacted.
+- Attempt 1 failed for reasons that were in the verification tooling, not the product: the bed-fit expectation
+  named the printer's axis travel, which Studio deliberately does not call a printable area; the seeds carried no
+  usage record, so provider weights were correctly "derived" rather than "tracked"; and the nozzle step typed the
+  printer address without saving it. The tooling was corrected on the separate branch above and reviewed before
+  attempt 2. Attempt 2 ran once and passed; weigh it as one passing run after one failed run.
+- Each real-printer attempt used its own fresh account, and neither is reused.
+- An earlier candidate (RC1) stopped at 53/54 on a stale harness expectation about two engine routes; it was
+  replaced, not accepted. This candidate was checked with the repaired harness.
+- This is not remediation of anyone's installed copy: installed users keep their current binary until they install
+  a newer release, and none exists yet.
+
 ## v1.6.0 — ACCEPTED
 
 **A job you can pick up again, sizes Studio will not guess, and more projects that prepare.** The Windows
