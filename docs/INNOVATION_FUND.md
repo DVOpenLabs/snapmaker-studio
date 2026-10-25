@@ -216,7 +216,7 @@ source at the release commit, not from the installer. Commands, counts and full 
 | What | Result |
 |---|---|
 | Installed-application acceptance, through the real UI | 54/54 |
-| Read-only verification against a real Snapmaker U1 | not run for this candidate |
+| Read-only verification against a real Snapmaker U1 | 76/76 on its second attempt (the first attempt failed on verification-tooling defects; both are recorded) |
 | End-to-end pipeline self-check | 27/27 |
 | Backend tests | 3824 passed, 49 skipped |
 | Desktop tests | 1328 passed |

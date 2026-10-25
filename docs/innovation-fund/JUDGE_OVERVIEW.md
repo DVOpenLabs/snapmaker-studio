@@ -104,7 +104,7 @@ source at the release commit, not from the installer.
 |---|---|---|
 | Installed-application acceptance (v1.7.0 release candidate, acceptance-identity copy of the installer) | **54/54** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
-| Read-only verification against a real Snapmaker U1 | **not run** for this candidate | see [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json) |
+| Read-only verification against a real Snapmaker U1 | **76/76** on the second attempt; the first attempt failed on verification-tooling defects | [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json), [../internal/hardware-1.7.0-attempt1-failed.json](../internal/hardware-1.7.0-attempt1-failed.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
 | Backend | 3824 passed, 49 skipped | `pytest` |
 | Desktop | 1328 passed | `npm run test` |
@@ -119,10 +119,10 @@ no Snapmaker Orca process appeared during that journey. The raw report is
 including the raw evidence files: [../TRUST_STATUS.md](../TRUST_STATUS.md).
 Step-by-step: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).
 
-The hardware check is read-only by construction when it is run: the allowed routes are asserted
+The hardware check is read-only by construction: the allowed routes are asserted
 against a deny-list before the first request, so nothing is started, uploaded or queued and no temperature,
-motion, homing, pause, resume, cancel, emergency-stop or configuration call is made. It was not run for this
-candidate.
+motion, homing, pause, resume, cancel, emergency-stop or configuration call is made. For this candidate it
+failed on its first attempt (verification-tooling defects) and passed 76/76 on its second.
 
 ## Why the U1 specifically
 

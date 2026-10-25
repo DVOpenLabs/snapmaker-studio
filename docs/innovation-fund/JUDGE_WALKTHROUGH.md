@@ -187,19 +187,20 @@ Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no
 temperature, motion, homing, pause, resume, cancel, emergency-stop or configuration
 call is made. The printer's address is replaced with a placeholder before anything
-reaches the evidence file. A real-U1 check was **not run** for the
-v1.7.0 release candidate — [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json) records that.
+reaches the evidence file. For the v1.7.0 release candidate the real-U1 check failed on its first attempt
+(verification-tooling defects, recorded in [../internal/hardware-1.7.0-attempt1-failed.json](../internal/hardware-1.7.0-attempt1-failed.json))
+and passed 76/76 on its second — [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json).
 
 **Harness versions.** The acceptance run for this candidate used the source's own `tools/acceptance` at the
 candidate commit, staged and compared file by file against that commit. An earlier candidate (RC1) stopped one
 check short because two engine-route expectations in the harness were stale; that was repaired in the source
 before this candidate was built. The details are recorded in [../TRUST_STATUS.md](../TRUST_STATUS.md).
 
-The last real-printer run was for v1.6.0 (78/78,
-[../internal/hardware-1.6.0.json](../internal/hardware-1.6.0.json)); it is history, not evidence for this
-candidate. For v1.7.0 the provider checks ran only against local mock servers, and no real printer or
-SpoolEase device was contacted. A genuinely mixed-nozzle setup has been exercised only in automated tests.
-When no reading is available, Studio still says "check this yourself" rather than guessing.
+The v1.6.0 real-printer run (78/78, [../internal/hardware-1.6.0.json](../internal/hardware-1.6.0.json)) is
+history. For v1.7.0 the real-printer run passed 76/76 on its second attempt, using real Spoolman and Bambuddy
+containers with synthetic spools; no SpoolEase device was contacted. A genuinely mixed-nozzle setup has
+been exercised only in automated tests. When no reading is available, Studio still says "check this yourself" rather
+than guessing.
 
 ---
 

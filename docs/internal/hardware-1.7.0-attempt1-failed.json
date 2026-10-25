@@ -1,0 +1,37 @@
+{
+  "schema_version": "hardware-attempt/1",
+  "version": "1.7.0",
+  "attempt": 1,
+  "status": "FAILED/ABORTED",
+  "authoritative_exit_code": 1,
+  "hardware_json_produced": false,
+  "totals_recorded": false,
+  "summary": "The first real-U1 read-only attempt against the RC2 packages exited 1 and aborted before the harness wrote hardware.json, so no total exists for it. This file records what the console showed, not a result.",
+  "console_lines_before_abort": { "pass": 56, "fail": 3 },
+  "failures": [
+    {
+      "check": "The printer's own bed size was used in the bed check",
+      "observed": "1 object(s) fall outside this printer's 270 × 270 mm printable area",
+      "root_cause": "stale harness expectation: Studio names the profile's printable area, never the printer's reported axis travel (271 × 335 × 281 mm), by design"
+    },
+    {
+      "check": "The provider supplies the weight the machine cannot know (spoolman)",
+      "observed": "900 g derived",
+      "root_cause": "synthetic seed had no consumption record, so the weight is correctly labelled derived, not tracked"
+    },
+    {
+      "check": "The provider supplies the weight the machine cannot know (bambuddy)",
+      "observed": "900 g derived",
+      "root_cause": "synthetic seed had no weighing record, so the weight is correctly labelled derived, not tracked"
+    }
+  ],
+  "aborted_at": {
+    "step": "nozzle confirmation in the Settings UI",
+    "error": "TimeoutError waiting for the 'Toolhead 1' table row",
+    "root_cause": "stale harness flow: the printer address is only saved on Save/Enter and the Nozzles card appears only for a saved address; the harness typed the address without saving it"
+  },
+  "incomplete_coverage": "The nozzle confirmation checks and everything after them did not run in this attempt.",
+  "lane": { "status": "fail", "reason_code": "LANE_STEP_FAILED", "uninstall": "Success", "tripwire_violations": 0, "errors": 0 },
+  "product_changed": false,
+  "note": "All three root causes were in verification tooling, not in the shipped product. See attempt 2 in hardware-1.7.0.json and the harness identity in TRUST_STATUS.md. The account used for this attempt was consumed and is never reused."
+}

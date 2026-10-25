@@ -51,7 +51,7 @@ Long form: [../INNOVATION_FUND.md](../INNOVATION_FUND.md).
 
 **Release:** v1.7.0, a release candidate that has not been published (v1.6.0 remains the
 published stable build). v0.4.0 was the first verified against a real Snapmaker U1; the
-v1.7.0 candidate has not been run against one. Installer name, size and SHA256:
+v1.7.0 candidate passed a read-only run against one on its second attempt (the first failed on defects in the verification tooling). Installer name, size and SHA256:
 [../RELEASE_METADATA.md](../RELEASE_METADATA.md). Verification record:
 [../TRUST_STATUS.md](../TRUST_STATUS.md).
 
@@ -79,7 +79,7 @@ source at the release commit, not from the installer.
 |---|---|
 | Installed-application acceptance, through the real UI | 54/54 |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | 49/49 each |
-| Read-only verification against a real Snapmaker U1 | not run for this candidate |
+| Read-only verification against a real Snapmaker U1 | 76/76 on its second attempt (the first attempt failed on verification-tooling defects; both are recorded) |
 | End-to-end pipeline self-check | 27/27 |
 | Backend tests | 3824 passed, 49 skipped |
 | Desktop tests | 1328 passed |

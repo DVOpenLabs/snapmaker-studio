@@ -16,9 +16,9 @@
     "passed": 1328
   },
   "hardware": {
-    "passed": 0,
+    "passed": 76,
     "report": "hardware-1.7.0.json",
-    "total": 0
+    "total": 76
   },
   "schema_version": "evidence/1",
   "screenshots_dir": "docs/screenshots/v1.7.0",

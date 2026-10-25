@@ -52,6 +52,12 @@ build. What was done about that is in
 
 ## Hardware verification
 
+**v1.7.0 candidate — read-only, second attempt 76/76.** The first attempt failed
+(authoritative exit code 1, no total) because of defects in the verification tooling, not the
+product; both are recorded in [internal/hardware-1.7.0-attempt1-failed.json](internal/hardware-1.7.0-attempt1-failed.json)
+and [internal/hardware-1.7.0.json](internal/hardware-1.7.0.json). Nothing was started, uploaded or queued.
+Details and limits: [TRUST_STATUS.md](TRUST_STATUS.md).
+
 **v0.7.0, 2026-08-24 — read-only, 39/39.** Printer discovered, 196 Klipper
 objects enumerated, the printer's own 271 × 335 × 281 mm bed used, four loaded
 filaments read with colour and sub-type, the fitted nozzle correctly reported as

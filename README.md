@@ -178,7 +178,7 @@ installer. Commands, counts and full reports: [docs/TRUST_STATUS.md](docs/TRUST_
 | What | Result |
 |---|---|
 | Installed-application acceptance, driven through the real UI | **54/54** |
-| Read-only checks against a real Snapmaker U1 | **not run** for this candidate |
+| Read-only checks against a real Snapmaker U1 | **76/76** on the second attempt (the first failed on verification-tooling defects; recorded) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each |
 | End-to-end pipeline self-check (`u1convert selfcheck`) | **27/27** |
 | Backend / desktop / TypeScript / Rust | 3824 · 1328 · clean · clean |
@@ -189,8 +189,10 @@ acceptance lane's upgrade, not the real installer's: the real installer's upgrad
 exercised on a disposable GitHub-hosted runner. The acceptance run is advisory evidence about this
 candidate; it does not show that a print succeeds.
 
-Read-only verification against a real Snapmaker U1 and the Snapmaker Orca interface checks were not run
-for this candidate, so nothing here claims them. No real SpoolEase device has been tested. Full detail:
+The read-only real-printer verification passed on its second attempt after the first failed on defects in the
+verification tooling; both are recorded in the trust status. The Snapmaker Orca loading checks are partial: a painted
+project and its prepared copies loaded, while the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even unprepared (known issue, not yet investigated). No real
+SpoolEase device has been tested. Full detail:
 [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 Reproduce any of it yourself:

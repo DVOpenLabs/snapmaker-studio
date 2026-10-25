@@ -69,9 +69,11 @@ production upgrade. The real installer's own install, upgrade and uninstall were
 GitHub-hosted runner. The Linux package passed its in-container acceptance run and clean-environment validation on
 Ubuntu 22.04 and 24.04 (49/49 each).
 
-**Not run for this candidate:** read-only verification against a real Snapmaker U1, the Snapmaker Orca interface
-checks, and any real SpoolEase device. Provider checks ran against local mock servers only. Whether a prepared copy
-opens correctly in Snapmaker Orca was not re-checked for this candidate.
+**Real printer:** read-only verification against a real Snapmaker U1 passed 76/76 on its second attempt, using real
+Spoolman and Bambuddy containers with synthetic spools. The first attempt failed on defects in the verification
+tooling, not the product; the tooling was corrected and reviewed before the second. **Snapmaker Orca:** a painted
+project and its prepared copies loaded in an isolated Orca 2.4.1 profile; the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even
+unprepared (known issue, not yet investigated), so it proves nothing about its prepared copies. **Not checked:** any real SpoolEase device.
 
 Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
 is something you confirm.
