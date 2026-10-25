@@ -749,6 +749,45 @@ def _rewrite_items(raw: bytes, offset_for) -> tuple[bytes, int]:
     return out.encode("utf-8"), moved
 
 
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+
+
+def rewrite_items_by_index(raw: bytes, offsets: dict) -> tuple[bytes, int]:
+    """Translate build items by ordinal: ``offsets`` maps an item's index among the root model's ``<item>``
+    elements to ``(dx, dy)`` in the root model's own unit.
+
+    Like ``_rewrite_items`` it is byte-surgical (only the translation tokens of the matched tags change, every
+    other token is copied verbatim), but it addresses an INSTANCE, not an object id, so two uses of one object
+    on different plates move independently. Commented-out tags are not items and are skipped."""
+    text = raw.decode("utf-8", "strict")
+    spans = [(m.start(), m.end()) for m in _COMMENT_RE.finditer(text)]
+    out, last, ordinal, moved = [], 0, 0, 0
+    for match in _ITEM_TAG_RE.finditer(text):
+        if any(start <= match.start() < end for start, end in spans):
+            continue
+        index, ordinal = ordinal, ordinal + 1
+        offset = offsets.get(index)
+        if offset is None:
+            continue
+        tag = match.group(0)
+        dx, dy = offset
+        attr = _TRANSFORM_ATTR_RE.search(tag)
+        if attr is None:
+            insert = f' transform="{_identity_shifted(dx, dy)}"'
+            new = tag[:-2] + insert + "/>" if tag.endswith("/>") else tag[:-1] + insert + ">"
+        else:
+            shifted = _shift_transform(attr.group(2), dx, dy)
+            if shifted is None:
+                continue
+            new = tag[:attr.start()] + attr.group(1) + shifted + attr.group(3) + tag[attr.end():]
+        out.append(text[last:match.start()])
+        out.append(new)
+        last = match.end()
+        moved += 1
+    out.append(text[last:])
+    return "".join(out).encode("utf-8"), moved
+
+
 def _uniform_offset(dx: float, dy: float):
     return lambda _oid: (dx, dy)
 

@@ -114,7 +114,7 @@
       "When you open the prepared copy, **Object placement** says the object sits inside the printable area."
     ],
     "differs": [
-      { "if": "There is no Move button.", "then": "Read the placement message. Either every object already fits, no single shift brings them all on, or Studio will not move this project (it never repositions multi-plate projects). Work through the placement example above." },
+      { "if": "There is no Move button.", "then": "Read the placement message. Either every object already fits, no single shift brings them all on, or this is a multi-plate project, where the Move button is not offered. Work through the placement example above." },
       { "if": "The prepared copy still shows warnings.", "then": "Studio prepares the file for the U1; it does not fix every setting. Read **Your fix plan**: each step is marked **Do this in Studio** or **Do this in Orca**." },
       { "if": "**Prepare stopped** appears with Project Materials.", "then": "Two slots share one preset but the project declares different vendors or types for them. Choose a different preset for one slot; Studio does not edit the project for you." }
     ],

@@ -56,7 +56,7 @@
     "takeaways": [
       "Check the *size* of the object against the overhang: a small object that hangs off one edge is misplaced.",
       "Overhang on *two opposite edges* means shifting alone cannot fit the object; it may need rotating, resizing or splitting.",
-      "If Studio offers **Move onto the plate**, its check found a single shift that fits. If it does not, read the placement card: either everything already fits, the layout needs changes in Orca, or it is a multi-plate project, which Studio never repositions."
+      "If Studio offers **Move onto the plate**, its check found a single shift that fits. If it does not, read the placement card: either everything already fits, the layout needs changes in Orca, or it is a multi-plate project, where the Move button is not offered (preparing a copy lays plates out on the U1 grid only when each object's plate can be verified)."
     ]
   },
   "read-change": {
