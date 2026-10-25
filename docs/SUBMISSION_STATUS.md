@@ -13,10 +13,10 @@ page is the status record only.
 
 | | |
 |---|---|
-| Version | **v1.6.0** — the current stable release |
+| Version | **v1.7.0** — a release candidate, not yet published (the published stable release is the previous one) |
 | Installer, size, SHA256 | [RELEASE_METADATA.md](RELEASE_METADATA.md) — canonical |
-| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **ACCEPTED** |
-| Release | <https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0> |
+| Verification state | [TRUST_STATUS.md](TRUST_STATUS.md) — **CANDIDATE** (verified against the recorded gates; not accepted, not published) |
+| Release | Not yet published — see the [Releases page](https://github.com/DVOpenLabs/snapmaker-studio/releases). Planned release path: `releases/tag/v1.7.0` — not yet created; no download is available. |
 
 The installer is not code-signed — verify the SHA256 before installing. See
 [windows-install.md](windows-install.md) and

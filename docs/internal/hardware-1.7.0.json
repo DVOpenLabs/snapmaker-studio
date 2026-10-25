@@ -1,0 +1,8 @@
+{
+  "schema_version": "hardware/1",
+  "status": "not run",
+  "reason": "Read-only verification against a real Snapmaker U1 was not run for the v1.7.0 release candidate. passed and total are 0 because no checks were run, not because checks were skipped or passed.",
+  "passed": 0,
+  "total": 0,
+  "checks": []
+}

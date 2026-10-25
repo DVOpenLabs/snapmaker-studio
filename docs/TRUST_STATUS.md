@@ -9,6 +9,81 @@ real Snapmaker U1 have all passed and are recorded here.
 > current form is `-InstallerPath` + `-AttestationPath` or `-RealInstaller` + `-ExpectedSha256` + `-SourceVersion`;
 > see `docs/internal/HARNESS_ISOLATION.md`. The entries are left as they were.
 
+## v1.7.0 — CANDIDATE (verified against the gates below; not accepted, not published)
+
+**One job screen, print risk signals instead of a percentage, and a read-only colour preview.** The Windows
+installer and Linux `.deb` named in [RELEASE_METADATA.md](RELEASE_METADATA.md) are the candidate recorded here,
+verified by SHA256. Build:
+[run 40129442382](https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382), commit
+`210d86868882293e974bcc4b7c1276096319e6c7`.
+
+**CANDIDATE here means the gates below passed against this build. It does not mean the release is accepted or
+published:** read-only verification against a real Snapmaker U1 and the Snapmaker Orca interface checks have not
+been run for this candidate, and the merge, the tag and the publication are separate steps that had not happened
+when this was written. No v1.7.0 tag, GitHub release or download exists.
+
+| Gate | Result |
+|---|---|
+| Backend suite (Python 3.13) | **3824 passed / 49 skipped** |
+| Desktop suite, `tsc`, production build | **1328 passed** (119 test files), `tsc` clean, build clean |
+| Rust: `cargo check --locked --all-targets`, `cargo test --locked` | clean; **50 + 9 passed** |
+| Node harness and Node-floor tests | **44/44** |
+| `u1convert selfcheck` | **27/27** |
+| Release-candidate build (Windows installer + Linux `.deb`), compiled with `--locked` | **pass** (all six jobs) |
+| Lockfiles unchanged by the build | **pass** — `Cargo.lock` and `package-lock.json` identical before and after, both platforms |
+| Windows default-path upgrade smoke, from the published v1.6.0 (disposable GitHub-hosted runner) | **pass** |
+| Windows installed-application acceptance (acceptance-identity copy of the installer, clean local account; includes an upgrade from an acceptance-identity copy of v1.6.0) | **54/54** — run `h148402b001e04baaa851056b536285a6`, [internal/acceptance-1.7.0.json](internal/acceptance-1.7.0.json) |
+| Linux in-container acceptance (real GUI workflow, real window close) | **49/49** |
+| Linux clean-environment validation, `ubuntu:22.04` | **49/49** |
+| Linux clean-environment validation, `ubuntu:24.04` | **49/49** |
+| Real Snapmaker U1, read-only | **not run** for this candidate — [internal/hardware-1.7.0.json](internal/hardware-1.7.0.json) records that |
+| Prepared copies opened in Snapmaker Orca | **not run** for this candidate |
+
+### Bindings
+
+- Source `210d86868882293e974bcc4b7c1276096319e6c7` on `release/v1.7.0-rc2`; build run 40129442382 (all jobs green,
+  release-candidate manifest recorded; the run's head commit, the manifest's source commit and the build
+  provenance's commit agree).
+- Windows installer and Linux package: sizes and SHA256 values are in [RELEASE_METADATA.md](RELEASE_METADATA.md).
+- Bundled Windows engine (`snapstudio-api.exe`): 20,160,120 bytes, SHA256
+  `79cd418d23036d9d6f487e0814b87f7b150d8c62eacf6b7bbdcaa9e56c135225`; the acceptance run checked that the running
+  engine's image and the installed file both match it.
+- The upgrade baseline is the published v1.6.0 installer (SHA256 `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0`),
+  re-downloaded and verified in both the hosted smoke test and the acceptance run.
+- The acceptance harness is the source's own `tools/acceptance` at the candidate commit (staged by `git archive`
+  and compared file by file against the commit), with `playwright-core` 1.64.1 installed without a lockfile.
+  Its geometry checks use recorded sidecar responses, with a positive (on-plate) and a negative (off-plate)
+  control per fixture; all eight route records answered HTTP 200 and met their expectations.
+
+### Build provenance
+
+Both release builds ran `tauri build` with `-- --locked`, recorded their inputs and failed if a lockfile changed.
+`Cargo.lock` (`5afc0c3f…`) and `package-lock.json` (`2ba68722…`) were identical before and after the build on both
+platforms and identical to the source tree; the resolved Rust graph is 444 packages. Toolchains are recorded, not
+pinned: rustc and cargo 1.99.1, Node.js 22.23.4, Python 3.13.16 (Windows) and 3.13.17 (Linux). The records show
+what these builds used; they do not make the build reproducible.
+
+### Artifact inspection (TLS dependencies)
+
+The candidate's installer and `.deb` were extracted without being executed, and the desktop binaries were
+byte-scanned. Both embed rustls 0.23.46 and rustls-webpki 0.103.16. The published v1.6.0 installer, scanned as a
+positive control, embeds rustls 0.23.43 and rustls-webpki 0.103.15 and still contains the `emSign ECC Root CA - G3`
+public key; that key is absent from the candidate's binaries. **Limits:** a byte scan sees only bytes stored
+uncompressed, shows what was compiled in rather than what runs, and the packed Windows engine's internal libraries
+are not visible to it. Source-level regression tests read the roots the built binary embeds.
+
+### What this does not show
+
+- The acceptance-identity copy of the installer is not the production installer, and the lane's upgrade (an
+  acceptance copy of v1.6.0 to an acceptance copy of this build) is not a production upgrade. Production
+  registration, shortcuts and default-path install were exercised only on disposable GitHub-hosted runners.
+- Opening a prepared copy in Snapmaker Orca was not run for this candidate; the hand-off is unverified.
+- Provider checks ran against local mock servers. No real printer or SpoolEase device was contacted.
+- An earlier candidate (RC1) stopped at 53/54 on a stale harness expectation about two engine routes; it was
+  replaced, not accepted. This candidate was checked with the repaired harness.
+- This is not remediation of anyone's installed copy: installed users keep their current binary until they install
+  a newer release, and none exists yet.
+
 ## v1.6.0 — ACCEPTED
 
 **A job you can pick up again, sizes Studio will not guess, and more projects that prepare.** The Windows

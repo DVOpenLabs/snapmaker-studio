@@ -1,0 +1,38 @@
+{
+  "acceptance": {
+    "passed": 54,
+    "report": "acceptance-1.7.0.json",
+    "total": 54
+  },
+  "backend": {
+    "passed": 3824,
+    "skipped": 49
+  },
+  "demo": {
+    "file": "docs/media/snapmaker-studio-demo.mp4",
+    "seconds": 66
+  },
+  "desktop": {
+    "passed": 1328
+  },
+  "hardware": {
+    "passed": 0,
+    "report": "hardware-1.7.0.json",
+    "total": 0
+  },
+  "installer": {
+    "name": "Snapmaker.Studio_1.7.0_x64-setup.exe",
+    "sha256": "71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04",
+    "size_bytes": 22748251,
+    "url": "Not yet published \u2014 no v1.7.0 tag or GitHub release exists"
+  },
+  "prepared": "2026-10-24",
+  "schema_version": "evidence-snapshot/1",
+  "screenshots_dir": "docs/screenshots/v1.7.0",
+  "selfcheck": {
+    "passed": 27,
+    "total": 27
+  },
+  "source": "recorded when this release candidate was prepared and verified; not yet published",
+  "version": "1.7.0"
+}

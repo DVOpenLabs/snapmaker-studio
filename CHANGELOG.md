@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.7.0] - 2026-10-24 (release candidate; not yet published)
+
+This entry describes release candidate v1.7.0. No tag, GitHub release or download exists for it yet; see
+[docs/RELEASE_METADATA.md](docs/RELEASE_METADATA.md) and [docs/TRUST_STATUS.md](docs/TRUST_STATUS.md).
 
 ### Added
 - **One job screen.** Opening a project lands on one screen: the model in the middle, the target, materials and copy settings in a pane beside it, and a single button for the next step (create the U1 copy, open it in Snapmaker Orca, compare the slice). The copy's file name and folder, and the settings comparison after slicing, show up in the same place. Opening or restoring a job never prepares, opens Orca or slices by itself, and every existing check still applies.
@@ -23,6 +26,12 @@ All notable changes to this project are documented here. The format is based on
 - When the bed-fit check could not run, the Intelligence Report headline, next action and comparison lines say it was not verified instead of reading as a clean result.
 - Each setting Studio adjusts when it prepares a copy now says why, in plain language, and labels where that statement comes from: Studio's own check, or advice to verify the setting in Snapmaker Orca. The labels make no claim about how Snapmaker Orca behaves.
 - The cost line in the Business Doctors now says "estimated cost" instead of "true cost to make".
+
+### Security
+- The update check no longer trusts the `emSign ECC Root CA - G3` root that webpki-roots 1.0.10 removed (RUSTSEC-2026-0381, the October 2026 eMudhra intermediate-key disclosure). The build now resolves rustls 0.23.46 and rustls-webpki 0.103.16 (RUSTSEC-2026-0285, -0346, -0348, -0349, -0381, -0382). Regression tests read the roots the built binary embeds.
+- The update check only follows `releases/latest` and `releases/tag/<tag>` links of this repository.
+- Building Studio requires Node.js 22.23.4 or a newer fixed line (24.22.1, 26.12.1); the build scripts and CI refuse older or pre-release Node versions (Node2Shell, CVE-2026-111497). This affects people who build Studio from source, not people who install it.
+- Both release builds now compile with `--locked` and record their inputs (source commit, toolchain and runner versions, installed Python packages, the resolved Rust dependency graph, lockfile hashes) and fail if a lockfile changes. This records what a build used; it does not pin those versions or make the build reproducible.
 
 ## [1.6.0] - 2026-10-21
 

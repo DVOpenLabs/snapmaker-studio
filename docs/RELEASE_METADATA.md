@@ -17,6 +17,31 @@ Every *other* document must link here rather than restate these values.
 
 | Field | Value |
 |---|---|
+| Version | v1.7.0 |
+| Installer | `Snapmaker.Studio_1.7.0_x64-setup.exe` |
+| Size (bytes) | 22,748,251 |
+| SHA256 | `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04` |
+| Linux installer | `snapmaker-studio_1.7.0_amd64_210d86868882.deb` |
+| Linux size (bytes) | 26,325,960 |
+| Linux SHA256 | `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382 |
+| Release URL | Not yet published — no v1.7.0 tag or GitHub release exists |
+| Trust status | CANDIDATE — verified, not published; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+
+**This is a release candidate, not a published release.** The values above are the bytes built by
+the build run named here from source commit `210d86868882293e974bcc4b7c1276096319e6c7`. No tag,
+GitHub release or download exists for v1.7.0 yet; until one does, the published
+release is [v1.6.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0), listed
+below. Once published, v1.7.0 is intended as a stable release (not a prerelease) and its
+hashes will also be published as `SHA256SUMS` on the release.
+
+Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
+`sha256sum <file>.deb` (Linux).
+
+## Previous release
+
+| Field | Value |
+|---|---|
 | Version | v1.6.0 |
 | Installer | `Snapmaker.Studio_1.6.0_x64-setup.exe` |
 | Size (bytes) | 22,444,501 |
@@ -24,17 +49,11 @@ Every *other* document must link here rather than restate these values.
 | Linux installer | `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` |
 | Linux size (bytes) | 26,004,974 |
 | Linux SHA256 | `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39413867451 |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
-| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-A stable release, not a prerelease, so GitHub's "latest release" points at it.
-Hashes for both files are also published as `SHA256SUMS` on the release.
+Until v1.7.0 is published, v1.6.0 is the published, current download.
 
-Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
-`sha256sum <file>.deb` (Linux).
-
-## Previous release
+## Superseded
 
 | Field | Value |
 |---|---|

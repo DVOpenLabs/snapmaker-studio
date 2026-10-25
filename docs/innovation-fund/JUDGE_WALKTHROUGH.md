@@ -141,9 +141,9 @@ builds real decompression bombs and asserts the reader refuses them.
 ## Run the tests
 
 ```bash
-cd backend  && pytest          # 3185 passed, 49 skipped
+cd backend  && pytest          # 3824 passed, 49 skipped
 cd backend  && u1convert selfcheck   # 27/27 over production code paths
-cd desktop  && npm run test    # 1091 passed
+cd desktop  && npm run test    # 1328 passed
 cd desktop  && npm run build   # tsc + vite
 ```
 
@@ -174,8 +174,8 @@ It installs the rewrapped build into an isolated directory with its own WebView2
 profile and engine data directory, drives the real application window over the
 Chrome DevTools Protocol, and uninstalls. Its checks include that the input file
 is byte-identical afterwards and that uninstalling leaves nothing behind. It stops
-only processes it started. For the v1.6.0 release candidate, this harness scored **50/50** —
-[../internal/acceptance-1.6.0.json](../internal/acceptance-1.6.0.json).
+only processes it started. For the v1.7.0 release candidate, this harness scored **54/54** —
+[../internal/acceptance-1.7.0.json](../internal/acceptance-1.7.0.json).
 
 **A real printer.** With a Snapmaker U1 on the same network, the maintainer runs
 `tools/hardware/verify.ps1 -PrinterHost <printer-ip>`. Like the acceptance harness,
@@ -187,31 +187,19 @@ Read-only by construction: the allowed routes are asserted against a deny-list
 before the first request, so nothing is started, uploaded or queued and no
 temperature, motion, homing, pause, resume, cancel, emergency-stop or configuration
 call is made. The printer's address is replaced with a placeholder before anything
-reaches the evidence file. This release's real-U1 check ran through the
-Windows-installed application itself — last result: **78/78** —
-[../internal/hardware-1.6.0.json](../internal/hardware-1.6.0.json).
+reaches the evidence file. A real-U1 check was **not run** for the
+v1.7.0 release candidate — [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json) records that.
 
-**Harness versions.** The acceptance and hardware runs for this release used harness
-changes made after the release source was frozen. The acceptance harness gained checks for this
-release's "not checked" size verdicts; the hardware harness had to follow the v1.6.0 Settings
-screen (the printer address is saved with a Save button, and the home screen is titled "Home").
-They are recorded by commit in [../TRUST_STATUS.md](../TRUST_STATUS.md) and are not part of this
-release's source: the copy of `tools/hardware` in this repository fails against v1.6.0 at the Nozzles card
-(it never saves the printer address), and the copy of `tools/acceptance` lacks the new checks.
+**Harness versions.** The acceptance run for this candidate used the source's own `tools/acceptance` at the
+candidate commit, staged and compared file by file against that commit. An earlier candidate (RC1) stopped one
+check short because two engine-route expectations in the harness were stale; that was repaired in the source
+before this candidate was built. The details are recorded in [../TRUST_STATUS.md](../TRUST_STATUS.md).
 
-That run is worth reading rather than just counting. It proved the four
-toolheads' fitted nozzles are read live and shown as the printer's own reading,
-that an offline-saved conflicting nozzle note is shown as a conflict once
-the printer answers again with the printer's value used, and that a real
-"Remove my note" action restores the live row — with zero printer-control
-routes called throughout, confirmed by the harness's request listener, which
-records every call. The Spoolman- and Bambuddy-seeded provider checks ran
-this release against disposable containers. Not run this release: this printer's four toolheads all carry the same
-0.4 mm nozzle, so a genuinely mixed-nozzle setup was exercised only in
-automated tests; and the Linux-installed app was not run against the real
-printer. No SpoolEase check was run against hardware either (its real-device
-validation is pending). When no reading is available, Studio still says "check
-this yourself" rather than guessing.
+The last real-printer run was for v1.6.0 (78/78,
+[../internal/hardware-1.6.0.json](../internal/hardware-1.6.0.json)); it is history, not evidence for this
+candidate. For v1.7.0 the provider checks ran only against local mock servers, and no real printer or
+SpoolEase device was contacted. A genuinely mixed-nozzle setup has been exercised only in automated tests.
+When no reading is available, Studio still says "check this yourself" rather than guessing.
 
 ---
 

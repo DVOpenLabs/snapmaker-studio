@@ -93,7 +93,7 @@ honest fix was to remove it, not to tune a number Studio cannot observe.
 
 ## What is verified, and how
 
-Everything below ran against the **v1.6.0 release-candidate build** — an acceptance
+Everything below ran against the **v1.7.0 release-candidate build** (not yet published) — an acceptance
 copy of its installer (same application files, separate install identity) was installed,
 launched, driven through the real window, then uninstalled; the real installer itself was
 exercised only on a disposable GitHub-hosted runner. Not a development
@@ -102,26 +102,27 @@ source at the release commit, not from the installer.
 
 | What | Result | How to reproduce |
 |---|---|---|
-| Installed-application acceptance (v1.6.0 release candidate, acceptance-identity copy of the installer) | **50/50** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
+| Installed-application acceptance (v1.7.0 release candidate, acceptance-identity copy of the installer) | **54/54** | Maintainer-run `tools/acceptance/run.ps1` (needs a rewrapped acceptance-identity installer; see [../internal/HARNESS_ISOLATION.md](../internal/HARNESS_ISOLATION.md)) |
 | Linux clean-image validation, Ubuntu 22.04 + 24.04 | **49/49** each | see [../linux-install.md](../linux-install.md) |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app | **78/78** | see [../internal/hardware-1.6.0.json](../internal/hardware-1.6.0.json) |
+| Read-only verification against a real Snapmaker U1 | **not run** for this candidate | see [../internal/hardware-1.7.0.json](../internal/hardware-1.7.0.json) |
 | End-to-end pipeline self-check | **27/27** | `u1convert selfcheck` |
-| Genuine OrcaSlicer / BambuStudio / PrusaSlicer projects | **36 tests** | `pytest tests/test_real_world_3mf.py` |
-| Backend | 3185 passed, 49 skipped | `pytest` |
-| Desktop | 1091 passed | `npm run test` |
+| Backend | 3824 passed, 49 skipped | `pytest` |
+| Desktop | 1328 passed | `npm run test` |
 | TypeScript · production build · Rust | clean | `tsc --noEmit` · `npm run build` · `cargo check` |
 
-The installed-application acceptance count is higher than the previous
-release's (45), because this release's run also upgrades an acceptance copy of
-v1.5.0 to this build and checks that the user's data survive — see
-[../TRUST_STATUS.md](../TRUST_STATUS.md) for exactly which. Full records,
+The installed-application acceptance count (54) is four higher than the previous
+release's (50). The four added checks are: the running engine is the installed
+sidecar file; the running engine matches the candidate's recorded sidecar hash;
+the installed job journey (picker, materials, copy, refusals and switching); and
+no Snapmaker Orca process appeared during that journey. The raw report is
+[../internal/acceptance-1.7.0.json](../internal/acceptance-1.7.0.json). Full records,
 including the raw evidence files: [../TRUST_STATUS.md](../TRUST_STATUS.md).
 Step-by-step: [JUDGE_WALKTHROUGH.md](JUDGE_WALKTHROUGH.md).
 
-The hardware run was read-only by construction: the allowed routes are asserted
-against a deny-list before the first request. Nothing was started, uploaded or
-queued; no temperature, motion, homing, pause, resume, cancel, emergency-stop or
-configuration call was made.
+The hardware check is read-only by construction when it is run: the allowed routes are asserted
+against a deny-list before the first request, so nothing is started, uploaded or queued and no temperature,
+motion, homing, pause, resume, cancel, emergency-stop or configuration call is made. It was not run for this
+candidate.
 
 ## Why the U1 specifically
 
@@ -214,4 +215,4 @@ SHA256 before running it. Why, and what is being done:
 | Technical depth | [TECHNICAL_DEPTH.md](TECHNICAL_DEPTH.md) |
 | Where Studio sits in the field | [COMPETITOR_MATRIX.md](COMPETITOR_MATRIX.md) · [DIFFERENTIATION_STRATEGY.md](DIFFERENTIATION_STRATEGY.md) |
 | The ecosystem story | [OPEN_ECOSYSTEM.md](OPEN_ECOSYSTEM.md) |
-| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
+| Download | [Releases](https://github.com/DVOpenLabs/snapmaker-studio/releases) (v1.7.0 is not yet published) · hash in [../RELEASE_METADATA.md](../RELEASE_METADATA.md) |
