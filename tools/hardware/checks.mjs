@@ -75,6 +75,7 @@
 // the JSON and assume 0 means clean.
 
 import { chromium } from "playwright-core";
+import { bedFitEvidenceOk, U1_PRINTABLE_MM } from "./hardware-expect.mjs";
 import { writeFileSync, readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -339,7 +340,8 @@ async function forceNozzleCardRefetch(page) {
     window.history.pushState({}, "", "/");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  await page.locator("h1").filter({ hasText: "Dashboard" }).waitFor({ state: "visible", timeout: 10000 });
+  // Home has no heading to wait for; the card unmounting is the remount's first half.
+  await page.waitForFunction(() => !/Nozzles · for/.test(document.body.innerText), null, { timeout: 10000 });
   await page.evaluate(() => {
     window.history.pushState({}, "", "/settings");
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -359,7 +361,10 @@ async function setAppPrinterHost(page, host) {
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   await page.waitForTimeout(800);
-  await page.getByPlaceholder("U1.local").first().fill(host);
+  const field = page.getByLabel("Printer network name or IP");
+  await field.fill(host);
+  await field.press("Enter"); // typing only edits a draft; Studio looks the printer up after Save
+  await page.waitForFunction(() => /Nozzles · for/.test(document.body.innerText), null, { timeout: 15000 });
   await page.waitForTimeout(500);
 }
 
@@ -538,8 +543,10 @@ record("A matched nozzle reading is credited to the printer, not asserted with n
 record("Nothing undetected is called unsupported", !text.includes("unsupported"));
 
 const bedCheck = rows.find((r) => r.id === "bed.fit");
-record("The printer's own bed size was used in the bed check",
-  Boolean(bedCheck) && bedCheck.evidence.includes(String(bed.x)),
+// Studio judges placement against the profile's printable area and says so; the printer's axis travel
+// (bed above) is not a printable area and must not be presented as one. The showcase's off-plate object is deliberate.
+record("The bed check uses the printable area, not the printer's axis travel, and flags the deliberate off-plate object",
+  Boolean(bedCheck) && bedFitEvidenceOk(bedCheck.evidence, U1_PRINTABLE_MM, bed),
   bedCheck?.evidence ?? "");
 
 const toolheads = rows.find((r) => r.id === "materials.toolheads");
