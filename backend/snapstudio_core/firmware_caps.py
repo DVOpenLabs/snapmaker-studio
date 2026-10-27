@@ -34,7 +34,7 @@ def _prefix(obj: str) -> str:
 
 
 def interpret(objects, toolhead_count=None, bed_mm=None, extended_probe=None,
-              printer_name: str | None = None) -> dict:
+              printer_name: str | None = None, topology=None) -> dict:
     """Map a klipper object list to a plain-language capability set.
 
     objects: the GET /printer/objects/list result (a list of strings).
@@ -84,9 +84,40 @@ def interpret(objects, toolhead_count=None, bed_mm=None, extended_probe=None,
         features.append({"name": "Custom macros",
                          "detail": f"{macro_count} gcode macro{'s' if macro_count != 1 else ''} on this printer"})
 
+    topology_counts = None
+    topology_kinds = []
+    topology_contradicts = False
+    if isinstance(topology, dict):
+        from .foundation.topology import Topology, counts, validate
+        decoded = Topology.from_dict(topology)
+        if decoded.value is not None:
+            topology_counts = counts(decoded.value)
+            if any(d.severity == "error" for d in validate(decoded.value)):
+                # A self-contradicting topology gives no head count.
+                topology_counts = {**topology_counts, "complete": False, "physical_heads": None}
+                topology_contradicts = True
+            topology_kinds = sorted({unit.kind for unit in decoded.value.units})
+
     tc = toolhead_count or sum(1 for k in kinds if k == "extruder" or
                                (k.startswith("extruder") and k[8:].isdigit()))
-    if tc and tc > 1:
+    if topology_counts is not None and topology_counts["complete"]:
+        heads = topology_counts["physical_heads"]
+        lane_count = topology_counts["lanes"]
+        if heads is not None and (heads > 1 or lane_count > 1):
+            if lane_count:
+                detail = (f"{heads} physical toolheads; {lane_count} feeder lanes reported by "
+                          f"{', '.join(topology_kinds) or 'reported feeder units'}")
+            else:
+                detail = f"{heads} physical toolheads; no feeder lanes reported"
+            features.append({"name": f"{heads}-toolhead multimaterial", "detail": detail})
+        tc = heads
+    elif topology_counts is not None:
+        tc = None
+        features.append({"name": "Multimaterial topology (head count unknown)",
+                         "detail": ("physical toolhead count is unknown because the reported topology contradicts itself"
+                                    if topology_contradicts else
+                                    "physical toolhead count is unknown because the topology head list is incomplete")})
+    elif tc and tc > 1:
         features.append({"name": f"{tc}-toolhead multimaterial",
                          "detail": f"prints up to {tc} colours/materials in one job"})
 

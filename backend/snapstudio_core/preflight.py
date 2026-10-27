@@ -117,6 +117,83 @@ def _printer_found(printer: dict) -> dict:
 
 def _toolheads_vs_filaments(project: dict, printer: dict) -> dict:
     needed = _trait(project, "filament_count")
+    raw_topology = printer.get("topology")
+    if isinstance(raw_topology, dict):
+        from .foundation.topology import (
+            ProjectSlotRequirement, ResourceConstraints, Topology, assignability, counts, validate,
+        )
+
+        decoded = Topology.from_dict(raw_topology)
+        topology = decoded.value
+        if topology is not None:
+            problems = [d for d in validate(topology) if d.severity == "error"]
+            if problems:
+                # A topology that contradicts itself (a lane reaching a head that is not listed,
+                # duplicate ids) is not evidence of a fit. It is also not a head count.
+                return _check(
+                    "materials.toolheads", "Material assignment is unknown", UNKNOWN,
+                    evidence="the reported topology contradicts itself: "
+                             + ", ".join(sorted({d.code for d in problems})),
+                    confidence=INFORMATIONAL,
+                    consequence="Studio cannot tell whether the reported setup can serve every project material.",
+                    action="Read the setup again; if this repeats, report which accessory produced it.",
+                    source="printer topology")
+            topology_counts = counts(topology)
+            if not isinstance(needed, int) or isinstance(needed, bool) or needed < 0:
+                # An unmeasured material count must not read as "zero materials fit".
+                return _check(
+                    "materials.toolheads", "Material assignment is unknown", UNKNOWN,
+                    evidence="the project's material count was not measured",
+                    confidence=INFORMATIONAL,
+                    consequence="Studio cannot compare this project against the reported topology.",
+                    source="printer topology")
+            # heads_single_active=False: lanes that share a head take turns at tool changes,
+            # so the question is whether each material has a lane that reaches a head over
+            # the job, not whether every material sits in a head at once.
+            result = assignability(
+                topology, [ProjectSlotRequirement(index=i) for i in range(needed)],
+                ResourceConstraints(heads_single_active=False))
+            heads = topology_counts["physical_heads"]
+            lanes = topology_counts["lanes"]
+            capacity = (f"{heads} physical toolheads" if heads is not None
+                        else "an unknown number of physical toolheads")
+            capacity += f" and {lanes} feeder lane(s)"
+            if result["assignable"] is True and topology_counts["complete"]:
+                return _check(
+                    "materials.toolheads", "Materials fit the reported topology", OK,
+                    evidence=(f"topology reports {capacity}; each of the {needed} project material(s) "
+                              + ("has a feeder lane that reaches a physical toolhead" if lanes
+                                 else "can have its own physical toolhead")),
+                    confidence=CONFIRMED,
+                    consequence=("The reported setup can serve every material in this project; "
+                                 "lanes that share a toolhead take turns at tool changes."),
+                    source="printer topology")
+            if result["assignable"] is False and topology_counts["complete"]:
+                contended = [entry["slot_id"] for entry in result["per_requirement"]
+                             if entry["result"] in ("contended", "unreachable")]
+                if lanes:
+                    details = "; ".join(sorted(set(result["reasons"]))) or \
+                        "the reported resources cannot serve every requested material"
+                    if contended:
+                        details = f"{details}; affected requirements: {', '.join(contended)}"
+                else:
+                    details = (f"the project uses {needed} materials and the setup reports "
+                               "no feeder lanes, so each material needs its own physical toolhead")
+                return _check(
+                    "materials.toolheads", "Materials compete for the reported topology", ATTENTION,
+                    evidence=f"topology reports {capacity}; {details}",
+                    confidence=CONFIRMED,
+                    consequence="The reported setup cannot assign every project material to a feeder lane and physical toolhead.",
+                    action="Review the material and feeder assignments before printing.",
+                    source="printer topology")
+            details = "; ".join(result["reasons"]) or "the topology has incomplete reach or resource information"
+            return _check(
+                "materials.toolheads", "Material assignment is unknown", UNKNOWN,
+                evidence=f"topology reports {capacity}, but {details}",
+                confidence=INFORMATIONAL,
+                consequence="Studio cannot determine whether the reported setup can serve every project material.",
+                action="Provide complete head and feeder reach information, then run this check again.",
+                source="printer topology")
     have = printer.get("toolhead_count")
     if not printer.get("reachable") or have is None:
         return _check(
