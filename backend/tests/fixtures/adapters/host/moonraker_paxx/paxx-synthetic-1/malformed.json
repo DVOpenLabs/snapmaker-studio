@@ -1,0 +1,30 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "server_info": {
+      "result": {
+        "klippy_connected": true,
+        "klippy_state": "ready",
+        "moonraker_version": "v0.9.3-synthetic",
+        "components": [
+          "octoprint_compat"
+        ]
+      }
+    },
+    "print_task_config": {
+      "result": {
+        "status": {
+          "print_task_config": {
+            "filament_spool_id": {
+              "0": 1
+            },
+            "filament_type": [
+              "PLA"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
