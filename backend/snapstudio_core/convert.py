@@ -398,7 +398,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
                   dry_run: bool = False, confirmed_presets: dict | None = None,
                   filament_catalog=None, confirmed_colours: dict | None = None,
                   material_context: dict | None = None,
-                  keep_backup: bool = False) -> ConversionResult:
+                  keep_backup: bool = False, topology=None) -> ConversionResult:
     """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
 
     `confirmed_presets` maps a filament slot to the exact installed Orca preset the
@@ -468,7 +468,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                        confirmed_colours=confirmed_colours)
+                        confirmed_colours=confirmed_colours, topology=topology)
     after = load_project_settings(tm.read_part(SETTINGS))
     if confirmed_presets:
         # Judged on what this mode will actually write, not on what the source declared:
@@ -486,7 +486,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # results cannot diverge from a real recommended conversion or write.
         do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
                   confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                  confirmed_colours=confirmed_colours)
+                  confirmed_colours=confirmed_colours, topology=topology)
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)

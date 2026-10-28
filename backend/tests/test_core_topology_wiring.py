@@ -284,20 +284,20 @@ def test_preserve_still_resizes_when_the_slot_count_does_not_match():
     assert five["nozzle_temperature"] == [1, 2, 3, 4] and warnings
 
 
-def test_repair_path_truncates_per_logical_vectors_inside_preserve_not_before():
-    """repair.py skips per-extruder vectors in conform_filament_arrays, then calls
-    prepare_preserved_values without logical_slots, which is where the cut to four happens.
-    Wiring the keyword through repair is the integration PR."""
+def test_repair_without_a_topology_still_cuts_per_logical_vectors_to_four_inside_preserve():
+    """Stock U1 behaviour: with no topology, conform_filament_arrays leaves the vectors alone and
+    prepare_preserved_values resizes them to four. Repair passes a validated topology's slot count
+    through (tests/integration/test_prepare_with_topology.py)."""
     from snapstudio_core.filaments import conform_filament_arrays
     vectors = {key: list(range(8)) for key in preserve.PER_EXTRUDER_VECTORS}
     cfg = copy.deepcopy(vectors)
     conform_filament_arrays(cfg, 8)
     assert cfg == vectors                       # the earlier pass leaves them alone
-    changes, _ = preserve.prepare_preserved_values(cfg, 8)      # what repair.py does today
+    changes, _ = preserve.prepare_preserved_values(cfg, 8)
     assert all(value == [0, 1, 2, 3] for value in cfg.values())
     assert {c["category"] for c in changes} == {"mapped"}
     repair_source = (Path(__file__).resolve().parents[1] / "snapstudio_core" / "repair.py").read_text(encoding="utf-8")
-    assert "logical_slots" not in repair_source        # nothing in repair.py passes the slot count yet
+    assert "logical_slots=logical_slots" in repair_source
 
 
 def test_self_contradicting_topology_is_unknown_not_a_fit():

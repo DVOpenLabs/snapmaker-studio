@@ -23,6 +23,42 @@ def machine_compat_keys(profile: dict) -> set[str]:
     return set(profile["keys"]) - CATEGORY_A
 
 
+def accepted_logical_slots(topology) -> tuple[int | None, str | None]:
+    """The logical-slot count a caller may rely on, or (None, why not).
+
+    Accepts a Topology or its dict form. The count is len(slots) only when the topology is complete,
+    structurally valid (no error diagnostic: no dangling or contradictory binding, no unknown head
+    reference, no mixed index base) and its slots are numbered 0..n-1 without gaps. Anything else is
+    refused rather than repaired, and the caller keeps the stock four-toolhead behaviour."""
+    from .foundation.topology import Topology, validate
+    if topology is None:
+        return None, None
+    if isinstance(topology, dict):
+        decoded = topology_from_dict(topology)
+        if decoded is None:
+            return None, "the topology could not be read"
+        topology = decoded
+    if not isinstance(topology, Topology):
+        return None, "the topology has an unexpected type"
+    errors = [d for d in list(topology.diagnostics) + validate(topology) if d.severity == "error"]
+    if errors:
+        return None, "the topology contradicts itself (" + ", ".join(sorted({d.code for d in errors})) + ")"
+    if not topology.complete or not topology.heads:
+        return None, "the topology does not list every physical head"
+    indexes = sorted(slot.index for slot in topology.slots)
+    if not indexes or indexes != list(range(len(indexes))):
+        return None, "the logical slots are missing or not numbered 0..n-1"
+    return len(indexes), None
+
+
+def topology_from_dict(raw: dict):
+    from .foundation.topology import Topology
+    decoded = Topology.from_dict(raw)
+    if decoded.value is None or any(d.severity == "error" for d in decoded.diagnostics):
+        return None
+    return decoded.value
+
+
 def prepare_preserved_values(cfg: dict, filament_total: int, *, logical_slots=None) -> tuple[list[dict], list[str]]:
     """Apply the few U1 representation constraints without replacing values."""
     changes: list[dict] = []
