@@ -5,7 +5,7 @@ from .config_io import load_project_settings, dump_project_settings
 from .rules import load_rules, apply_clamps
 from .profile import load_profile, apply_swap
 from .filaments import apply_remap, filament_count, conform_filament_arrays
-from .preserve import accepted_logical_slots, machine_compat_keys, prepare_preserved_values
+from .preserve import assess_setup, machine_compat_keys, prepare_preserved_values
 from .detect import detect_source
 from .optimize import load_optimization, apply_optimization
 from . import orca_import, preset_deviation
@@ -26,6 +26,9 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
            topology=None) -> RepairOutcome:
     assert mode in ("safe", "preserve", "u1", "optimize")
     remap = remap or {}
+    setup = assess_setup(topology)
+    if setup["state"] == "invalid":
+        raise ValueError("The printer setup cannot be used: " + "; ".join(setup["reasons"]) + ".")
     source = detect_source(tm)
     cfg = load_project_settings(tm.read_part(SETTINGS))
     work = copy.deepcopy(cfg)
@@ -34,6 +37,9 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
               "mode": mode, "normalizations": [], "profile_changes": [],
               "optimizations": [], "filament": {"count": filament_count(work)},
               "dry_run": dry_run}
+    if setup["state"] == "valid":
+        report["setup"] = {"state": "valid", "heads": setup["heads"], "slots": setup["slots"],
+                           "unbound": list(setup["unbound"])}
 
     report["normalizations"] = apply_clamps(work, load_rules())
     for change in report["normalizations"]:
@@ -87,6 +93,10 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
             compat_keys=compat_keys)
         report["foreign_cleared"] = report["foreign"]["cleared"]
         report["warnings"] = report["foreign"]["warnings"]
+        if setup["state"] == "valid" and setup["unbound"]:
+            report["warnings"].append(
+                f"{len(setup['unbound'])} of {setup['slots']} material slots in the printer setup have no known "
+                "head. They stay unresolved; Studio did not assign them one.")
         # Filament identity is the project's own unless a preset was confirmed for the
         # slot. Say so once, in the same words in every mode.
         kept = {k["slot"] for k in report["filament_identity"].get("kept", [])}
@@ -95,16 +105,11 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 not str(fsi[slot]).startswith("Snapmaker") for slot in kept if slot < len(fsi)):
             report["warnings"].append(FILAMENT_IDENTITY_NOTICE)
         if preserve_creator_settings:
-            # A topology the caller supplied is used only when it validates; a rejected one is
-            # reported and the stock four-toolhead resize applies. Mappings are never guessed.
-            logical_slots, rejected = accepted_logical_slots(topology)
-            if rejected:
-                report["warnings"].append(
-                    f"The printer setup was not used for tool mapping because {rejected}. "
-                    "Per-tool values were mapped to four U1 toolheads.")
-            report["topology_used"] = logical_slots is not None
+            # A supplied setup is used only when it validates. An invalid one never reaches this point
+            # (convert_to_u1 blocks it first); repair refuses it too rather than quietly resizing.
+            physical_heads = setup["heads"] if setup["state"] == "valid" else None
             preserved_changes, preserved_warnings = prepare_preserved_values(
-                work, filament_count(work), logical_slots=logical_slots)
+                work, filament_count(work), physical_heads=physical_heads)
             report["preserved_value_changes"] = preserved_changes
             report["warnings"].extend(preserved_warnings)
             if work.get("print_sequence") == "by object":
