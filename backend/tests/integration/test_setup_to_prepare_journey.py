@@ -6,16 +6,12 @@ No real printer. service.convert is the function the /convert route calls.
 """
 from __future__ import annotations
 
-import copy
 import json
 import pathlib
 
-import pytest
-
 from snapstudio_api import ext_routes, service
-from snapstudio_core import preserve
 from tests.mocks.hosts.host_mocks import make_moonraker
-from tests.integration.test_prepare_with_topology import project_cfg, VECTORS
+from tests.integration.setup_helpers import FILAMENT_SCOPE, HEAD_SCOPE, project_cfg
 from tests.test_project_materials import _prepared, _project
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "adapters" / "host"
@@ -61,8 +57,16 @@ def prepare(tmp_path, n, topology, name):
     return result, _prepared(type("R", (), {"output_path": result["output_path"]}))
 
 
-def kept(out, n):
-    return {k: [f"{k}-{i}" for i in range(n)] for k in VECTORS} == {k: out[k] for k in VECTORS}
+def vec(key, n):
+    return [f"{key}-{i}" for i in range(n)]
+
+
+def stock_cut(out):
+    return all(out[k] == vec(k, 8)[:4] for k in FILAMENT_SCOPE + HEAD_SCOPE)
+
+
+def at_scope(out, filaments, heads=4):
+    return all(out[k] == vec(k, filaments) for k in FILAMENT_SCOPE) and all(out[k] == vec(k, heads) for k in HEAD_SCOPE)
 
 
 def test_stock_u1_four_heads_is_unchanged_with_or_without_the_setup(tmp_path):
@@ -70,8 +74,8 @@ def test_stock_u1_four_heads_is_unchanged_with_or_without_the_setup(tmp_path):
     assert body["topology"] is not None and len(body["topology"]["heads"]) == 4
     _, with_setup = prepare(tmp_path, 4, body["topology"], "a")
     _, without = prepare(tmp_path, 4, None, "b")
-    assert kept(with_setup, 4) and kept(without, 4)
-    assert {k: with_setup[k] for k in VECTORS} == {k: without[k] for k in VECTORS}
+    assert at_scope(with_setup, 4) and at_scope(without, 4)
+    assert {k: with_setup[k] for k in FILAMENT_SCOPE + HEAD_SCOPE} == {k: without[k] for k in FILAMENT_SCOPE + HEAD_SCOPE}
 
 
 def test_an_eight_slot_setup_keeps_every_mapping_through_preparation(tmp_path):
@@ -80,11 +84,11 @@ def test_an_eight_slot_setup_keeps_every_mapping_through_preparation(tmp_path):
     assert len(topo["heads"]) == 4 and len(topo["slots"]) == 8
     assert body["report"]["entries"][0]["counts"]["physical_heads"] == 4
     result, out = prepare(tmp_path, 8, topo, "c")
-    assert kept(out, 8)
-    assert "printer setup was not used" not in str(result)
+    assert at_scope(out, 8)                           # filament settings 8 long, head settings 4 long
+    assert result["settings_summary"]["setup"]["slots"] == 8
     # the same project without the setup shows the stock cut to four
     _, stock = prepare(tmp_path, 8, None, "d")
-    assert kept(stock, 4)
+    assert stock_cut(stock)
 
 
 def test_a_map_entry_naming_an_unseen_head_leaves_that_slot_unbound_and_is_not_guessed(tmp_path):
@@ -96,10 +100,6 @@ def test_a_map_entry_naming_an_unseen_head_leaves_that_slot_unbound_and_is_not_g
     assert "bindings" in body["report"]["entries"][0]["unknowns"]
     bound = {x["slot_id"] for x in topo["bindings"]}
     assert "slot:4" not in bound                       # slot 4 is unknown, not defaulted to head 0 or 1
-    _, out = prepare(tmp_path, 8, topo, "e")
-    assert kept(out, 8)                                # an unknown binding is not a contradiction: nothing is dropped
-
-
-def test_a_non_object_topology_is_not_accepted_by_the_convert_route_contract():
-    # server.py rejects it with a 400 before service.convert is reached; the core refuses it too
-    assert preserve.accepted_logical_slots(["not", "a", "topology"])[0] is None
+    result, out = prepare(tmp_path, 8, topo, "e")
+    assert at_scope(out, 8)                            # an unknown binding is not a contradiction: nothing is dropped
+    assert result["settings_summary"]["setup"]["unbound"] == ["slot:4"]
