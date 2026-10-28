@@ -1,0 +1,109 @@
+{
+  "bindings": [
+    {
+      "evidence": [
+        "obs-1"
+      ],
+      "slot_id": "slot:0",
+      "target": "lane:unit:multiace:a:0"
+    }
+  ],
+  "complete": true,
+  "diagnostics": [],
+  "evidence": [
+    "obs-1"
+  ],
+  "heads": [
+    {
+      "evidence": [],
+      "id": "head:0",
+      "index": 0,
+      "nozzle_mm": 0.4
+    },
+    {
+      "evidence": [],
+      "id": "head:1",
+      "index": 1,
+      "nozzle_mm": 0.4
+    }
+  ],
+  "mapping_revision": "r1",
+  "observed_at": "2026-01-01T12:00:00Z",
+  "received_at": "2026-01-01T12:00:00Z",
+  "schema_version": "topology/1",
+  "slots": [
+    {
+      "binding": null,
+      "id": "slot:0",
+      "index": 0,
+      "nozzle_mm": null
+    },
+    {
+      "binding": null,
+      "id": "slot:1",
+      "index": 1,
+      "nozzle_mm": null
+    },
+    {
+      "binding": null,
+      "id": "slot:2",
+      "index": 2,
+      "nozzle_mm": null
+    }
+  ],
+  "snapshot_id": "snap-1",
+  "units": [
+    {
+      "id": "unit:multiace:a",
+      "kind": "multiace",
+      "lanes": [
+        {
+          "id": "lane:unit:multiace:a:0",
+          "index": 0,
+          "occupancy": {
+            "lane_id": "lane:unit:multiace:a:0",
+            "observation_id": "obs-1",
+            "spool": {
+              "provider_instance_id": "spoolman-1",
+              "provider_spool_id": "42"
+            },
+            "state": "loaded"
+          },
+          "path": [
+            "hub:a"
+          ],
+          "reachable_heads": [
+            "head:0",
+            "head:1"
+          ],
+          "state": "loaded",
+          "unit_id": "unit:multiace:a"
+        },
+        {
+          "id": "lane:unit:multiace:a:1",
+          "index": 1,
+          "occupancy": null,
+          "path": [
+            "hub:a"
+          ],
+          "reachable_heads": [
+            "head:0",
+            "head:1"
+          ],
+          "state": "unknown",
+          "unit_id": "unit:multiace:a"
+        },
+        {
+          "id": "lane:unit:multiace:a:2",
+          "index": 2,
+          "occupancy": null,
+          "path": null,
+          "reachable_heads": null,
+          "state": "unknown",
+          "unit_id": "unit:multiace:a"
+        }
+      ],
+      "source_version": "1.0"
+    }
+  ]
+}

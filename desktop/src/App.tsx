@@ -32,11 +32,15 @@ import { launchFile, maybeAutoCheckUpdate } from "@/api";
 import { useSliced } from "@/store/sliced";
 import { useUpdateCheckStore } from "@/store/updateCheck";
 import { useToast } from "@/store/toast";
+import { EXTENSION_ROUTES } from "@/routes/ext";
+import { installAppLifecycle } from "@/lib/extLifecycle";
 
 const queryClient = new QueryClient();
 
 export default function App() {
   const { theme } = useTheme();
+
+  useEffect(() => installAppLifecycle(), []);
 
   // Keep the <html> class in sync with the persisted theme on load.
   useEffect(() => {
@@ -116,6 +120,9 @@ export default function App() {
             <Route path="/first-layer" element={<FirstLayer />} />
             <Route path="/start" element={<BeginnerWorkflow />} />
             <Route path="/doctor/:id" element={<DoctorLanding />} />
+            {EXTENSION_ROUTES.map(({ path, Component }) => (
+              <Route key={path} path={path} element={<Component />} />
+            ))}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

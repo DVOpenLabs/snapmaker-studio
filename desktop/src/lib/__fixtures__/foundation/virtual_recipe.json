@@ -1,0 +1,23 @@
+{
+  "components": [
+    {
+      "ratio": 0.6,
+      "ratio_kind": "mass",
+      "slot_ref": "slot:0"
+    },
+    {
+      "ratio": 0.4,
+      "ratio_kind": "mass",
+      "slot_ref": "slot:1"
+    }
+  ],
+  "execution_supported": true,
+  "generator": {
+    "name": "gen",
+    "version": "2"
+  },
+  "kind": "fullspectrum",
+  "recipe_id": "gen:1",
+  "schema_version": "virtual_recipe/1",
+  "simulated": true
+}
