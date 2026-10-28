@@ -32,7 +32,10 @@ def _os_as(monkeypatch, name, **overrides):
 
     Replaces the module's reference only, so os.name and os.fstat stay real for
     pytest and everything else running in the process."""
-    shim = types.SimpleNamespace(**{k: getattr(os, k) for k in ("environ", "fstat", "read", "_exit")}, name=name, **overrides)
+    attrs = {k: getattr(os, k) for k in ("environ", "fstat", "read", "_exit")}
+    attrs["name"] = name
+    attrs.update(overrides)
+    shim = types.SimpleNamespace(**attrs)
     monkeypatch.setattr(_lifeline, "os", shim)
 
 
@@ -40,7 +43,12 @@ def test_noop_on_non_posix(monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_PARENT_LIFELINE", "stdin-v1")
     _os_as(monkeypatch, "nt")
     _forbid_thread(monkeypatch)
-    _lifeline.start_parent_lifeline()
+    read_fd, write_fd = os.pipe()  # a real pipe, so only the os.name check can stop the watcher
+    try:
+        _lifeline.start_parent_lifeline(fd=read_fd)
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
 
 
 def test_noop_when_stdin_is_not_a_pipe(monkeypatch):
