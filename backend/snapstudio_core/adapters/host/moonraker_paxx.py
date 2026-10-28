@@ -46,6 +46,9 @@ class MoonrakerPaxxAdapter(MoonrakerBundleAdapter):
                 unknown = True
                 result.diagnostics.append(diag("spool_id_unusable", f"filament_spool_id[{i}]", WARNING))
                 continue
+            if not ctx.head_known(i):
+                unknown = True
+                continue
             ref = SpoolRef(self.info.id, spool)
             # filament_spool_id is a per-physical-extruder column like the other filament arrays.
             obs = ctx.observe({"kind": "head", "id": topo.head_id(i)}, "spool", ref.to_dict())

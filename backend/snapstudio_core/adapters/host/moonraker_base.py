@@ -90,6 +90,8 @@ class MoonrakerBundleAdapter(Adapter):
             if diameters is None:
                 result.unknowns.append("nozzle_diameter")
 
+        ctx.known_heads = {h.id for h in heads}
+
         # Logical entries.
         cfg = mp.print_task_config(data.get("print_task_config"))
         status = mp.status_of(data.get("print_task_config"))
@@ -107,6 +109,10 @@ class MoonrakerBundleAdapter(Adapter):
             # and 25-45), while extruder_map_table maps logical T entries to those extruders. Material
             # facts therefore belong to the physical head at that index, never to logical slot i.
             subject = {"kind": "head", "id": topo.head_id(i)}
+            if not ctx.head_known(i):
+                if "occupancy" not in result.unknowns:
+                    result.unknowns.append("occupancy")
+                continue
             if entry["present"] is False:
                 ctx.observe(subject, "occupancy", "empty")
                 continue
@@ -173,6 +179,20 @@ class _Ctx:
         self.result = result
         self.snapshot = snapshot
         self.received_at = received_at
+        self.known_heads: set | None = None      # None until the head list has been read
+        self._refused: set = set()
+
+    def head_known(self, index: int) -> bool:
+        """False when a per-extruder entry has no physical head to attach to.
+
+        The host's filament arrays can be longer than its head list. An observation about a head the
+        topology does not contain would dangle, so it is not made; one diagnostic per index says so."""
+        if self.known_heads is not None and topo.head_id(index) in self.known_heads:
+            return True
+        if index not in self._refused:
+            self._refused.add(index)
+            self.result.diagnostics.append(diag("observation_head_unknown", f"filament_entry[{index}]", WARNING))
+        return False
 
     def observe(self, subject: dict, field: str, value: Any):
         return self.adapter.observe(
