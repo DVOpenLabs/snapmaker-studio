@@ -3,11 +3,17 @@ import React from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Home } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/webview", () => ({ getCurrentWebview: () => { throw new Error("not in Tauri"); } }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 1, token: "t" }) }));
 vi.mock("@/api", () => ({ library: vi.fn().mockResolvedValue([]), health: vi.fn().mockResolvedValue({}) }));
+vi.mock("@/routes/ext/meta", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/routes/ext/meta")>(),
+  extensionTitleFor: (path: string) => path === "/synthetic" || path.startsWith("/synthetic/") ? "Synthetic Tool" : undefined,
+}));
 import * as api from "@/api";
 const openFile = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/useOpenFile", () => ({ useOpenFile: () => openFile }));
@@ -15,6 +21,7 @@ declare const __APP_VERSION__: string;
 (globalThis as any).__APP_VERSION__ = "test";
 
 import { AppShell } from "@/components/shell/AppShell";
+import { AdvancedNav } from "@/components/shell/Sidebar";
 
 function GoThis() {
   const nav = useNavigate();
@@ -30,6 +37,28 @@ const mount = (start = "/") => render(
   </QueryClientProvider>,
 );
 afterEach(cleanup);
+
+describe("Studio+ sidebar heading", () => {
+  it("renders a group heading only when grouped items exist", () => {
+    const emptyMarkup = renderToStaticMarkup(<MemoryRouter><AdvancedNav items={[]} /></MemoryRouter>);
+    expect(emptyMarkup).not.toContain("Studio+");
+    const groupedMarkup = renderToStaticMarkup(<MemoryRouter><AdvancedNav items={[
+      { to: "/synthetic", label: "Synthetic", icon: Home, group: "Studio+" },
+    ]} /></MemoryRouter>);
+    expect(groupedMarkup).toMatch(/role="group" aria-labelledby="(nav-group-[^"]*-studio-[^"]*)"/);
+    const id = /aria-labelledby="([^"]+)"/.exec(groupedMarkup)?.[1];
+    expect(groupedMarkup).toContain(`id="${id}"`);
+    expect(groupedMarkup.match(/>Studio\+<\/div>/g)).toHaveLength(1);
+  });
+
+  it("gives two simultaneously mounted navs distinct heading ids", () => {
+    const items = [{ to: "/synthetic", label: "Synthetic", icon: Home, group: "Studio+" }];
+    const markup = renderToStaticMarkup(<MemoryRouter><AdvancedNav items={items} /><AdvancedNav items={items} /></MemoryRouter>);
+    const ids = [...markup.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+});
 
 describe("narrow navigation", () => {
   it("keeps the menu closed until asked, and exposes its state", () => {
@@ -137,5 +166,10 @@ describe("narrow navigation", () => {
   it("titles the page by what it is", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Home");
+  });
+
+  it("uses the metadata title for extension route segments", () => {
+    mount("/synthetic/child");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Synthetic Tool");
   });
 });

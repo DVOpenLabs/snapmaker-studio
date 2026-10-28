@@ -4,6 +4,8 @@ import {
   isKnownRoute,
 } from "./nav";
 import { DOCTORS } from "./doctors";
+import { Home } from "lucide-react";
+import { isKnownRoute as knownRouteWithMetadata, moreNavItems, primaryNavItems } from "./nav";
 
 const primaryLabels = PRIMARY_NAV.map((n) => n.label);
 const primaryRoutes = PRIMARY_NAV.map((n) => n.to);
@@ -99,9 +101,23 @@ describe("6. Simple mode IA (one clear path for a novice)", () => {
       "Home", "This job", "My designs", "Ready now", "Printer", "Help",
     ]);
   });
-  it("keeps every advanced tool reachable (More tools covers the rest of PRIMARY_NAV)", () => {
+  it("keeps ungrouped advanced tools reachable; grouped Studio+ stays Advanced-only", () => {
     const simpleRoutes = new Set([...BEGINNER_NAV, ...MORE_NAV].map((n) => n.to));
-    for (const n of PRIMARY_NAV) expect(simpleRoutes.has(n.to)).toBe(true);
+    for (const n of PRIMARY_NAV.filter((item) => !item.group)) expect(simpleRoutes.has(n.to)).toBe(true);
+  });
+  it("keeps Studio+ grouped in Advanced navigation and out of More tools", () => {
+    const syntheticMeta = [{ path: "/synthetic", label: "Synthetic", title: "Synthetic", group: "Studio+" as const, icon: Home }];
+    const syntheticPrimary = primaryNavItems(syntheticMeta);
+    const grouped = syntheticPrimary.filter((item) => item.group === "Studio+");
+    expect(grouped).toEqual([{ to: "/synthetic", label: "Synthetic", icon: Home, group: "Studio+" }]);
+    expect(moreNavItems(syntheticPrimary, BEGINNER_NAV)).not.toContainEqual(grouped[0]);
+    expect(BEGINNER_NAV.some((item) => item.to === "/synthetic")).toBe(false);
+    expect(knownRouteWithMetadata("/synthetic", syntheticMeta)).toBe(true);
+  });
+  it("recognizes every paired extension metadata route", () => {
+    for (const item of PRIMARY_NAV.filter((navItem) => navItem.group === "Studio+")) {
+      expect(isKnownRoute(item.to)).toBe(true);
+    }
   });
   it("does not repeat Help in the Simple footer", () => {
     expect(SIMPLE_SECONDARY_NAV.some((n) => n.to === "/help")).toBe(false);

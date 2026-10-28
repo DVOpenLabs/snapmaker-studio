@@ -1,0 +1,11 @@
+{
+  "source_version": "host_bundle/2",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "api_version": {
+      "api": "0.1",
+      "server": "1.9.3",
+      "text": "OctoPrint 1.9.3"
+    }
+  }
+}
