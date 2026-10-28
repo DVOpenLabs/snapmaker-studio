@@ -1,0 +1,22 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "api_version": {
+      "api": "0.1",
+      "server": "1.5.0",
+      "text": "OctoPrint (Moonraker 0.9.3)"
+    },
+    "server_info": {
+      "result": {
+        "klippy_connected": true,
+        "klippy_state": "ready",
+        "moonraker_version": "v0.9.3-synthetic",
+        "components": [
+          "octoprint_compat"
+        ]
+      }
+    }
+  },
+  "note": "Moonraker octoprint_compat answers /api/version OctoPrint-shaped; server is the constant OCTO_VERSION 1.5.0 (u1-moonraker octoprint_compat.py blob bd68e0a4 lines 26, 189-199)"
+}

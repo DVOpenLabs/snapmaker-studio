@@ -9,6 +9,7 @@ import { useSession } from "@/store/session";
 import { useSliced } from "@/store/sliced";
 import { shouldResetScroll } from "@/lib/scrollReset";
 import { JOB_ROUTE } from "@/lib/routes";
+import { extensionTitleFor } from "@/routes/ext/meta";
 
 function titleFor(path: string): string {
   if (path === "/") return "Home";
@@ -19,6 +20,8 @@ function titleFor(path: string): string {
   if (path.startsWith("/projects")) return "Projects";
   if (path.startsWith("/printers")) return "Printer Hub";
   if (path.startsWith("/settings")) return "Settings";
+  const extensionTitle = extensionTitleFor(path);
+  if (extensionTitle) return extensionTitle;
   return "Snapmaker Studio";
 }
 
