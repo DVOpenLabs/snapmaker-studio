@@ -24,6 +24,7 @@ comment convention, handled where it overlaps).
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 from pathlib import Path
@@ -49,7 +50,7 @@ TAIL_BYTES = _limit("SNAPSTUDIO_GCODE_TAIL_BYTES", 4 * 1024 * 1024)
 #: and every payload enormous.
 CONFIG_KEYS = (
     "printer_model", "printer_settings_id", "printable_area", "bed_shape",
-    "nozzle_diameter", "filament_type", "filament_settings_id", "filament_vendor",
+    "nozzle_diameter", "fos_physical_nozzle_diameter", "filament_type", "filament_settings_id", "filament_vendor",
     "filament_density", "filament_diameter", "filament_cost", "filament_colour",
     "filament_color",
     "layer_height", "first_layer_height", "first_layer_temperature",
@@ -245,6 +246,22 @@ def read_facts(path: str | Path) -> dict:
     nozzles = _floats(config.get("nozzle_diameter", ""))
     facts["nozzle_diameter_mm"] = nozzles or None
     facts["slot_count"] = len(nozzles) or None
+    facts["nozzle_vector_scope"] = "unknown"
+    facts["physical_head_count"] = None
+    has_physical_vector = "fos_physical_nozzle_diameter" in config
+    raw_physical = config.get("fos_physical_nozzle_diameter", "")
+    physical_nozzles = _floats(raw_physical)
+    pieces = re.split(r"[,;]", raw_physical)
+    # A physical vector with an empty, unreadable, non-finite or non-positive entry is not a
+    # head count: _floats drops bad pieces, and counting what survived would invent a smaller number.
+    if has_physical_vector and physical_nozzles and len(physical_nozzles) == len(pieces) \
+            and all(math.isfinite(value) and value > 0 for value in physical_nozzles):
+        facts["physical_nozzle_diameter_mm"] = physical_nozzles
+        facts["physical_head_count"] = len(physical_nozzles)
+    elif has_physical_vector:
+        facts["unknowns"].append("the physical toolhead count (the physical nozzle list could not be read)")
+    elif len(nozzles) != 4:
+        facts["unknowns"].append("the physical toolhead count (the nozzle list can be per filament)")
 
     # --- what it will do -----------------------------------------------------
     layers = _TOTAL_LAYERS.search(tail) or _TOTAL_LAYERS.search(head)

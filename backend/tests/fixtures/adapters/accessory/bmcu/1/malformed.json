@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "klipper_text",
+  "text": 5
+ }
+}

@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "gcode",
+  "text": null
+ }
+}
