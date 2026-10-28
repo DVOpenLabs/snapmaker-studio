@@ -5,7 +5,7 @@ from .config_io import load_project_settings, dump_project_settings
 from .rules import load_rules, apply_clamps
 from .profile import load_profile, apply_swap
 from .filaments import apply_remap, filament_count, conform_filament_arrays
-from .preserve import machine_compat_keys, prepare_preserved_values
+from .preserve import accepted_logical_slots, machine_compat_keys, prepare_preserved_values
 from .detect import detect_source
 from .optimize import load_optimization, apply_optimization
 from . import orca_import, preset_deviation
@@ -22,7 +22,8 @@ SLICE_INFO = "Metadata/slice_info.config"
 def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
            dry_run: bool = False, profile_name: str = "snapmaker_u1",
            opt_profile: str | None = None, confirmed_presets: dict | None = None,
-           filament_catalog=None, confirmed_colours: dict | None = None) -> RepairOutcome:
+           filament_catalog=None, confirmed_colours: dict | None = None,
+           topology=None) -> RepairOutcome:
     assert mode in ("safe", "preserve", "u1", "optimize")
     remap = remap or {}
     source = detect_source(tm)
@@ -94,8 +95,16 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                 not str(fsi[slot]).startswith("Snapmaker") for slot in kept if slot < len(fsi)):
             report["warnings"].append(FILAMENT_IDENTITY_NOTICE)
         if preserve_creator_settings:
+            # A topology the caller supplied is used only when it validates; a rejected one is
+            # reported and the stock four-toolhead resize applies. Mappings are never guessed.
+            logical_slots, rejected = accepted_logical_slots(topology)
+            if rejected:
+                report["warnings"].append(
+                    f"The printer setup was not used for tool mapping because {rejected}. "
+                    "Per-tool values were mapped to four U1 toolheads.")
+            report["topology_used"] = logical_slots is not None
             preserved_changes, preserved_warnings = prepare_preserved_values(
-                work, filament_count(work))
+                work, filament_count(work), logical_slots=logical_slots)
             report["preserved_value_changes"] = preserved_changes
             report["warnings"].extend(preserved_warnings)
             if work.get("print_sequence") == "by object":
