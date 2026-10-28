@@ -94,7 +94,8 @@ def evaluate(data: dict) -> tuple[int, dict]:
              ("unavailable" if res.status == "ok" else res.status),
              "reason": res.reason, "kind": res.kind, "variant": res.variant, "result": parsed}
     report = setup_view.evaluate([entry], requirements=requirements)
-    return 200, {"report": report, "read": res.to_dict()}
+    topology = parsed.topology.to_dict() if parsed is not None and parsed.topology is not None else None
+    return 200, {"report": report, "read": res.to_dict(), "topology": topology}
 
 
 @ext_routes.route("/setups/list")
