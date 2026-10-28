@@ -194,12 +194,15 @@ def first_layer_check(symptom: str) -> dict:
 
 def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
             dry_run: bool = False, materials: dict | None = None, *,
-            catalog=None) -> dict:
+            catalog=None, topology: dict | None = None) -> dict:
     """Make a file U1-ready and save it next to the source. Returns the result.
 
     `materials` is Project Materials: the person's explicit per-slot choices,
     ``{"selections": [{"slot": 0, "preset": "<installed preset>"|None, "colour": "#RRGGBB"|None}]}``.
-    Without it this behaves exactly as it always did."""
+    Without it this behaves exactly as it always did.
+
+    `topology` is a printer setup (Topology.to_dict) read through Setups. It is validated by the core;
+    an invalid one is refused with a warning in the result and the stock four-toolhead behaviour applies."""
     confirmed_presets = confirmed_colours = filament_catalog = material_context = None
     if materials is not None:
         confirmed_presets, confirmed_colours, filament_catalog, material_context = _material_inputs(
@@ -208,7 +211,7 @@ def convert(path: str, out_dir: str | None = None, prepare_mode: str = "preserve
                            confirmed_presets=confirmed_presets or None,
                            filament_catalog=filament_catalog,
                            confirmed_colours=confirmed_colours or None,
-                           material_context=material_context or None).to_dict()
+                           material_context=material_context or None, topology=topology).to_dict()
     if not dry_run and result.get("output_path"):
         summary = result.get("settings_summary") or {}
         _record_fix(

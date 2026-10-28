@@ -1,0 +1,15 @@
+{
+  "artifact_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1234",
+  "bytes": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size_bytes": 1234
+  },
+  "created_at": "2026-01-01T12:00:00Z",
+  "locator": {
+    "mtime_ns": 1,
+    "path": "model.3mf"
+  },
+  "name": "model.3mf",
+  "role": "original",
+  "schema_version": "artifact_ref/1"
+}
