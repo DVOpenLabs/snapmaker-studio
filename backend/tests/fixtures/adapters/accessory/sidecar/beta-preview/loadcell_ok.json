@@ -1,0 +1,28 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "loadcell",
+  "unit": 2,
+  "body": {
+   "ok": true,
+   "lanes": {
+    "1": {
+     "raw_g": 812.4,
+     "net_g": 812.4
+    },
+    "2": {
+     "raw_g": 0,
+     "net_g": 0
+    },
+    "3": {
+     "raw_g": 305.0,
+     "net_g": 305.0
+    },
+    "4": {
+     "raw_g": 0,
+     "net_g": 0
+    }
+   }
+  }
+ }
+}

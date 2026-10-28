@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "live_slots": "none",
+  "head_ctx": {}
+ }
+}

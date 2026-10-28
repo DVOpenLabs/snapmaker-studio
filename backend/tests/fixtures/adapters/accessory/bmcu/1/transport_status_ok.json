@@ -1,0 +1,20 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "transport_status",
+  "body": {
+   "schema": 1,
+   "devices": [
+    {
+     "schema": 1,
+     "name": "bmcu0",
+     "online": true,
+     "process_online": true,
+     "socket_online": true,
+     "updated_at": 1793000000.0,
+     "status": null
+    }
+   ]
+  }
+ }
+}

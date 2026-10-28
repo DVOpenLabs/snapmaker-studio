@@ -1,0 +1,15 @@
+{
+ "http_status": 200,
+ "body": {
+  "live_slots": [],
+  "head_ctx": {
+   "mode": "multi",
+   "head_nozzles": {},
+   "head_ace": {},
+   "ace_heads": [],
+   "feeders": [],
+   "manual_heads": [],
+   "empty_slots": []
+  }
+ }
+}
