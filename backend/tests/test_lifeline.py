@@ -1,6 +1,8 @@
 import os
 import sys
+import tempfile
 import threading
+import types
 
 import pytest
 
@@ -25,9 +27,18 @@ def test_noop_wrong_env_value(monkeypatch):
     _lifeline.start_parent_lifeline()
 
 
+def _os_as(monkeypatch, name, **overrides):
+    """Give _lifeline its own view of `os` that reports `name`.
+
+    Replaces the module's reference only, so os.name and os.fstat stay real for
+    pytest and everything else running in the process."""
+    shim = types.SimpleNamespace(**{k: getattr(os, k) for k in ("environ", "fstat", "read", "_exit")}, name=name, **overrides)
+    monkeypatch.setattr(_lifeline, "os", shim)
+
+
 def test_noop_on_non_posix(monkeypatch):
     monkeypatch.setenv("SNAPSTUDIO_PARENT_LIFELINE", "stdin-v1")
-    monkeypatch.setattr(_lifeline.os, "name", "nt")
+    _os_as(monkeypatch, "nt")
     _forbid_thread(monkeypatch)
     _lifeline.start_parent_lifeline()
 
@@ -35,15 +46,12 @@ def test_noop_on_non_posix(monkeypatch):
 def test_noop_when_stdin_is_not_a_pipe(monkeypatch):
     # A dev-mode launch (or pytest itself) has a real terminal or a regular
     # file on stdin, never a pipe — the lifeline must never block on that.
+    # Uses a real regular-file descriptor, so nothing global is patched.
     monkeypatch.setenv("SNAPSTUDIO_PARENT_LIFELINE", "stdin-v1")
-    monkeypatch.setattr(_lifeline.os, "name", "posix")
-
-    class RegularFileStat:
-        st_mode = 0o100644  # S_IFREG, not S_IFIFO
-
-    monkeypatch.setattr(_lifeline.os, "fstat", lambda fd: RegularFileStat())
+    _os_as(monkeypatch, "posix")
     _forbid_thread(monkeypatch)
-    _lifeline.start_parent_lifeline()
+    with tempfile.TemporaryFile() as regular:
+        _lifeline.start_parent_lifeline(fd=regular.fileno())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX pipe/fd semantics only")
@@ -76,7 +84,7 @@ def test_watcher_exits_when_stdin_pipe_reaches_eof(monkeypatch):
         started_threads.append(t)
         return t
 
-    monkeypatch.setattr(_lifeline.os, "_exit", fake_exit)
+    _os_as(monkeypatch, os.name, _exit=fake_exit)
     monkeypatch.setattr(_lifeline.threading, "Thread", capturing_thread)
     try:
         _lifeline.start_parent_lifeline(fd=read_fd)
