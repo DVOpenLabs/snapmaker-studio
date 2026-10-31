@@ -18,6 +18,7 @@ import { mesh as apiMesh, insights as apiInsights, toolheadFit as apiToolheadFit
 import { readinessView } from "@/lib/readiness";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
+import { ConnectedPrepareSetupSelector } from "@/components/PrepareSetupSelector";
 import { PrepareSettingsSummary, STARTER_NOTICE } from "@/components/PrepareSettingsSummary";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -34,6 +35,7 @@ export default function LiveWorkspace() {
   const convert = useSession((s) => s.convert);
   const runDoctor = useSession((s) => s.runDoctor);
   const runConvert = useSession((s) => s.runConvert);
+  const runConvertWithoutSetup = useSession((s) => s.runConvertWithoutSetup);
   const prepareMode = useSession((s) => s.prepareMode);
   const setPrepareMode = useSession((s) => s.setPrepareMode);
   const preview = useSession((s) => s.preview);
@@ -165,6 +167,7 @@ export default function LiveWorkspace() {
         </Card>
       )}
 
+      {file.ext !== "stl" && !prepareBlocked && <ConnectedPrepareSetupSelector projectPath={file.path} result={convert.data ?? preview.data} disabled={converting} onPrepareWithoutSetup={() => void runConvertWithoutSetup()} />}
       {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}
       {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={prepareBlocked ? undefined : () => runConvert("preserve")} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}

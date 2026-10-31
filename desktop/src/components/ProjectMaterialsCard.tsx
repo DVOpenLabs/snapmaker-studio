@@ -16,7 +16,9 @@ import {
   type Choices, type ChoiceAction, type MaterialCandidate, type MaterialInventory, type MaterialPreset, type MaterialPresetList, type MaterialSelection,
   type MaterialSlot, type PresetStatus, type ProjectMaterialsAnalysis, type SlotChoice,
 } from "@/lib/projectMaterials";
+import { prepareBlockedBy, outcomeIsGood, topologyOutcome, topologyOutcomeLine, topologyToSend } from "@/lib/prepareSetup";
 import { PROVIDERS, providerArgs, useProvider, type ProviderKind } from "@/store/provider";
+import { useSession } from "@/store/session";
 
 // UI wording that is the screen's own: states, buttons, headings. Everything that explains a
 // recommendation, a mapping, a guard conflict or a change comes from the engine and is shown as sent.
@@ -375,11 +377,15 @@ export type ReviewState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: string }
-  | { status: "done"; result: ConversionResult };
+  /** `topologyRequested`: the review was asked with a printer setup; what the engine did with it is read from the result. */
+  | { status: "done"; result: ConversionResult; topologyRequested?: boolean };
 
 export function BlockedPanel({ result, onBack }: { result: ConversionResult; onBack: () => void }) {
   const facts = blockedFacts(result);
   if (!facts) return null;
+  // A refused printer setup is the engine's own report (settings_summary.setup); its reasons and the stock alternative are shown as written.
+  const setup = result.settings_summary?.setup;
+  const setupRefused = setup?.state === "invalid";
   return (
     <div className="space-y-2 rounded-md border border-risk/50 bg-risk/5 p-3" role="alert" data-testid="blocked">
       <p className="flex items-center gap-1.5 text-sm font-semibold text-risk"><AlertTriangle className="h-4 w-4" />{COPY.blocked}</p>
@@ -391,6 +397,12 @@ export function BlockedPanel({ result, onBack }: { result: ConversionResult; onB
           </li>
         ))}
       </ul>
+      {setupRefused && (
+        <div className="space-y-1 text-xs" data-testid="blocked-setup">
+          <ul className="list-disc pl-5">{(setup.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}</ul>
+          {setup.stock_alternative && <p className="text-muted-foreground">{setup.stock_alternative}</p>}
+        </div>
+      )}
       {/* The engine's message often already carries its resolution; say it once. */}
       {facts.resolution && !(facts.message ?? "").includes(facts.resolution) && (
         <p className="text-xs text-muted-foreground" data-testid="blocked-resolution">{facts.resolution}</p>
@@ -448,9 +460,15 @@ export function ReviewPanel({ review, providerLabel, onPrepare, onBack, busy }: 
   }
   if (review.result.blocked) return <BlockedPanel result={review.result} onBack={onBack} />;
   const summary = review.result.settings_summary?.project_materials;
+  const outcome = topologyOutcome(!!review.topologyRequested, review.result);
+  const setupLine = topologyOutcomeLine(outcome);
   return (
     <ReviewBox>
       <p className="text-sm font-semibold">{COPY.review}</p>
+      {setupLine && (
+        <p className={`rounded-md border p-2 text-xs ${outcomeIsGood(outcome) ? "border-primary/40 bg-primary/5" : "border-risk/40 bg-risk/5"}`}
+          role={outcomeIsGood(outcome) ? "status" : "alert"} data-testid="review-setup-outcome" data-state={outcome.state}>{setupLine}</p>
+      )}
       <ProjectMaterialsFidelity summary={summary} />
       <p className="text-[11px] text-muted-foreground">
         Spool details{providerLabel ? ` are from ${providerLabel} at selection time` : " are what you selected"}; they are not read from the file. Studio never writes them into the project.
@@ -593,6 +611,8 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, on
   const [review, setReview] = useState<ReviewState>({ status: "idle" });
   const [warning, setWarning] = useState<string | null>(null);
   const generation = useRef(0);
+  // The printer setup chosen for Prepare. The review must be asked with the same one the final Prepare will send, and is void if it moves.
+  const setupToken = useSession((s) => s.prepareSetup.token);
   const [forget, setForget] = useState<{ candidate: MaterialCandidate; opener: HTMLButtonElement } | null>(null);
   const [forgetBusy, setForgetBusy] = useState(false);
   const [forgetNote, setForgetNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -644,17 +664,24 @@ export function ProjectMaterialsCard({ path, mode, onPrepare, onActiveChange, on
   useEffect(() => {
     reviewGen.current += 1;
     setReview((r) => (r.status === "idle" ? r : { status: "idle" }));
-  }, [choices, mode, path, argsKey]);
+  }, [choices, mode, path, argsKey, setupToken]);
 
   async function onReview() {
     const gen = reviewGen.current;
-    setReview({ status: "loading" });
+    const setup = useSession.getState().prepareSetup;
+    const sent = setup.token;
     setWarning(null);
+    // A setup that cannot be used pauses the review as it pauses Prepare; it never quietly falls back to the stock behaviour.
+    const paused = prepareBlockedBy(setup, path);
+    if (paused) { setReview({ status: "error", error: paused }); return; }
+    setReview({ status: "loading" });
+    const topology = topologyToSend(setup, path);
+    const stale = () => gen !== reviewGen.current || useSession.getState().prepareSetup.token !== sent;
     try {
-      const result = await convert(path, undefined, mode, true, selections);
-      if (gen === reviewGen.current) setReview({ status: "done", result });
+      const result = await (topology ? convert(path, undefined, mode, true, selections, topology) : convert(path, undefined, mode, true, selections));
+      if (!stale()) setReview({ status: "done", result, topologyRequested: !!topology });
     } catch (e: any) {
-      if (gen === reviewGen.current) setReview({ status: "error", error: String(e?.message ?? e) });
+      if (!stale()) setReview({ status: "error", error: String(e?.message ?? e) });
     }
   }
 
