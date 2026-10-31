@@ -15,7 +15,14 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 
-_TOKEN = re.compile(r"\A(?:[^{}\x00\r\n]*|\{(?:job_dir|output_dir|input)\})+\Z")
+_PLACEHOLDER = re.compile(r"\{(?:job_dir|output_dir|input)\}")
+_FORBIDDEN = re.compile(r"[{}\x00\r\n]")
+
+
+def _template_ok(arg: object) -> bool:
+    """Only the three known placeholders may contain braces. Linear time: the previous single pattern had the (a*)+
+    shape and backtracked exponentially on a long argument that failed late."""
+    return isinstance(arg, str) and not _FORBIDDEN.search(_PLACEHOLDER.sub("", arg))
 _SAFE_NAME = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _KIND = {".3mf": "3mf", ".stl": "stl", ".obj": "obj", ".glb": "glb", ".png": "png", ".json": "json"}
 _MAX_SCAN_ENTRIES = 10000
@@ -88,7 +95,7 @@ class CliRunner:
         if not self.job_root.is_dir():
             raise RunnerError("job_root_invalid")
         if not isinstance(argument_template, (tuple, list)) or not all(
-                isinstance(arg, str) and _TOKEN.fullmatch(arg) for arg in argument_template):
+                _template_ok(arg) for arg in argument_template):
             raise RunnerError("argument_template_invalid")
         if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or not 0 < timeout_s <= 3600:
             raise RunnerError("timeout_invalid")

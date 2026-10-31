@@ -17,3 +17,12 @@ Evidence for this slice: `fixture-tested` and `mock-service-tested`. No local se
 ## Review follow-up dispositions
 
 F1-F5 are addressed in the bounded LUMINA1 repair. F6 remains deferred: environment isolation, staged-input size limits, Windows reserved output names, job-directory cleanup on pre-launch refusal and wait-error reporting need a separate review. F7 remains deferred: write-origin registration is process-global and needs a scoped ownership design. F8's kind-source statement is corrected above; streaming large artifact downloads remains deferred. F9 remains deferred: direct `cancel(pid)`, pre-health identity refusal and temporary-directory lifecycle need focused tests. F10 remains deferred: runtime discovery evidence still has a test-provenance default and should move to test/docs metadata.
+
+## Known limits (review follow-ups, not closed)
+- Timeout and cancel stop only the direct child. There is no job object or process group, so a descendant the engine started can keep running and keep writing into its job directory after the runner returns an error; each such run also leaves two pipe handles and reader threads until the descendant exits. Planned: a kill-on-close Windows Job Object / POSIX process group for processes this runner started.
+- The output-root link check is check-then-scan; a descendant that keeps running can race it.
+- Job directories are not removed after a refused or failed run.
+- The runner can launch any configured executable. Before it is wired to a caller it needs a policy that keeps it from running a slicer (Studio does not slice).
+- Lifecycle tests launch `sys.executable`; under a Windows venv launcher a job object could mask descendant survival.
+
+Usability label: experimental library, fixture-tested and mock-service-tested, with one real loopback transport-boundary test. Not exercised against a real Lumina or engine, not wired to any caller or UI.

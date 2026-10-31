@@ -348,3 +348,15 @@ def test_cli_runner_output_scan_refuses_a_replaced_output_root(monkeypatch, tmp_
     plain.write_text("x")
     with pytest.raises(RunnerError, match="artifact_scan_failed"):
         runner._output_size(plain)
+
+
+def test_template_validation_is_linear_on_a_long_argument_that_fails_late(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    started = time.monotonic()
+    with pytest.raises(RunnerError):
+        CliRunner(sys.executable, root, ("a" * 4000 + "{profile}",))
+    with pytest.raises(RunnerError):
+        CliRunner(sys.executable, root, ("a" * 4000 + "}",))
+    assert time.monotonic() - started < 1.0
+    CliRunner(sys.executable, root, ("--in", "{input}", "--out={output_dir}/x", "{job_dir}"))
