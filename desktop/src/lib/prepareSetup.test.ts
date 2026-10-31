@@ -144,9 +144,9 @@ describe("topologyOutcome (engine-authoritative)", () => {
     expect(line).toMatch(/Recommended preparation builds stock U1 values/);
     expect(outcomeIsGood(o)).toBe(false);
   });
-  it("is unknown, not used, when the engine says nothing; used only on an explicit applied report", () => {
+  it("is unknown, not used, when the engine says nothing or omits applied; used only on applied: true", () => {
     expect(topologyOutcome(true, result(undefined), sent).state).toBe("unknown");
-    expect(topologyOutcome(true, result({ state: "valid", heads: 4, slots: 8, unbound: [] }), sent).state).toBe("used");
+    expect(topologyOutcome(true, result({ state: "valid", heads: 4, slots: 8, unbound: [] }), sent).state).toBe("unknown");   // older engine: no applied field
     expect(topologyOutcome(true, result({ state: "valid", applied: true, heads: 4, slots: 8, unbound: [] }), sent).state).toBe("used");
     expect(topologyOutcome(false, result({ state: "valid", applied: true }), sent).state).toBe("not_requested");
   });

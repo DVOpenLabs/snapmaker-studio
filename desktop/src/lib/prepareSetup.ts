@@ -162,7 +162,7 @@ export function setupStatusLine(sel: PrepareSetupSelection): string {
 /** What the engine reports about the printer setup it was sent: `settings_summary.setup` (backend convert.py / repair.py). */
 export interface EngineSetupReport {
   state?: string;
-  /** Present and false only when the engine read a valid setup but the file has no per-head settings to apply it to. */
+  /** The engine states whether a valid setup was applied: true for Preserve; false for Recommended or a file with nothing per-head. Absent means unknown. */
   applied?: boolean;
   heads?: number;
   slots?: number;
@@ -187,8 +187,9 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
  * What the engine says about the setup it was sent. Choosing a setup is not proof the engine used it, so each answer comes only
  * from the engine's own `settings_summary.setup` (backend convert.py / repair.py):
  *   state "invalid" (or a blocked result)  -> blocked: nothing was written; its reasons and the stock alternative are carried through
- *   state "valid" with applied === false   -> unused: read, but the file had nothing per-head to apply it to
- *   state "valid" otherwise                -> used: the engine echoes the heads, slots and unbound slots it applied
+ *   state "valid" with applied === false   -> unused: read but not applied; not_applied_reason says why
+ *   state "valid" with applied === true    -> used: the engine echoes the heads, slots and unbound slots it applied
+ *   state "valid" with no applied field   -> unknown (an engine that does not say)
  * Anything else, including an absent field, is unknown. A chosen setup is never success by default.
  */
 export function topologyOutcome(requested: boolean, result: {
@@ -206,6 +207,8 @@ export function topologyOutcome(requested: boolean, result: {
   // The engine echoing a different shape than the one sent is not confirmation that this setup was the one used.
   if (expected && ((heads !== null && heads !== expected.heads) || (slots !== null && slots !== expected.slots))) return { state: "unknown" };
   if (rep.applied === false) return { state: "unused", heads, slots, reason: typeof rep.not_applied_reason === "string" ? rep.not_applied_reason : null };
+  // Only an explicit applied === true is a confirmed use; a report with no applied field (an older engine) is unknown.
+  if (rep.applied !== true) return { state: "unknown" };
   return { state: "used", heads, slots, unbound: Array.isArray(rep.unbound) ? strings(rep.unbound) : null };
 }
 

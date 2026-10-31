@@ -111,7 +111,7 @@ describe("Prepare with a printer setup: the journey", () => {
     expect(status().textContent).toContain("4 toolheads, 8 logical slots");
     expect(evaluate).toHaveBeenCalledWith({ host: "u1-demo.local", port: 7125 });
 
-    convert.mockResolvedValue(copyOf(A, { state: "valid", heads: 4, slots: 8, unbound: [] }));
+    convert.mockResolvedValue(copyOf(A, { state: "valid", applied: true, heads: 4, slots: 8, unbound: [] }));
     click("Review settings"); await settle();
     expect(convert).toHaveBeenLastCalledWith(A.path, undefined, "preserve", true, undefined, expect.objectContaining({ schema_version: "topology/1" }));
     expect(sentTopology()!.slots).toHaveLength(8);
@@ -149,7 +149,7 @@ describe("Prepare with a printer setup: the journey", () => {
     evaluate.mockResolvedValue(evalOk(4, 8));
     await openSettings();
     readHost("u1-demo.local"); await settle();
-    convert.mockResolvedValue(copyOf(A, { state: "valid", heads: 4, slots: 4, unbound: [] }));
+    convert.mockResolvedValue(copyOf(A, { state: "valid", applied: true, heads: 4, slots: 4, unbound: [] }));
     click("Review settings"); await settle();
     expect(screen.getByTestId("setup-outcome").getAttribute("data-state")).toBe("unknown");
   });
@@ -197,7 +197,7 @@ describe("Prepare with a printer setup: the journey", () => {
     click("Review settings"); await settle();
     click("Clear setup");
     expect(status().getAttribute("data-state")).toBe("none");
-    await act(async () => { late.resolve(copyOf(A, { state: "valid", heads: 4, slots: 8, unbound: [] })); await Promise.resolve(); }); await settle();
+    await act(async () => { late.resolve(copyOf(A, { state: "valid", applied: true, heads: 4, slots: 8, unbound: [] })); await Promise.resolve(); }); await settle();
     expect(screen.queryByTestId("setup-outcome")).toBeNull();
     convert.mockResolvedValue(copyOf(A));
     click("Create U1 copy"); await settle();

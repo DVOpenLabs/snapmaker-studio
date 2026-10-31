@@ -53,7 +53,7 @@ describe("usePrepare with a chosen printer setup", () => {
     const t = topo(4, 8);
     setups.evaluateSetup.mockResolvedValue({ report: {}, read: {}, topology: t });
     await act(async () => { await read(); });
-    api.convert.mockResolvedValue(result("a", { settings_summary: { warnings: [], setup: { state: "valid", heads: 4, slots: 8, unbound: [] } } }));
+    api.convert.mockResolvedValue(result("a", { settings_summary: { warnings: [], setup: { state: "valid", applied: true, heads: 4, slots: 8, unbound: [] } } }));
     const { result: hook } = renderHook(() => usePrepare(false));
     act(() => hook.current.startPreview(A));
     await waitFor(() => expect(hook.current.preview).not.toBeNull());
