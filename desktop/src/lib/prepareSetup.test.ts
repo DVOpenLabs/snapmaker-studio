@@ -162,6 +162,11 @@ describe("topologyOutcome (engine-authoritative)", () => {
     expect(o).toEqual({ state: "blocked", reasons: ["3 heads"], alternative: "Prepare without a printer setup." });
     expect(outcomeIsGood(o)).toBe(false);
   });
+  it("does not double the full stop when a read failure already ends its sentence", () => {
+    const sel = selectionFromFailure({ label: "host:1", projectPath: "p", token: 1 } as never, new Error("That address was refused."));
+    expect(setupStatusLine(sel)).toBe("host:1: That address was refused.");
+    expect(prepareBlockedBy(sel, "p")).toContain("can't be used: That address was refused. Read it again");
+  });
   it("starts the engine's reason with a capital letter after the sentence it follows", () => {
     const line = topologyOutcomeLine({ state: "blocked", reasons: ["the printer setup has 3 physical heads"], alternative: null });
     expect(line).toContain("nothing was prepared. The printer setup has 3 physical heads.");

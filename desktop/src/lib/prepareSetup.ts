@@ -132,6 +132,9 @@ export function selectionFromEvaluate(base: SelectionBase, res: unknown): Prepar
   return { status: "ready", ...base, topology: checked.topology, summary: describeTopology(checked.topology) };
 }
 
+/** A reason that already ends its sentence (the engine and the host often do) gets no second full stop. */
+const endSentence = (t: string) => (/[.!?]$/.test(t) ? t : `${t}.`);
+
 export function selectionFromFailure(base: SelectionBase, error: unknown): PrepareSetupSelection {
   const reason = error instanceof Error && error.message ? error.message : "the read failed";
   return { status: "failed", ...base, reason };
@@ -150,7 +153,7 @@ export function prepareBlockedBy(selection: PrepareSetupSelection, projectPath: 
     case "ready": return null;
     case "reading": return "Studio is still reading the printer setup. Wait for it to finish, or clear it.";
     default:
-      return `The chosen printer setup (${sel.label}) can't be used: ${sel.reason}. Read it again, clear it, or choose Prepare without a setup.`;
+      return `The chosen printer setup (${sel.label}) can't be used: ${endSentence(sel.reason)} Read it again, clear it, or choose Prepare without a setup.`;
   }
 }
 
@@ -165,7 +168,7 @@ export function setupStatusLine(sel: PrepareSetupSelection): string {
     case "none": return "No setup chosen. Prepare uses Studio's stock four-toolhead U1 behaviour.";
     case "reading": return `Reading ${sel.label}...`;
     case "ready": return `Selected setup reported by ${sel.label}: ${sel.summary.text}. Whether Prepare applies it depends on the preparation mode; the engine reports what it did.`;
-    default: return `${sel.label}: ${sel.reason}.`;
+    default: return `${sel.label}: ${endSentence(sel.reason)}`;
   }
 }
 
