@@ -162,4 +162,8 @@ describe("topologyOutcome (engine-authoritative)", () => {
     expect(o).toEqual({ state: "blocked", reasons: ["3 heads"], alternative: "Prepare without a printer setup." });
     expect(outcomeIsGood(o)).toBe(false);
   });
+  it("starts the engine's reason with a capital letter after the sentence it follows", () => {
+    const line = topologyOutcomeLine({ state: "blocked", reasons: ["the printer setup has 3 physical heads"], alternative: null });
+    expect(line).toContain("nothing was prepared. The printer setup has 3 physical heads.");
+  });
 });

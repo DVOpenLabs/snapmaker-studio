@@ -225,6 +225,8 @@ export function topologyOutcome(requested: boolean, result: {
 const shape = (heads: number | null, slots: number | null) =>
   heads !== null && slots !== null ? ` (${heads} ${heads === 1 ? "toolhead" : "toolheads"}, ${slots} logical ${slots === 1 ? "slot" : "slots"})` : "";
 
+const sentenceCase = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
 export function topologyOutcomeLine(o: TopologyOutcome): string | null {
   switch (o.state) {
     case "used": {
@@ -233,7 +235,7 @@ export function topologyOutcomeLine(o: TopologyOutcome): string | null {
       return `The engine reports it used this printer setup${shape(o.heads, o.slots)}.${unbound}`;
     }
     case "unused": return `The engine read this printer setup${shape(o.heads, o.slots)} but did not apply it. ${o.reason ?? "The engine gave no reason."}`;
-    case "blocked": return `The engine could not use this printer setup, so nothing was prepared.${o.reasons.length ? ` ${o.reasons.join("; ")}.` : ""}${o.alternative ? ` ${o.alternative}` : ""}`;
+    case "blocked": return `The engine could not use this printer setup, so nothing was prepared.${o.reasons.length ? ` ${sentenceCase(o.reasons.join("; "))}.` : ""}${o.alternative ? ` ${o.alternative}` : ""}`;
     case "unknown": return "The engine did not say whether it used this printer setup, so Studio cannot confirm it did.";
     default: return null;
   }
