@@ -38,8 +38,13 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
               "optimizations": [], "filament": {"count": filament_count(work)},
               "dry_run": dry_run}
     if setup["state"] == "valid":
-        report["setup"] = {"state": "valid", "heads": setup["heads"], "slots": setup["slots"],
-                           "unbound": list(setup["unbound"])}
+        # The setup is used only by Preserve (below). Recommended builds stock U1 values, so say it was not applied.
+        report["setup"] = {"state": "valid", "applied": mode == "preserve", "heads": setup["heads"],
+                           "slots": setup["slots"], "unbound": list(setup["unbound"])}
+        if mode != "preserve":
+            report["setup"]["not_applied_reason"] = (
+                "Recommended preparation builds stock U1 values and does not use a printer setup. "
+                "Use Preserve to keep per-head values.")
 
     report["normalizations"] = apply_clamps(work, load_rules())
     for change in report["normalizations"]:
