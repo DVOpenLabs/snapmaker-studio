@@ -63,8 +63,15 @@ describe("describeTopology", () => {
   it("counts what the host reported and does not call anything ready", () => {
     const s = describeTopology(topo(4, 8, 8));
     expect(s).toMatchObject({ heads: 4, slots: 8, lanes: 8, boundSlots: 8 });
-    expect(s.text).toBe("4 toolheads, 8 logical slots, 8 feeder lanes; 8 of 8 slots have a reported lane binding");
+    expect(s.text).toBe("4 toolheads, 8 logical slots, 8 feeder lanes; 8 of 8 slots are bound (8 to feeder lanes, 0 directly to toolheads)");
     expect(s.text).not.toMatch(/ready|will print|compatible|fits/i);
+  });
+  it("reports slots bound straight to a toolhead apart from feeder-lane bindings", () => {
+    const t = topo(4, 8, 0, { units: [], bindings: Array.from({ length: 8 }, (_, i) => ({ slot_id: `slot:${i}`, target: `head:${i % 4}`, evidence: [] })) } as never);
+    const s = describeTopology(t);
+    expect(s).toMatchObject({ lanes: 0, boundSlots: 8, laneBound: 0, headBound: 8 });
+    expect(s.text).toBe("4 toolheads, 8 logical slots, 0 feeder lanes; 8 of 8 slots are bound (0 to feeder lanes, 8 directly to toolheads)");
+    expect(s.text).not.toMatch(/lane binding/);
   });
   it("counts unbound slots from the bindings, never assuming them", () => {
     expect(describeTopology(topo(4, 8, 4)).boundSlots).toBe(4);
@@ -137,11 +144,11 @@ describe("topologyOutcome (engine-authoritative)", () => {
   const result = (setup: object | undefined, blocked = false) => ({ blocked, settings_summary: setup === undefined ? null : { setup } });
   it("reads a Recommended-mode report as not applied and shows the engine's own reason", () => {
     const o = topologyOutcome(true, result({ state: "valid", applied: false, heads: 4, slots: 8, unbound: [],
-      not_applied_reason: "Recommended preparation builds stock U1 values and does not use a printer setup. Use Preserve to keep per-head values." }), sent);
+      not_applied_reason: "U1 starter settings build stock U1 values and do not use a printer setup. Use Preserve creator settings to keep per-head values." }), sent);
     expect(o.state).toBe("unused");
     const line = topologyOutcomeLine(o)!;
     expect(line).toMatch(/did not apply it/);
-    expect(line).toMatch(/Recommended preparation builds stock U1 values/);
+    expect(line).toMatch(/U1 starter settings build stock U1 values/);
     expect(outcomeIsGood(o)).toBe(false);
   });
   it("is unknown, not used, when the engine says nothing or omits applied; used only on applied: true", () => {

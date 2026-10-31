@@ -57,7 +57,8 @@ def test_recommended_mode_reports_the_setup_as_not_applied_and_writes_stock_valu
     assert all(len(out[k]) == 4 for k in FILAMENT_SCOPE + HEAD_SCOPE)
     report = res.settings_summary["setup"]
     assert report["state"] == "valid" and report["applied"] is False
-    assert "Recommended" in report["not_applied_reason"] and "Preserve" in report["not_applied_reason"]
+    assert "U1 starter settings" in report["not_applied_reason"] and "Preserve creator settings" in report["not_applied_reason"]
+    assert "Recommended" not in report["not_applied_reason"]
 
 
 def test_dict_form_of_a_valid_setup_is_accepted(tmp_path):

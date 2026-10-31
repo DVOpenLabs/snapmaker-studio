@@ -43,8 +43,11 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
                            "slots": setup["slots"], "unbound": list(setup["unbound"])}
         if mode != "preserve":
             report["setup"]["not_applied_reason"] = (
-                "Recommended preparation builds stock U1 values and does not use a printer setup. "
-                "Use Preserve to keep per-head values.")
+                "U1 starter settings build stock U1 values and do not use a printer setup. "
+                "Use Preserve creator settings to keep per-head values."
+                if mode == "u1" else
+                f"The {mode} preparation mode does not use a printer setup. "
+                "Use Preserve creator settings to keep per-head values.")
 
     report["normalizations"] = apply_clamps(work, load_rules())
     for change in report["normalizations"]:

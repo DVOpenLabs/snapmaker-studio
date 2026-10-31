@@ -25,8 +25,12 @@ export interface SetupSummary {
   heads: number;
   slots: number;
   lanes: number;
-  /** Slots with a binding to a lane. Counted from the reported bindings, never inferred. */
+  /** Slots with any reported binding. Counted from the reported bindings, never inferred. */
   boundSlots: number;
+  /** Of those, slots bound to a feeder lane. */
+  laneBound: number;
+  /** Of those, slots bound directly to a toolhead (a printer with no feeder). */
+  headBound: number;
   text: string;
 }
 
@@ -96,10 +100,16 @@ export function checkTopology(raw: unknown): TopologyCheck {
 
 export function describeTopology(t: Topology): SetupSummary {
   const lanes = t.units.reduce((n, u) => n + u.lanes.length, 0);
+  const laneIds = new Set(t.units.flatMap((u) => u.lanes.map((l) => l.id)));
+  const headIds = new Set(t.heads.map((h) => h.id));
+  const slotsBoundTo = (ids: Set<string>) => new Set(t.bindings.filter((b) => b.target != null && ids.has(b.target)).map((b) => b.slot_id)).size;
+  const laneBound = slotsBoundTo(laneIds), headBound = slotsBoundTo(headIds);
   const boundSlots = new Set(t.bindings.filter((b) => b.target != null).map((b) => b.slot_id)).size;
+  // A slot bound straight to a toolhead (a printer with no feeder) is not a feeder-lane binding; the two are reported apart.
   const text = `${plural(t.heads.length, "toolhead", "toolheads")}, ${plural(t.slots.length, "logical slot", "logical slots")}, `
-    + `${plural(lanes, "feeder lane", "feeder lanes")}; ${boundSlots} of ${t.slots.length} slots have a reported lane binding`;
-  return { heads: t.heads.length, slots: t.slots.length, lanes, boundSlots, text };
+    + `${plural(lanes, "feeder lane", "feeder lanes")}; ${boundSlots} of ${t.slots.length} slots are bound `
+    + `(${laneBound} to feeder lanes, ${headBound} directly to toolheads)`;
+  return { heads: t.heads.length, slots: t.slots.length, lanes, boundSlots, laneBound, headBound, text };
 }
 
 export interface SelectionBase { token: number; projectPath: string; label: string }

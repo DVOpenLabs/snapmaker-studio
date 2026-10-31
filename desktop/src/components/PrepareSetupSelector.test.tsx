@@ -51,7 +51,7 @@ describe("PrepareSetupSelector", () => {
     view(selectionFromEvaluate(base, { topology: topo(heads, slots) }));
     expect(status().dataset.state).toBe("ready");
     expect(status().textContent).toContain(`${heads} toolheads, ${slots} logical slots`);
-    expect(status().textContent).toContain("0 of " + slots + " slots have a reported lane binding");
+    expect(status().textContent).toContain("0 of " + slots + " slots are bound (0 to feeder lanes, 0 directly to toolheads)");
     expect(screen.queryByTestId("setup-paused")).toBeNull();
     expect(screen.getByTestId("prepare-without-setup")).toBeTruthy();
   });
