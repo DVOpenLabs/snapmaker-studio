@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/layout";
 import { open3mfDialog, compatibilityCheck, type CompatibilityResult, type PrepareMode } from "@/api";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
+import { ConnectedPrepareSetupSelector } from "@/components/PrepareSetupSelector";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
 import { PrepareRefusal } from "@/components/PrepareRefusal";
 import { BlockedPanel, ProjectMaterialsCard, ProjectMaterialsFidelity } from "@/components/ProjectMaterialsCard";
@@ -17,6 +18,7 @@ import { Copy, Stethoscope } from "lucide-react";
 import { COMPAT_COPY, sortFindings, severityLabel, severityToken, countFindings, prepareGate, GATE_COPY } from "@/lib/compatibility";
 import { useModelPath } from "@/hooks/useModelPath";
 import { usePrepare } from "@/hooks/usePrepare";
+import { useSession } from "@/store/session";
 import { isExt } from "@/lib/modelPath";
 import { PlacementCard } from "@/components/PlacementCard";
 import { PreflightCard } from "@/components/PreflightCard";
@@ -56,7 +58,7 @@ export default function Compatibility() {
   async function pick() {
     const p = await open3mfDialog();
     if (!p) return;
-    ctl.reset(); override(p); setResult(null); setPrepareMode("preserve");
+    ctl.reset(); useSession.getState().clearPrepareSetup(); override(p); setResult(null); setPrepareMode("preserve");
     checkM.mutate(p);
   }
 
@@ -196,6 +198,10 @@ export default function Compatibility() {
                   ? GATE_COPY[gate]
                   : "This model may be fine, but the project settings are for another printer. Studio can prepare a U1 profile copy so Orca opens it with U1-compatible settings."}
               </p>
+              {path && !blocked && (
+                <ConnectedPrepareSetupSelector projectPath={path} disabled={ctl.pending || ctl.previewing} result={ctl.result ?? ctl.preview}
+                  onPrepareWithoutSetup={materialsActive ? undefined : () => { ctl.startWithoutSetup(path, prepareMode).catch(() => { /* shown by PrepareRefusal */ }); }} />
+              )}
               <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} blocked={blocked} onCustom={() => path && startPreview(path)} previewing={ctl.previewing || ctl.pending} />
               {preview && <PrepareSettingsSummary summary={preview.settings_summary} mode={preview.prepare_mode} isStl={false} preview onPreparePreserve={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("preserve"); startPrepare(path, "preserve"); } }} onPrepareRecommended={materialsActive ? undefined : () => { if (path && !blocked) { setPrepareMode("recommended"); startPrepare(path, "recommended"); } }} />}
               {ctl.previewError != null && <p className="text-sm text-risk">Couldn&apos;t review settings: {(ctl.previewError as Error).message}</p>}

@@ -77,7 +77,8 @@ export interface HostReadSummary {
   reason: string | null; requests: string[]; retries: number; notes: string[];
 }
 
-export interface EvaluateResponse { report: SetupReport; read: HostReadSummary }
+/** `topology` is the setup the host reported, or null when it reported none; Studio never fills it in. */
+export interface EvaluateResponse { report: SetupReport; read: HostReadSummary; topology: Topology | null }
 export interface ListResponse {
   adapters: { id: string; kind: string; versions_supported: string[]; ttl_s: number }[];
   coverage: string;
