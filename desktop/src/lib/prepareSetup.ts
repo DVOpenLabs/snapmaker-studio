@@ -154,7 +154,7 @@ export function setupStatusLine(sel: PrepareSetupSelection): string {
   switch (sel.status) {
     case "none": return "No setup chosen. Prepare uses Studio's stock four-toolhead U1 behaviour.";
     case "reading": return `Reading ${sel.label}...`;
-    case "ready": return `Prepare will use the setup ${sel.label} reported: ${sel.summary.text}.`;
+    case "ready": return `Selected setup reported by ${sel.label}: ${sel.summary.text}. Whether Prepare applies it depends on the preparation mode; the engine reports what it did.`;
     default: return `${sel.label}: ${sel.reason}.`;
   }
 }
