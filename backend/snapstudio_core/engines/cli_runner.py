@@ -227,6 +227,14 @@ class CliRunner:
         stack: list[tuple[Path, int]] = [(output_dir, 0)]
         visited = 0
         try:
+            # The root is checked like every entry: an engine that swaps its (initially empty) output
+            # directory for a link or junction must not make an outside tree look like job output.
+            root = os.lstat(output_dir)
+            if (output_dir.is_symlink() or getattr(output_dir, "is_junction", lambda: False)()
+                    or getattr(root, "st_file_attributes", 0) & _REPARSE_POINT):
+                raise RunnerError("artifact_symlink_refused")
+            if not stat.S_ISDIR(root.st_mode):
+                raise RunnerError("artifact_scan_failed")
             while stack:
                 directory, depth = stack.pop()
                 with os.scandir(directory) as entries:

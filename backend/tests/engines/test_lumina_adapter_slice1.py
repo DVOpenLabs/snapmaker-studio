@@ -325,3 +325,26 @@ def test_cli_runner_output_scan_refuses_oserror_junctions_and_unbounded_trees(mo
     monkeypatch.setattr("snapstudio_core.engines.cli_runner._MAX_SCAN_ENTRIES", 1)
     with pytest.raises(RunnerError, match="artifact_scan_limit_exceeded"):
         runner._output_size(output)
+
+
+def test_cli_runner_output_scan_refuses_a_replaced_output_root(monkeypatch, tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ())
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("not job output")
+    output = tmp_path / "output"
+    output.mkdir()
+    # A junction/reparse-point root, however the engine made it, must be refused before any entry is read.
+    monkeypatch.setattr(Path, "is_junction", lambda self: self == output, raising=False)
+    with pytest.raises(RunnerError, match="artifact_symlink_refused"):
+        runner._output_size(output)
+    with pytest.raises(RunnerError, match="artifact_symlink_refused"):
+        runner._manifest(output)
+    monkeypatch.undo()
+    # A plain file standing where the output directory should be is also refused, not scanned.
+    plain = tmp_path / "plain"
+    plain.write_text("x")
+    with pytest.raises(RunnerError, match="artifact_scan_failed"):
+        runner._output_size(plain)
