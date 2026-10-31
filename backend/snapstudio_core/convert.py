@@ -21,7 +21,7 @@ from .repair import repair as do_repair
 from .validate import validate as do_validate
 from .u1_identity import is_u1_clean
 from .profile import load_profile
-from .preserve import config_diff, display_value, machine_compat_keys
+from .preserve import assess_setup, config_diff, display_value, machine_compat_keys
 
 SETTINGS = "Metadata/project_settings.config"
 
@@ -75,6 +75,17 @@ def _engine_version() -> str:
         return version("snapmaker-studio")
     except PackageNotFoundError:
         return "unknown"
+
+
+def _with_unused_setup(summary: dict, setup: dict) -> dict:
+    """A starter project has no per-head print settings, so a valid printer setup changes nothing in it.
+    Say so rather than dropping the setup without a word."""
+    if setup["state"] == "valid":
+        summary["setup"] = {"state": "valid", "applied": False, "heads": setup["heads"], "slots": setup["slots"],
+                            "unbound": list(setup["unbound"])}
+        summary.setdefault("warnings", []).append(
+            "The printer setup was read but not applied: this file has no print settings to keep per head.")
+    return summary
 
 
 def _starter_summary(*, geometry_only: bool) -> dict:
@@ -419,6 +430,17 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         prepare_mode = "recommended"
     if prepare_mode not in ("preserve", "recommended"):
         raise ValueError("prepare_mode must be 'preserve' or 'recommended'")
+    setup = assess_setup(topology)
+    if setup["state"] == "invalid":
+        # A setup the person supplied but that cannot be used is never a licence to discard project entries.
+        # Nothing is written. Preparing without a setup is a separate request.
+        message = ("The printer setup cannot be used: " + "; ".join(setup["reasons"]) + ". Nothing was prepared. "
+                   "Read the printer again, or prepare without a setup: per-head values are then mapped to the "
+                   "four U1 toolheads and entries beyond four are dropped.")
+        return ConversionResult(
+            "blocked", "", "", False, [message], prepare_mode,
+            {"setup": {"state": "invalid", "reasons": list(setup["reasons"]),
+                       "stock_alternative": "Prepare without a printer setup."}}, blocked=True)
     out_parent = Path(out_dir) if out_dir else None
     if out_parent and not dry_run:
         out_parent.mkdir(parents=True, exist_ok=True)
@@ -433,7 +455,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             tm.save(out)
         res = do_validate(tm, against=None)
         return _finish("stl", tm, out, res, prepare_mode="starter",
-                       settings_summary=_starter_summary(geometry_only=False))
+                       settings_summary=_with_unused_setup(_starter_summary(geometry_only=False), setup))
 
     tm = ThreeMF.open(src)
     if not tm.has_part(SETTINGS):
@@ -457,7 +479,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             summary["mapped_to_u1"] = carried["evidence"]
             summary["kept_count"] = len(carried["evidence"])
         return _finish("3mf-geometry", wrapped, out, res, prepare_mode="starter",
-                       settings_summary=summary)
+                       settings_summary=_with_unused_setup(summary, setup))
 
     # 3MF: repair into U1, validate against the source fingerprint (preservation).
     src_fp = compute_fingerprint(tm)
@@ -490,6 +512,8 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    if outcome.report.get("setup"):
+        summary["setup"] = outcome.report["setup"]
     supports_note = _supports_note(tm, before, after, prepare_mode)
     if supports_note:
         summary["supports_note"] = supports_note

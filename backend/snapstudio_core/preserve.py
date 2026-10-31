@@ -18,37 +18,78 @@ PER_EXTRUDER_VECTORS = frozenset(POLICY["per_extruder_vectors"])
 VALID_BED_TYPES = frozenset(POLICY["valid_bed_types"])
 
 
+def load_scopes() -> dict:
+    return json.loads((files("snapstudio_core.data") / "u1_setting_scopes.json").read_text("utf-8"))
+
+
+SCOPES = load_scopes()
+LOGICAL_FILAMENT = frozenset(SCOPES["logical_filament"])     # one entry per project filament
+PHYSICAL_HEAD = frozenset(SCOPES["physical_head"])           # one entry per physical extruder
+
+
 def machine_compat_keys(profile: dict) -> set[str]:
     """The profile-owned (category B) keys; category A is deliberately absent."""
     return set(profile["keys"]) - CATEGORY_A
 
 
-def accepted_logical_slots(topology) -> tuple[int | None, str | None]:
-    """The logical-slot count a caller may rely on, or (None, why not).
+def assess_setup(topology) -> dict:
+    """Judge a supplied printer setup. Three different answers, never merged:
 
-    Accepts a Topology or its dict form. The count is len(slots) only when the topology is complete,
-    structurally valid (no error diagnostic: no dangling or contradictory binding, no unknown head
-    reference, no mixed index base) and its slots are numbered 0..n-1 without gaps. Anything else is
-    refused rather than repaired, and the caller keeps the stock four-toolhead behaviour."""
-    from .foundation.topology import Topology, validate
+    absent   -> {"state": "absent"}                       (the caller supplied none: stock behaviour)
+    invalid  -> {"state": "invalid", "reasons": [...]}    (supplied but unusable: the caller must not convert)
+    valid    -> {"state": "valid", "heads": H, "slots": S, "bound": [...], "unbound": [...]}
+
+    Valid means: complete head list, no error diagnostic (no dangling or contradictory binding, no
+    reference to an unknown head, no mixed index base), slots numbered 0..n-1. Unbound slots are
+    reported and stay unresolved; nothing here assigns a head to them."""
     if topology is None:
-        return None, None
-    if isinstance(topology, dict):
-        decoded = topology_from_dict(topology)
-        if decoded is None:
-            return None, "the topology could not be read"
-        topology = decoded
-    if not isinstance(topology, Topology):
-        return None, "the topology has an unexpected type"
-    errors = [d for d in list(topology.diagnostics) + validate(topology) if d.severity == "error"]
-    if errors:
-        return None, "the topology contradicts itself (" + ", ".join(sorted({d.code for d in errors})) + ")"
-    if not topology.complete or not topology.heads:
-        return None, "the topology does not list every physical head"
-    indexes = sorted(slot.index for slot in topology.slots)
-    if not indexes or indexes != list(range(len(indexes))):
-        return None, "the logical slots are missing or not numbered 0..n-1"
-    return len(indexes), None
+        return {"state": "absent"}
+    try:
+        from .foundation.topology import Topology, validate
+        if isinstance(topology, dict):
+            decoded = topology_from_dict(topology)
+            if decoded is None:
+                return _invalid("the printer setup could not be read")
+            topology = decoded
+        if not isinstance(topology, Topology):
+            return _invalid("the printer setup has an unexpected form")
+        errors = [d for d in list(topology.diagnostics) + validate(topology) if d.severity == "error"]
+        if errors:
+            return _invalid("the printer setup contradicts itself (" + ", ".join(sorted({d.code for d in errors})) + ")")
+        if not topology.complete or not topology.heads:
+            return _invalid("the printer setup does not list every physical head")
+        if len(topology.heads) != _u1_heads():
+            return _invalid(f"the printer setup has {len(topology.heads)} physical heads but a U1 has {_u1_heads()}; "
+                            "preparing a U1 copy for another printer is not supported")
+        indexes = sorted(slot.index for slot in topology.slots)
+        if not indexes or indexes != list(range(len(indexes))):
+            return _invalid("the printer setup's material slots are missing or not numbered from zero without gaps")
+        targets = {b.slot_id for b in topology.bindings if b.target is not None}
+        targets |= {sl.id for sl in topology.slots if sl.binding is not None}
+        slot_ids = [sl.id for sl in sorted(topology.slots, key=lambda x: x.index)]
+        return {"state": "valid", "heads": len(topology.heads), "slots": len(indexes),
+                "bound": [i for i in slot_ids if i in targets], "unbound": [i for i in slot_ids if i not in targets]}
+    except Exception:          # a malformed hand-built object must be refused, not crash the conversion
+        return _invalid("the printer setup could not be checked")
+
+
+def _u1_heads() -> int:
+    from .profile import load_profile
+    return len(load_profile("snapmaker_u1")["keys"]["nozzle_diameter"])
+
+
+def _invalid(reason: str) -> dict:
+    return {"state": "invalid", "reasons": [reason]}
+
+
+def accepted_logical_slots(topology) -> tuple[int | None, str | None]:
+    """Compatibility view of assess_setup: (slot count, None) when valid, else (None, reason or None)."""
+    verdict = assess_setup(topology)
+    if verdict["state"] == "valid":
+        return verdict["slots"], None
+    if verdict["state"] == "invalid":
+        return None, verdict["reasons"][0]
+    return None, None
 
 
 def topology_from_dict(raw: dict):
@@ -59,8 +100,13 @@ def topology_from_dict(raw: dict):
     return decoded.value
 
 
-def prepare_preserved_values(cfg: dict, filament_total: int, *, logical_slots=None) -> tuple[list[dict], list[str]]:
-    """Apply the few U1 representation constraints without replacing values."""
+def prepare_preserved_values(cfg: dict, filament_total: int, *, physical_heads=None) -> tuple[list[dict], list[str]]:
+    """Apply the few U1 representation constraints without replacing values.
+
+    With no validated setup (`physical_heads` is None) every per-extruder vector is mapped to the four
+    U1 toolheads, as before. With one, each vector is addressed by its own scope (data/u1_setting_scopes.json):
+    a physical-head vector has one entry per physical head, a logical-filament vector one entry per project
+    filament. The scope comes from the setting, never from a vector happening to have the same length."""
     changes: list[dict] = []
     warnings: list[str] = []
     for key in ("curr_bed_type", "default_bed_type"):
@@ -77,11 +123,18 @@ def prepare_preserved_values(cfg: dict, filament_total: int, *, logical_slots=No
         values = old if isinstance(old, list) else [old]
         if not values:
             continue
-        if isinstance(logical_slots, int) and not isinstance(logical_slots, bool) \
-                and logical_slots > 4 and len(values) == logical_slots:
-            changes.append({"key": key, "old": old, "new": copy.deepcopy(old),
-                            "reason": "kept unchanged because this vector is indexed per logical slot",
-                            "category": "kept_per_logical"})
+        if isinstance(physical_heads, int) and not isinstance(physical_heads, bool) and physical_heads > 0 \
+                and key in (PHYSICAL_HEAD | LOGICAL_FILAMENT):
+            scope = "physical head" if key in PHYSICAL_HEAD else "project filament"
+            target = physical_heads if key in PHYSICAL_HEAD else max(1, filament_total)
+            if len(values) == target:
+                continue
+            new = values[:target] if len(values) > target else values + [values[-1]] * (target - len(values))
+            warnings.append(f"{key} is a per-{scope} setting with {len(values)} entries; "
+                            f"the printer setup needs {target}, so it was resized to {target}.")
+            cfg[key] = new
+            changes.append({"key": key, "old": old, "new": new,
+                            "reason": f"resized to {target} entries (one per {scope})", "category": "mapped"})
             continue
         if len(values) == 4:
             continue

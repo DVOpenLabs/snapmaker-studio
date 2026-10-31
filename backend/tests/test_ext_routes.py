@@ -264,6 +264,8 @@ def _baseline_server_lines():
 
 
 def test_server_diff_is_exactly_the_authorised_seam():
+    """server.py differs from the P0a baseline by the ext_routes seam and by the reviewed /convert topology
+    pass-through (a validated object forwarded to convert_to_u1), and by nothing else."""
     base = _baseline_server_lines()
     now = SERVER_PY.read_text(encoding="utf-8").splitlines()
     added, removed = [], []
@@ -271,14 +273,19 @@ def test_server_diff_is_exactly_the_authorised_seam():
         if line.startswith(("+++", "---", "@@")):
             continue
         (added if line.startswith("+") else removed).append(line[1:])
-    assert removed == []
+    assert [r.strip() for r in removed] == ["materials)"]
     assert [a.strip() for a in added] == [
         "from . import ext_routes",
+        'topology = data.get("topology")',
+        "if topology is not None and (not isinstance(topology, dict) or len(str(topology)) > 400_000):",
+        'self._send(400, {"error": "topology must be an object"})',
+        "return",
+        "materials, topology=topology)",
         "elif ext_routes.dispatch(self, self.path, data):",
         "pass",
     ]
     hunks = [ln for ln in difflib.unified_diff(base, now, lineterm="", n=0) if ln.startswith("@@")]
-    assert len(hunks) == 2
+    assert len(hunks) == 4
 
 
 def test_dispatch_branch_comes_before_the_final_404_in_do_post():
