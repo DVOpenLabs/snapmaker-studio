@@ -4,7 +4,8 @@
                                                   missing, diagnostics, recipes, source, evidence, advisory}
 
 The handler opens the file for reading only. It never writes, renames or deletes anything, never
-slices, never contacts a printer and never touches the network. `source` carries the SHA-256 of the
+slices, never contacts a printer and makes no network request of its own (the local-path check is
+best-effort, see snapstudio_core/localpath.py). `source` carries the SHA-256 of the
 file before the readers ran and again afterwards, so the response itself shows the original is
 unchanged. Recipes are simulated: `execution_supported` is False and nothing here runs them. An
 unrecognised generator is reported as origin "unknown", never guessed.

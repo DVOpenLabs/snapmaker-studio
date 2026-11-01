@@ -1,6 +1,6 @@
 """One guard for every user-supplied file path the Studio+ tracks open.
 
-Studio reads local files only. A network (UNC) path in any slash style, a Windows device path, a symlink or
+Studio is meant to read local files only. A network (UNC) path in any slash style, a Windows device path, a symlink or
 junction that points at one of those, and anything that is not a regular file under the size cap is refused
 before the engine opens, hashes or lists it. The checks are lexical first; the link walk then looks at each path
 component with `lstat` (which never follows the component being examined) and reads a link's target text with

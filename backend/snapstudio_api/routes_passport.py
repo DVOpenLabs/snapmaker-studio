@@ -5,7 +5,9 @@
     POST /passport/import   {passport, base_dir?, paths?}   -> {passport, parentage, verification, ...}
     POST /passport/verify   {passport, base_dir?, paths?}   -> {verification}
 
-Files are only read (hashed). The routes make no network request and never touch a printer.
+Files are only read (hashed). The routes make no network request of their own and never touch a
+printer; a path on a mapped network drive, or one redirected as described in
+docs/internal/PASSPORT.md ("Path checks are not a sandbox"), is read through the operating system.
 A chain built here is `declared` by the user; this version does not see a prepare or slice happen.
 `paths` in a response maps artifact ids to the local files they were read from, for the caller's
 own later verify call; the passport itself never contains a path.

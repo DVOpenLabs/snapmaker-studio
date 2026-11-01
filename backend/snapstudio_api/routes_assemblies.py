@@ -6,8 +6,8 @@
     POST /assemblies/get       {id}                                      -> {id, revision, assembly}
     POST /assemblies/delete    {id}                                      -> {deleted}
 
-Everything here is local arithmetic and local files: no network, no printer, no model file is
-written. The library is only read (to say whether a tile's project is still there and unchanged).
+Everything here is local arithmetic and local files: no network request of its own, no printer, no
+model file is written (file-path checks are best-effort, see snapstudio_core/localpath.py). The library is only read (to say whether a tile's project is still there and unchanged).
 The verdicts are advisory.
 """
 from __future__ import annotations

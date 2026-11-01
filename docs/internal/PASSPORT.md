@@ -1,8 +1,11 @@
 # Job passport and connector contract
 
-Evidence label: **fixture-tested**. Every claim below is exercised by `backend/tests/passport/`
-with synthetic files and a synthetic command-line client. No real third-party program, printer,
-slicer run or project file was used.
+Evidence label: **fixture-tested**. The passport model, import, verify and command-line contract
+below are exercised by `backend/tests/passport/` with synthetic files and a synthetic command-line
+client. The path-refusal and output-file behaviour is exercised in `backend/tests/test_review_fixes*.py`
+and `backend/tests/test_localpath_links.py`; the refusal of a folder or trailing-separator `-o` has no
+test yet. The directory-swap race described under "Path checks are not a sandbox" was not reproduced
+or tested. No real third-party program, printer, slicer run or project file was used.
 
 ## What a passport is
 
@@ -65,7 +68,8 @@ leaves the original unchanged (pinned by `test_7`).
 ## HTTP routes (local service, `/passport/...`)
 
 `/passport/build`, `/passport/import`, `/passport/verify`. They read and hash files; they make no
-network request and never touch a printer. `build` returns a `paths` map (artifact id to the file it
+network request of their own and never touch a printer. A path on a mapped network drive, or one
+redirected as described under "Path checks are not a sandbox", is read through the operating system. `build` returns a `paths` map (artifact id to the file it
 read) for the caller's own later `verify` call; the passport never contains it.
 
 ## Limits of this first version
