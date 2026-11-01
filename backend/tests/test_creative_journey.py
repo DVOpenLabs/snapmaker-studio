@@ -27,15 +27,26 @@ def test_compare_members_sorts_members_into_four_groups():
 
 def test_settings_delta_names_removed_changed_and_counts_added():
     delta = routes_creative._settings_delta({"a": 1, "b": 2, "c": 3}, {"a": 1, "b": 9, "d": 4, "e": 5})
-    assert delta == {"removed_keys": ["c"], "changed_keys": ["b"], "added_key_count": 2}
-    assert routes_creative._settings_delta(None, None) == {"removed_keys": [], "changed_keys": [], "added_key_count": 0}
+    assert delta == {"removed_keys": ["c"], "removed_count": 1, "changed_keys": ["b"], "changed_count": 1,
+                     "added_key_count": 2}
+    assert routes_creative._settings_delta(None, None) == {"removed_keys": [], "removed_count": 0, "changed_keys": [],
+                                                           "changed_count": 0, "added_key_count": 0}
+
+
+def test_settings_delta_totals_are_separate_from_the_bounded_lists():
+    n = routes_creative.MAX_LISTED + 50
+    a = {f"k{i:04d}": i for i in range(n)}
+    delta = routes_creative._settings_delta(a, {k: v + 1 for k, v in list(a.items())[: n - 10]})
+    assert len(delta["changed_keys"]) == routes_creative.MAX_LISTED and delta["changed_count"] == n - 10
+    assert delta["removed_count"] == 10 and len(delta["removed_keys"]) == 10
 
 
 def test_loss_notes_state_drops_and_paint_loss_in_words():
     verify = {"counts": {"dropped": 1, "modified": 0, "added": 0, "preserved": 2},
               "comparison": {"dropped": ["Metadata/drop.bin"], "modified": [], "added": [], "preserved": []},
               "per_face_paint": {"original_triangles": 4, "exported_triangles": 0, "kept": False},
-              "settings": {"removed_keys": ["x"], "changed_keys": [], "added_key_count": 0}}
+              "settings": {"removed_keys": ["x"], "removed_count": 1, "changed_keys": [], "changed_count": 0,
+                           "added_key_count": 0}}
     notes = routes_creative._loss_notes(verify)
     assert any("Metadata/drop.bin" in n for n in notes)
     assert any("4 painted triangle(s)" in n and "the copy has 0" in n for n in notes)

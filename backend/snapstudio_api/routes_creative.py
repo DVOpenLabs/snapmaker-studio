@@ -9,7 +9,7 @@ and write a prepared copy with a verification of what the copy kept.
 Inspect opens the file for reading only. Prepare calls the existing Prepare service, which writes one new
 file, never over or in place of the original, into `out_dir` (a local directory) or, when none is given,
 into the `creative-prepared` folder of Studio's own data directory. Nothing slices, nothing contacts a
-printer, nothing here makes a network request (the local-path check is best-effort, see
+printer, and this module makes no network request of its own (the local-path check is best-effort, see
 snapstudio_core/localpath.py). Recipes are simulated: `execution_supported` is False. An unrecognised or
 ambiguous generator is reported as such and is never guessed, and Prepare refuses it with an explanation.
 """
@@ -141,7 +141,7 @@ def _wrong_shape_message(key: str, manifest: container.ThreeMFManifest, expected
     label = formats.LABELS[key]
     return (f"That file does not carry what Studio reads for {label}. Studio looks for: "
             f"{'; '.join(expected)}. This file is {_seen_sentence(manifest)}. "
-            "What to do: choose Detect from settings, pick the format of the tool that wrote the file, "
+            "What to do: choose Detect from markers and settings, pick the format of the tool that wrote the file, "
             "or open it in that tool. Studio does not guess a format.")
 
 
@@ -152,7 +152,9 @@ def _explain(origin: dict, manifest: container.ThreeMFManifest) -> dict | None:
         return {"kind": "unknown_origin", "seen": f"This file is {seen}.",
                 "not_supported": "None of the supported tools' markers or settings keys were found, so Studio "
                                  "does not say which tool wrote it and does not read it as one of them.",
-                "what_to_do": ["If you know which tool wrote the file, choose its format from the list and inspect again.",
+                "what_to_do": ["If you know which tool wrote the file, choose its format from the list and inspect again. "
+                               "Choosing a manual-only format (ImageMap or Lumina) prepares the file as a generic 3MF "
+                               "with no shape check.",
                                "Otherwise the file is still listed part by part below, untouched."]}
     if origin["status"] == "ambiguous":
         names = " and ".join(formats.LABELS.get(c, c) for c in origin["candidates"])
@@ -310,8 +312,10 @@ def compare_members(original: container.ThreeMFManifest, exported: container.Thr
 
 def _settings_delta(original: dict | None, exported: dict | None) -> dict:
     a, b = original or {}, exported or {}
-    return {"removed_keys": sorted(k for k in a if k not in b)[:MAX_LISTED],
-            "changed_keys": sorted(k for k in a if k in b and a[k] != b[k])[:MAX_LISTED],
+    removed = sorted(k for k in a if k not in b)
+    changed = sorted(k for k in a if k in b and a[k] != b[k])
+    return {"removed_keys": removed[:MAX_LISTED], "removed_count": len(removed),
+            "changed_keys": changed[:MAX_LISTED], "changed_count": len(changed),
             "added_key_count": sum(1 for k in b if k not in a)}
 
 
@@ -351,9 +355,9 @@ def _loss_notes(verify: dict) -> list[str]:
                      f"the copy has {paint['exported_triangles']}.")
     if paint["kept"] is None:
         notes.append("Per-face paint could not be counted in one of the two files.")
-    removed = verify["settings"]["removed_keys"]
+    removed = verify["settings"]["removed_count"]
     if removed:
-        notes.append(f"{len(removed)} project setting(s) of the original are not in the copy.")
+        notes.append(f"{removed} project setting(s) of the original are not in the copy.")
     if not notes:
         notes.append("By part name and content hash, nothing was dropped and nothing differs except the parts "
                      "listed as modified or added.")
@@ -411,9 +415,10 @@ def prepare(data: dict) -> tuple[int, dict]:
     return 200, {
         "prepared": True,
         "origin": body["origin"],
-        "output": {"name": os.path.basename(out_path), "path": out_path, "location": out_kind,
+        # File name and a generic label only: no directory path, not even a folder name, leaves this route.
+        "output": {"name": os.path.basename(out_path), "location": out_kind,
                    "location_label": ("Studio's creative-prepared folder" if out_kind == "studio_default"
-                                      else out_dir),
+                                      else "the folder you chose"),
                    "in_source_folder": same_place},
         "prepare": {"mode": result.get("prepare_mode"), "validated_ok": bool(result.get("validated_ok")),
                     "errors": [str(e) for e in result.get("errors") or []][:MAX_LISTED],

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildInspectBody, buildPrepareBody, comparisonBuckets, factLines, fetchCreativeFormats, inspectCreative,
-  originSentence, prepareCreative,
+  originSentence, prepareCreative, settingsTotals,
 } from "./creativeApi";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 4321, token: "test-token" }) }));
@@ -76,5 +76,18 @@ describe("creative API client", () => {
   it("orders the comparison buckets kept, changed, dropped, added", () => {
     const buckets = comparisonBuckets({ opens_as_zip: true, comparison: { preserved: ["a"], modified: ["b"], dropped: ["c"], added: ["d"] } });
     expect(buckets.map((b) => `${b.key}:${b.items.join("")}`)).toEqual(["preserved:a", "modified:b", "dropped:c", "added:d"]);
+    expect(buckets.every((b) => b.total === 1 && !b.truncated)).toBe(true);
+  });
+
+  it("uses the engine totals for the bucket headings and flags a capped list", () => {
+    const buckets = comparisonBuckets({ opens_as_zip: true, comparison: { preserved: ["a", "b"], modified: [], dropped: [], added: [] },
+      counts: { preserved: 250, modified: 0, dropped: 0, added: 0 } });
+    expect(buckets[0]).toMatchObject({ total: 250, truncated: true });
+    expect(buckets[1]).toMatchObject({ total: 0, truncated: false });
+  });
+
+  it("settings totals come from the counts, not from the bounded key lists", () => {
+    expect(settingsTotals({ removed_keys: ["a"], removed_count: 9, changed_keys: [], changed_count: 4, added_key_count: 2 })).toEqual({ removed: 9, changed: 4, added: 2 });
+    expect(settingsTotals({ removed_keys: ["a"], changed_keys: ["b", "c"], added_key_count: 0 })).toEqual({ removed: 1, changed: 2, added: 0 });
   });
 });

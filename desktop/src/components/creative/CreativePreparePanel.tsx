@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { comparisonBuckets, type CreativePrepareResponse, type CreativeVerification } from "@/lib/creativeApi";
+import { comparisonBuckets, settingsTotals, type CreativePrepareResponse, type CreativeVerification } from "@/lib/creativeApi";
 
 function Box({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   return (
@@ -22,8 +22,9 @@ export function ExportVerification({ verification, lossNotes }: { verification: 
       <div className="grid gap-3 md:grid-cols-4">
         {comparisonBuckets(verification).map((b) => (
           <div key={b.key} aria-label={b.title}>
-            <p className="text-xs font-medium">{b.title} ({b.items.length})</p>
+            <p className="text-xs font-medium">{b.title} ({b.total})</p>
             <p className="text-xs text-muted-foreground">{b.note}</p>
+            {b.truncated && <p className="text-xs text-muted-foreground">showing {b.items.length} of {b.total}</p>}
             {b.items.length === 0
               ? <p className="text-xs text-muted-foreground">None.</p>
               : <ul className="list-disc pl-5 break-all font-mono text-xs">{b.items.map((i) => <li key={i}>{i}</li>)}</ul>}
@@ -33,9 +34,10 @@ export function ExportVerification({ verification, lossNotes }: { verification: 
       {paint && paint.original_triangles !== null && paint.exported_triangles !== null && (
         <p className="text-xs">Per-face paint: {paint.original_triangles} painted triangle(s) in the original, {paint.exported_triangles} in the copy.</p>
       )}
-      {verification.settings && (
-        <p className="text-xs">Project settings: {verification.settings.removed_keys.length} removed, {verification.settings.changed_keys.length} changed, {verification.settings.added_key_count} added.</p>
-      )}
+      {verification.settings && (() => {
+        const t = settingsTotals(verification.settings);
+        return <p className="text-xs">Project settings: {t.removed} removed, {t.changed} changed, {t.added} added.</p>;
+      })()}
       <ul className="list-disc pl-5 text-xs text-muted-foreground">{lossNotes.map((n) => <li key={n}>{n}</li>)}</ul>
     </Box>
   );

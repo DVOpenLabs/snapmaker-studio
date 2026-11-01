@@ -15,6 +15,12 @@ FORMAT only (member names, XML element and attribute names, JSON keys and what t
 | ImageMap (Orca fork) | not read in this slice | - | - | - | No new upstream read. Carrier stays unestablished; see `docs/internal/CREATIVE_COMPAT.md`. |
 | Lumina Layers | GPL | not read in this slice | - | - | No new upstream read. Only the artifact identity is reported. |
 
+DitherForge paths: upstream `internal/export3mf/` holds `export3mf.go`, `bambu.go` and `printers.go`
+(checked with `gh api repos/rtwfroody/ditherforge/contents/internal/export3mf`). The reader was based on
+`export3mf.go` and `bambu.go` at the commit in the table (journey slice). The first slice's research notes also
+cited `printers.go` lines 18-65; that file was NOT re-read for the journey slice and the reader does not depend
+on it. `docs/internal/CREATIVE_COMPAT.md` lists the same three-way split.
+
 Things the upstream source did NOT establish, so the reader does not claim them: the `kromacut.config`
 payload, how ImageMap or Lumina mark their 3MF output, and anything about files written by older or newer
 releases than the commits above. Settings JSON and collection TXT sidecars mentioned for DitherForge in

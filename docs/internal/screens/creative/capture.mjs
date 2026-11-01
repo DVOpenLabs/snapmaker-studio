@@ -106,7 +106,13 @@ await page.getByLabel("Project format").selectOption("sindricad");
 await sleep(300);
 await page.screenshot({ path: join(out, "format-chooser-choice.png"), fullPage: true });
 await page.getByLabel("Project format").selectOption("auto");
-await inspect("sample-other.3mf", "unsupported-explanation.png", "does not recognise this file");
+// A chosen format with the wrong shape: Kromacut on a plain 3MF gives the actionable refusal text.
+await page.getByLabel("Project format").selectOption("kromacut");
+await inspect("sample-other.3mf", "unsupported-explanation.png", "does not carry what Studio reads");
+await page.getByLabel("Project format").selectOption("auto");
+// The failed inspection cleared the report; re-run it (no screenshot) so Prepare is offered again.
+await page.getByRole("button", { name: "Inspect project" }).click();
+await page.getByText("Origin unknown").first().waitFor({ timeout: 15000 });
 await prepare("unknown-prepare-refused.png", "No copy was written");
 await page.getByLabel("Project format").selectOption("imagemap");
 await sleep(300);

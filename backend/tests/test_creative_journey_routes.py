@@ -58,6 +58,17 @@ def sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def assert_no_local_path(body, *directories):
+    """The serialised response names no directory: not the absolute path, not its parent segments."""
+    text = json.dumps(body)
+    for directory in directories:
+        d = Path(directory)
+        for form in {str(d), str(d).replace("\\", "/"), json.dumps(str(d))[1:-1], str(d.parent), str(d.parent).replace("\\", "/")}:
+            assert form not in text, form
+        assert d.name not in text, d.name
+    assert str(Path(directories[-1]).parent) not in text
+
+
 def test_routes_are_registered_under_creative():
     for route in ("/creative/inspect", "/creative/formats", "/creative/prepare"):
         assert route in ext_routes.ROUTES
@@ -121,6 +132,7 @@ def test_wrong_shape_for_chosen_format_is_an_actionable_400(tmp_path, fmt):
     assert "does not carry what Studio reads for" in message
     assert "Studio looks for:" in message and "What to do:" in message
     assert "2 parts" in message
+    assert "Detect from markers and settings" in message
 
 
 def test_manual_only_format_still_inspects_a_plain_3mf(tmp_path):
@@ -145,9 +157,11 @@ def test_prepare_sindricad_writes_a_new_verified_copy_in_the_studio_folder(tmp_p
     mtime = src.stat().st_mtime_ns
     code, body = call("/creative/prepare", {"path": str(src)})
     assert code == 200 and body["prepared"] is True, body
-    out = Path(body["output"]["path"])
+    assert "path" not in body["output"]
+    out = data_dir / routes_creative.DEFAULT_OUT_FOLDER / body["output"]["name"]
     assert out.is_file() and out != src
-    assert out.parent == data_dir / routes_creative.DEFAULT_OUT_FOLDER
+    assert body["output"]["location_label"] == "Studio's creative-prepared folder"
+    assert_no_local_path(body, data_dir, tmp_path)
     assert body["output"]["in_source_folder"] is False and body["output"]["location"] == "studio_default"
     # nothing was written next to the original
     assert [p.name for p in src.parent.iterdir()] == ["project.3mf"]
@@ -188,7 +202,9 @@ def test_prepare_chosen_imagemap_to_an_explicit_out_dir(tmp_path):
     out_dir.mkdir()
     code, body = call("/creative/prepare", {"path": str(src), "format": "imagemap", "out_dir": str(out_dir)})
     assert code == 200 and body["prepared"] is True
-    assert Path(body["output"]["path"]).parent == out_dir and body["output"]["location"] == "chosen"
+    assert (out_dir / body["output"]["name"]).is_file() and body["output"]["location"] == "chosen"
+    assert "path" not in body["output"] and body["output"]["location_label"] == "the folder you chose"
+    assert_no_local_path(body, out_dir, tmp_path)
     assert [p.name for p in src.parent.iterdir()] == ["project.3mf"]
     assert body["original"]["original_unchanged"] is True
 
@@ -198,15 +214,31 @@ def test_prepare_can_write_beside_the_original_only_when_out_dir_says_so(tmp_pat
     before = sha(src)
     code, body = call("/creative/prepare", {"path": str(src), "out_dir": str(src.parent)})
     assert code == 200 and body["prepared"] is True and body["output"]["in_source_folder"] is True
-    out = Path(body["output"]["path"])
-    assert out != src and sha(src) == before and sorted(p.name for p in src.parent.iterdir()) == sorted(["project.3mf", out.name])
+    name = body["output"]["name"]
+    assert name != src.name and sha(src) == before and sorted(p.name for p in src.parent.iterdir()) == sorted(["project.3mf", name])
 
 
 def test_prepare_never_overwrites_a_previous_output(tmp_path, data_dir):
     src = write(tmp_path, make_sindricad())
-    first = call("/creative/prepare", {"path": str(src)})[1]["output"]["path"]
-    second = call("/creative/prepare", {"path": str(src)})[1]["output"]["path"]
-    assert first != second and Path(first).is_file() and Path(second).is_file()
+    first = call("/creative/prepare", {"path": str(src)})[1]["output"]["name"]
+    second = call("/creative/prepare", {"path": str(src)})[1]["output"]["name"]
+    folder = data_dir / routes_creative.DEFAULT_OUT_FOLDER
+    assert first != second and (folder / first).is_file() and (folder / second).is_file()
+
+
+def test_prepare_totals_are_not_the_capped_lists(tmp_path, data_dir):
+    """More members than the list cap: the bucket totals stay exact, only the name lists are bounded."""
+    extra = {f"Metadata/part_{i:04d}.bin": f"payload-{i}".encode() for i in range(250)}
+    src = write(tmp_path, make_3mf(settings={"layer_height": "0.2"}, members=extra))
+    code, body = call("/creative/prepare", {"path": str(src), "format": "imagemap"})
+    assert code == 200 and body["prepared"] is True, body
+    ver = body["verification"]
+    cap = routes_creative.MAX_LISTED
+    assert ver["counts"]["preserved"] >= 250 > cap
+    assert len(ver["comparison"]["preserved"]) == cap
+    assert ver["counts"]["dropped"] == 0 and ver["counts"]["added"] == len(ver["comparison"]["added"])
+    for key in ("removed", "changed"):
+        assert ver["settings"][f"{key}_count"] >= len(ver["settings"][f"{key}_keys"])
 
 
 @pytest.mark.parametrize("blob,tool", [(make_ditherforge(), "DitherForge"), (make_kromacut(), "Kromacut")])
@@ -231,6 +263,8 @@ def test_prepare_refuses_unknown_origin_with_an_explanation_and_writes_nothing(t
     ref = body["refusal"]
     assert ref["kind"] == "unknown_origin" and "Nothing was prepared." in ref["not_supported"]
     assert ref["seen"] and ref["what_to_do"]
+    advice = " ".join(ref["what_to_do"])
+    assert "manual-only format (ImageMap or Lumina)" in advice and "generic 3MF with no shape check" in advice
     assert [p.name for p in src.parent.iterdir()] == ["project.3mf"]
     assert not data_dir.exists()
 

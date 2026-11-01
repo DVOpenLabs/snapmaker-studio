@@ -68,14 +68,14 @@ export interface CreativeVerification {
   members?: CreativeNamedPart[];
   comparison?: CreativeComparison;
   counts?: Record<keyof CreativeComparison, number>;
-  settings?: { removed_keys: string[]; changed_keys: string[]; added_key_count: number };
+  settings?: { removed_keys: string[]; removed_count?: number; changed_keys: string[]; changed_count?: number; added_key_count: number };
   per_face_paint?: { original_triangles: number | null; exported_triangles: number | null; kept: boolean | null };
 }
 
 export interface CreativePrepareDone {
   prepared: true;
   origin: CreativeOrigin;
-  output: { name: string; path: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
+  output: { name: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
   prepare: { mode: string; validated_ok: boolean; errors: string[]; compat_changed: unknown[]; mapped_to_u1: unknown[]; could_not_carry: unknown[]; warnings: unknown[] };
   verification: CreativeVerification;
   loss_notes: string[];
@@ -197,13 +197,29 @@ export function factLines(facts: Record<string, unknown> | undefined): string[] 
   return out;
 }
 
-/** The four buckets of the export comparison, with their counts, in the order a person reads them. */
-export function comparisonBuckets(v: CreativeVerification): { key: keyof CreativeComparison; title: string; note: string; items: string[] }[] {
+export interface CreativeBucket { key: keyof CreativeComparison; title: string; note: string; items: string[]; total: number; truncated: boolean }
+
+/**
+ * The four buckets of the export comparison, in the order a person reads them. `total` is the engine's
+ * own count (verification.counts) and falls back to the listed names only when the engine sent none;
+ * `truncated` is true when the name list is shorter than the total.
+ */
+export function comparisonBuckets(v: CreativeVerification): CreativeBucket[] {
   const c = v.comparison;
+  const bucket = (key: keyof CreativeComparison, title: string, note: string): CreativeBucket => {
+    const items = c?.[key] ?? [];
+    const total = v.counts?.[key] ?? items.length;
+    return { key, title, note, items, total, truncated: total > items.length };
+  };
   return [
-    { key: "preserved", title: "Kept identical", note: "Same part name and same content fingerprint as the original.", items: c?.preserved ?? [] },
-    { key: "modified", title: "Changed", note: "Same part name, different content.", items: c?.modified ?? [] },
-    { key: "dropped", title: "Dropped", note: "In the original, not in the copy.", items: c?.dropped ?? [] },
-    { key: "added", title: "Added", note: "In the copy, not in the original.", items: c?.added ?? [] },
+    bucket("preserved", "Kept identical", "Same part name and same content fingerprint as the original."),
+    bucket("modified", "Changed", "Same part name, different content."),
+    bucket("dropped", "Dropped", "In the original, not in the copy."),
+    bucket("added", "Added", "In the copy, not in the original."),
   ];
+}
+
+/** Project-settings totals from the engine's counts; the key lists are bounded and may be shorter. */
+export function settingsTotals(s: NonNullable<CreativeVerification["settings"]>): { removed: number; changed: number; added: number } {
+  return { removed: s.removed_count ?? s.removed_keys.length, changed: s.changed_count ?? s.changed_keys.length, added: s.added_key_count };
 }

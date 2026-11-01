@@ -156,7 +156,7 @@ const BASE_SOURCE = { name: "x.3mf", size_bytes: 1, sha256_before: HASH, sha256_
 describe("prepare panel", () => {
   const done: CreativePrepareResponse = {
     prepared: true, origin: { generator: "sindricad", status: "detected", candidates: ["sindricad"] },
-    output: { name: "x_SnapmakerU1.3mf", path: "x_SnapmakerU1.3mf", location: "studio_default", location_label: "Studio's creative-prepared folder", in_source_folder: false },
+    output: { name: "x_SnapmakerU1.3mf", location: "studio_default", location_label: "Studio's creative-prepared folder", in_source_folder: false },
     prepare: { mode: "preserve", validated_ok: true, errors: [], compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [] },
     verification: { opens_as_zip: true, members: [{ name: "a", sha256: HASH }, { name: "b", sha256: HASH }],
       comparison: { preserved: ["3D/3dmodel.model"], modified: ["Metadata/project_settings.config"], dropped: ["Metadata/gone.bin"], added: ["Metadata/new.bin"] },
@@ -179,6 +179,26 @@ describe("prepare panel", () => {
     expect(html).toContain("It is not next to the original.");
     expect(html).toContain("Original unchanged");
     expect(html).toContain("Review it in Snapmaker Orca before slicing");
+  });
+
+  it("headings use the engine totals and say 'showing N of M' when a name list is capped", () => {
+    const names = Array.from({ length: 200 }, (_, i) => `Metadata/p${i}.bin`);
+    const html = renderToStaticMarkup(<CreativePreparePanel result={{
+      ...done,
+      verification: { ...done.verification, comparison: { preserved: names, modified: [], dropped: [], added: [] },
+        counts: { preserved: 250, modified: 0, dropped: 0, added: 0 },
+        settings: { removed_keys: ["a"], removed_count: 300, changed_keys: [], changed_count: 0, added_key_count: 2 } },
+    }} />);
+    expect(html).toContain("Kept identical (250)");
+    expect(html).toContain("showing 200 of 250");
+    expect(html).not.toContain("showing 0 of");
+    expect(html).toContain("Project settings: 300 removed, 0 changed, 2 added");
+  });
+
+  it("names the saved location with a label only, never a folder path", () => {
+    const html = renderToStaticMarkup(<CreativePreparePanel result={{ ...done, output: { ...done.output, location: "chosen", location_label: "the folder you chose" } }} />);
+    expect(html).toContain("Saved in: the folder you chose.");
+    expect(html).not.toMatch(/[A-Za-z]:\\|\/Users\/|\/home\//);
   });
 
   it("does not claim the original is unchanged when its fingerprint moved", () => {
