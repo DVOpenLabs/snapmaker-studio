@@ -150,11 +150,20 @@ const waitFor = async (expression, label) => {
 const navigate = async (url) => { await cdp("Page.navigate", { url }); await waitFor("document.readyState === 'complete'", "page navigation"); };
 const fill = async (label, value) => evaluate(`(() => { const e = [...document.querySelectorAll('input')].find(x => x.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!e) throw Error('missing input'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(e, ${JSON.stringify(value)}); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 const clickText = async (text) => evaluate(`(() => { const e = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === ${JSON.stringify(text)}); if (!e) throw Error('missing button: ' + ${JSON.stringify(text)}); e.click(); return true; })()`);
-// Fail the capture if the rendered page text shows a local temp or user path (no CSS-only masking).
+// Fail the capture if the page text or any visible input value shows a local path. Inputs whose label names a
+// path are allowed to hold one only when they are rendered transparent (the CSS mask added before capture).
 const assertNoLocalPath = async () => {
   const text = await evaluate("document.body.innerText");
-  for (const needle of [tmpdir(), tmpdir().replace(/\\/g, "/"), "AppData", "\\Users\\"]) {
-    if (needle && text.includes(needle)) throw new Error("a local path is visible on the page; refusing to capture");
+  const inputs = await evaluate(`[...document.querySelectorAll('input,textarea')].map(e => ({
+    value: e.value || '', masked: /path/.test(e.getAttribute('aria-label') || '') && getComputedStyle(e).color === 'rgba(0, 0, 0, 0)' }))`);
+  const visible = [text, ...inputs.filter((i) => !i.masked).map((i) => i.value)];
+  const needles = [tmpdir(), tmpdir().replace(/\\/g, "/"), dirname(original), dirname(original).replace(/\\/g, "/"),
+    dirname(prepared), dirname(prepared).replace(/\\/g, "/"), "AppData", "\\Users\\", "/Users/", "/home/"];
+  const drive = /(^|[^A-Za-z])[A-Za-z]:[\\/]/;
+  for (const shown of visible) {
+    if (needles.some((needle) => needle && shown.includes(needle)) || drive.test(shown)) {
+      throw new Error("a local path is visible on the page; refusing to capture");
+    }
   }
 };
 const screenshot = async (path) => {
