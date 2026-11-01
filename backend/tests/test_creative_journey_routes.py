@@ -95,7 +95,7 @@ def test_inspect_detects_each_new_tool_with_facts(tmp_path, blob, name):
     assert body["facts"][name]["application"]
     assert body["format_info"][0]["key"] == name and body["format_info"][0]["not_read"]
     assert body["explanation"] is None
-    assert str(tmp_path) not in json.dumps(body)
+    assert_no_local_path(body, tmp_path)
 
 
 def test_inspect_ambiguous_markers_explain_and_do_not_guess(tmp_path):

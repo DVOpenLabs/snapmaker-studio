@@ -22,7 +22,7 @@ export default function CreativeFormatChooser({ value, onChange, formats, needsC
       </div>
       {info && (
         <div className="rounded-lg border border-border bg-card p-3 text-xs" aria-label="Format coverage">
-          <p className="font-medium">{info.label}: {info.selection === "manual only" ? "read only when you choose it" : "detected automatically"}.</p>
+          <p className="font-medium">{info.label}: {info.selection === "manual only" ? "read only when you choose it" : "identified automatically only when its markers are present in the file"}.</p>
           <p className="mt-1 text-muted-foreground">Carrier: {info.carrier}.</p>
           <div className="mt-1 grid gap-2 md:grid-cols-2">
             <div>
