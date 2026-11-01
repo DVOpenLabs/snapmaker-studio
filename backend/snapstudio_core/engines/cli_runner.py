@@ -39,6 +39,28 @@ _WINDOWS_LAUNCHER = (
 )
 
 
+def _is_own_interpreter(path: Path) -> bool:
+    try:
+        return path == Path(sys.executable).resolve(strict=True)
+    except OSError:
+        return False
+
+
+def _hash_approved(path: Path, approved: Sequence[str]) -> bool:
+    """True when the file's SHA-256 is one the caller pinned. Hash comparison is done on the bytes read now."""
+    pins = {item.lower() for item in approved if isinstance(item, str) and re.fullmatch(r"[0-9a-fA-F]{64}", item)}
+    if not pins:
+        return False
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() in pins
+
+
 def _executable_policy_refused(path: Path) -> bool:
     name = path.name.lower()
     if name.endswith(".exe"):
@@ -167,7 +189,8 @@ class CliRunner:
     def __init__(self, executable: str | os.PathLike[str], job_root: str | os.PathLike[str],
                  argument_template: Sequence[str], *, timeout_s: float = 300.0,
                  output_limit: int = 1024 * 1024,
-                 artifact_limit: int = 512 * 1024 * 1024) -> None:
+                 artifact_limit: int = 512 * 1024 * 1024,
+                 approved_sha256: Sequence[str] = ()) -> None:
         self.executable = Path(executable).expanduser().resolve(strict=True)
         if not self.executable.is_file():
             raise RunnerError("executable_invalid")
@@ -175,6 +198,11 @@ class CliRunner:
             raise RunnerError("executable_script_refused")
         if _executable_policy_refused(self.executable):
             raise RunnerError("executable_policy_refused")
+        # Admission is by identity, not by name: the caller pins the SHA-256 of the one executable it approves.
+        # Only the interpreter running Studio is admitted without a pin. A renamed copy of anything else has a
+        # different path and, unless its bytes were pinned, no approval.
+        if not _is_own_interpreter(self.executable) and not _hash_approved(self.executable, approved_sha256):
+            raise RunnerError("executable_not_approved")
         self.job_root = Path(job_root).expanduser().resolve(strict=True)
         if not self.job_root.is_dir():
             raise RunnerError("job_root_invalid")

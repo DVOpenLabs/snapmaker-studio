@@ -348,6 +348,52 @@ def test_cli_runner_refuses_slicer_named_executable(tmp_path, name):
         CliRunner(executable, root, ())
 
 
+def _copy_interpreter_as(tmp_path, name):
+    import shutil
+    copy = tmp_path / name
+    shutil.copy2(sys.executable, copy)
+    return copy
+
+
+def _sha256_of(path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_cli_runner_refuses_unpinned_renamed_copy(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    with pytest.raises(RunnerError, match="executable_not_approved"):
+        CliRunner(copy, root, ())
+
+
+def test_cli_runner_admits_renamed_copy_with_matching_pin(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    # Admission only: a copied interpreter may not start outside its install directory, so it is not run here.
+    runner = CliRunner(copy, root, ("-c", "pass"), timeout_s=5, approved_sha256=[_sha256_of(copy).upper()])
+    assert runner.executable == copy.resolve()
+
+
+@pytest.mark.parametrize("pin", ["0" * 64, "not-a-hash", ""])
+def test_cli_runner_refuses_wrong_or_malformed_pin(tmp_path, pin):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    with pytest.raises(RunnerError, match="executable_not_approved"):
+        CliRunner(copy, root, (), approved_sha256=[pin])
+
+
+def test_cli_runner_name_rail_still_wins_over_a_matching_pin(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "orca.exe" if os.name == "nt" else "orca")
+    with pytest.raises(RunnerError, match="executable_policy_refused"):
+        CliRunner(copy, root, (), approved_sha256=[_sha256_of(copy)])
+
+
 def test_cli_runner_stops_child_after_unexpected_poll_exception(monkeypatch, tmp_path):
     root = tmp_path / "jobs"
     root.mkdir()
