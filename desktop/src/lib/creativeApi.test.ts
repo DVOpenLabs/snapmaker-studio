@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildInspectBody, inspectCreative, originSentence } from "./creativeApi";
+import {
+  buildInspectBody, buildPrepareBody, comparisonBuckets, factLines, fetchCreativeFormats, inspectCreative,
+  originSentence, prepareCreative,
+} from "./creativeApi";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue({ port: 4321, token: "test-token" }) }));
 const originalFetch = globalThis.fetch;
@@ -36,7 +39,42 @@ describe("creative API client", () => {
   it("keeps an unknown origin unknown and an ambiguous one undecided", () => {
     expect(originSentence({ generator: "unknown", status: "unknown", candidates: [] })).toContain("Origin unknown");
     expect(originSentence({ generator: "unknown", status: "ambiguous", candidates: ["forcaslicer", "lixnix"] }))
-      .toBe("Origin not decided: the settings match FOrcaSlicer and LixNix Full Multi-Nozzle.");
+      .toBe("Origin not decided: the file's markers or settings match FOrcaSlicer and LixNix Full Multi-Nozzle.");
     expect(originSentence({ generator: "fullspectrum", status: "detected", candidates: ["fullspectrum"] })).toContain("Looks like FullSpectrum");
+    expect(originSentence({ generator: "sindricad", status: "detected", candidates: ["sindricad"] })).toContain("Looks like SindriCAD");
+  });
+
+  it("builds the prepare body with an output folder only when one was typed", () => {
+    expect(buildPrepareBody("a.3mf")).toEqual({ path: "a.3mf" });
+    expect(buildPrepareBody(" a.3mf ", "sindricad", '  "D:\\out"  ')).toEqual({ path: "a.3mf", format: "sindricad", out_dir: "D:\\out" });
+    expect(() => buildPrepareBody("", "auto", "x")).toThrow("Enter the path");
+  });
+
+  it("posts to /creative/prepare and /creative/formats", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ prepared: false, formats: [] }), {
+      status: 200, headers: { "Content-Type": "application/json" } })));
+    globalThis.fetch = fetchMock;
+    await prepareCreative("a.3mf", "kromacut");
+    await fetchCreativeFormats();
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://127.0.0.1:4321/creative/prepare", expect.objectContaining({
+      method: "POST", body: JSON.stringify({ path: "a.3mf", format: "kromacut" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:4321/creative/formats", expect.objectContaining({ method: "POST", body: "{}" }));
+  });
+
+  it("turns reader facts into plain lines and skips facts that are absent", () => {
+    const lines = factLines({ application: "SindriCAD", body_count: 2, painted_triangle_count: 0,
+      bodies: [{ name: "Plate", extruder: 1 }], filament_colour: ["#FF0000", "#0000FF"], paint_extruders_used: [] });
+    expect(lines).toContain("Written by (Application tag): SindriCAD");
+    expect(lines).toContain("Body count: 2");
+    expect(lines).toContain("Per-face paint: none found");
+    expect(lines).toContain("Bodies: Plate (extruder 1)");
+    expect(lines).toContain("Filament colours: #FF0000, #0000FF");
+    expect(lines.some((l) => l.startsWith("Extruders used by paint"))).toBe(false);
+    expect(factLines(undefined)).toEqual([]);
+  });
+
+  it("orders the comparison buckets kept, changed, dropped, added", () => {
+    const buckets = comparisonBuckets({ opens_as_zip: true, comparison: { preserved: ["a"], modified: ["b"], dropped: ["c"], added: ["d"] } });
+    expect(buckets.map((b) => `${b.key}:${b.items.join("")}`)).toEqual(["preserved:a", "modified:b", "dropped:c", "added:d"]);
   });
 });

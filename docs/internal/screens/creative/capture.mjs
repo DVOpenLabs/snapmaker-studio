@@ -31,7 +31,7 @@ process.on("exit", cleanup);
 const gen = spawnSync(process.env.PYTHON || "py", ["-I", "-c", `
 import sys
 sys.path.insert(0, ${JSON.stringify(join(repo, "backend", "tests", "fixtures", "creative"))})
-from zip_factory import make_3mf
+from zip_factory import make_3mf, make_ditherforge, make_kromacut, make_sindricad
 import pathlib
 d = pathlib.Path(sys.argv[1])
 (d / "sample-fullspectrum.3mf").write_bytes(make_3mf(
@@ -42,6 +42,10 @@ d = pathlib.Path(sys.argv[1])
     members={"Metadata/plate_1.png": b"synthetic-preview"}))
 (d / "sample-other.3mf").write_bytes(make_3mf(
     settings={"layer_height": "0.2"}, members={"Metadata/custom.bin": b"synthetic-opaque"}))
+(d / "sample-ditherforge.3mf").write_bytes(make_ditherforge(extra={"Metadata/plate_1.json": b"{}"}))
+(d / "sample-kromacut.3mf").write_bytes(make_kromacut())
+(d / "sample-sindricad.3mf").write_bytes(make_sindricad(extra={"Metadata/plate_1.png": b"synthetic-preview"}))
+(d / "sample-ambiguous.3mf").write_bytes(make_sindricad(extra={"Metadata/kromacut.config": b"synthetic"}))
 `, proj], { encoding: "utf8" });
 if (gen.status !== 0) { console.error(gen.stderr); process.exit(2); }
 
@@ -67,7 +71,7 @@ for (let i = 0; i < 80 && !ready; i++) { try { ready = (await fetch(UI + "/")).o
 if (!ready) { console.error("UI did not come up"); process.exit(2); }
 
 const browser = await chromium.launch({ channel: "msedge", headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 1100 }, colorScheme: "dark" });
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 2300 }, colorScheme: "dark" });
 await ctx.addInitScript(() => { localStorage.setItem("theme", "dark"); });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
@@ -81,9 +85,32 @@ const inspect = async (file, shot, waitText) => {
   await page.screenshot({ path: join(out, shot), fullPage: true });
   console.log(shot, "->", (await page.locator("main, body").first().innerText()).split("\n").slice(0, 40).join(" | "));
 };
+const prepare = async (shot, waitText) => {
+  await page.getByRole("button", { name: "Prepare a U1 copy" }).click();
+  await page.getByText(waitText).first().waitFor({ timeout: 30000 });
+  await sleep(300);
+  await page.screenshot({ path: join(out, shot), fullPage: true });
+  console.log(shot, "->", (await page.locator("main, body").first().innerText()).split("\n").slice(0, 60).join(" | "));
+};
 await inspect("sample-fullspectrum.3mf", "fullspectrum-recipes.png", "Original unchanged");
 await inspect("sample-forca.3mf", "forca-expected-and-unknown.png", "Original unchanged");
 await inspect("sample-other.3mf", "unknown-origin.png", "Origin unknown");
+// New in the journey slice: three more tools, the format chooser, refusals and the prepare result.
+await inspect("sample-ditherforge.3mf", "ditherforge-inspection.png", "Looks like DitherForge");
+await inspect("sample-kromacut.3mf", "kromacut-inspection.png", "Looks like Kromacut");
+await prepare("kromacut-prepare-refused.png", "No copy was written");
+await inspect("sample-sindricad.3mf", "sindricad-inspection.png", "Looks like SindriCAD");
+await prepare("sindricad-prepare-result.png", "Export verification");
+await inspect("sample-ambiguous.3mf", "format-chooser-ambiguous.png", "Origin not decided");
+await page.getByLabel("Project format").selectOption("sindricad");
+await sleep(300);
+await page.screenshot({ path: join(out, "format-chooser-choice.png"), fullPage: true });
+await page.getByLabel("Project format").selectOption("auto");
+await inspect("sample-other.3mf", "unsupported-explanation.png", "does not recognise this file");
+await prepare("unknown-prepare-refused.png", "No copy was written");
+await page.getByLabel("Project format").selectOption("imagemap");
+await sleep(300);
+await page.screenshot({ path: join(out, "format-chooser-manual-only.png"), fullPage: true });
 await browser.close();
 cleanup();
 process.exit(0);
