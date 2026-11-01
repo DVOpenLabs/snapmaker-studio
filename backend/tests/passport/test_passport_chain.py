@@ -167,7 +167,7 @@ def foreign_passport(files, *, claim="local"):
         d["witness"] = claim
         d["declared_by"] = None if claim == "local" else "someone-else"
     for a in doc["artifacts"]:
-        a["locator"] = {"path": "/home/someone/secret/original.3mf", "mtime_ns": 1}
+        a["locator"] = {"path": "/mnt/vault/someone/secret/original.3mf", "mtime_ns": 1}
     return doc
 
 
