@@ -260,6 +260,94 @@ def test_cli_runner_timeout_returns_when_grandchild_keeps_pipes_open(tmp_path):
             os.kill(grandchild_pid, signal.SIGTERM)
 
 
+@pytest.mark.parametrize("stop_kind", ["timeout", "cancel"])
+def test_cli_runner_timeout_or_cancel_stops_descendant_writer(tmp_path, stop_kind):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    pid_file = tmp_path / "writer.pid"
+    marker = tmp_path / "writes.log"
+    child_script = tmp_path / "writer.py"
+    script = tmp_path / "engine.py"
+    child_script.write_text(
+        "import sys,time\n"
+        "from pathlib import Path\n"
+        "path=Path(sys.argv[1])\n"
+        "while True:\n"
+        "    with path.open('a', encoding='utf-8') as handle: handle.write('x')\n"
+        "    time.sleep(0.02)\n",
+        encoding="utf-8",
+    )
+    script.write_text(
+        "import subprocess,sys,time\n"
+        "from pathlib import Path\n"
+        "pid_file,marker=sys.argv[1:]\n"
+        f"child=subprocess.Popen([sys.executable,{str(child_script)!r},marker])\n"
+        "Path(pid_file).write_text(str(child.pid))\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    runner = CliRunner(sys.executable, root, (str(script), str(pid_file), str(marker)), timeout_s=0.25)
+    cancel = threading.Event() if stop_kind == "cancel" else None
+    outcome: list[object] = []
+
+    def run():
+        try:
+            outcome.append(runner.run(cancel_event=cancel))
+        except Exception as exc:  # noqa: BLE001 - asserted below
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    if cancel is not None:
+        deadline = time.monotonic() + 3
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        cancel.set()
+    worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert isinstance(outcome[0], RunnerError), repr(outcome)
+    assert outcome[0].code == ("cancelled" if stop_kind == "cancel" else "timeout")
+    grandchild_pid = int(pid_file.read_text(encoding="utf-8"))
+    first_size = marker.stat().st_size if marker.exists() else 0
+    time.sleep(0.12)
+    second_size = marker.stat().st_size if marker.exists() else 0
+    try:
+        assert not _pid_alive(grandchild_pid), "runner left its descendant alive"
+        assert second_size == first_size, "descendant kept writing after the runner returned"
+    finally:
+        if _pid_alive(grandchild_pid):
+            os.kill(grandchild_pid, signal.SIGTERM)
+
+
+def test_cli_runner_failed_run_leaves_no_job_directory(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "raise SystemExit(7)"), timeout_s=2)
+    with pytest.raises(RunnerError, match="process_failed"):
+        runner.run()
+    assert list(root.iterdir()) == []
+
+
+def test_cli_runner_keeps_successful_job_until_explicit_cleanup(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "pass"), timeout_s=2)
+    result = runner.run()
+    assert result.job_dir.is_dir()
+    runner.cleanup(result)
+    assert not result.job_dir.exists()
+
+
+@pytest.mark.parametrize("name", ["orca", "Snapmaker-Orca.EXE", "bambu", "PrusaSlicer", "SuperSlicer", "cura", "kiri", "custom-slicer-engine"])
+def test_cli_runner_refuses_slicer_named_executable(tmp_path, name):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    executable = tmp_path / name
+    executable.write_bytes(b"synthetic executable placeholder")
+    with pytest.raises(RunnerError, match="executable_policy_refused"):
+        CliRunner(executable, root, ())
+
+
 def test_cli_runner_stops_child_after_unexpected_poll_exception(monkeypatch, tmp_path):
     root = tmp_path / "jobs"
     root.mkdir()
