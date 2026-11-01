@@ -1,6 +1,6 @@
 # Local engine integrations
 
-Evidence labels distinguish hand-written fixtures (`fixture-tested`), in-process API doubles (`mock-service-tested`), a real local engine (`local-service-exercised`), and hardware (`hardware-verified`). The Lumina fixtures in this work are documentation-derived and hand-written to the published API 2.0 source shapes, not captures. No real Lumina process or printer was exercised.
+Evidence labels distinguish hand-written fixtures (`fixture-tested`), in-process API doubles and synthetic loopback HTTP stand-ins (`mock-service-tested`), a real local engine (`local-service-exercised`), and hardware (`hardware-verified`). The Lumina fixtures in this work are documentation-derived and hand-written to the published API 2.0 source shapes, not captures. No real Lumina process or printer was exercised.
 
 ## Lumina Layers
 
@@ -37,7 +37,7 @@ F1-F5 are addressed in the bounded LUMINA1 repair. F6 is partially addressed: pr
 
 Image-path guard: this branch has no shared `localpath` module (it lives in #140), so `snapstudio_core/engines/local_input.py` refuses UNC and device paths in any slash style, links whose target reaches a network location, non-regular files and files over the adapter's input cap (128 MiB). It is best-effort, not a sandbox: check and open are separate steps. #140's shared guard should replace this helper once both land. A mapped network drive letter looks local and is allowed.
 
-Evidence: `mock-service-tested` against `LuminaHttpMock` (a synthetic loopback HTTP service in `backend/tests/mocks/lumina_server.py`), with real engine process, vite dev UI and headless Edge screenshots in `docs/internal/screens/lumina/`. No real Lumina installation or process was exercised, and no real-Lumina compatibility is claimed.
+Evidence: `mock-service-tested` against `LuminaHttpMock` (a synthetic loopback HTTP service in `backend/tests/mocks/lumina_server.py`), with the real Studio backend process, vite dev UI and headless Edge screenshots in `docs/internal/screens/lumina/`. No real Lumina installation or process was exercised, and no real-Lumina compatibility is claimed.
 
 ## Still not done
 

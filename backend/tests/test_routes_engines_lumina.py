@@ -221,6 +221,7 @@ def test_generate_refuses_a_non_local_service_url(tmp_path, data_dir, image):
 @pytest.mark.parametrize("path", [
     "\\\\server\\share\\a.png", "//server/share/a.png", "\\/server/share/a.png",
     "\\\\?\\UNC\\server\\share\\a.png", "\\\\?\\C:\\a.png", "\\\\.\\pipe\\a",
+    "\\??\\UNC\\server\\share\\a.png", "/??/UNC/server/share/a.png",
 ])
 def test_generate_refuses_unc_and_device_paths_in_any_slash_style(data_dir, service, path):
     status, body = call("/engines/lumina/generate", {

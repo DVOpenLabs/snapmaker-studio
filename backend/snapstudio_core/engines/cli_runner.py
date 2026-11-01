@@ -65,7 +65,8 @@ def _executable_policy_refused(path: Path) -> bool:
     name = path.name.lower()
     if name.endswith(".exe"):
         name = name[:-4]
-    return name in _SLICER_NAMES or "slicer" in name
+    tokens = [token for token in re.split(r"[-_. ]+", name) if token]
+    return name in _SLICER_NAMES or "slicer" in name or any(token in _SLICER_NAMES for token in tokens)
 
 
 class _WindowsJob:
@@ -270,7 +271,10 @@ class CliRunner:
                 # The helper waits before starting the configured engine. This lets
                 # the runner assign the helper to its Job Object first, so even a
                 # fast engine cannot spawn a descendant outside that job.
-                launch_command = [sys.executable, "-c", _WINDOWS_LAUNCHER, json.dumps(command)]
+                if getattr(sys, "frozen", False):
+                    # The launcher needs a plain interpreter; a packaged sidecar would start itself instead.
+                    raise RunnerError("windows_launcher_unavailable_in_packaged_app")
+                launch_command = [sys.executable, "-I", "-c", _WINDOWS_LAUNCHER, json.dumps(command)]
                 launch_stdin = subprocess.PIPE
             process = subprocess.Popen(launch_command, cwd=str(job_dir), shell=False,
                                        stdin=launch_stdin, stdout=subprocess.PIPE,

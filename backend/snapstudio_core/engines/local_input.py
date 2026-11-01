@@ -24,7 +24,11 @@ _REDIRECTING_REPARSE_TAGS = {0xA000000C, 0xA0000003}  # symlink, junction
 
 def is_network_or_device_path(path: object) -> bool:
     """UNC shares and the device namespaces, in any mix of slash styles."""
-    return isinstance(path, str) and path.replace("/", "\\").startswith("\\\\")
+    if not isinstance(path, str):
+        return False
+    normal = path.replace("/", "\\")
+    # `\\host\share`, `\\?\...`, `\\.\...` and the NT passthrough prefix `\??\...` (one leading backslash).
+    return normal.startswith("\\\\") or normal.startswith("\\??\\")
 
 
 def _plain_drive_target(target: str) -> str:

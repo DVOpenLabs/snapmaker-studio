@@ -338,7 +338,18 @@ def test_cli_runner_keeps_successful_job_until_explicit_cleanup(tmp_path):
     assert not result.job_dir.exists()
 
 
-@pytest.mark.parametrize("name", ["orca", "Snapmaker-Orca.EXE", "bambu", "PrusaSlicer", "SuperSlicer", "cura", "kiri", "custom-slicer-engine"])
+@pytest.mark.skipif(os.name != "nt", reason="the launcher is the Windows path")
+def test_cli_runner_refuses_windows_launch_when_frozen(monkeypatch, tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "pass"), timeout_s=2)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    with pytest.raises(RunnerError, match="windows_launcher_unavailable_in_packaged_app"):
+        runner.run()
+    assert list(root.iterdir()) == []
+
+
+@pytest.mark.parametrize("name", ["orca", "Snapmaker-Orca.EXE", "Snapmaker_Orca.exe", "bambu-studio.exe", "UltiMaker-Cura", "Snapmaker_Orca_Linux_2.AppImage", "bambu", "PrusaSlicer", "SuperSlicer", "cura", "kiri", "custom-slicer-engine"])
 def test_cli_runner_refuses_slicer_named_executable(tmp_path, name):
     root = tmp_path / "jobs"
     root.mkdir()
