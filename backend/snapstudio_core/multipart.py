@@ -625,8 +625,16 @@ def validate_archive(tm) -> dict:
 
     # a part's role and the geometry under it must say the same thing; a part resolves to a root
     # object when its component has no p:path, otherwise to an object in a p:path file
-    local_by_object = {object_id: set(re.findall(r'<component(?![^>]*p:path=)[^>]*objectid="(\d+)"', block))
-                       for object_id, block in _COMPOSITE.findall(root)}
+    local_by_object: dict[str, set] = {}
+    for object_id, block in _COMPOSITE.findall(root):
+        local_ids = set(re.findall(r'<component(?![^>]*p:path=)[^>]*objectid="(\d+)"', block))
+        file_ids = set(re.findall(r'<component(?=[^>]*p:path=)[^>]*objectid="(\d+)"', block))
+        local_by_object[object_id] = local_ids
+        if local_ids & file_ids:
+            # a part id names a number, not a namespace, so Studio cannot tell which component it describes
+            problems.append(
+                f"object {object_id}: component(s) {sorted(local_ids & file_ids)} are referenced both "
+                "from the root model and from a file, so a part record cannot say which one it describes")
     for object_id, part_ids in sorted(_parts_by_object(settings).items()):
         for part_id, subtype in part_ids:
             if subtype is None:

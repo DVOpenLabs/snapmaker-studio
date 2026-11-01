@@ -305,3 +305,17 @@ def test_prepare_refuses_the_nested_shape_and_writes_nothing(tmp_path, data_dir)
     folder = data_dir / routes_creative.DEFAULT_OUT_FOLDER
     assert not folder.exists() or not list(folder.iterdir())
     assert src.read_bytes() == buffer.getvalue()
+
+
+def test_one_assembly_may_not_mix_root_and_file_components_with_the_same_id():
+    """Sol R5-F1: parts name a number, not a namespace, so a mixed same-id assembly is refused, not guessed."""
+    archive = _collision_archive(file_type="other", root_type="model")
+    root = archive.parts["3D/3dmodel.model"].decode()
+    archive.parts["3D/3dmodel.model"] = root.replace(
+        "</components>", '<component objectid="1"/></components>', 1).encode()
+    archive.parts["Metadata/model_settings.config"] = (
+        b'<config><object id="10"><part id="1" subtype="normal_part"></part>'
+        b'<part id="1" subtype="normal_part"></part></object></config>')
+    result = multipart.validate_archive(archive)
+    assert result["ok"] is False
+    assert any("referenced both from the root model and from a file" in p for p in result["problems"])
