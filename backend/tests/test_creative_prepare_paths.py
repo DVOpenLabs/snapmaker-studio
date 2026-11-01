@@ -101,8 +101,8 @@ def test_kromacut_journey_exports_a_verified_project(tmp_path, data_dir):
     assert root.count("<mesh>") == 3 and root.count("<basematerials") == 1
     assert len(re.findall(r'pid="1" pindex="\d"', root)) == 3
     assert ver["settings"]["removed_keys"] == []
-    # the exported project passes the same check Prepare ran
-    assert body["verification"]["comparison"]["added"] == []
+    # the exported project passes the same structure check Prepare ran
+    assert multipart.validate_archive(_Archive(exported))["ok"] is True
 
 
 def test_ditherforge_bambu_path_journey_keeps_geometry_and_paint(tmp_path, data_dir):
@@ -194,11 +194,11 @@ def test_an_assembly_object_is_not_counted_as_geometry():
     """A component that points at the assembly itself (components, no mesh) is not a mesh object."""
     def point_at_assembly(parts):
         model = parts["3D/3dmodel.model"].decode()
-        parts["3D/3dmodel.model"] = model.replace('<component objectid="2"', '<component objectid="5"', 1).encode()
+        parts["3D/3dmodel.model"] = model.replace('<component objectid="2"', '<component objectid="4"', 1).encode()
 
     result = multipart.validate_archive(_kromacut_parts(point_at_assembly))
     assert result["ok"] is False
-    assert any("'5'" in p and "no file defines" in p for p in result["problems"])
+    assert any("'4'" in p and "no file defines" in p for p in result["problems"])
 
 
 def test_a_pathless_component_cannot_borrow_an_object_from_a_path_file():
@@ -211,7 +211,11 @@ def test_a_pathless_component_cannot_borrow_an_object_from_a_path_file():
             '<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>'
             + match.group(0) + "</resources></model>").encode()
         parts["3D/_rels/3dmodel.model.rels"] = b'<Relationships><Relationship Target="/3D/Objects/object_1.model"/></Relationships>'
-        # the component still has no p:path
+        # a second, pathed component makes the validator scan the file, so object 2 is a known path-file id;
+        # the original component still has no p:path and must not be satisfied by it
+        model = parts["3D/3dmodel.model"].decode()
+        parts["3D/3dmodel.model"] = model.replace(
+            "</components>", '<component p:path="/3D/Objects/object_1.model" objectid="2"/></components>', 1).encode()
     result = multipart.validate_archive(_kromacut_parts(move_layer_to_file))
     assert result["ok"] is False
     assert any("no file defines" in p for p in result["problems"])
@@ -233,3 +237,71 @@ def test_prepare_still_never_writes_when_a_layer_is_missing(tmp_path, data_dir):
     folder = data_dir / routes_creative.DEFAULT_OUT_FOLDER
     assert not folder.exists() or not list(folder.iterdir())
     assert json.dumps(body).count(str(tmp_path)) == 0
+
+
+# -- Sol R4-F1 / R4-F2: separate id namespaces for types, and no nested objects -------------------------------
+
+_NS = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"'
+_MESH = ('<mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>'
+         '<vertex x="0" y="0" z="1"/></vertices><triangles><triangle v1="0" v2="2" v3="1"/>'
+         '<triangle v1="0" v2="1" v3="3"/></triangles></mesh>')
+
+
+def _collision_archive(*, file_type, root_type):
+    """Assembly 10 holds one PATHED component (object 1 in object_1.model). The root also defines an unrelated
+    mesh object that happens to be id 1. The part under object 10 is a normal_part, which needs type model."""
+    root = (f'<model {_NS} xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"><resources>'
+            f'<object id="1" type="{root_type}">{_MESH}</object>'
+            f'<object id="10" type="model"><components><component p:path="/3D/Objects/object_1.model" objectid="1"/>'
+            f'</components></object></resources><build><item objectid="10"/></build></model>')
+    return _Archive({
+        "3D/3dmodel.model": root.encode(),
+        "3D/_rels/3dmodel.model.rels": b'<Relationships><Relationship Target="/3D/Objects/object_1.model"/></Relationships>',
+        "3D/Objects/object_1.model": f'<model {_NS}><resources><object id="1" type="{file_type}">{_MESH}</object>'
+                                     f'</resources></model>'.encode(),
+        "Metadata/model_settings.config": (b'<config><object id="10"><part id="1" subtype="normal_part"></part></object>'
+                                           b'</config>')})
+
+
+def test_a_root_object_with_the_same_id_does_not_hide_a_path_file_type_mismatch():
+    """The path file's object 1 is typed 'other' under a normal_part: still refused, whatever the root's id 1 is."""
+    result = multipart.validate_archive(_collision_archive(file_type="other", root_type="model"))
+    assert result["ok"] is False
+    assert any("is a normal_part and the geometry under it is typed 'other'" in p for p in result["problems"])
+
+
+def test_a_root_object_with_the_same_id_does_not_reject_a_correct_path_file_reference():
+    """The path file's object 1 is typed 'model' under a normal_part: accepted even if the root's id 1 is 'other'."""
+    result = multipart.validate_archive(_collision_archive(file_type="model", root_type="other"))
+    assert result["ok"] is True, result["problems"]
+
+
+def _with_nested_object():
+    parts = members_from(make_kromacut(layers=2))
+    model = parts["3D/3dmodel.model"].decode()
+    match = re.search(r'(<object id="2"[^>]*>)(.*?)(</object>)', model, re.S)
+    nested = f'{match.group(1)}<object id="9" type="model">{match.group(2)}</object>{match.group(3)}'
+    parts["3D/3dmodel.model"] = model.replace(match.group(0), nested, 1).encode()
+    return parts
+
+
+def test_a_mesh_nested_inside_a_root_object_is_not_credited_to_the_outer_object():
+    result = multipart.validate_archive(_Archive(_with_nested_object()))
+    assert result["ok"] is False
+    assert any("object 2 in the root model contains another object" in p for p in result["problems"])
+    assert any("no file defines" in p and "'2'" in p for p in result["problems"])
+
+
+def test_prepare_refuses_the_nested_shape_and_writes_nothing(tmp_path, data_dir):
+    import io
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, value in _with_nested_object().items():
+            archive.writestr(name, value)
+    src = write(tmp_path, buffer.getvalue())
+    code, body = call("/creative/prepare", {"path": str(src)})
+    assert code == 200 and body["prepared"] is False
+    assert any("contains another object" in p for p in body["refusal"]["problems"])
+    folder = data_dir / routes_creative.DEFAULT_OUT_FOLDER
+    assert not folder.exists() or not list(folder.iterdir())
+    assert src.read_bytes() == buffer.getvalue()

@@ -577,6 +577,7 @@ def validate_archive(tm) -> dict:
     # Core allows (Kromacut writes its colour layers that way). Only an object that carries a
     # mesh is geometry; an assembly built from components is not.
     root_mesh_ids: list[str] = []
+    root_types: dict[str, str] = {}   # separate id namespace from the p:path files
     pos = 0
     while True:
         start = root.find('<object id="', pos)
@@ -593,10 +594,15 @@ def validate_archive(tm) -> dict:
         if end < 0 or root.find("<mesh", tag_end, end) < 0:
             continue
         object_id = tag.group(1)
+        if root.find("<object", tag_end, end) >= 0:
+            # 3MF Core does not nest objects; a mesh found inside one belongs to the inner object
+            problems.append(f"object {object_id} in the root model contains another object")
+            pos = end
+            continue
         root_mesh_ids.append(object_id)
         kind = _TYPE_ATTR.search(root, start, tag_end)
         if kind:
-            mesh_types[object_id] = kind.group(1)
+            root_types[object_id] = kind.group(1)
         if root.find("<triangle ", tag_end, end) < 0:
             problems.append(f"object {object_id} in the root model carries no geometry")
         pos = end
@@ -617,7 +623,10 @@ def validate_archive(tm) -> dict:
             f"the build places object(s) {sorted(set(items))} and the composite "
             f"object(s) are {sorted(composites)}")
 
-    # a part's role and the geometry under it must say the same thing
+    # a part's role and the geometry under it must say the same thing; a part resolves to a root
+    # object when its component has no p:path, otherwise to an object in a p:path file
+    local_by_object = {object_id: set(re.findall(r'<component(?![^>]*p:path=)[^>]*objectid="(\d+)"', block))
+                       for object_id, block in _COMPOSITE.findall(root)}
     for object_id, part_ids in sorted(_parts_by_object(settings).items()):
         for part_id, subtype in part_ids:
             if subtype is None:
@@ -629,7 +638,7 @@ def validate_archive(tm) -> dict:
                     "represents")
                 continue
             wanted = "model" if subtype == "normal_part" else "other"
-            found = mesh_types.get(part_id)
+            found = (root_types if part_id in local_by_object.get(object_id, ()) else mesh_types).get(part_id)
             if found is not None and found != wanted:
                 problems.append(
                     f"part {part_id} of object {object_id} is a {subtype} and the "

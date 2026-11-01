@@ -182,7 +182,8 @@ def test_supported_formats_contract() -> None:
     required = {"key", "label", "carrier", "selection", "identified_by", "reads", "kept_untouched", "not_read",
                 "upstream"}
     for entry in formats.SUPPORTED_FORMATS:
-        assert set(entry) == required
+        assert set(entry) - {"prepare_limits"} == required
+        assert ("prepare_limits" in entry) == (entry["key"] == "ditherforge")
         assert entry["carrier"].startswith("3MF")
         assert entry["reads"] and entry["not_read"] and entry["kept_untouched"]
         assert entry["selection"] in ("automatic", "manual only")
