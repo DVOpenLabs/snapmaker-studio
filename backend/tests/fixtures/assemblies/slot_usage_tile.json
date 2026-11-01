@@ -1,0 +1,9 @@
+{
+  "slots": {
+    "1": {"object_extruder": [], "part_extruder": [], "painted": false, "colour_changes": [], "process_roles": [], "sliced_g": 12.5, "referenced_by": ["sliced_usage"], "verdict": "referenced"},
+    "2": {"object_extruder": [], "part_extruder": [], "painted": false, "colour_changes": [], "process_roles": [], "sliced_g": null, "referenced_by": ["object_extruder"], "verdict": "referenced"},
+    "3": {"object_extruder": [], "part_extruder": [], "painted": false, "colour_changes": [], "process_roles": [], "sliced_g": 4.0, "referenced_by": ["sliced_usage"], "verdict": "referenced"}
+  },
+  "painting": {"present": false, "complete": true, "truncated": false},
+  "object_list_readable": true
+}
