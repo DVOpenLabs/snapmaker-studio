@@ -21,6 +21,10 @@ SUPPORTED_FORMATS: tuple[dict, ...] = (
      "kept_untouched": ["every other part and settings key, by name and SHA-256"],
      "not_read": ["geometry beyond counts", "longer paint_color strings (split-triangle encoding)",
                   "settings JSON and collection TXT written beside the 3MF"],
+     "prepare_limits": ["Prepare works on the Bambu-path export (Application tag BambuStudio-<version>+ditherforge-<version>).",
+                        "The generic-path export writes part id 1 under a component with objectid 2 or more. Studio's "
+                        "structure check does not accept that, so such a file is inspect-only: Prepare refuses it and "
+                        "writes nothing."],
      "upstream": "rtwfroody/ditherforge (MIT) 4d3552a434e8084d9b5fe573959a3493325be29f"},
     {"key": "kromacut", "label": "Kromacut", "carrier": _CARRIER, "selection": "automatic",
      "identified_by": list(generators.MARKERS["kromacut"]),

@@ -29,6 +29,8 @@ export interface CreativeFormatInfo {
   reads: string[];
   kept_untouched: string[];
   not_read: string[];
+  /** Why Prepare may refuse files of this format, when it does. Absent when there is nothing to say. */
+  prepare_limits?: string[];
   upstream: string | null;
 }
 

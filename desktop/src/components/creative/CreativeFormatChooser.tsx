@@ -34,6 +34,12 @@ export default function CreativeFormatChooser({ value, onChange, formats, needsC
               <ul className="list-disc pl-5">{info.not_read.map((r) => <li key={r}>{r}</li>)}</ul>
             </div>
           </div>
+          {info.prepare_limits && info.prepare_limits.length > 0 && (
+            <div className="mt-1">
+              <p className="font-medium">Prepare limits</p>
+              <ul className="list-disc pl-5">{info.prepare_limits.map((r) => <li key={r}>{r}</li>)}</ul>
+            </div>
+          )}
           {info.identified_by.length === 0 && (
             <p className="mt-1 text-muted-foreground">This format leaves no identifying marker in the file, so Studio cannot confirm the file really came from this tool.</p>
           )}

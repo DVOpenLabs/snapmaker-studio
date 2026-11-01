@@ -13,7 +13,9 @@ Captured by `capture.mjs` (real engine process, vite dev UI, headless Edge). All
 | `format-chooser-manual-only.png` | ImageMap chosen: manual-only coverage, no identifying marker |
 | `unsupported-explanation.png` | Kromacut chosen on a plain 3MF (wrong shape): the actionable refusal text |
 | `unknown-prepare-refused.png` | Prepare refused for unknown origin, nothing written |
-| `kromacut-prepare-refused.png` | Prepare refused by the engine's structure check, with the findings |
+| `kromacut-prepare-result.png` | Kromacut copy written (root-model component objects now accepted); kept / changed / dropped / added; original unchanged |
+| `ditherforge-bambu-inspection.png`, `ditherforge-bambu-prepare-result.png` | DitherForge Bambu-path file: inspection, then copy written; `plate_1.json` listed as dropped; paint 3 of 3 |
+| `ditherforge-generic-prepare-refused.png` | DitherForge generic-path file with the format chosen: coverage panel states the Prepare limit; refusal lists the part-id findings; nothing written |
 | `sindricad-prepare-result.png` | New copy written outside the source folder (file name and a generic location label only); kept / changed / dropped / added; original unchanged |
 
 Run: `ACCEPTANCE_DIR=<folder with node_modules/playwright-core> node docs/internal/screens/creative/capture.mjs`.

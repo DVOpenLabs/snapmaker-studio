@@ -84,6 +84,48 @@ def make_ditherforge(*, application: str = "ditherforge-0.6.3", parts: int = 2,
     return _zip(out)
 
 
+def make_ditherforge_bambu(*, application: str = "BambuStudio-02.02.00.85+ditherforge-0.6.3",
+                           paint: tuple[str, ...] = ("4", "8", "0C", ""),
+                           extra: dict[str, bytes] | None = None) -> bytes:
+    """SYNTHETIC DitherForge Bambu-path 3MF, shaped like internal/export3mf/bambu.go: one outer
+    object id 2 holding one component (p:path object_1.model, objectid 1); the inner object id is 1;
+    model_settings has object 2 with part id 1 (the ids agree, unlike the generic path)."""
+    inner = "3D/Objects/object_1.model"
+    main = (f'<?xml version="1.0" encoding="UTF-8"?><model xmlns="{CORE}" '
+            f'xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:p="{PROD}" '
+            f'unit="millimeter" xml:lang="en-US" requiredextensions="p">'
+            f'<metadata name="Application">{application}</metadata>'
+            f'<metadata name="BambuStudio:3mfVersion">1</metadata>'
+            f'<metadata name="Designer">ditherforge</metadata><metadata name="Title">ditherforge output</metadata>'
+            f'<resources><object id="2" p:UUID="00000001-0000-4000-8000-000000000000" type="model"><components>'
+            f'<component p:path="/{inner}" objectid="1" p:UUID="00010000-b206-40ff-9872-83e8017abed1" '
+            f'transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object></resources>'
+            f'<build p:UUID="00000000-0000-4000-8000-0000000000aa"><item objectid="2" '
+            f'p:UUID="00000002-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/>'
+            f'</build></model>')
+    object_model = (f'<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="{CORE}" '
+                    f'xmlns:p="{PROD}" requiredextensions="p"><resources><object id="1" type="model">'
+                    f'{mesh_xml(paint)}</object></resources><build/></model>')
+    cfg = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n  <object id="2">\n'
+           '    <metadata key="name" value="ditherforge_output"/>\n    <metadata key="extruder" value="1"/>\n'
+           '    <metadata face_count="4"/>\n    <part id="1" subtype="normal_part">\n'
+           '      <metadata key="name" value="shell"/>\n    </part>\n  </object>\n'
+           '  <plate><metadata key="plater_id" value="1"/><model_instance><metadata key="object_id" value="2"/>'
+           '<metadata key="instance_id" value="0"/></model_instance></plate>\n</config>')
+    proj = {"filament_colour": ["#FF0000", "#00FF00", "#0000FF"], "filament_type": ["Generic PLA"] * 3,
+            "printer_settings_id": "Synthetic U1 0.4 nozzle", "layer_height": "0.2"}
+    out: dict[str, bytes | str] = {
+        "[Content_Types].xml": _CONTENT_TYPES, "_rels/.rels": _RELS, "3D/3dmodel.model": main,
+        "3D/_rels/3dmodel.model.rels": ('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://'
+                                         'schemas.openxmlformats.org/package/2006/relationships"><Relationship '
+                                         f'Target="/{inner}" Id="rel-1" Type="http://schemas.microsoft.com/'
+                                         '3dmanufacturing/2013/01/3dmodel"/></Relationships>'),
+        inner: object_model, "Metadata/model_settings.config": cfg,
+        "Metadata/project_settings.config": json.dumps(proj)}
+    out.update(extra or {})
+    return _zip(out)
+
+
 def make_kromacut(*, layers: int = 3, with_config: bool = True, application: str = "Kromacut_Print",
                   extra: dict[str, bytes] | None = None, model_settings_extra: str = "") -> bytes:
     """SYNTHETIC Kromacut-shaped 3MF: one object per colour layer (pid/pindex into basematerials),

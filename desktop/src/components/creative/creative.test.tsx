@@ -114,6 +114,19 @@ describe("format chooser", () => {
     expect(html).toContain("cannot confirm the file really came from this tool");
   });
 
+  it("words automatic identification as conditional on markers being present", () => {
+    const html = renderToStaticMarkup(<CreativeFormatChooser value="sindricad" onChange={() => undefined} formats={[{ ...FORMAT, key: "sindricad", label: "SindriCAD", selection: "automatic", identified_by: ["model metadata Application `SindriCAD`"] }]} needsChoice={false} />);
+    expect(html).toContain("identified automatically only when its markers are present in the file");
+    expect(html).not.toContain("detected automatically");
+    expect(html).not.toContain("Prepare limits");
+  });
+
+  it("states a format's Prepare limits when the engine lists them", () => {
+    const html = renderToStaticMarkup(<CreativeFormatChooser value="ditherforge" onChange={() => undefined} formats={[{ ...FORMAT, key: "ditherforge", label: "DitherForge", selection: "automatic", prepare_limits: ["The generic-path export is inspect-only."] }]} needsChoice={false} />);
+    expect(html).toContain("Prepare limits");
+    expect(html).toContain("The generic-path export is inspect-only.");
+  });
+
   it("asks for a choice when detection could not decide, and not otherwise", () => {
     const ask = renderToStaticMarkup(<CreativeFormatChooser value="auto" onChange={() => undefined} formats={[]} needsChoice />);
     expect(ask).toContain("Studio could not decide the tool");

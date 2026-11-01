@@ -31,7 +31,7 @@ process.on("exit", cleanup);
 const gen = spawnSync(process.env.PYTHON || "py", ["-I", "-c", `
 import sys
 sys.path.insert(0, ${JSON.stringify(join(repo, "backend", "tests", "fixtures", "creative"))})
-from zip_factory import make_3mf, make_ditherforge, make_kromacut, make_sindricad
+from zip_factory import make_3mf, make_ditherforge, make_ditherforge_bambu, make_kromacut, make_sindricad
 import pathlib
 d = pathlib.Path(sys.argv[1])
 (d / "sample-fullspectrum.3mf").write_bytes(make_3mf(
@@ -43,6 +43,7 @@ d = pathlib.Path(sys.argv[1])
 (d / "sample-other.3mf").write_bytes(make_3mf(
     settings={"layer_height": "0.2"}, members={"Metadata/custom.bin": b"synthetic-opaque"}))
 (d / "sample-ditherforge.3mf").write_bytes(make_ditherforge(extra={"Metadata/plate_1.json": b"{}"}))
+(d / "sample-ditherforge-bambu.3mf").write_bytes(make_ditherforge_bambu(extra={"Metadata/plate_1.json": b"{}"}))
 (d / "sample-kromacut.3mf").write_bytes(make_kromacut())
 (d / "sample-sindricad.3mf").write_bytes(make_sindricad(extra={"Metadata/plate_1.png": b"synthetic-preview"}))
 (d / "sample-ambiguous.3mf").write_bytes(make_sindricad(extra={"Metadata/kromacut.config": b"synthetic"}))
@@ -96,9 +97,16 @@ await inspect("sample-fullspectrum.3mf", "fullspectrum-recipes.png", "Original u
 await inspect("sample-forca.3mf", "forca-expected-and-unknown.png", "Original unchanged");
 await inspect("sample-other.3mf", "unknown-origin.png", "Origin unknown");
 // New in the journey slice: three more tools, the format chooser, refusals and the prepare result.
-await inspect("sample-ditherforge.3mf", "ditherforge-inspection.png", "Looks like DitherForge");
 await inspect("sample-kromacut.3mf", "kromacut-inspection.png", "Looks like Kromacut");
-await prepare("kromacut-prepare-refused.png", "No copy was written");
+await prepare("kromacut-prepare-result.png", "Export verification");
+// DitherForge: the Bambu-path export is prepared; the generic-path export (sample above) is refused with the reason.
+await inspect("sample-ditherforge-bambu.3mf", "ditherforge-bambu-inspection.png", "Looks like DitherForge");
+await prepare("ditherforge-bambu-prepare-result.png", "Export verification");
+await inspect("sample-ditherforge.3mf", "ditherforge-inspection.png", "Looks like DitherForge");
+await page.getByLabel("Project format").selectOption("ditherforge");
+await sleep(300);
+await prepare("ditherforge-generic-prepare-refused.png", "No copy was written");
+await page.getByLabel("Project format").selectOption("auto");
 await inspect("sample-sindricad.3mf", "sindricad-inspection.png", "Looks like SindriCAD");
 await prepare("sindricad-prepare-result.png", "Export verification");
 await inspect("sample-ambiguous.3mf", "format-chooser-ambiguous.png", "Origin not decided");

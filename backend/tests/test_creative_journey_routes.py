@@ -82,6 +82,8 @@ def test_formats_route_returns_the_table():
     assert [f["key"] for f in body["formats"]][:3] == ["ditherforge", "kromacut", "sindricad"]
     assert body["manual_only"] == ["imagemap", "lumina"]
     assert body["evidence"].startswith("fixture-tested")
+    limits = {f["key"]: f.get("prepare_limits") for f in body["formats"]}
+    assert limits["ditherforge"] and "generic-path" in " ".join(limits["ditherforge"]) and not limits["kromacut"]
 
 
 # -- inspect: new tools ----------------------------------------------------------------------
@@ -241,10 +243,10 @@ def test_prepare_totals_are_not_the_capped_lists(tmp_path, data_dir):
         assert ver["settings"][f"{key}_count"] >= len(ver["settings"][f"{key}_keys"])
 
 
-@pytest.mark.parametrize("blob,tool", [(make_ditherforge(), "DitherForge"), (make_kromacut(), "Kromacut")])
+@pytest.mark.parametrize("blob,tool", [(make_ditherforge(), "DitherForge")])
 def test_prepare_refusal_is_explained_when_the_engine_cannot_vouch_for_a_copy(tmp_path, data_dir, blob, tool):
-    """Studio's Prepare checks the component graph and part ids; these tools' documented shapes fail that
-    check, so no copy is written and the refusal says why."""
+    """Studio's Prepare checks the component graph and part ids; DitherForge's generic-path shape fails that
+    check (part id 1 under component objectid 2), so no copy is written and the refusal says why. Kromacut's shape is covered in test_creative_prepare_paths.py."""
     src = write(tmp_path, blob)
     code, body = call("/creative/prepare", {"path": str(src)})
     assert code == 200 and body["prepared"] is False

@@ -25,3 +25,5 @@ Things the upstream source did NOT establish, so the reader does not claim them:
 payload, how ImageMap or Lumina mark their 3MF output, and anything about files written by older or newer
 releases than the commits above. Settings JSON and collection TXT sidecars mentioned for DitherForge in
 earlier research are written beside the 3MF, not inside it, so they are out of scope for a 3MF reader.
+
+Journey-fix slice (same upstream commits, no new read): `make_ditherforge_bambu` follows `bambu.go` at 4d3552a (`buildBambuMainModel`: outer object 2, component `p:path` object_1.model with objectid 1; `buildBambuModelSettings`: object 2, part id 1; inner object id 1) and `make_ditherforge` follows `export3mf.go` (object id 2+i, `<part id="1">`). `make_kromacut` follows `export3mf.ts` at 9487475 (mesh objects in the root model; assembly components without `p:path`; part id equals the component object id). All three remain SYNTHETIC; no genuine export was available or tested. Upstream sources were fetched read-only with `gh api` for format only.

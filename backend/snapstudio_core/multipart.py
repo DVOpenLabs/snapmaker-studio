@@ -573,7 +573,38 @@ def validate_archive(tm) -> dict:
                     problems.append(f"object {object_id} in {path} carries no geometry")
                 pos = end
 
-    missing = [c for c in components if c not in mesh_ids]
+    # A component with no p:path points at an object the root model defines itself, which 3MF
+    # Core allows (Kromacut writes its colour layers that way). Only an object that carries a
+    # mesh is geometry; an assembly built from components is not.
+    root_mesh_ids: list[str] = []
+    pos = 0
+    while True:
+        start = root.find('<object id="', pos)
+        if start < 0:
+            break
+        tag_end = root.find(">", start)
+        if tag_end < 0:
+            break
+        tag = _OBJECT_TAG.match(root, start, tag_end)
+        pos = tag_end
+        if not tag or root[tag_end - 1] == "/":
+            continue
+        end = root.find("</object>", tag_end)
+        if end < 0 or root.find("<mesh", tag_end, end) < 0:
+            continue
+        object_id = tag.group(1)
+        root_mesh_ids.append(object_id)
+        kind = _TYPE_ATTR.search(root, start, tag_end)
+        if kind:
+            mesh_types[object_id] = kind.group(1)
+        if root.find("<triangle ", tag_end, end) < 0:
+            problems.append(f"object {object_id} in the root model carries no geometry")
+        pos = end
+
+    local = re.findall(r'<component(?![^>]*p:path=)[^>]*objectid="(\d+)"[^>]*/>', root)
+    pathed = re.findall(r'<component(?=[^>]*p:path=)[^>]*objectid="(\d+)"[^>]*/>', root)
+    missing = ([c for c in pathed if c not in mesh_ids]
+               + [c for c in local if c not in root_mesh_ids])
     if missing:
         problems.append(
             f"component(s) {sorted(set(missing))} reference an object that no file defines")
