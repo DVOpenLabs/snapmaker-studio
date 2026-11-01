@@ -82,12 +82,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         status, body = hit
         self._send(status, json.dumps(body).encode("utf-8"))
 
-    def do_POST(self):  # noqa: N802 - mocks never accept writes; a POST is recorded and refused
+    def do_POST(self):  # noqa: N802 - mocks never accept writes; any other verb is recorded as sent and refused
         server: MockHost = self.server  # type: ignore[assignment]
-        server.requests.append({"method": "POST", "path": self.path.split("?", 1)[0], "headers": {}})
+        server.requests.append({"method": self.command, "path": self.path.split("?", 1)[0], "headers": {}})
         self._send(405, b"{}")
 
-    do_PUT = do_DELETE = do_PATCH = do_POST
+    do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = do_POST
 
 
 def make_moonraker(fixture_bundle: dict, *, octoprint_compat: bool = True) -> MockHost:

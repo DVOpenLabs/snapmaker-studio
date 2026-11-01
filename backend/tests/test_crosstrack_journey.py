@@ -1,10 +1,14 @@
-"""Test 11: synthetic cross-track journey through the real application entry points."""
+"""Test 11: synthetic cross-track journey through route dispatch, the Prepare service and the real passport CLI.
+
+Not covered: the HTTP transport and token, the HTTP /convert handler, /creative/prepare, the desktop UI, and a process crash or restart.
+"""
 from __future__ import annotations
 
 import json
 import os
 import subprocess
 import sys
+import http.client
 import struct
 from pathlib import Path
 import zipfile
@@ -96,7 +100,7 @@ def test_11_cross_track_prepare_passport_checkpoint_mutation_and_read_only_resto
     assert cli.returncode == 0 and initial_verification["ok"] is True
     assert initial_verification["verification"]["summary"]["all_intact"] is True
 
-    # (d) Checkpoint both passport files and an additional synthetic tracked file.
+    # (d) Checkpoint the original, the prepared copy and an additional synthetic tracked file (three files).
     extra = tmp_path / "synthetic-sliced.gcode"
     extra.write_text("synthetic sliced stand-in", encoding="utf-8")
     code, checkpoint = _post("/recovery/checkpoint", {"workspace": {"name": "Synthetic demo"},
@@ -145,3 +149,24 @@ def test_11_cross_track_prepare_passport_checkpoint_mutation_and_read_only_resto
     # Sentinel: any non-GET or unapproved GET reaches this assertion and fails the journey.
     assert observed == [("GET", "/printer/objects/query"), ("GET", "/server/history/list")]
 
+
+
+def test_11_sentinel_records_every_verb_it_would_have_to_reject():
+    """The request sentinel used by test 11 must see HEAD, OPTIONS, write verbs and unapproved paths."""
+    mock = MockHost({"/printer/objects/query": (200, {"result": {}})}).start()
+    try:
+        port = mock.server_address[1]
+        for method, path in (("HEAD", "/printer/objects/query"), ("OPTIONS", "/printer/objects/query"),
+                             ("PUT", "/printer/objects/query"), ("DELETE", "/x"), ("POST", "/printer/print/start"),
+                             ("GET", "/printer/gcode/script")):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            connection.request(method, path)
+            connection.getresponse().read()
+            connection.close()
+        observed = [(request["method"], request["path"]) for request in mock.requests]
+    finally:
+        mock.stop()
+    assert observed == [("HEAD", "/printer/objects/query"), ("OPTIONS", "/printer/objects/query"),
+                        ("PUT", "/printer/objects/query"), ("DELETE", "/x"), ("POST", "/printer/print/start"),
+                        ("GET", "/printer/gcode/script")]
+    assert observed != [("GET", "/printer/objects/query"), ("GET", "/server/history/list")]

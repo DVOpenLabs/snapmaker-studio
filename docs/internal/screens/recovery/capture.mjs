@@ -150,7 +150,15 @@ const waitFor = async (expression, label) => {
 const navigate = async (url) => { await cdp("Page.navigate", { url }); await waitFor("document.readyState === 'complete'", "page navigation"); };
 const fill = async (label, value) => evaluate(`(() => { const e = [...document.querySelectorAll('input')].find(x => x.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!e) throw Error('missing input'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(e, ${JSON.stringify(value)}); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 const clickText = async (text) => evaluate(`(() => { const e = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === ${JSON.stringify(text)}); if (!e) throw Error('missing button: ' + ${JSON.stringify(text)}); e.click(); return true; })()`);
+// Fail the capture if the rendered page text shows a local temp or user path (no CSS-only masking).
+const assertNoLocalPath = async () => {
+  const text = await evaluate("document.body.innerText");
+  for (const needle of [tmpdir(), tmpdir().replace(/\\/g, "/"), "AppData", "\\Users\\"]) {
+    if (needle && text.includes(needle)) throw new Error("a local path is visible on the page; refusing to capture");
+  }
+};
 const screenshot = async (path) => {
+  await assertNoLocalPath();
   const png = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: true, fromSurface: true });
   writeFileSync(path, Buffer.from(png.data, "base64"));
 };
