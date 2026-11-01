@@ -57,6 +57,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def parse_request(self):  # noqa: D401 - record a verb that has no do_<VERB> handler (TRACE, CONNECT, extensions)
+        parsed = super().parse_request()
+        if parsed and not hasattr(self, "do_" + self.command):
+            server: MockHost = self.server  # type: ignore[assignment]
+            server.requests.append({"method": self.command, "path": self.path.split("?", 1)[0], "headers": {}})
+        return parsed
+
     def _send(self, status: int, body: bytes = b"", extra: dict | None = None):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")

@@ -9,9 +9,12 @@ import os
 import subprocess
 import sys
 import http.client
+import socket
 import struct
 from pathlib import Path
 import zipfile
+
+CRLF = chr(13) + chr(10)
 
 from snapstudio_api import ext_routes
 from snapstudio_api import service
@@ -149,6 +152,24 @@ def test_11_cross_track_prepare_passport_checkpoint_mutation_and_read_only_resto
     # Sentinel: any non-GET or unapproved GET reaches this assertion and fails the journey.
     assert observed == [("GET", "/printer/objects/query"), ("GET", "/server/history/list")]
 
+
+
+def test_11_sentinel_records_verbs_that_have_no_handler_too():
+    """TRACE, CONNECT and an extension verb are unsupported by the server and must still be recorded."""
+    mock = MockHost({}).start()
+    try:
+        port = mock.server_address[1]
+        for method in ("TRACE", "CONNECT", "BREW"):
+            raw = socket.create_connection(("127.0.0.1", port), timeout=5)
+            raw.sendall(CRLF.join([f"{method} /printer/gcode/script HTTP/1.1", "Host: x",
+                                   "Connection: close", "", ""]).encode())
+            raw.recv(4096)
+            raw.close()
+        observed = [(request["method"], request["path"]) for request in mock.requests]
+    finally:
+        mock.stop()
+    assert observed == [("TRACE", "/printer/gcode/script"), ("CONNECT", "/printer/gcode/script"),
+                        ("BREW", "/printer/gcode/script")]
 
 
 def test_11_sentinel_records_every_verb_it_would_have_to_reject():
