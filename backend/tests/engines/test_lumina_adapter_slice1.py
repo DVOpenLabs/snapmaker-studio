@@ -359,10 +359,24 @@ def test_cli_runner_refuses_slicer_named_executable(tmp_path, name):
         CliRunner(executable, root, ())
 
 
+def _interpreter_file() -> str:
+    """A regular, readable file holding this interpreter's bytes. A Windows Store python.exe alias is a launcher stub
+    that can be neither opened nor copied (Errno 22 / WinError 1920); the real file sits in sys.base_prefix. Raises
+    (never skips) when no readable interpreter file exists, so the pin tests cannot silently stop running."""
+    for candidate in (sys.executable, os.path.join(sys.base_prefix, "python.exe")):
+        try:
+            with open(candidate, "rb") as handle:
+                if handle.read(2):
+                    return candidate
+        except OSError:
+            continue
+    raise RuntimeError("no readable interpreter file to copy for the pin tests")
+
+
 def _copy_interpreter_as(tmp_path, name):
     import shutil
     copy = tmp_path / name
-    shutil.copy2(sys.executable, copy)
+    shutil.copyfile(_interpreter_file(), copy)   # bytes only: copy2's metadata copy fails on the alias
     return copy
 
 

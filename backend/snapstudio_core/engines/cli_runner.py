@@ -39,9 +39,25 @@ _WINDOWS_LAUNCHER = (
 )
 
 
+def _resolve_existing(path: str | os.PathLike[str]) -> Path:
+    """Resolve a path that must exist. Windows app-execution aliases (the Microsoft Store's python.exe) are reparse
+    points that strict resolution cannot read (WinError 1920) although they stat, open and run normally; for those,
+    fall back to ordinary resolution and require that the link still stats to a real target. A path that does not
+    exist still raises FileNotFoundError."""
+    candidate = Path(path).expanduser()
+    try:
+        return candidate.resolve(strict=True)
+    except FileNotFoundError:
+        raise
+    except OSError:
+        resolved = candidate.resolve()
+        os.stat(resolved)   # follows the link; raises when there is nothing behind it
+        return resolved
+
+
 def _is_own_interpreter(path: Path) -> bool:
     try:
-        return path == Path(sys.executable).resolve(strict=True)
+        return path == _resolve_existing(sys.executable)
     except OSError:
         return False
 
@@ -192,7 +208,7 @@ class CliRunner:
                  output_limit: int = 1024 * 1024,
                  artifact_limit: int = 512 * 1024 * 1024,
                  approved_sha256: Sequence[str] = ()) -> None:
-        self.executable = Path(executable).expanduser().resolve(strict=True)
+        self.executable = _resolve_existing(executable)
         if not self.executable.is_file():
             raise RunnerError("executable_invalid")
         if self.executable.suffix.lower() in {".bat", ".cmd"}:
