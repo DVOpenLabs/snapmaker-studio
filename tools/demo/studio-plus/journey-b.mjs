@@ -25,15 +25,16 @@ const shots = join(outRoot, "shots-b"); mkdirSync(shots, { recursive: true });
 const work = mkdtempSync(join(tmpdir(), "demo-"));
 const inputs = join(work, "inputs"); mkdirSync(inputs);
 const dataDir = join(work, "data");
-const PYTHON = process.env.PYTHON ? [process.env.PYTHON] : process.platform === "win32" ? ["py", "-3.13"] : ["python3"];
+const PYTHON = process.env.PYTHON ? [/[\\/]/.test(process.env.PYTHON) ? resolve(process.env.PYTHON) : process.env.PYTHON] : process.platform === "win32" ? ["py", "-3.13"] : ["python3"];
 const [PYCMD, ...PYARGS] = PYTHON;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 const children = [];
 const results = [];
 const log = (name, ok, detail) => { results.push({ name, ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  :: " + String(detail).slice(0, 400) : ""}`); };
-const cleanup = () => { for (const c of children) { try { if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); else c.kill("SIGTERM"); } catch { /* gone */ } } };
+const cleanup = () => { for (const c of children) { try { if (c.exitCode !== null || c.signalCode !== null) continue; if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); else c.kill("SIGTERM"); } catch { /* gone */ } } };
 process.on("exit", cleanup);
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { cleanup(); try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* temp only */ } process.exit(130); });
 const py = (args, opts = {}) => spawnSync(PYCMD, [...PYARGS, ...args], { encoding: "utf8", timeout: 60000, ...opts });
 
 // ---- fixtures (synthetic, same helper the tests use) -------------------------------------------------------
@@ -68,7 +69,7 @@ from tests.mocks.lumina_server import LuminaHttpMock, HTTP_ARTIFACTS
 IMG = open(sys.argv[2], "rb").read()
 with LuminaHttpMock() as mock:
     print(json.dumps({"url": mock.url}), flush=True)
-    for _ in range(4000):
+    while True:
         up = [{"type": u.get("type"), "len": len(u.get("bytes") or b""), "contains_input_image_bytes": IMG in (u.get("bytes") or b"")} if isinstance(u, dict) else {"repr": repr(u)[:80]} for u in mock.uploads]
         art = {k: [v[0], hashlib.sha256(v[1]).hexdigest()] for k, v in HTTP_ARTIFACTS.items()}
         open(sys.argv[1], "w").write(json.dumps({"requests": mock.requests, "uploads": up, "artifacts": art}))
@@ -104,14 +105,14 @@ const printerPort = printer.address().port;
 
 const vitePort = await freePort();
 const UI = `http://localhost:${vitePort}`;
-children.push(spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite", "--port", String(vitePort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
+children.push(spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["--no-install", "vite", "--port", String(vitePort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
 for (let i = 0, ready = false; i < 120 && !ready; i++) { try { ready = (await fetch(UI + "/")).ok; } catch { /* not yet */ } if (!ready) await sleep(500); }
 
 const debugPort = await freePort();
 const edge = [process.env.EDGE_PATH, "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "/usr/bin/microsoft-edge", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean).find(existsSync);
 if (!edge) { console.error("No Edge/Chrome/Chromium found. Set EDGE_PATH to a browser binary."); process.exit(2); }
-children.push(spawn(edge, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--remote-debugging-address=127.0.0.1",
+children.push(spawn(edge, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-component-update", "--remote-debugging-address=127.0.0.1",
   `--remote-debugging-port=${debugPort}`, `--user-data-dir=${join(work, "edge-profile")}`, "about:blank"], { stdio: "ignore" }));
 let target;
 for (let i = 0; i < 80 && !target; i++) { try { target = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: "PUT" }).then((r) => r.json()); } catch { await sleep(250); } }
@@ -284,6 +285,7 @@ await step("B10 Recovery after the switch lists the NEW project's files; saved c
   await navTo("Recovery", "/recovery", saveEnabled); await shot("B10-recovery-new-project.png");
   const tracked = await trackedText(); if (!/sample-ditherforge-bambu\.3mf/.test(tracked)) throw new Error("new project not tracked: " + tracked);
   const prev = await evaluate("document.querySelector('[data-testid=restore-preview]')?.innerText || ''").then((t) => t.replace(/\s+/g, " "));
+  if (!/revision 1/.test(await mt()) || !/sample-kromacut\.3mf/.test(prev)) throw new Error("the saved checkpoint is not still the earlier one: " + prev.slice(0, 200));
   return `will track: ${tracked.replace(/\n/g, "; ")} | saved checkpoint (unchanged until you save again): ${prev.slice(0, 220)}`;
 });
 await step("B11 failure: checkpoint with a tracked file deleted after Prepare is reported honestly (not a silent success)", async () => {
@@ -291,6 +293,7 @@ await step("B11 failure: checkpoint with a tracked file deleted after Prepare is
   await clickText("Checkpoint this workspace"); await sleep(1500);
   const notice = await evaluate("document.querySelector('[data-testid=checkpoint-notice]')?.innerText || ''"); await shot("B11-checkpoint-missing-file.png");
   const prev = await evaluate("document.querySelector('[data-testid=restore-preview]')?.innerText || ''").then((t) => t.replace(/\s+/g, " "));
+  if (!/Not verifiable later/.test(notice) || !/ditherforge-bambu_SnapmakerU1\.3mf/.test(notice)) throw new Error("a checkpoint with a missing file was not flagged: " + notice);
   return `notice="${notice}"; preview after: ${prev.slice(0, 300)}`;
 });
 
@@ -300,5 +303,5 @@ writeFileSync(join(outRoot, "results-b.json"), JSON.stringify({ identity, result
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} steps passed; page errors: ${pageErrors.length}`);
 socket.close(); printer.close(); cleanup();
-try { rmSync(work, { recursive: true, force: true }); } catch { /* temp only */ }
+try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* temp only */ }
 process.exit(failed.length || pageErrors.length ? 1 : 0);

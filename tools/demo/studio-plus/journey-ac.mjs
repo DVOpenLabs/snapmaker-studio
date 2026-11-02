@@ -25,15 +25,16 @@ const shots = join(outRoot, "shots-ac"); mkdirSync(shots, { recursive: true });
 const work = mkdtempSync(join(tmpdir(), "demo-"));
 const inputs = join(work, "inputs"); mkdirSync(inputs);
 const dataDir = join(work, "data");
-const PYTHON = process.env.PYTHON ? [process.env.PYTHON] : process.platform === "win32" ? ["py", "-3.13"] : ["python3"];
+const PYTHON = process.env.PYTHON ? [/[\\/]/.test(process.env.PYTHON) ? resolve(process.env.PYTHON) : process.env.PYTHON] : process.platform === "win32" ? ["py", "-3.13"] : ["python3"];
 const [PYCMD, ...PYARGS] = PYTHON;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 const children = [];
 const results = [];
 const log = (name, ok, detail) => { results.push({ name, ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  :: " + String(detail).slice(0, 400) : ""}`); };
-const cleanup = () => { for (const c of children) { try { if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); else c.kill("SIGTERM"); } catch { /* gone */ } } };
+const cleanup = () => { for (const c of children) { try { if (c.exitCode !== null || c.signalCode !== null) continue; if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(c.pid), "/T", "/F"], { stdio: "ignore" }); else c.kill("SIGTERM"); } catch { /* gone */ } } };
 process.on("exit", cleanup);
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { cleanup(); try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* temp only */ } process.exit(130); });
 const py = (args, opts = {}) => spawnSync(PYCMD, [...PYARGS, ...args], { encoding: "utf8", timeout: 60000, ...opts });
 
 // ---- fixtures (synthetic, same helper the tests use) -------------------------------------------------------
@@ -68,7 +69,7 @@ from tests.mocks.lumina_server import LuminaHttpMock, HTTP_ARTIFACTS
 IMG = open(sys.argv[2], "rb").read()
 with LuminaHttpMock() as mock:
     print(json.dumps({"url": mock.url}), flush=True)
-    for _ in range(4000):
+    while True:
         up = [{"type": u.get("type"), "len": len(u.get("bytes") or b""), "contains_input_image_bytes": IMG in (u.get("bytes") or b"")} if isinstance(u, dict) else {"repr": repr(u)[:80]} for u in mock.uploads]
         art = {k: [v[0], hashlib.sha256(v[1]).hexdigest()] for k, v in HTTP_ARTIFACTS.items()}
         open(sys.argv[1], "w").write(json.dumps({"requests": mock.requests, "uploads": up, "artifacts": art}))
@@ -104,14 +105,14 @@ const printerPort = printer.address().port;
 
 const vitePort = await freePort();
 const UI = `http://localhost:${vitePort}`;
-children.push(spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite", "--port", String(vitePort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
+children.push(spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["--no-install", "vite", "--port", String(vitePort), "--strictPort", "--host", "localhost"], { cwd: join(repo, "desktop"), stdio: "ignore", shell: true }));
 for (let i = 0, ready = false; i < 120 && !ready; i++) { try { ready = (await fetch(UI + "/")).ok; } catch { /* not yet */ } if (!ready) await sleep(500); }
 
 const debugPort = await freePort();
 const edge = [process.env.EDGE_PATH, "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "/usr/bin/microsoft-edge", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean).find(existsSync);
 if (!edge) { console.error("No Edge/Chrome/Chromium found. Set EDGE_PATH to a browser binary."); process.exit(2); }
-children.push(spawn(edge, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--remote-debugging-address=127.0.0.1",
+children.push(spawn(edge, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-component-update", "--remote-debugging-address=127.0.0.1",
   `--remote-debugging-port=${debugPort}`, `--user-data-dir=${join(work, "edge-profile")}`, "about:blank"], { stdio: "ignore" }));
 let target;
 for (let i = 0; i < 80 && !target; i++) { try { target = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: "PUT" }).then((r) => r.json()); } catch { await sleep(250); } }
@@ -245,10 +246,11 @@ await step("A6 failure: unknown-origin Prepare refused", async () => {
   if (listOut().length !== before.length) throw new Error("a file was written"); return "refused, nothing written";
 });
 await step("A7 failure: missing file path", async () => {
-  await fill("Project file path", "does-not-exist.3mf"); await clickText("Inspect project"); await sleep(1500);
+  await fill("Project file path", "does-not-exist.3mf"); await clickText("Inspect project");
+  await waitText("That path is not a local file Studio can read", "missing-file message", 100);
   const t = (await mainText()).replace(/\s+/g, " "); await shot("A7-missing-file.png");
-  if (/Looks like|Origin unknown/.test(t) && !/not found|could not|cannot|no such/i.test(t)) throw new Error("no clear error; page: " + t.slice(0, 200));
-  const k = t.search(/not found|could not|cannot|No such|error/i); return t.slice(Math.max(0, k), Math.max(0, k) + 200);
+  if (/Looks like/.test(t)) throw new Error("an origin was reported for a missing file: " + t.slice(0, 200));
+  return "refused: That path is not a local file Studio can read.";
 });
 await step("A8 failure: engine API refuses out-of-folder traversal / bad out_dir", async () => {
   const r = await post("/creative/prepare", { path: join(inputs, "sample-kromacut.3mf"), out_dir: join(work, "nonexistent-folder") });
@@ -268,11 +270,15 @@ await step("S nav sweep: Creative import -> Passport -> Recovery -> Creative imp
 const luminaOut = join(dataDir, "lumina-output");
 const readMock = () => JSON.parse(readFileSync(mockLog, "utf8"));
 await step("C0 nav: sidebar -> Lumina service", async () => { await navTo("Lumina service", "/lumina", byLabel("Service address")); await shot("C0-lumina-empty.png"); return "ok"; });
-await step("C1 no format chosen: generate is not offered/refused", async () => {
+await step("C1 no format chosen: generate is not offered", async () => {
   await fill("Service address", svc.url); await fill("Image file path", "synthetic-image.png"); await fill("LUT name", "Default");
   const sel = await evaluate("(() => { const s=[...document.querySelectorAll('select')].find(x => (x.getAttribute('aria-label')||'')==='Output format'); return s ? {value:s.value, options:[...s.options].map(o=>o.value+'|'+o.textContent.trim())} : null; })()");
+  const genDisabled = await evaluate("[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Generate' && b.disabled)");
   await shot("C1-lumina-no-format.png");
-  return "Output format select = " + JSON.stringify(sel);
+  if (!sel || sel.value !== "" || !sel.options.includes("|Choose a format")) throw new Error("format select does not start on 'Choose a format': " + JSON.stringify(sel));
+  if (!genDisabled) throw new Error("Generate is available before a format is chosen");
+  if (!(await bodyText()).includes("Studio does not guess the format")) throw new Error("the 'does not guess the format' message is missing");
+  return "Output format select = " + JSON.stringify(sel) + "; Generate disabled";
 });
 await step("C2 Check service (loopback stand-in)", async () => { await clickText("Check service"); await waitText("answered Studio's identity check"); await shot("C2-lumina-service-checked.png"); return "checked"; });
 let genOk;
@@ -297,13 +303,13 @@ await step("C4 failure: format the service did not produce -> refused, nothing s
   if (readdirSync(luminaOut).length !== before) throw new Error("a file was saved on refusal"); return "refused; folder unchanged";
 });
 await step("C5 failure: non-local service address refused before anything is sent", async () => {
-  await fill("Service address", "http://8.8.8.8:8000"); await fill("Output format", "png"); await clickText("Generate");
+  await fill("Service address", "http://192.0.2.1:8000"); await fill("Output format", "png"); await clickText("Generate");
   await waitText("not on your own network", "refusal", 150); await shot("C5-lumina-non-local.png"); return "refused";
 });
 await step("C6 failure: service not running (closed loopback port)", async () => {
   const dead = await freePort(); await fill("Service address", `http://127.0.0.1:${dead}`); await clickText("Check service"); await sleep(3000);
   await shot("C6-lumina-service-down.png"); const t = (await mainText()).replace(/\s+/g, " ");
-  const i = t.search(/could not|unreachable|did not answer|unknown/i); return i < 0 ? t.slice(-220) : t.slice(Math.max(0, i - 40), i + 200);
+  const i = t.search(/The connection failed/); if (i < 0) throw new Error("no connection-failed message: " + t.slice(-220)); return t.slice(Math.max(0, i - 60), i + 40);
 });
 await step("C7 failure: missing image", async () => {
   await fill("Service address", svc.url); await fill("Image file path", "no-such-image.png"); await clickText("Generate"); await sleep(1800);
@@ -313,10 +319,10 @@ await step("C7 failure: missing image", async () => {
 
 // ------------------------------------------------------------------------------------------------------------
 identity.finished = new Date().toISOString(); identity.page_errors = pageErrors.slice(0, 10);
-identity.input_files_unchanged_after_run = Object.fromEntries(Object.entries(origSha).map(([f, h]) => [f, f === "sample-kromacut.3mf" || f === "synthetic-sliced.gcode" ? "mutated/deleted on purpose in B5" : (sha(readFileSync(join(inputs, f))) === h)]));
+identity.input_files_unchanged_after_run = Object.fromEntries(Object.entries(origSha).map(([f, h]) => [f, sha(readFileSync(join(inputs, f))) === h]));
 writeFileSync(join(outRoot, "results-ac.json"), JSON.stringify({ identity, results, printer_requests: mockRequests, lumina: genOk }, null, 1));
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} steps passed; page errors: ${pageErrors.length}`);
 socket.close(); printer.close(); cleanup();
-try { rmSync(work, { recursive: true, force: true }); } catch { /* temp only */ }
+try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* temp only */ }
 process.exit(failed.length || pageErrors.length ? 1 : 0);

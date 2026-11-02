@@ -44,11 +44,15 @@ structure, not from their source.
 
 ## Formats and APIs read for the development features (after v1.7.0)
 
-Everything in this section describes **research only**. Studio redistributes no
-source code, resources, profiles or captured project files from any project named
-here. Licence identifiers are as reported by the GitHub repository API on
-2026-11-02 unless stated; they are recorded, not interpreted, and Studio makes no
-legal conclusion from them. Studio is not affiliated with or endorsed by any of
+This section records research on formats, APIs and shapes, and says what that
+research did and did not put in this repository. For the projects below, Studio
+redistributes no source code and no captured project files; what exists in the
+repository because of the reading is stated per entry. This section does not
+describe the older Orca-derived data and slicer-written test files, which are
+listed separately under "Orca-derived data and slicer-written fixtures already in
+the repository". Licence identifiers are as reported by the GitHub repository API
+on 2026-11-02 unless stated; they are recorded, not interpreted, and Studio makes
+no legal conclusion from them. Studio is not affiliated with or endorsed by any of
 these projects, and claims no contribution back to them.
 
 ### Creative-tool project formats (format only)
@@ -75,8 +79,8 @@ OrcaSlicer ImageMap) are listed with their evidence in `docs/internal/CREATIVE_C
 
 <https://github.com/lumina-layer-studio/Lumina-Layers> — GitHub reports
 AGPL-3.0 (2026-11-02). An earlier Studio research note
-(`docs/innovation-fund/PHASE1_POSITION.md`, 2026-08-02) recorded "GPL-3.0"; the
-two differ and neither is a conclusion drawn here.
+(`docs/innovation-fund/PHASE1_POSITION.md`, a table measured 2026-08-23) recorded
+"GPL-3.0"; the two differ and neither is a conclusion drawn here.
 
 Studio's Lumina client sends requests to a service **you configure and run
 yourself**, using the request and response shapes of the published Lumina Layers
@@ -98,8 +102,11 @@ contacted and no code was copied.
 | AFC-Klipper-Add-On | <https://github.com/AFCProject/AFC-Klipper-Add-On> | GPL-3.0 |
 | BMCU-Klipper | <https://github.com/jarczakpawel/BMCU-Klipper> | GPL-3.0 |
 | multiACE | <https://github.com/decay71/multiACE> | GPL-3.0 |
-| Sidecar-Beta | <https://github.com/dcan999/Sidecar-Beta> | none detected by GitHub; Studio treats this as no licence granted and copies nothing |
+| Sidecar-Beta | <https://github.com/dcan999/Sidecar-Beta> | GitHub reports `NOASSERTION` (licence not identified); Studio copies nothing from it |
 | Snapmaker u1-klipper (stock Moonraker shape) | <https://github.com/Snapmaker/u1-klipper> | GPL-3.0 |
+| Snapmaker u1-moonraker (OctoPrint-compat shape) | <https://github.com/Snapmaker/u1-moonraker> | GPL-3.0 |
+| SnapmakerU1-Extended-Firmware (SpoolLink shape) | <https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware> | GPL-3.0 |
+| OctoPrint (documented version reply) | <https://github.com/OctoPrint/OctoPrint> | AGPL-3.0 |
 
 ### Snapmaker Orca source (setting facts only)
 
@@ -112,13 +119,32 @@ generated list of option names plus a digest of that list, produced by
 `tools/derive-orca-nonnullable.py`). No Orca source text, resources or profile
 data is copied by these two files.
 
+### Orca-derived data and slicer-written fixtures already in the repository
+
+These existed before the work above and are documented in their own files; they
+are listed here so this notice is read together with them. Studio makes no licence
+determination about them here.
+
+- `backend/snapstudio_core/data/templates/u1_base_project_settings.json`: project
+  settings captured from a real Snapmaker Orca project
+  (`backend/snapstudio_core/data/templates/PROVENANCE.md`).
+- `backend/snapstudio_core/data/profiles/snapmaker_u1.json`: U1 reference profile
+  values exported from Snapmaker Orca's own reference project (see "U1 reference
+  profile values" below).
+- Test fixtures written by slicers, described in
+  `backend/tests/fixtures/painted/PROVENANCE.md` (for example a Snapmaker Orca
+  2.3.5-authored and a Bambu Studio 02.08.02.61-authored project, and
+  PrusaSlicer 2.9.6 and OrcaSlicer 2.4.2 round-trips of Studio's own 20 mm cube) and
+  `backend/tests/fixtures/orca-object-overrides/`.
+
 ---
 
 ## Boundary kept
 
 These projects were studied as **behaviour** — the published symptom a rule
-addresses, and the file-format schema it operates on. No source code, resources
-or profile data from any of them is present in this repository.
+addresses, and the file-format schema it operates on. No source code from any of
+them is present in this repository. The only data files derived from them are the
+Orca-derived data and slicer-written fixtures listed above.
 
 | Project | Licence | Why Studio must not copy from it |
 |---|---|---|
