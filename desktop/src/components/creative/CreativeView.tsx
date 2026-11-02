@@ -6,7 +6,7 @@ import {
   fetchCreativeFormats, inspectCreative, normalizedProjectPath, prepareCreative,
   type CreativeFormat, type CreativeFormatInfo, type CreativeInspectResponse, type CreativePrepareResponse,
 } from "@/lib/creativeApi";
-import { beginPrepare, linkPreparedCopy } from "@/store/job";
+import { beginPrepare, linkPreparedCopy, useUnlinkedCopies } from "@/store/job";
 import CreativeFormatChooser from "./CreativeFormatChooser";
 import CreativePreparePanel from "./CreativePreparePanel";
 import CreativeReportView from "./CreativeReportView";
@@ -23,6 +23,7 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
   const [report, setReport] = useState<CreativeInspectResponse | null>(null);
   const [prepared, setPrepared] = useState<CreativePrepareResponse | null>(null);
   const [linkNote, setLinkNote] = useState<string | null>(null);
+  const unlinked = useUnlinkedCopies((state) => state.items);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -57,6 +58,7 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
           note = "This copy was written, but a newer Prepare or project change happened while it ran, so it was not linked to the current job.";
         }
       }
+      if (note && res.prepared) useUnlinkedCopies.getState().add(`${res.output.name}: ${note}`);
       if (alive.current) { setPrepared(res); setLinkNote(note); }
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "Prepare failed.");
@@ -89,6 +91,11 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
           </div>
         </section>
       )}
+      {unlinked.length > 0 && <div className="text-sm" role="status" data-testid="creative-unlinked">
+        <p>Written earlier but not linked to the job:</p>
+        <ul className="list-disc pl-5">{unlinked.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        <button className="text-xs underline" onClick={() => useUnlinkedCopies.getState().clear()}>Dismiss</button>
+      </div>}
       {linkNote && <p className="text-sm" role="status" data-testid="creative-link-note">{linkNote}</p>}
       {prepared && <CreativePreparePanel result={prepared} />}
     </div>

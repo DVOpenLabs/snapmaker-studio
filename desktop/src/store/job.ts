@@ -219,26 +219,60 @@ export function trackJob(): () => void {
  * A prepared copy written by Creative import, linked to the project it was made from. Creative import does not open the
  * project in the session, so this is where the pair is noted for Recovery and Passport. Nothing here starts work.
  */
-export interface PrepareStart { seq: number; projectAtStart: string | null }
+/**
+ * The job's ownership epoch: it advances whenever the job changes hands (the project, the prepared copy or the sliced
+ * file linked to it changes) for any reason other than a Creative link below. A Creative Prepare that started at an
+ * older epoch has been overtaken (another project opened, an ordinary Prepare or G-code linked, A -> B -> A) and must
+ * not link its result over the newer state.
+ */
+let jobEpoch = 0;
+let selfChange = false;
+useJob.subscribe((s, prev) => {
+  if (selfChange) return;
+  const r = s.record, p = prev.record;
+  if ((r?.original.path ?? null) !== (p?.original.path ?? null) || (r?.prepared?.path ?? null) !== (p?.prepared?.path ?? null)
+    || (r?.sliced?.path ?? null) !== (p?.sliced?.path ?? null)) jobEpoch++;
+});
+
+export interface PrepareStart { seq: number; epoch: number }
 let prepareSeq = 0;
-/** Call when a Prepare begins. Its completion may link only while nothing newer has taken over the job. */
+let lastLinkedSeq = 0;
+/** Call when a Prepare begins. */
 export function beginPrepare(): PrepareStart {
-  return { seq: ++prepareSeq, projectAtStart: useJob.getState().record?.original.path ?? null };
+  return { seq: ++prepareSeq, epoch: jobEpoch };
 }
 
-/** Returns false (linking nothing) when a newer Prepare started, or the job moved to another project, since `started`. */
+/** Copies that were written but not linked to the job (overtaken, or failed validation), so the page can say so later. */
+export const useUnlinkedCopies = create<{ items: string[]; add: (text: string) => void; clear: () => void }>((set, get) => ({
+  items: [],
+  add: (text) => set({ items: [...get().items, text].slice(-5) }),
+  clear: () => set({ items: [] }),
+}));
+
+/**
+ * Link a Creative-prepared copy to its project. Returns false (linking nothing) when the job changed hands since
+ * `started`, or a Prepare that started later has already linked its result. A newer Prepare that failed or was refused
+ * changes nothing, so it does not suppress an older valid copy.
+ */
 export function linkPreparedCopy(projectPath: string, preparedPath: string, mode: string, started?: PrepareStart): boolean {
-  if (started) {
-    const current = useJob.getState().record?.original.path ?? null;
-    if (started.seq !== prepareSeq || (current !== started.projectAtStart && current !== projectPath)) return false;
-  }
+  if (started && (started.epoch !== jobEpoch || started.seq < lastLinkedSeq)) return false;
   const now = new Date().toISOString();
   const before = useJob.getState().record;
   const opened = openProject(before, projectPath, now);
   const next = linkPrepared(opened, projectPath, preparedPath, mode, now);
   if (opened !== before) invalidateFingerprints();
-  if (next === before) return true;
-  update(next, true);
+  if (started) lastLinkedSeq = started.seq;
+  if (next === before) {
+    // The same copy of the same project was prepared again this session: it is active now, even if it was only a saved job.
+    if (!useJob.getState().verified) {
+      useJob.setState({ verified: true });
+      void fingerprint("original", projectPath);
+      void fingerprint("prepared", preparedPath);
+    }
+    return true;
+  }
+  selfChange = true;
+  try { update(next, true); } finally { selfChange = false; }
   void fingerprint("original", projectPath);
   void fingerprint("prepared", preparedPath);
   return true;

@@ -52,7 +52,7 @@ def _resolve_existing(path: str | os.PathLike[str]) -> Path:
         raise
     except OSError:
         resolved = candidate.resolve()
-        os.stat(resolved)   # follows the link; raises when there is nothing behind it
+        os.stat(resolved)   # must succeed; for a Store alias it describes the link itself (see above)
         return resolved
 
 

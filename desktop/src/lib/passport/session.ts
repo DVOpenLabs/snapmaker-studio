@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useJob } from "@/store/job";
 import type { JobRecord } from "@/lib/jobRecord";
 import type { BuildResponse, Verification } from "./types";
 
@@ -79,3 +80,19 @@ export function belongsToOtherProject(s: Pick<PassportSession, "builtFor" | "fie
   const owners = [s.builtFor?.project ?? null, s.fieldsProject].filter((p): p is string => p !== null);
   return owners.some((owner) => owner !== current);
 }
+
+/**
+ * The project the page's content belongs to is checked here, not in the view, so a project change that happens while
+ * the page is not mounted (A -> B -> A included) still clears it and cancels anything in flight.
+ */
+let lastProject: string | null = useJob.getState().record?.original.path ?? null;
+useJob.subscribe((state) => {
+  const current = state.record?.original.path ?? null;
+  if (current === lastProject) return;
+  lastProject = current;
+  const s = usePassportSession.getState();
+  const hasContent = s.built !== null || s.fieldsProject !== null;
+  if (belongsToOtherProject(s, current)) s.projectChanged("A different project is open now, so the earlier project's passport and file fields were cleared.");
+  else if (hasContent) usePassportSession.setState({ buildSeq: s.buildSeq + 1, verifySeq: s.verifySeq + 1 });
+});
+

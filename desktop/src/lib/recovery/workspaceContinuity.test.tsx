@@ -80,7 +80,8 @@ import PassportView from "@/lib/passport/PassportView";
 import { usePassportSession } from "@/lib/passport/session";
 import { RecoveryView } from "@/lib/recovery/RecoveryView";
 import { __resetRecoverySubscriberForTests } from "@/lib/recovery/subscriber";
-import { useJob } from "@/store/job";
+import { trackJob, useJob, useUnlinkedCopies } from "@/store/job";
+import { useSession } from "@/store/session";
 
 const PROJECT_A = "C:/work/bracket.3mf", COPY_A = "C:/studio/creative-prepared/bracket_SnapmakerU1.3mf";
 const PROJECT_B = "C:/work/vase.3mf", COPY_B = "C:/studio/creative-prepared/vase_SnapmakerU1.3mf";
@@ -122,10 +123,12 @@ beforeEach(() => {
   Object.assign(disk, { [PROJECT_A]: "a-original", [COPY_A]: "a-copy", [PROJECT_B]: "b-original", [COPY_B]: "b-copy" });
   verifyGates.length = 0; for (const k of Object.keys(prepareGates)) delete prepareGates[k];
   calls.length = 0; Object.assign(svc, { revision: 0, tracked: [], failCheckpoint: false });
-  window.localStorage.clear(); useJob.getState().forget(); usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
+  window.localStorage.clear(); useJob.getState().forget(); useUnlinkedCopies.getState().clear();
+  untrack = trackJob();   // the real session -> job linking, as the app starts it usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
 });
-afterEach(cleanup);
+afterEach(() => { untrack(); cleanup(); });
 
+let untrack: () => void = () => undefined;
 describe("workspace checkpoint and passport continuity (jsdom, real views, fake local service)", () => {
   it("Prepare output becomes checkpoint input; only linked files are tracked and the rest is explained", async () => {
     render(<Shell />);
@@ -343,4 +346,78 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     expect(useJob.getState().record?.prepared?.path).toBe(COPY_A2);
   });
 
+  it("an older Creative Prepare does not replace a copy linked by an ordinary Prepare of the same project", async () => {
+    render(<Shell />);
+    const ORDINARY = "C:/studio/prepared/bracket_ordinary.3mf";
+    let release!: () => void;
+    prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");          // Creative run waits
+    go("recovery");
+    delete prepareGates[PROJECT_A];
+    act(() => { useSession.getState().setFile(PROJECT_A); });                    // the project is opened on the main page
+    act(() => { useSession.setState({ convert: { status: "done", data: { output_path: ORDINARY, blocked: false, validated_ok: true, prepare_mode: "preserve" }, error: null } as any }); });
+    await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY));
+    await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
+    expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY);              // not replaced by the older Creative copy
+    go("creative");
+    expect(screen.getByTestId("creative-unlinked").textContent).toContain("bracket_SnapmakerU1.3mf");   // and it says so
+  });
+
+  it("A -> B -> A on the main page while a Creative Prepare of A runs: the late result is not linked", async () => {
+    render(<Shell />);
+    let release!: () => void;
+    prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("recovery");
+    act(() => { useSession.getState().setFile(PROJECT_A); });
+    act(() => { useSession.getState().setFile(PROJECT_B); });
+    act(() => { useSession.getState().setFile(PROJECT_A); });                    // back to the same path
+    await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_A);
+    expect(useJob.getState().record?.prepared ?? null).toBeNull();
+  });
+
+  it("a newer Prepare that is refused does not stop an older valid copy from being linked", async () => {
+    render(<Shell />);
+    let release!: () => void;
+    prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("recovery");
+    go("creative"); type("Project file path", PROJECT_B);
+    fireEvent.click(screen.getByText("Inspect project")); await screen.findByLabelText("Prepare a U1 copy");
+    responses[PROJECT_B] = { prepared: false, refusal: { kind: "x", seen: "", not_supported: "", what_to_do: [] }, origin: { status: "detected" } };
+    fireEvent.click(screen.getByRole("button", { name: "Prepare a U1 copy" }));
+    await screen.findByText("prepare-panel");                                      // B was refused: nothing written, nothing linked
+    await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
+    expect(useJob.getState().record?.prepared?.path).toBe(COPY_A);
+  });
+
+  it("a project change while the Passport page is not open still clears it (A -> B -> A)", async () => {
+    render(<Shell />);
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("passport"); fireEvent.click(screen.getByText("Use this job's files")); fireEvent.click(screen.getByText("Build passport"));
+    await screen.findByTestId("passport-report");
+    go("recovery");
+    act(() => { useSession.getState().setFile(PROJECT_B); });
+    act(() => { useSession.getState().setFile(PROJECT_A); });                    // back to A before returning to the page
+    go("passport");
+    expect(screen.queryByTestId("passport-report")).toBeNull();
+    expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe("");
+  });
+
+  it("a build and its check still running when the project changes off-page cannot land afterwards", async () => {
+    render(<Shell />);
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("passport"); fireEvent.click(screen.getByText("Use this job's files"));
+    let releaseCheck!: () => void;
+    verifyGates.push(new Promise<void>((resolve) => { releaseCheck = resolve; }));
+    fireEvent.click(screen.getByText("Build passport"));
+    await waitFor(() => expect(calls.some((c) => c.path === "/passport/verify")).toBe(true));
+    go("recovery");
+    act(() => { useSession.getState().setFile(PROJECT_B); });
+    act(() => { useSession.getState().setFile(PROJECT_A); });
+    await act(async () => { releaseCheck(); await new Promise((r) => setTimeout(r, 30)); });
+    go("passport");
+    expect(screen.queryByTestId("passport-report")).toBeNull();
+  });
 });
