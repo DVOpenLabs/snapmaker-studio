@@ -143,8 +143,9 @@ determination about them here.
 
 These projects were studied as **behaviour** — the published symptom a rule
 addresses, and the file-format schema it operates on. No source code from any of
-them is present in this repository. The only data files derived from them are the
-Orca-derived data and slicer-written fixtures listed above.
+them is present in this repository. The data files derived from them are the
+Orca-derived data and slicer-written fixtures listed above and the factual
+printer-profile data described under "Printer profile facts" below.
 
 | Project | Licence | Why Studio must not copy from it |
 |---|---|---|

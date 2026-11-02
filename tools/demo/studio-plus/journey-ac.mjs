@@ -3,9 +3,11 @@
 //
 // Starts, on loopback only: the Studio engine from source, the Vite dev server, a headless Chromium-family browser
 // driven over the Chrome DevTools Protocol, and (where needed) stand-ins for a Lumina-compatible service and a
-// printer. Every input is a disposable synthetic file generated into a throwaway folder; nothing outside that
-// folder is read or modified, no real project is touched, and no Orca, printer or release artifact is involved.
-// It kills only the processes it started. See docs/demo/REPRODUCE.md.
+// printer. Every input is a disposable synthetic file generated into a throwaway folder; the driver writes only
+// there and to DEMO_OUT, touches no real project, and involves no printer or release artifact. It reads the
+// repository's own code and dependencies, and the engine may read the bundled profile folders of an installed
+// Snapmaker Orca (read-only; the driver never launches Orca). It kills only the processes it started.
+// See docs/demo/REPRODUCE.md.
 //
 // Env: DEMO_REPO (repo root; default: this checkout), DEMO_OUT (screenshots + results; default: <tmp>/studio-demo-out),
 //      PYTHON (python executable; default: "py -3.13" on Windows, "python3" elsewhere), EDGE_PATH (browser binary).
