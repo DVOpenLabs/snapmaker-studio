@@ -127,6 +127,7 @@ beforeEach(() => {
   verifyGates.length = 0; buildGates.length = 0; for (const k of Object.keys(prepareGates)) delete prepareGates[k];
   calls.length = 0; Object.assign(svc, { revision: 0, tracked: [], failCheckpoint: false });
   window.localStorage.clear(); useJob.getState().forget(); useUnlinkedCopies.getState().clear();
+  useSession.getState().reset();   // no project left open by the previous test (trackJob only reacts to a file change)
   untrack = trackJob();   // the real session -> job linking, as the app starts it
   usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
 });
@@ -417,6 +418,8 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     type("Original file path", PROJECT_A);                 // typed with no project open: owned by nobody
     act(() => { useSession.getState().setFile(PROJECT_A); });   // a project is opened; the typed fields are kept
     expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe(PROJECT_A);
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_A);   // the project really is open now
+    expect(usePassportSession.getState().fieldsProject).toBeNull();     // and the typed fields still belong to nobody
     let releaseBuild!: () => void;
     buildGates.push(new Promise<void>((resolve) => { releaseBuild = resolve; }));
     fireEvent.click(screen.getByText("Build passport"));
