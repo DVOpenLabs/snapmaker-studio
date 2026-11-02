@@ -486,13 +486,17 @@ def _scan_objects(body: str, where: str) -> tuple[dict, list[str]]:
     objects: dict[str, dict] = {}
     problems: list[str] = []
     pos = 0
+    visited = 0
+    truncated = False
     while True:
         start = body.find('<object id="', pos)
         if start < 0:
             break
+        visited += 1
         tag_end = body.find(">", start)
         if tag_end < 0:
             problems.append(f"an object tag in {where} is not closed")
+            truncated = True
             break
         pos = tag_end
         tag = _OBJECT_TAG.match(body, start, tag_end)
@@ -521,6 +525,10 @@ def _scan_objects(body: str, where: str) -> tuple[dict, list[str]]:
         entry["mesh"] = body.find("<mesh", tag_end, end) >= 0
         entry["geometry"] = _TRIANGLE_START.search(body, tag_end, end) is not None
         pos = end
+    if not truncated and len(_NESTED_OBJECT.findall(body)) > visited:
+        # an object opened some other way (another attribute first, single quotes) is never scanned,
+        # so nothing would check it: refuse rather than let it pass unread
+        problems.append(f"{where} has an object tag the scan cannot read (`id` must be the first attribute, double-quoted)")
     return objects, problems
 
 
@@ -583,7 +591,9 @@ def validate_archive(tm) -> dict:
 
     def read(name: str) -> str:
         try:
-            return tm.read_part(name).decode("utf-8", "ignore") if tm.has_part(name) else ""
+            text = tm.read_part(name).decode("utf-8", "ignore") if tm.has_part(name) else ""
+            # comments are not structure: no reader below may see a commented-out tag
+            return re.sub(r"<!--.*?-->", "", text, flags=re.S) if "<!--" in text else text
         except Exception:
             return ""
 
@@ -668,7 +678,8 @@ def validate_archive(tm) -> dict:
                 problems.append(
                     f"object {object_id}: component(s) {[component_id]} are referenced both "
                     "from the root model and from a file, so a part record cannot say which one it describes")
-            elif len({file_objects.get(n, {}).get(component_id, {}).get("type") for n in spaces}) > 1:
+            elif len({file_objects.get(n, {}).get(component_id, {}).get("type") or "model"
+                      for n in spaces}) > 1:      # 3MF Core: an object without a type is "model"
                 problems.append(
                     f"object {object_id}: component(s) {[component_id]} are referenced from several files "
                     "that disagree on the object's type, so a part record cannot say which one it describes")

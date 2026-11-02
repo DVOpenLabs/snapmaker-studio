@@ -72,13 +72,13 @@ def test_a_plain_file_assembly_is_valid():
     assert result["ok"] is True, result["problems"]
 
 
-def test_a_valid_root_and_file_assembly_in_separate_objects_is_valid():
+def test_a_root_object_and_a_file_object_sharing_an_id_are_valid_when_the_assembly_names_the_file():
     """Root object 1 and file object 1 are different objects; two assemblies may each use their own."""
     archive = build({A: model(obj(1))}, [(A, 1)], root_objects=[obj(1)])
     assert multipart.validate_archive(archive)["ok"] is True
 
 
-def test_the_same_id_in_two_files_is_valid_when_each_assembly_uses_one_file():
+def test_an_unreferenced_file_with_the_same_id_does_not_disturb_the_assembly():
     """Cross-file id reuse is ordinary: ids are scoped to their file."""
     archive = build({A: model(obj(1)), B: model(obj(1, "other"))}, [(A, 1)])
     # B is never referenced, so it is not read and cannot disturb the assembly that uses A
@@ -178,7 +178,7 @@ def test_a_missing_file_object_is_reported_when_the_file_exists_but_lacks_the_id
                for p in problems_of(build({A: model(obj(1))}, [(A, 7)])))
 
 
-def test_type_is_checked_against_the_referenced_files_own_object():
+def test_type_is_checked_against_the_named_file_object_when_another_file_reuses_the_id():
     """Both files define object 1; the one the component names is typed 'other' under a normal_part."""
     archive = build({A: model(obj(1, "other")), B: model(obj(1, "model"))}, [(A, 1)])
     assert any("is a normal_part and the geometry under it is typed 'other'" in p for p in problems_of(archive))
@@ -242,3 +242,44 @@ def test_one_assembly_still_may_not_mix_root_and_file_components_with_the_same_i
     archive = build({A: model(obj(1, "other"))}, [(A, 1), (None, 1)], root_objects=[obj(1, "model")],
                     parts=[(1, "normal_part"), (1, "normal_part")])
     assert any("referenced both from the root model and from a file" in p for p in problems_of(archive))
+
+
+# -- Sol R7-F1 / R7-F2 ---------------------------------------------------------------------------------------
+
+def test_a_commented_out_component_in_the_root_model_does_not_refuse_a_valid_archive():
+    archive = build({A: model(obj(1))}, [(A, 1)])
+    root = archive.parts["3D/3dmodel.model"].decode().replace(
+        "</components>", '</components><!-- <component/> -->', 1)
+    archive.parts["3D/3dmodel.model"] = root.encode()
+    assert multipart.validate_archive(archive)["ok"] is True
+
+
+def test_a_commented_out_assembly_is_not_read_as_structure():
+    archive = build({A: model(obj(1))}, [(A, 1)])
+    root = archive.parts["3D/3dmodel.model"].decode().replace(
+        "</resources>",
+        '<!--<object id="77" type="model"><components><component objectid="5"/></components></object>--></resources>', 1)
+    archive.parts["3D/3dmodel.model"] = root.encode()
+    assert multipart.validate_archive(archive)["ok"] is True
+
+
+def test_an_omitted_object_type_equals_an_explicit_model_across_files():
+    untyped = f'<object id="1">{MESH}</object>'
+    archive = build({A: model(untyped), B: model(obj(1, "model"))}, [(A, 1), (B, 1)],
+                    parts=[(1, "normal_part"), (1, "normal_part")])
+    assert multipart.validate_archive(archive)["ok"] is True
+
+
+def test_an_omitted_object_type_still_disagrees_with_an_explicit_other_across_files():
+    untyped = f'<object id="1">{MESH}</object>'
+    archive = build({A: model(untyped), B: model(obj(1, "other"))}, [(A, 1), (B, 1)],
+                    parts=[(1, "normal_part"), (1, "normal_part")])
+    assert any("several files that disagree" in p for p in problems_of(archive))
+
+
+def test_an_object_written_with_id_not_first_is_refused_not_skipped():
+    """Opus O-R7-F1: an unreadable object spelling must not hide a nested object from the scan."""
+    xml = model(f'<object type="model" id="1"><object id="9" type="model">{MESH}</object></object>')
+    result = multipart.validate_archive(build({A: xml}, [(A, 9)]))
+    assert result["ok"] is False
+    assert any("object tag the scan cannot read" in p for p in result["problems"])
