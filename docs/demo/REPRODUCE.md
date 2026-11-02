@@ -2,7 +2,7 @@
 
 > **This is a development build, not the released v1.7.0.** The features shown here (Creative import and Prepare, workspace checkpoint with Passport, and the Lumina-compatible service client) live on development branches. They are not in the v1.7.0 installer, and nothing here is a release candidate. The UI footer and `desktop/package.json` still say "1.7.0" because no version bump was made on these branches.
 
-Everything runs from source on your own machine, on loopback, with disposable synthetic files. No printer, no Snapmaker Orca, no real Lumina service and no real project is involved or touched.
+Everything runs from source on your own machine, on loopback, with disposable synthetic files. No printer, no real Lumina service and no real project is involved or touched. Snapmaker Orca is never launched (the engine may read the bundled profile folders of an installed Orca, read-only).
 
 ## Evidence labels (what the demo does and does not show)
 - **fixture-tested**: the creative-project readers are checked against synthetic archives built by Studio's own test helper from the tools' published output formats. They are not captured from real tool exports.
