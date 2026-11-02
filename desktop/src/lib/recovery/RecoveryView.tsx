@@ -31,8 +31,11 @@ export function RecoveryView() {
       if (!preview.data) throw new Error("Read the saved checkpoint first, then save.");
       // The revision this page last read, including 0 for "no checkpoint yet", so a second window cannot be overwritten.
       const saved = await saveCheckpoint(workspaceCheckpointBody(plan, record, preview.data.revision, legacyJobSnapshot()));
-      setNotice({ kind: "ok", text: `Workspace checkpoint saved · revision ${saved.revision} · ${plan.tracked.length} file(s) tracked` });
       await refreshPreview();
+      // A file that was missing or unreadable when saved has no fingerprint to compare against later: say so now.
+      const weak = (getPreview().data?.files ?? []).filter((f) => f.state === "unverified" || f.state === "missing" || f.state === "unreadable");
+      const caveat = weak.length ? ` Not verifiable later (missing, unreadable or no fingerprint when saved): ${weak.map((f) => f.name).join(", ")}.` : "";
+      setNotice({ kind: "ok", text: `Workspace checkpoint saved · revision ${saved.revision} · ${plan.tracked.length} file(s) tracked.${caveat}` });
     } catch (error) { setNotice({ kind: "error", text: `Checkpoint NOT saved: ${error instanceof Error ? error.message : "it failed"}` }); }
     finally { setBusy(false); }
   };

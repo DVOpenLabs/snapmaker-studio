@@ -101,7 +101,7 @@ async function prepareThroughCreative(project: string, copy: string, copyName: s
   await screen.findByText("prepare-panel");
   await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(copy));
 }
-const refreshPreview = async () => { fireEvent.click(screen.getByText("Refresh restore preview")); await waitFor(() => expect(screen.getByRole("button", { name: "Checkpoint this workspace" }).disabled).toBe(false)); };
+const refreshPreview = async () => { fireEvent.click(screen.getByText("Refresh restore preview")); await waitFor(() => expect((screen.getByRole("button", { name: "Checkpoint this workspace" }) as HTMLButtonElement).disabled).toBe(false)); };
 
 beforeEach(() => {
   for (const k of Object.keys(disk)) delete disk[k];
@@ -135,7 +135,7 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     expect(screen.getByTestId("no-workspace").textContent).toContain("No project is open");
     await refreshPreview().catch(() => undefined);
     fireEvent.click(screen.getByText("Refresh restore preview"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save sample checkpoint" }).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Save sample checkpoint" }) as HTMLButtonElement).disabled).toBe(false));
     expect((screen.getByRole("button", { name: "Checkpoint this workspace" }) as HTMLButtonElement).disabled).toBe(true);
     const sample = screen.getByLabelText("Sample data");
     expect(within(sample).getByText("Sample data (not your workspace)")).toBeTruthy();
@@ -154,6 +154,19 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     expect(alert.textContent).toContain("Checkpoint NOT saved");
     expect(screen.queryByText(/Workspace checkpoint saved/)).toBeNull();   // ("No checkpoint saved yet" from the preview is not a success)
     expect(svc.revision).toBe(0);
+  });
+
+  it("a checkpoint saved while a tracked file is missing says that file cannot be verified later", async () => {
+    render(<Shell />);
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    disk[COPY_A] = null;   // deleted after Prepare, before the checkpoint
+    go("recovery"); await refreshPreview();
+    fireEvent.click(screen.getByRole("button", { name: "Checkpoint this workspace" }));
+    await screen.findByText(/Workspace checkpoint saved/);
+    const text = screen.getByTestId("checkpoint-notice").textContent!;
+    expect(text).toContain("Not verifiable later");
+    expect(text).toContain("bracket_SnapmakerU1.3mf");
+    expect(text).not.toContain("bracket.3mf,");   // the intact original is not flagged
   });
 
   it("changed and deleted tracked files show as changed and missing in the read-only preview", async () => {
