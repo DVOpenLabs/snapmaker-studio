@@ -1,0 +1,1 @@
+These are documentation-derived fixtures hand-written to the published Lumina Layers API 2.0 source shapes recorded in the 2026-10-25 research bundle. They are not captures from a Lumina service. Evidence: fixture-tested and mock-service-tested only.

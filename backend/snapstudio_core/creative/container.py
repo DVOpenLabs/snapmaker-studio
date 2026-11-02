@@ -10,7 +10,7 @@ import io
 import posixpath
 import zipfile
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from xml.etree import ElementTree
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
@@ -38,6 +38,9 @@ class ThreeMFManifest:
     passed_through: tuple[MemberDigest, ...]
     model_xml: bytes
     project_settings: dict | None
+    #: Member bytes already read under the container limits; lets format readers look inside
+    #: named parts without opening the archive a second time. Never serialized.
+    parts: dict = field(default_factory=dict, repr=False, compare=False)
 
     def to_dict(self) -> dict:
         """Serialize member identity only; original archive payloads stay untouched."""
@@ -130,4 +133,4 @@ def read_3mf(data: bytes) -> ThreeMFManifest:
         understood.append("Metadata/project_settings.config")
     records = tuple(MemberDigest(n, hashlib.sha256(blobs[n]).hexdigest()) for n in sorted(blobs))
     passed = tuple(rec for rec in records if rec.name not in understood)
-    return ThreeMFManifest(records, tuple(understood), passed, model, settings)
+    return ThreeMFManifest(records, tuple(understood), passed, model, settings, blobs)
