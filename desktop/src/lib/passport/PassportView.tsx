@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Fingerprint } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
+import { useJob } from "@/store/job";
 import { buildPassport, buildRequest, verifyPassport } from "./api";
 import PassportReport from "./PassportReport";
-import type { BuildResponse, Verification } from "./types";
+import { belongsToOtherProject, fileFields, reportIsStale, usePassportSession } from "./session";
+import type { BuildResponse } from "./types";
 
 const FIELD = "h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
 const AREA = "min-h-20 w-full rounded-md border border-border bg-card p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
@@ -15,43 +17,56 @@ const DIAGNOSTIC_TEXT: Record<string, string> = {
   bad_role: "A file has a role this passport does not use.",
 };
 
-/** Builds a passport from files on this computer, then checks them against it. The files are
- *  only read; nothing is written, uploaded or sent to a printer. */
+const projectNow = (): string | null => useJob.getState().record?.original.path ?? null;
+const nameOf = (path: string | null) => (path ? path.split(/[\\/]/).pop() || path : null);
+
+/** Builds a passport from files on this computer, then checks them against it. The files are only read; nothing is
+ *  written, uploaded or sent to a printer. The fields and the report are kept while the application stays open
+ *  (memory only), are tied to the project they were made for, and are cleared when a different project is opened. */
 export default function PassportView() {
-  const [original, setOriginal] = useState("");
-  const [prepared, setPrepared] = useState("");
-  const [sliced, setSliced] = useState("");
-  const [recipes, setRecipes] = useState("");
-  const [mappings, setMappings] = useState("");
+  const session = usePassportSession();
+  const { inputs, built, verification, builtFor, notice } = session;
+  const record = useJob((state) => state.record);
+  const current = record?.original.path ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [built, setBuilt] = useState<BuildResponse | null>(null);
-  const [verification, setVerification] = useState<Verification | null>(null);
-  const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  const foreign = belongsToOtherProject(session, current);
+  useEffect(() => {
+    if (foreign) usePassportSession.getState().projectChanged("A different project is open now, so the earlier project's passport and file fields were cleared.");
+  }, [foreign, current]);
+
+  const stale = reportIsStale(session);
+  const shown = foreign ? null : built;
+  const setField = (key: keyof typeof inputs) => (e: { target: { value: string } }) => session.setInput(key, e.target.value);
 
   const check = async (response: BuildResponse) => {
     if (!response.passport) return;
     const res = await verifyPassport({ passport: response.passport, paths: response.paths });
-    if (alive.current) setVerification(res.verification);
+    // Only the report this answer belongs to may take it.
+    if (res.verification && usePassportSession.getState().built === response) usePassportSession.getState().setVerification(res.verification);
   };
 
   const build = async () => {
-    setBusy(true); setError(null); setBuilt(null); setVerification(null);
+    setBusy(true); setError(null);
+    const startProject = projectNow();
+    const files = fileFields(usePassportSession.getState().inputs);
+    usePassportSession.getState().clearBuilt();
     try {
-      const response = await buildPassport(buildRequest({ original, prepared, sliced }, recipes, mappings));
-      if (!alive.current) return;
+      const { recipes, mappings } = usePassportSession.getState().inputs;
+      const response = await buildPassport(buildRequest(files, recipes, mappings));
+      if (projectNow() !== startProject) return;   // another project was opened while the files were read
       if (!response.passport) {
         const code = response.diagnostics[0]?.code ?? "";
         setError(DIAGNOSTIC_TEXT[code] ?? "The passport could not be built from those files.");
         return;
       }
-      setBuilt(response);
+      usePassportSession.getState().setBuilt(response, null, startProject, files);
       await check(response);
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "The passport could not be built.");
+      setError(e instanceof Error ? e.message : "The passport could not be built.");
     } finally {
-      if (alive.current) setBusy(false);
+      setBusy(false);
     }
   };
 
@@ -59,32 +74,41 @@ export default function PassportView() {
     if (!built) return;
     setBusy(true); setError(null);
     try { await check(built); } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "The check failed.");
-    } finally { if (alive.current) setBusy(false); }
+      setError(e instanceof Error ? e.message : "The check failed.");
+    } finally { setBusy(false); }
   };
 
+  const canBuild = inputs.original.trim() !== "" || inputs.prepared.trim() !== "" || inputs.sliced.trim() !== "";
   return (
     <div className="space-y-5 p-6">
       <PageHeader icon={Fingerprint} title="Job passport" subtitle="Record which files a job came from, then check later whether they are still the same bytes. Studio only reads these files." />
+      {notice && <p className="text-sm" role="status" data-testid="passport-notice">{notice}</p>}
       <div className="flex flex-wrap items-end gap-2">
-        <input className={`${FIELD} w-72`} aria-label="Original file path" placeholder="Original file path" value={original} onChange={(e) => setOriginal(e.target.value)} />
-        <input className={`${FIELD} w-72`} aria-label="Prepared copy path" placeholder="Prepared copy path (optional)" value={prepared} onChange={(e) => setPrepared(e.target.value)} />
-        <input className={`${FIELD} w-72`} aria-label="Sliced output path" placeholder="Sliced output path (optional)" value={sliced} onChange={(e) => setSliced(e.target.value)} />
+        <input className={`${FIELD} w-72`} aria-label="Original file path" placeholder="Original file path" value={inputs.original} onChange={setField("original")} />
+        <input className={`${FIELD} w-72`} aria-label="Prepared copy path" placeholder="Prepared copy path (optional)" value={inputs.prepared} onChange={setField("prepared")} />
+        <input className={`${FIELD} w-72`} aria-label="Sliced output path" placeholder="Sliced output path (optional)" value={inputs.sliced} onChange={setField("sliced")} />
       </div>
       <details className="text-sm">
         <summary className="cursor-pointer text-muted-foreground">Recipes and material mappings (optional JSON lists)</summary>
         <div className="mt-2 grid gap-2 md:grid-cols-2">
-          <textarea className={AREA} aria-label="Recipes JSON" placeholder="Recipes: a list of virtual_recipe/1 documents" value={recipes} onChange={(e) => setRecipes(e.target.value)} />
-          <textarea className={AREA} aria-label="Material mappings JSON" placeholder='Material mappings: [{"slot_ref":"slot:0","material":"PLA"}]' value={mappings} onChange={(e) => setMappings(e.target.value)} />
+          <textarea className={AREA} aria-label="Recipes JSON" placeholder="Recipes: a list of virtual_recipe/1 documents" value={inputs.recipes} onChange={setField("recipes")} />
+          <textarea className={AREA} aria-label="Material mappings JSON" placeholder='Material mappings: [{"slot_ref":"slot:0","material":"PLA"}]' value={inputs.mappings} onChange={setField("mappings")} />
         </div>
       </details>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" disabled={busy || (original.trim() === "" && prepared.trim() === "" && sliced.trim() === "")} onClick={() => void build()}>{busy ? "Working..." : "Build passport"}</Button>
-        <Button size="sm" variant="secondary" disabled={busy || !built} onClick={() => void recheck()}>Check the files again</Button>
+        <Button size="sm" variant="secondary" disabled={busy || !record} onClick={() => record && session.fillFromJob(record)}>Use this job's files</Button>
+        <Button size="sm" disabled={busy || !canBuild} onClick={() => void build()}>{busy ? "Working..." : "Build passport"}</Button>
+        <Button size="sm" variant="secondary" disabled={busy || !shown} onClick={() => void recheck()}>Check the files again</Button>
       </div>
-      <p className="text-xs text-muted-foreground">You are stating how these files relate. Studio records that as declared by you and checks that each file still has the bytes it had when the passport was built.</p>
+      <p className="text-xs text-muted-foreground">You are stating how these files relate. Studio records that as declared by you and checks that each file still has the bytes it had when the passport was built. The fields and report are kept while Studio stays open; they are not saved across a restart.</p>
       {error && <p className="text-sm text-risk" role="alert">{error}</p>}
-      {built?.passport && verification && <PassportReport passport={built.passport} verification={verification} />}
+      {shown?.passport && verification && builtFor && (
+        <div className="space-y-2" data-testid="passport-scope">
+          <p className="text-xs text-muted-foreground">Built for {builtFor.project ? `project ${nameOf(builtFor.project)}` : "the files entered (no project was open)"}.</p>
+          {stale && <p className="text-sm text-risk" role="status" data-testid="passport-stale">The file fields changed after this report was built, so it describes the earlier files. Build the passport again for the files now entered.</p>}
+          <div className={stale ? "opacity-60" : undefined}><PassportReport passport={shown.passport} verification={verification} /></div>
+        </div>
+      )}
     </div>
   );
 }

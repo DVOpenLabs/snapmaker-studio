@@ -69,6 +69,14 @@ def assert_no_local_path(body, *directories):
     assert str(Path(directories[-1]).parent) not in text
 
 
+def without_local_path(body, written: Path):
+    """The one field allowed to carry a path is output.local_path; it must be exactly the file that was written."""
+    assert body["output"]["local_path"] == str(written)
+    clean = json.loads(json.dumps(body))
+    del clean["output"]["local_path"]
+    return clean
+
+
 def test_routes_are_registered_under_creative():
     for route in ("/creative/inspect", "/creative/formats", "/creative/prepare"):
         assert route in ext_routes.ROUTES
@@ -163,7 +171,7 @@ def test_prepare_sindricad_writes_a_new_verified_copy_in_the_studio_folder(tmp_p
     out = data_dir / routes_creative.DEFAULT_OUT_FOLDER / body["output"]["name"]
     assert out.is_file() and out != src
     assert body["output"]["location_label"] == "Studio's creative-prepared folder"
-    assert_no_local_path(body, data_dir, tmp_path)
+    assert_no_local_path(without_local_path(body, out), data_dir, tmp_path)
     assert body["output"]["in_source_folder"] is False and body["output"]["location"] == "studio_default"
     # nothing was written next to the original
     assert [p.name for p in src.parent.iterdir()] == ["project.3mf"]
@@ -206,7 +214,7 @@ def test_prepare_chosen_imagemap_to_an_explicit_out_dir(tmp_path):
     assert code == 200 and body["prepared"] is True
     assert (out_dir / body["output"]["name"]).is_file() and body["output"]["location"] == "chosen"
     assert "path" not in body["output"] and body["output"]["location_label"] == "the folder you chose"
-    assert_no_local_path(body, out_dir, tmp_path)
+    assert_no_local_path(without_local_path(body, out_dir / body["output"]["name"]), out_dir, tmp_path)
     assert [p.name for p in src.parent.iterdir()] == ["project.3mf"]
     assert body["original"]["original_unchanged"] is True
 

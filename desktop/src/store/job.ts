@@ -216,6 +216,22 @@ export function trackJob(): () => void {
 }
 
 /**
+ * A prepared copy written by Creative import, linked to the project it was made from. Creative import does not open the
+ * project in the session, so this is where the pair is noted for Recovery and Passport. Nothing here starts work.
+ */
+export function linkPreparedCopy(projectPath: string, preparedPath: string, mode: string): void {
+  const now = new Date().toISOString();
+  const before = useJob.getState().record;
+  const opened = openProject(before, projectPath, now);
+  const next = linkPrepared(opened, projectPath, preparedPath, mode, now);
+  if (opened !== before) invalidateFingerprints();
+  if (next === before) return;
+  update(next, true);
+  void fingerprint("original", projectPath);
+  void fingerprint("prepared", preparedPath);
+}
+
+/**
  * The same project was opened by hand after a restart, bypassing the card. Its
  * earlier prepared copy and G-code count as its results only if the project is
  * still the file that was recorded; otherwise the job starts over.

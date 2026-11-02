@@ -77,7 +77,8 @@ export interface CreativeVerification {
 export interface CreativePrepareDone {
   prepared: true;
   origin: CreativeOrigin;
-  output: { name: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
+  /** `local_path` is the one field that names a location; the UI uses it only to link the copy to its job, never as text. */
+  output: { name: string; local_path: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
   prepare: { mode: string; validated_ok: boolean; errors: string[]; compat_changed: unknown[]; mapped_to_u1: unknown[]; could_not_carry: unknown[]; warnings: unknown[] };
   verification: CreativeVerification;
   loss_notes: string[];

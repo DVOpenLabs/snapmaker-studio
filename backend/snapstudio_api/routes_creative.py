@@ -415,8 +415,10 @@ def prepare(data: dict) -> tuple[int, dict]:
     return 200, {
         "prepared": True,
         "origin": body["origin"],
-        # File name and a generic label only: no directory path, not even a folder name, leaves this route.
-        "output": {"name": os.path.basename(out_path), "location": out_kind,
+        # File name and a generic label for display: no message, note or label names a directory. The one field that
+        # carries a path is `local_path`, the new copy's location, so the local UI can link it to its job the way it
+        # links /convert's `output_path`. It is never shown as text and never appears anywhere else in the body.
+        "output": {"name": os.path.basename(out_path), "local_path": os.path.abspath(out_path), "location": out_kind,
                    "location_label": ("Studio's creative-prepared folder" if out_kind == "studio_default"
                                       else "the folder you chose"),
                    "in_source_folder": same_place},

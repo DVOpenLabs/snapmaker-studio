@@ -6,6 +6,7 @@ import {
   fetchCreativeFormats, inspectCreative, prepareCreative,
   type CreativeFormat, type CreativeFormatInfo, type CreativeInspectResponse, type CreativePrepareResponse,
 } from "@/lib/creativeApi";
+import { linkPreparedCopy } from "@/store/job";
 import CreativeFormatChooser from "./CreativeFormatChooser";
 import CreativePreparePanel from "./CreativePreparePanel";
 import CreativeReportView from "./CreativeReportView";
@@ -45,6 +46,8 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
     setBusy(true); setError(null); setPrepared(null);
     try {
       const res = await prepareCreative(path, format, outDir);
+      // A written copy joins this project's job (original -> prepared) so Recovery and Passport can use it. A refusal wrote nothing.
+      if (res.prepared && res.output.local_path) linkPreparedCopy(path.trim(), res.output.local_path, res.prepare.mode || "creative");
       if (alive.current) setPrepared(res);
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "Prepare failed.");

@@ -169,7 +169,7 @@ const BASE_SOURCE = { name: "x.3mf", size_bytes: 1, sha256_before: HASH, sha256_
 describe("prepare panel", () => {
   const done: CreativePrepareResponse = {
     prepared: true, origin: { generator: "sindricad", status: "detected", candidates: ["sindricad"] },
-    output: { name: "x_SnapmakerU1.3mf", location: "studio_default", location_label: "Studio's creative-prepared folder", in_source_folder: false },
+    output: { name: "x_SnapmakerU1.3mf", local_path: "synthetic/prepared-copy.3mf", location: "studio_default", location_label: "Studio's creative-prepared folder", in_source_folder: false },
     prepare: { mode: "preserve", validated_ok: true, errors: [], compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [] },
     verification: { opens_as_zip: true, members: [{ name: "a", sha256: HASH }, { name: "b", sha256: HASH }],
       comparison: { preserved: ["3D/3dmodel.model"], modified: ["Metadata/project_settings.config"], dropped: ["Metadata/gone.bin"], added: ["Metadata/new.bin"] },
