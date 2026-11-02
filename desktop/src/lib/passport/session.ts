@@ -91,8 +91,9 @@ useJob.subscribe((state) => {
   if (current === lastProject) return;
   lastProject = current;
   const s = usePassportSession.getState();
-  const hasContent = s.built !== null || s.fieldsProject !== null;
+  // Whatever the page holds, a build or check that is still running was started for the previous project: cancel it.
+  // Content that belongs to a project is cleared; fields typed with no project open are kept (and only cancelled work is dropped).
   if (belongsToOtherProject(s, current)) s.projectChanged("A different project is open now, so the earlier project's passport and file fields were cleared.");
-  else if (hasContent) usePassportSession.setState({ buildSeq: s.buildSeq + 1, verifySeq: s.verifySeq + 1 });
+  else usePassportSession.setState({ buildSeq: s.buildSeq + 1, verifySeq: s.verifySeq + 1 });
 });
 

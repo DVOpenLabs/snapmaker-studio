@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const disk: Record<string, string | null> = {};
 const calls: Array<{ path: string; body: any }> = [];
 const verifyGates: Array<Promise<void>> = [];
+const buildGates: Array<Promise<void>> = [];
 const prepareGates: Record<string, Promise<void>> = {};
 const svc = { revision: 0, tracked: [] as Array<{ name: string; path: string; content: string | null }>, failCheckpoint: false };
 const hashOf = (c: string | null) => (c === null ? "" : `h:${c}`);
@@ -30,8 +31,10 @@ vi.mock("@/lib/extApi", () => ({
       };
     }
     if (path === "/passport/build") {
+      const buildGate = buildGates.shift();
       const artifacts = body.entries.map((e: any) => ({ artifact_id: `id:${e.role}`, role: e.role, name: e.path.split("/").pop(),
         bytes: { sha256: hashOf(disk[e.path] ?? null), size_bytes: (disk[e.path] ?? "").length }, content: disk[e.path] ?? null, path: e.path }));
+      if (buildGate) await buildGate;
       if (artifacts.some((a: any) => a.content === null)) return { passport: null, paths: {}, diagnostics: [{ code: "file_missing", field: "x", severity: "error" }], losses: [] };
       return { passport: { schema_version: "passport/1", passport_id: `pp:${artifacts.map((a: any) => a.name).join("+")}`, created_at: "t",
         artifacts: artifacts.map(({ content, path: _p, ...a }: any) => ({ ...a, _content: content })), derivations: [], recipes: [], material_mappings: [], losses: [] },
@@ -121,10 +124,11 @@ const refreshPreview = async () => { fireEvent.click(screen.getByText("Refresh r
 beforeEach(() => {
   for (const k of Object.keys(disk)) delete disk[k];
   Object.assign(disk, { [PROJECT_A]: "a-original", [COPY_A]: "a-copy", [PROJECT_B]: "b-original", [COPY_B]: "b-copy" });
-  verifyGates.length = 0; for (const k of Object.keys(prepareGates)) delete prepareGates[k];
+  verifyGates.length = 0; buildGates.length = 0; for (const k of Object.keys(prepareGates)) delete prepareGates[k];
   calls.length = 0; Object.assign(svc, { revision: 0, tracked: [], failCheckpoint: false });
   window.localStorage.clear(); useJob.getState().forget(); useUnlinkedCopies.getState().clear();
-  untrack = trackJob();   // the real session -> job linking, as the app starts it usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
+  untrack = trackJob();   // the real session -> job linking, as the app starts it
+  usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
 });
 afterEach(() => { untrack(); cleanup(); });
 
@@ -346,21 +350,23 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     expect(useJob.getState().record?.prepared?.path).toBe(COPY_A2);
   });
 
-  it("an older Creative Prepare does not replace a copy linked by an ordinary Prepare of the same project", async () => {
+  it("an older Creative Prepare does not replace a copy linked by an ordinary Prepare (only the prepared path changes)", async () => {
     render(<Shell />);
-    const ORDINARY = "C:/studio/prepared/bracket_ordinary.3mf";
+    const COPY_A2 = "C:/studio/creative-prepared/bracket_SnapmakerU1-2.3mf", ORDINARY = "C:/studio/prepared/bracket_ordinary.3mf";
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");   // project A is already the job
     let release!: () => void;
     prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
-    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");          // Creative run waits
+    await startPrepare(PROJECT_A, COPY_A2, "bracket_SnapmakerU1-2.3mf");           // a second Creative run waits
     go("recovery");
     delete prepareGates[PROJECT_A];
-    act(() => { useSession.getState().setFile(PROJECT_A); });                    // the project is opened on the main page
+    act(() => { useSession.getState().setFile(PROJECT_A); });                      // same project: the job record is unchanged
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_A);
     act(() => { useSession.setState({ convert: { status: "done", data: { output_path: ORDINARY, blocked: false, validated_ok: true, prepare_mode: "preserve" }, error: null } as any }); });
-    await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY));
+    await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY));   // only the prepared path moved
     await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
-    expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY);              // not replaced by the older Creative copy
+    expect(useJob.getState().record?.prepared?.path).toBe(ORDINARY);
     go("creative");
-    expect(screen.getByTestId("creative-unlinked").textContent).toContain("bracket_SnapmakerU1.3mf");   // and it says so
+    expect(screen.getByTestId("creative-unlinked").textContent).toContain("bracket_SnapmakerU1-2.3mf");
   });
 
   it("A -> B -> A on the main page while a Creative Prepare of A runs: the late result is not linked", async () => {
@@ -403,6 +409,25 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     go("passport");
     expect(screen.queryByTestId("passport-report")).toBeNull();
     expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe("");
+  });
+
+  it("a build still running when the project changes off-page cannot land, even when the fields were typed with no project open", async () => {
+    render(<Shell start="passport" />);
+    disk[PROJECT_A] = "a-original";                        // the build would succeed, so only the project change can stop it
+    type("Original file path", PROJECT_A);                 // typed with no project open: owned by nobody
+    act(() => { useSession.getState().setFile(PROJECT_A); });   // a project is opened; the typed fields are kept
+    expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe(PROJECT_A);
+    let releaseBuild!: () => void;
+    buildGates.push(new Promise<void>((resolve) => { releaseBuild = resolve; }));
+    fireEvent.click(screen.getByText("Build passport"));
+    await waitFor(() => expect(calls.some((c) => c.path === "/passport/build")).toBe(true));   // the build is in flight
+    go("recovery");
+    act(() => { useSession.getState().setFile(PROJECT_B); });
+    act(() => { useSession.getState().setFile(PROJECT_A); });
+    await act(async () => { releaseBuild(); await new Promise((r) => setTimeout(r, 30)); });
+    go("passport");
+    expect(screen.queryByTestId("passport-report")).toBeNull();
+    expect(usePassportSession.getState().built).toBeNull();
   });
 
   it("a build and its check still running when the project changes off-page cannot land afterwards", async () => {
