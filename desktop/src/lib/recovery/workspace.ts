@@ -19,7 +19,11 @@ export const roleLabel = (role: JobRole): string => ROLE_LABEL[role];
  * What a real-workspace checkpoint would track. Only files the job record links are listed: a file that is not
  * linked is reported as unavailable with the reason, never invented and never replaced by an empty or sample entry.
  */
-export function planWorkspaceCheckpoint(record: JobRecord | null): WorkspacePlan {
+export function planWorkspaceCheckpoint(record: JobRecord | null, verified = true): WorkspacePlan {
+  if (record && !verified) {
+    return { project: null, tracked: [], unavailable: [], canSave: false,
+      why: `A saved job (${record.original.name}) is waiting from an earlier session. It has not been reopened or checked in this one, so it is not treated as your open workspace. Reopen it from This job, or prepare the project again in Creative import.` };
+  }
   if (!record) {
     return { project: null, tracked: [], unavailable: [], canSave: false,
       why: "No project is open. Prepare one from Creative import (or open a project) and its files appear here." };

@@ -3,10 +3,10 @@ import { Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
 import {
-  fetchCreativeFormats, inspectCreative, prepareCreative,
+  fetchCreativeFormats, inspectCreative, normalizedProjectPath, prepareCreative,
   type CreativeFormat, type CreativeFormatInfo, type CreativeInspectResponse, type CreativePrepareResponse,
 } from "@/lib/creativeApi";
-import { linkPreparedCopy } from "@/store/job";
+import { beginPrepare, linkPreparedCopy } from "@/store/job";
 import CreativeFormatChooser from "./CreativeFormatChooser";
 import CreativePreparePanel from "./CreativePreparePanel";
 import CreativeReportView from "./CreativeReportView";
@@ -22,6 +22,7 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<CreativeInspectResponse | null>(null);
   const [prepared, setPrepared] = useState<CreativePrepareResponse | null>(null);
+  const [linkNote, setLinkNote] = useState<string | null>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -43,12 +44,20 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
   };
 
   const prepare = async () => {
-    setBusy(true); setError(null); setPrepared(null);
+    setBusy(true); setError(null); setPrepared(null); setLinkNote(null);
+    const started = beginPrepare();
     try {
       const res = await prepareCreative(path, format, outDir);
-      // A written copy joins this project's job (original -> prepared) so Recovery and Passport can use it. A refusal wrote nothing.
-      if (res.prepared && res.output.local_path) linkPreparedCopy(path.trim(), res.output.local_path, res.prepare.mode || "creative");
-      if (alive.current) setPrepared(res);
+      // A written copy that passed validation joins this project's job (original -> prepared) so Recovery and Passport can
+      // use it, unless a newer Prepare or project change took over the job meanwhile. A refusal wrote nothing.
+      let note: string | null = null;
+      if (res.prepared && res.output.local_path) {
+        if (!res.prepare.validated_ok) note = "This copy did not pass Studio's validation, so it was not linked to the job: Recovery and Passport will not track it.";
+        else if (!linkPreparedCopy(normalizedProjectPath(path), res.output.local_path, res.prepare.mode || "creative", started)) {
+          note = "This copy was written, but a newer Prepare or project change happened while it ran, so it was not linked to the current job.";
+        }
+      }
+      if (alive.current) { setPrepared(res); setLinkNote(note); }
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "Prepare failed.");
     } finally {
@@ -80,6 +89,7 @@ export default function CreativeView({ initialFormats = [] }: { initialFormats?:
           </div>
         </section>
       )}
+      {linkNote && <p className="text-sm" role="status" data-testid="creative-link-note">{linkNote}</p>}
       {prepared && <CreativePreparePanel result={prepared} />}
     </div>
   );

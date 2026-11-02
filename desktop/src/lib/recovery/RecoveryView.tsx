@@ -16,7 +16,8 @@ export function RecoveryView() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const record = useJob((state) => state.record);
-  const plan = planWorkspaceCheckpoint(record);
+  const verified = useJob((state) => state.verified);
+  const plan = planWorkspaceCheckpoint(record, verified);
   const [host, setHost] = useState("");
   const [port, setPort] = useState("7125");
   const [monitor, setMonitor] = useState<MonitoringRead | null>(null);
@@ -33,7 +34,8 @@ export function RecoveryView() {
       const saved = await saveCheckpoint(workspaceCheckpointBody(plan, record, preview.data.revision, legacyJobSnapshot()));
       await refreshPreview();
       // A file that was missing or unreadable when saved has no fingerprint to compare against later: say so now.
-      const weak = (getPreview().data?.files ?? []).filter((f) => f.state === "unverified" || f.state === "missing" || f.state === "unreadable");
+      const fresh = getPreview();
+      const weak = fresh.status !== "ready" ? [] : (fresh.data?.files ?? []).filter((f) => f.state === "unverified" || f.state === "missing" || f.state === "unreadable");
       const caveat = weak.length ? ` Not verifiable later (missing, unreadable or no fingerprint when saved): ${weak.map((f) => f.name).join(", ")}.` : "";
       setNotice({ kind: "ok", text: `Workspace checkpoint saved · revision ${saved.revision} · ${plan.tracked.length} file(s) tracked.${caveat}` });
     } catch (error) { setNotice({ kind: "error", text: `Checkpoint NOT saved: ${error instanceof Error ? error.message : "it failed"}` }); }

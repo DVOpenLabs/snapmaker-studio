@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---- a fake local service over a fake disk: every call goes through the same extApi seam the real views use ------
 const disk: Record<string, string | null> = {};
 const calls: Array<{ path: string; body: any }> = [];
+const verifyGates: Array<Promise<void>> = [];
+const prepareGates: Record<string, Promise<void>> = {};
 const svc = { revision: 0, tracked: [] as Array<{ name: string; path: string; content: string | null }>, failCheckpoint: false };
 const hashOf = (c: string | null) => (c === null ? "" : `h:${c}`);
 
@@ -36,14 +38,17 @@ vi.mock("@/lib/extApi", () => ({
         paths: Object.fromEntries(artifacts.map((a: any) => [`id:${a.role}`, a.path])), diagnostics: [], losses: [] };
     }
     if (path === "/passport/verify") {
+      const gate = verifyGates.shift();
       const arts = body.passport.artifacts.map((a: any) => {
         const now = disk[body.paths[a.artifact_id]] ?? null;
         const bytes = now === null ? "missing" : now === a._content ? "same" : "changed";
         return { artifact_id: a.artifact_id, name: a.name, role: a.role, size_bytes: a.bytes.size_bytes, sha256: a.bytes.sha256, bytes,
           chain: bytes === "same" ? "intact" : "invalidated", reasons: [] };
       });
-      return { verification: { passport_id: body.passport.passport_id, artifacts: arts, derivations: [], recipes_retained: [], material_mappings_retained: [], losses: [], note: "n",
+      const answer = { verification: { passport_id: body.passport.passport_id, artifacts: arts, derivations: [], recipes_retained: [], material_mappings_retained: [], losses: [], note: "n",
         summary: { all_intact: arts.every((a: any) => a.bytes === "same"), intact: [], invalidated: [], unverified: [], declared_mismatch: [] } }, diagnostics: [] };
+      if (gate) await gate;   // the answer reflects the disk when it was asked, however late it is delivered
+      return answer;
     }
     throw new Error(`unexpected call ${path}`);
   }),
@@ -53,12 +58,18 @@ vi.mock("@/api", async (importOriginal) => ({
   jobCheck: vi.fn(async (entries: any[]) => ({ files: entries.map((e) => ({ role: e.role, status: "recorded", observed: { size_bytes: 1, sha256: hashOf(disk[e.path] ?? null) } })) })),
 }));
 // Creative's prepare goes through its own client; the report/preview panels are presentation only here.
-let nextPrepare: any = null;
+const responses: Record<string, any> = {};
 vi.mock("@/lib/creativeApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/creativeApi")>()),
   fetchCreativeFormats: vi.fn(async () => ({ formats: [] })),
   inspectCreative: vi.fn(async () => ({ origin: { status: "detected" } })),
-  prepareCreative: vi.fn(async () => nextPrepare),
+  prepareCreative: vi.fn(async (path: string) => {
+    const key = String(path).trim().replace(/^"(.*)"$/, "$1");
+    const answer = responses[key];                       // what the service answers to THIS request
+    const gate = prepareGates[key] as Promise<void> | undefined;
+    if (gate) await gate;
+    return answer;
+  }),
 }));
 vi.mock("@/components/creative/CreativeReportView", () => ({ default: () => <div>report</div> }));
 vi.mock("@/components/creative/CreativePreparePanel", () => ({ default: () => <div>prepare-panel</div> }));
@@ -74,10 +85,10 @@ import { useJob } from "@/store/job";
 const PROJECT_A = "C:/work/bracket.3mf", COPY_A = "C:/studio/creative-prepared/bracket_SnapmakerU1.3mf";
 const PROJECT_B = "C:/work/vase.3mf", COPY_B = "C:/studio/creative-prepared/vase_SnapmakerU1.3mf";
 
-const done = (name: string, local_path: string) => ({
+const done = (name: string, local_path: string, validated_ok = true) => ({
   prepared: true, origin: { generator: "kromacut", status: "detected", candidates: [] },
   output: { name, local_path, location: "studio_default", location_label: "Studio's creative-prepared folder", in_source_folder: false },
-  prepare: { mode: "preserve", validated_ok: true, errors: [], compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [] },
+  prepare: { mode: "preserve", validated_ok, errors: [], compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [] },
 });
 
 function Shell({ start = "creative" }: { start?: string }) {
@@ -91,13 +102,16 @@ const go = (r: string) => fireEvent.click(screen.getByText(`go ${r}`));
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 /** Journey step through the real Creative view: inspect, then Prepare. Nothing is injected into the stores. */
-async function prepareThroughCreative(project: string, copy: string, copyName: string) {
+async function startPrepare(project: string, copy: string, copyName: string, validated = true) {
   go("creative");
   type("Project file path", project);
   fireEvent.click(screen.getByText("Inspect project"));
   await screen.findByLabelText("Prepare a U1 copy");
-  nextPrepare = done(copyName, copy);
+  responses[project.replace(/^"(.*)"$/, "$1")] = done(copyName, copy, validated);
   fireEvent.click(screen.getByRole("button", { name: "Prepare a U1 copy" }));
+}
+async function prepareThroughCreative(project: string, copy: string, copyName: string) {
+  await startPrepare(project, copy, copyName);
   await screen.findByText("prepare-panel");
   await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(copy));
 }
@@ -106,6 +120,7 @@ const refreshPreview = async () => { fireEvent.click(screen.getByText("Refresh r
 beforeEach(() => {
   for (const k of Object.keys(disk)) delete disk[k];
   Object.assign(disk, { [PROJECT_A]: "a-original", [COPY_A]: "a-copy", [PROJECT_B]: "b-original", [COPY_B]: "b-copy" });
+  verifyGates.length = 0; for (const k of Object.keys(prepareGates)) delete prepareGates[k];
   calls.length = 0; Object.assign(svc, { revision: 0, tracked: [], failCheckpoint: false });
   window.localStorage.clear(); useJob.getState().forget(); usePassportSession.getState().resetForTests(); __resetRecoverySubscriberForTests();
 });
@@ -229,7 +244,7 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     await screen.findByTestId("passport-report");
     expect(screen.queryByTestId("passport-stale")).toBeNull();
     type("Prepared copy path", COPY_B);
-    expect(screen.getByTestId("passport-stale").textContent).toContain("describes the earlier files");
+    expect(screen.getByTestId("passport-stale").textContent).toContain("describes the earlier entries");
   });
 
   it("deleting a tracked file and re-checking the same passport invalidates it", async () => {
@@ -243,4 +258,89 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     await waitFor(() => expect(screen.getByTestId("artifact-original").textContent).not.toContain("Same bytes"));
     expect(screen.getByTestId("artifact-prepared").textContent).not.toContain("Same bytes");
   });
+  it("a quoted path (Copy as path) links the file that was actually prepared, without the quotes", async () => {
+    render(<Shell />);
+    await startPrepare(`"${PROJECT_A}"`, COPY_A, "bracket_SnapmakerU1.3mf");
+    await screen.findByText("prepare-panel");
+    await waitFor(() => expect(useJob.getState().record?.prepared?.path).toBe(COPY_A));
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_A);
+    expect(useJob.getState().record?.original.name).toBe("bracket.3mf");
+  });
+
+  it("a copy that did not pass validation is not linked, and the page says so", async () => {
+    render(<Shell />);
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf", false);
+    await screen.findByTestId("creative-link-note");
+    expect(screen.getByTestId("creative-link-note").textContent).toContain("did not pass Studio's validation");
+    expect(useJob.getState().record?.prepared ?? null).toBeNull();
+    go("recovery");
+    expect(screen.getByTestId("no-workspace").textContent).toContain("No project is open");
+  });
+
+  it("an older Prepare that finishes late does not take the job back from a newer project", async () => {
+    render(<Shell />);
+    let release!: () => void;
+    prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");          // A starts and waits
+    go("recovery");
+    await prepareThroughCreative(PROJECT_B, COPY_B, "vase_SnapmakerU1.3mf");     // B starts and completes
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_B);
+    await act(async () => { release(); await Promise.resolve(); });              // A completes late
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(useJob.getState().record?.original.path).toBe(PROJECT_B);
+    expect(useJob.getState().record?.prepared?.path).toBe(COPY_B);
+  });
+
+  it("a saved job from an earlier session is not offered as the open workspace until it is reopened or checked", async () => {
+    useJob.setState({ verified: false, record: { schema: "job/1", savedAt: "t", original: { path: PROJECT_A, name: "bracket.3mf", fingerprint: null },
+      prepared: { path: COPY_A, name: "bracket_SnapmakerU1.3mf", fingerprint: null, mode: "preserve" }, sliced: null } });   // what startup reads from storage
+    render(<Shell start="recovery" />);
+    expect(screen.getByTestId("no-workspace").textContent).toContain("earlier session");
+    expect((screen.getByRole("button", { name: "Checkpoint this workspace" }) as HTMLButtonElement).disabled).toBe(true);
+    go("passport");
+    expect((screen.getByRole("button", { name: "Use this job's files" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("passport-job-unverified").textContent).toContain("earlier session");
+  });
+
+  it("fields typed by hand under one project are cleared when another project is opened", async () => {
+    render(<Shell />);
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("passport");
+    type("Original file path", PROJECT_A);              // typed, not from the job and never built
+    expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe(PROJECT_A);
+    await prepareThroughCreative(PROJECT_B, COPY_B, "vase_SnapmakerU1.3mf");
+    go("passport");
+    expect((screen.getByLabelText("Original file path") as HTMLInputElement).value).toBe("");
+    await waitFor(() => expect(screen.getByTestId("passport-notice").textContent).toContain("different project"));
+  });
+
+  it("a late, older verification never overwrites a newer one", async () => {
+    render(<Shell />);
+    await prepareThroughCreative(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
+    go("passport"); fireEvent.click(screen.getByText("Use this job's files"));
+    let releaseOld!: () => void;
+    verifyGates.push(new Promise<void>((resolve) => { releaseOld = resolve; }));   // the first check (made right after the build) is held
+    fireEvent.click(screen.getByText("Build passport"));
+    await waitFor(() => expect(calls.some((c) => c.path === "/passport/verify")).toBe(true));
+    go("recovery"); go("passport");                    // leave and re-enter while that check is still pending
+    disk[COPY_A] = null;                                // the file goes missing
+    await act(async () => { fireEvent.click(screen.getByText("Check the files again")); });
+    await waitFor(() => expect(screen.getByTestId("artifact-prepared").textContent).not.toContain("Same bytes"));
+    await act(async () => { releaseOld(); await new Promise((r) => setTimeout(r, 30)); });   // the older "same bytes" answer arrives last
+    expect(screen.getByTestId("artifact-prepared").textContent).not.toContain("Same bytes");
+  });
+  it("an older Prepare of the same project that finishes late does not replace the newer copy", async () => {
+    render(<Shell />);
+    const COPY_A2 = "C:/studio/creative-prepared/bracket_SnapmakerU1-2.3mf";
+    let release!: () => void;
+    prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
+    await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");            // first run waits
+    go("recovery");
+    delete prepareGates[PROJECT_A];
+    await prepareThroughCreative(PROJECT_A, COPY_A2, "bracket_SnapmakerU1-2.3mf");   // second run completes
+    expect(useJob.getState().record?.prepared?.path).toBe(COPY_A2);
+    await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
+    expect(useJob.getState().record?.prepared?.path).toBe(COPY_A2);
+  });
+
 });

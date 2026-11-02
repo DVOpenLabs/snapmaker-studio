@@ -219,16 +219,29 @@ export function trackJob(): () => void {
  * A prepared copy written by Creative import, linked to the project it was made from. Creative import does not open the
  * project in the session, so this is where the pair is noted for Recovery and Passport. Nothing here starts work.
  */
-export function linkPreparedCopy(projectPath: string, preparedPath: string, mode: string): void {
+export interface PrepareStart { seq: number; projectAtStart: string | null }
+let prepareSeq = 0;
+/** Call when a Prepare begins. Its completion may link only while nothing newer has taken over the job. */
+export function beginPrepare(): PrepareStart {
+  return { seq: ++prepareSeq, projectAtStart: useJob.getState().record?.original.path ?? null };
+}
+
+/** Returns false (linking nothing) when a newer Prepare started, or the job moved to another project, since `started`. */
+export function linkPreparedCopy(projectPath: string, preparedPath: string, mode: string, started?: PrepareStart): boolean {
+  if (started) {
+    const current = useJob.getState().record?.original.path ?? null;
+    if (started.seq !== prepareSeq || (current !== started.projectAtStart && current !== projectPath)) return false;
+  }
   const now = new Date().toISOString();
   const before = useJob.getState().record;
   const opened = openProject(before, projectPath, now);
   const next = linkPrepared(opened, projectPath, preparedPath, mode, now);
   if (opened !== before) invalidateFingerprints();
-  if (next === before) return;
+  if (next === before) return true;
   update(next, true);
   void fingerprint("original", projectPath);
   void fingerprint("prepared", preparedPath);
+  return true;
 }
 
 /**

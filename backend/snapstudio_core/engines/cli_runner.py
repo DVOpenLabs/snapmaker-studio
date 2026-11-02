@@ -41,9 +41,10 @@ _WINDOWS_LAUNCHER = (
 
 def _resolve_existing(path: str | os.PathLike[str]) -> Path:
     """Resolve a path that must exist. Windows app-execution aliases (the Microsoft Store's python.exe) are reparse
-    points that strict resolution cannot read (WinError 1920) although they stat, open and run normally; for those,
-    fall back to ordinary resolution and require that the link still stats to a real target. A path that does not
-    exist still raises FileNotFoundError."""
+    points that strict resolution cannot read (WinError 1920) although they run normally; for those, fall back to
+    ordinary resolution and require that stat succeeds. A path that does not exist still raises FileNotFoundError.
+    stat on such an alias reports the link itself, so a dangling alias is not detected here: admission is by path
+    identity or pinned bytes (an alias cannot be hashed), and a dangling one fails at launch."""
     candidate = Path(path).expanduser()
     try:
         return candidate.resolve(strict=True)

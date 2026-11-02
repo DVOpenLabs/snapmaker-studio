@@ -77,7 +77,7 @@ export interface CreativeVerification {
 export interface CreativePrepareDone {
   prepared: true;
   origin: CreativeOrigin;
-  /** `local_path` is the one field that names a location; the UI uses it only to link the copy to its job, never as text. */
+  /** `local_path` is the one field that names a location; the UI uses it to link the copy to its job (Passport can then show it in a path field, like every job path). */
   output: { name: string; local_path: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
   prepare: { mode: string; validated_ok: boolean; errors: string[]; compat_changed: unknown[]; mapped_to_u1: unknown[]; could_not_carry: unknown[]; warnings: unknown[] };
   verification: CreativeVerification;
@@ -106,6 +106,9 @@ export function buildInspectBody(path: string, format: CreativeFormat = "auto"):
   if (trimmed === "") throw new Error("Enter the path of a .3mf project file.");
   return format === "auto" ? { path: trimmed } : { path: trimmed, format };
 }
+
+/** The project path exactly as it is sent (surrounding quotes removed), so the job record names the file that was prepared. */
+export const normalizedProjectPath = (path: string): string => buildInspectBody(path).path;
 
 /** Inspect one local project file through the local service. Read-only; nothing is sent off this computer. */
 export function inspectCreative(path: string, format: CreativeFormat = "auto"): Promise<CreativeInspectResponse> {
