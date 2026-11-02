@@ -226,6 +226,11 @@ def test_missing_module_is_skipped(monkeypatch):
 
 
 def test_present_but_broken_module_re_raises_import_error(monkeypatch):
+    import snapstudio_api
+    # `from . import x` returns an already-imported submodule from the package attribute without consulting
+    # sys.modules; drop it so the import is really attempted (otherwise this test only passes while some other
+    # track module is absent, and silently stops testing anything once all eight exist).
+    monkeypatch.delattr(snapstudio_api, "routes_passport", raising=False)
     monkeypatch.setitem(sys.modules, "snapstudio_api.routes_passport", None)
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: object())
     with pytest.raises(ImportError):
