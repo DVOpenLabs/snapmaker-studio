@@ -303,7 +303,7 @@ await step("C4 failure: format the service did not produce -> refused, nothing s
   if (readdirSync(luminaOut).length !== before) throw new Error("a file was saved on refusal"); return "refused; folder unchanged";
 });
 await step("C5 failure: non-local service address refused before anything is sent", async () => {
-  await fill("Service address", "http://192.0.2.1:8000"); await fill("Output format", "png"); await clickText("Generate");
+  await fill("Service address", "http://224.0.0.1:8000"); await fill("Output format", "png"); await clickText("Generate");
   await waitText("not on your own network", "refusal", 150); await shot("C5-lumina-non-local.png"); return "refused";
 });
 await step("C6 failure: service not running (closed loopback port)", async () => {
