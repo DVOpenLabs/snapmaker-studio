@@ -455,6 +455,81 @@ NIL_UNREADABLE = NON_NULLABLE_VECTORS
 
 _OBJECT_TAG = re.compile(r'<object id="(\d+)"')
 _TYPE_ATTR = re.compile(r'type="([^"]*)"')
+_NESTED_OBJECT = re.compile(r"<object[\s/>]")
+_TRIANGLE_START = re.compile(r"<triangle[\s/]")      # a triangle, not the <triangles> container
+_COMPONENT_TAG = re.compile(r"<component\b[^>]*>")
+_PATH_ATTR = re.compile(r'\bp:path="([^"]*)"')
+_OBJECTID_ATTR = re.compile(r'\bobjectid="(\d+)"')
+
+
+def _component_refs(block: str) -> list[tuple]:
+    """(p:path or None, objectid or None) for each component tag, whatever order its attributes come in."""
+    refs = []
+    for tag in _COMPONENT_TAG.findall(block):
+        path = _PATH_ATTR.search(tag)
+        object_id = _OBJECTID_ATTR.search(tag)
+        refs.append((path.group(1) if path else None, object_id.group(1) if object_id else None))
+    return refs
+
+
+def _scan_objects(body: str, where: str) -> tuple[dict, list[str]]:
+    """Every `<object id="N">` in one model part, read the same way for the root model and a p:path file.
+
+    One linear pass with str.find: regexes over a many-megabyte mesh (a lazy `.*?`, or a search
+    per object from the top of the file) made the Doctor several times slower. Returns
+    ({id: {type, mesh, geometry, valid}}, problems). An object that is not closed, or that holds
+    another object, is `valid` False: it earns no geometry and cannot satisfy a reference, because
+    whatever lies inside it belongs to something else. A repeated id keeps its first definition.
+    """
+    if "<!--" in body:
+        body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    objects: dict[str, dict] = {}
+    problems: list[str] = []
+    pos = 0
+    visited = 0
+    truncated = False
+    while True:
+        start = body.find('<object id="', pos)
+        if start < 0:
+            break
+        visited += 1
+        tag_end = body.find(">", start)
+        if tag_end < 0:
+            problems.append(f"an object tag in {where} is not closed")
+            truncated = True
+            break
+        pos = tag_end
+        tag = _OBJECT_TAG.match(body, start, tag_end)
+        if not tag:
+            problems.append(f"an object in {where} has an id that is not a number")
+            continue
+        object_id = tag.group(1)
+        if object_id in objects:
+            problems.append(f"object {object_id} is defined more than once in {where}")
+            continue
+        kind = _TYPE_ATTR.search(body, start, tag_end)
+        entry = {"type": kind.group(1) if kind else None, "mesh": False, "geometry": False, "valid": True}
+        objects[object_id] = entry
+        if body[tag_end - 1] == "/":              # self-closing: no body, no geometry
+            continue
+        end = body.find("</object>", tag_end)
+        if end < 0:
+            problems.append(f"object {object_id} in {where} is not closed")
+            entry["valid"] = False
+            continue
+        if _NESTED_OBJECT.search(body, tag_end, end):
+            # 3MF Core does not nest objects; a mesh found inside one belongs to the inner object
+            problems.append(f"object {object_id} in {where} contains another object")
+            entry["valid"] = False
+            continue
+        entry["mesh"] = body.find("<mesh", tag_end, end) >= 0
+        entry["geometry"] = _TRIANGLE_START.search(body, tag_end, end) is not None
+        pos = end
+    if not truncated and len(_NESTED_OBJECT.findall(body)) > visited:
+        # an object opened some other way (another attribute first, single quotes) is never scanned,
+        # so nothing would check it: refuse rather than let it pass unread
+        problems.append(f"{where} has an object tag the scan cannot read (`id` must be the first attribute, double-quoted)")
+    return objects, problems
 
 
 def _object_label(body: str) -> str:
@@ -513,11 +588,12 @@ def validate_archive(tm) -> dict:
     lose the file.
     """
     problems: list[str] = []
-    mesh_types: dict[str, str] = {}
 
     def read(name: str) -> str:
         try:
-            return tm.read_part(name).decode("utf-8", "ignore") if tm.has_part(name) else ""
+            text = tm.read_part(name).decode("utf-8", "ignore") if tm.has_part(name) else ""
+            # comments are not structure: no reader below may see a commented-out tag
+            return re.sub(r"<!--.*?-->", "", text, flags=re.S) if "<!--" in text else text
         except Exception:
             return ""
 
@@ -528,15 +604,18 @@ def validate_archive(tm) -> dict:
                 "ok": False, "problems": ["no root model in the archive"]}
 
     problems.extend(_metadata_problems(settings))
-    components = re.findall(r'<component[^>]*objectid="(\d+)"[^>]*/>', root)
-    paths = set(re.findall(r'<component[^>]*p:path="([^"]+)"', root))
+    refs = _component_refs(root)
+    components = [r for r in refs if r[1] is not None]
+    if len(components) != len(refs):
+        problems.append("a component in the root model has no object id")
     if not components:
         return {"schema_version": SCHEMA_VERSION, "multipart": False,
                 "ok": not problems, "problems": problems}
 
     # every referenced object file exists, and is declared as a relationship
     rels = read("3D/_rels/3dmodel.model.rels")
-    mesh_ids: list[str] = []
+    paths = {r[0] for r in components if r[0] is not None}
+    file_objects: dict[str, dict] = {}     # normalised file name -> its own object ids (one namespace per file)
     for path in sorted(paths):
         name = path.lstrip("/")
         if not tm.has_part(name):
@@ -544,39 +623,35 @@ def validate_archive(tm) -> dict:
             continue
         if path not in rels:
             problems.append(f"{path} holds geometry but is not declared in the relationships")
-        body = read(name)
-        # One linear pass with str.find: regexes over a many-megabyte mesh (a lazy `.*?`, or
-        # a search per object from the top of the file) made the Doctor several times slower.
-        pos = 0
-        while True:
-            start = body.find('<object id="', pos)
-            if start < 0:
-                break
-            tag_end = body.find(">", start)
-            if tag_end < 0:
-                break
-            tag = _OBJECT_TAG.match(body, start, tag_end)
-            pos = tag_end
-            if not tag:
-                continue
-            object_id = tag.group(1)
-            mesh_ids.append(object_id)
-            kind = _TYPE_ATTR.search(body, start, tag_end)
-            if kind:
-                mesh_types[object_id] = kind.group(1)
-            if body[tag_end - 1] == "/":          # self-closing: no body, no geometry
+        objects, found = _scan_objects(read(name), path)
+        problems.extend(found)
+        file_objects[name] = objects
+        for object_id, entry in objects.items():
+            if entry["valid"] and not entry["geometry"]:
                 problems.append(f"object {object_id} in {path} carries no geometry")
-                continue
-            end = body.find("</object>", tag_end)
-            if end >= 0:
-                if body.find("<triangle", tag_end, end) < 0:
-                    problems.append(f"object {object_id} in {path} carries no geometry")
-                pos = end
 
-    missing = [c for c in components if c not in mesh_ids]
+    # A component with no p:path points at an object the root model defines itself, which 3MF
+    # Core allows (Kromacut writes its colour layers that way). Only an object that carries a
+    # mesh is geometry; an assembly built from components is not. The root model and each
+    # p:path file are separate id namespaces: a reference is resolved by (file, id), never by id alone.
+    root_objects, found = _scan_objects(root, "the root model")
+    problems.extend(found)
+    for object_id, entry in root_objects.items():
+        if entry["valid"] and entry["mesh"] and not entry["geometry"]:
+            problems.append(f"object {object_id} in the root model carries no geometry")
+
+    def resolve(path: str | None, object_id: str) -> dict | None:
+        """The defined, well-formed object a component names, or None."""
+        pool = root_objects if path is None else file_objects.get(path.lstrip("/"), {})
+        entry = pool.get(object_id)
+        if entry is None or not entry["valid"]:
+            return None
+        return entry if (path is not None or entry["mesh"]) else None
+
+    missing = sorted({object_id for path, object_id in components if resolve(path, object_id) is None})
     if missing:
         problems.append(
-            f"component(s) {sorted(set(missing))} reference an object that no file defines")
+            f"component(s) {missing} reference an object that no file defines")
 
     # build item must place a composite object, not a mesh
     composites = _composite_objects(root)
@@ -586,7 +661,28 @@ def validate_archive(tm) -> dict:
             f"the build places object(s) {sorted(set(items))} and the composite "
             f"object(s) are {sorted(composites)}")
 
-    # a part's role and the geometry under it must say the same thing
+    # a part's role and the geometry under it must say the same thing; a part resolves to a root
+    # object when its component has no p:path, otherwise to an object in that component's own file
+    spaces_by_object: dict[str, dict[str, set]] = {}
+    for object_id, block in _COMPOSITE.findall(root):
+        by_id: dict[str, set] = {}
+        for path, component_id in _component_refs(block):
+            if component_id is not None:
+                by_id.setdefault(component_id, set()).add(None if path is None else path.lstrip("/"))
+        spaces_by_object[object_id] = by_id
+        for component_id, spaces in sorted(by_id.items()):
+            if len(spaces) < 2:
+                continue
+            if None in spaces:
+                # a part id names a number, not a namespace, so Studio cannot tell which component it describes
+                problems.append(
+                    f"object {object_id}: component(s) {[component_id]} are referenced both "
+                    "from the root model and from a file, so a part record cannot say which one it describes")
+            elif len({file_objects.get(n, {}).get(component_id, {}).get("type") or "model"
+                      for n in spaces}) > 1:      # 3MF Core: an object without a type is "model"
+                problems.append(
+                    f"object {object_id}: component(s) {[component_id]} are referenced from several files "
+                    "that disagree on the object's type, so a part record cannot say which one it describes")
     for object_id, part_ids in sorted(_parts_by_object(settings).items()):
         for part_id, subtype in part_ids:
             if subtype is None:
@@ -598,7 +694,14 @@ def validate_archive(tm) -> dict:
                     "represents")
                 continue
             wanted = "model" if subtype == "normal_part" else "other"
-            found = mesh_types.get(part_id)
+            spaces = spaces_by_object.get(object_id, {}).get(part_id, set())
+            found = None
+            for space in sorted(spaces, key=lambda s: s or ""):
+                pool = root_objects if space is None else file_objects.get(space, {})
+                entry = pool.get(part_id)
+                if entry is not None and entry["valid"]:
+                    found = entry["type"]
+                    break
             if found is not None and found != wanted:
                 problems.append(
                     f"part {part_id} of object {object_id} is a {subtype} and the "
