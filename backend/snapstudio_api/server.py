@@ -760,9 +760,13 @@ def _make_handler(token: str):
                 if materials is not None and not isinstance(materials, dict):
                     self._send(400, {"error": "materials must be an object"})
                     return
+                topology = data.get("topology")
+                if topology is not None and (not isinstance(topology, dict) or len(str(topology)) > 400_000):
+                    self._send(400, {"error": "topology must be an object"})
+                    return
                 try:
                     result = service.convert(path, data.get("out_dir"), prepare_mode, dry_run,
-                                             materials)
+                                             materials, topology=topology)
                     if not dry_run and not result.get("blocked"):
                         service.record_conversion(path, result)  # best-effort index
                     self._send(200, result)
