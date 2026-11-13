@@ -120,15 +120,23 @@ def test_export_refuses_a_destination_that_appears_before_publication(tmp_path, 
     original = tmp_path / "a.3mf"
     original.write_bytes(b"synthetic")
     target = tmp_path / "out.passport.json"
-    real_link = os.link
+    # the publishing primitive is a no-replace link on POSIX (dir_fd-relative) and a rename on Windows
+    name = "rename" if os.name == "nt" else "link"
+    real = getattr(os, name)
 
-    def racing_link(src, dst, *a, **k):
-        Path(dst).write_text("someone else's file", encoding="utf-8")   # appears after validation
-        return real_link(src, dst, *a, **k)
+    def racing(src, dst, *a, **k):
+        dir_fd = k.get("dst_dir_fd")
+        if dir_fd is None:
+            Path(dst).write_text("someone else's file", encoding="utf-8")   # appears after validation
+        else:
+            fd = os.open(dst, os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=dir_fd)
+            os.write(fd, "someone else's file".encode("utf-8"))
+            os.close(fd)
+        return real(src, dst, *a, **k)
 
-    monkeypatch.setattr(os, "link", racing_link)
+    monkeypatch.setattr(os, name, racing)
     result = CliRunner().invoke(passport_cli.passport, ["export", "--original", str(original), "-o", str(target)])
     assert result.exit_code == 1
     assert json.loads(result.output)["error"]["code"] == "output_exists"
     assert target.read_text(encoding="utf-8") == "someone else's file"
-    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob("*.tmp")) and not list(tmp_path.glob(".*.tmp"))
