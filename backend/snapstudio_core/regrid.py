@@ -350,8 +350,8 @@ def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, 
         work.get(k) != source_cfg.get(k) for k in ("wipe_tower_x", "wipe_tower_y")))
     report["tower_source"] = "u1_starter_profile" if from_starter else "project"
     if from_starter:
-        report["tower_note"] = ("The tower position in this copy comes from the U1 starter profile, which replaces "
-                                "the project's own wipe_tower_x/y in this mode (listed in the settings changes). "
+        report["tower_note"] = ("The tower position in this copy comes from the U1 starter profile, which sets "
+                                "wipe_tower_x/y in this mode, replacing any the project had (listed in the settings changes). "
                                 "Studio did not place it relative to your objects, and its full footprint (depth, "
                                 "ribs, brim, clearance) is only fixed when Snapmaker Orca plans the tool changes.")
     else:
@@ -381,14 +381,20 @@ def _disclose(report: dict, multi: bool) -> None:
             if not p["fits_u1_plate"]:
                 lines.append(f"Plate {p['plate']}'s objects are larger than the U1 plate, so they still "
                              "will not fit it; Snapmaker Orca will show them outside.")
+    # when the prepared copy's tower position is the U1 starter profile's (Recommended mode), say that instead of
+    # implying Studio "left" a position the project chose
+    starter = ("its position comes from the U1 starter profile, not from a placement Studio made relative to "
+               "your objects. ") if report.get("tower_source") == "u1_starter_profile" else ""
     for t in report["tower"]:
         if t["status"] == "outside_proven":
             lines.append(f"Plate {t['plate']}'s prime tower is outside the U1 printable area ({t['reason']}); "
-                         "Studio left it where it is because it cannot establish the tower's full footprint. "
-                         "Move it in Snapmaker Orca's prime tower settings.")
+                         + (starter if starter else
+                            "Studio left it where it is because it cannot establish the tower's full footprint. ")
+                         + "Move it in Snapmaker Orca's prime tower settings.")
         elif t["status"] == "overlap_possible":
             lines.append(f"Plate {t['plate']}'s prime tower may sit on an object ({t['reason']}, which can include "
-                         "empty bed); Studio left it where it is because it cannot establish the tower's full "
-                         "footprint.")
+                         "empty bed); "
+                         + (starter if starter else
+                            "Studio left it where it is because it cannot establish the tower's full footprint."))
     for reason in report["unresolved"]:
         lines.append(f"Plate positions were left as the source had them: {reason}.")

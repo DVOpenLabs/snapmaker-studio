@@ -382,3 +382,19 @@ def test_painting_helper_relationships_and_object_files_are_untouched(tmp_path, 
     assert parts(a) == parts(b)                                         # helper-volume relationships
     components = lambda blob: blob["3D/3dmodel.model"].count(b"<component ")
     assert components(a) == components(b)
+
+
+def test_a_starter_tower_over_an_object_is_not_described_as_left_where_the_project_had_it(tmp_path):
+    # the object sits where the U1 starter profile puts the tower (165, 200.821) on plate 1
+    src = rf.project(tmp_path, plates=1, bed=(330.0, 320.0), local=(165.0, 200.8),
+                     cfg={"wipe_tower_x": ["20"], "wipe_tower_y": ["20"], "prime_tower_width": "30"})
+    recommended = run(tmp_path, src, "recommended")
+    assert tower_values(recommended.output_path) == (["165"], ["200.821"])
+    assert [r["status"] for r in tower_records(recommended)] == ["overlap_possible"]
+    lines = [d for d in recommended.settings_summary["placement_changes"] if "prime tower may sit on an object" in d]
+    assert lines and "U1 starter profile" in lines[0] and "left it where it is" not in lines[0]
+    assert any("U1 starter profile" in w for w in recommended.settings_summary["warnings"]
+               if "prime tower may sit on an object" in w)
+    # Preserve keeps the project's own tower, so the original wording is still the true one
+    preserve = run(tmp_path, src, "preserve")
+    assert tower_values(preserve.output_path) == (["20"], ["20"])
