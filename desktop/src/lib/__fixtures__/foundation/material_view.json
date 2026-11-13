@@ -1,0 +1,19 @@
+{
+  "conflicts": [],
+  "diagnostics": [],
+  "fields": {
+    "material": {
+      "freshness": {
+        "age_s": 0.0,
+        "reason": "Aged 0 s of 600 s.",
+        "state": "fresh",
+        "usable_for_loadout": true
+      },
+      "observation_id": "obs-1",
+      "provenance": "provider",
+      "value": "PLA"
+    }
+  },
+  "schema_version": "material_view/1",
+  "spool": null
+}
