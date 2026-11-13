@@ -23,7 +23,7 @@ def machine_compat_keys(profile: dict) -> set[str]:
     return set(profile["keys"]) - CATEGORY_A
 
 
-def prepare_preserved_values(cfg: dict, filament_total: int) -> tuple[list[dict], list[str]]:
+def prepare_preserved_values(cfg: dict, filament_total: int, *, logical_slots=None) -> tuple[list[dict], list[str]]:
     """Apply the few U1 representation constraints without replacing values."""
     changes: list[dict] = []
     warnings: list[str] = []
@@ -40,6 +40,12 @@ def prepare_preserved_values(cfg: dict, filament_total: int) -> tuple[list[dict]
         old = copy.deepcopy(cfg[key])
         values = old if isinstance(old, list) else [old]
         if not values:
+            continue
+        if isinstance(logical_slots, int) and not isinstance(logical_slots, bool) \
+                and logical_slots > 4 and len(values) == logical_slots:
+            changes.append({"key": key, "old": old, "new": copy.deepcopy(old),
+                            "reason": "kept unchanged because this vector is indexed per logical slot",
+                            "category": "kept_per_logical"})
             continue
         if len(values) == 4:
             continue
