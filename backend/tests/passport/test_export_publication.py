@@ -240,3 +240,45 @@ def test_an_ancestor_swapped_after_validation_does_not_redirect_the_passport(tmp
     holders = [d for d in (victim, moved / "b") if (d / "job.passport.json").exists()]
     assert len(holders) == 1 and (holders[0] / "orig.marker").exists()
     assert not (ancestor / "b" / "job.passport.json").exists() or (ancestor / "b" / "orig.marker").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the post-recheck window is the Windows file-handle check")
+def test_a_junction_set_between_the_recheck_and_the_create_is_caught_by_the_file_handle_check(tmp_path, monkeypatch):
+    victim = tmp_path / "victim"
+    decoy = tmp_path / "decoy"
+    victim.mkdir()
+    decoy.mkdir()
+    state = {"linked": None}
+
+    def link():
+        state["linked"] = _make_junction_in_place(victim, decoy)
+
+    monkeypatch.setattr(safe_publish, "_before_create", link)
+    with pytest.raises(safe_publish.UnsafeOutput):
+        safe_publish.publish_new_file(str(victim / "job.passport.json"), b"passport bytes")
+
+    assert state["linked"], "the test could not create the in-place junction"
+    assert not list(decoy.iterdir()), "content or a leftover file was written through the junction"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows discard path")
+def test_a_failed_cleanup_after_a_refused_write_is_reported_not_hidden(tmp_path, monkeypatch):
+    import ctypes
+
+    victim = tmp_path / "victim"
+    decoy = tmp_path / "decoy"
+    victim.mkdir()
+    decoy.mkdir()
+    monkeypatch.setattr(safe_publish, "_before_create", lambda: _make_junction_in_place(victim, decoy))
+    real_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    class Wrapped:
+        def __getattr__(self, name):
+            return getattr(real_kernel32, name)
+
+    wrapped = Wrapped()
+    wrapped.SetFileInformationByHandle = type("F", (), {"argtypes": None, "restype": None,
+                                                         "__call__": lambda self, *a: 0})()
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **k: wrapped)
+    with pytest.raises(safe_publish.UnsafeOutput, match="could not be removed"):
+        safe_publish.publish_new_file(str(victim / "job.passport.json"), b"x")

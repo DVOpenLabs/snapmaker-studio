@@ -36,6 +36,10 @@ def _after_pin() -> None:
     """Seam for tests: runs after the directory is pinned and verified, before any file is created."""
 
 
+def _before_create() -> None:
+    """Seam for tests (Windows): runs after the pinned directory's reparse re-check, immediately before the create."""
+
+
 def _check_name(name: str) -> None:
     separators = ("/", "\\") if sys.platform == "win32" else ("/",)
     if not name or name in (".", "..") or "\x00" in name or any(sep in name for sep in separators):
@@ -185,6 +189,7 @@ def _publish_windows(parent: str, name: str, data: bytes) -> None:
         if is_reparse(directory):                     # turned into a link in place after the pin
             raise UnsafeOutput("the output directory was redirected")
         destination = os.path.join(real, name)
+        _before_create()
         out = kernel32.CreateFileW(destination, GENERIC_WRITE | DELETE, 0, None, CREATE_NEW,
                                    FILE_ATTRIBUTE_NORMAL, None)
         if out in (None, invalid):
