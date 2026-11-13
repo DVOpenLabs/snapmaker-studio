@@ -4,7 +4,7 @@ Evidence label: **fixture-tested**. The passport model, import, verify and comma
 below are exercised by `backend/tests/passport/` with synthetic files and a synthetic command-line
 client. The path-refusal and output-file behaviour is exercised in `backend/tests/test_review_fixes*.py`
 and `backend/tests/test_localpath_links.py`; the refusal of a folder or trailing-separator `-o` has no
-test yet. The `export -o` directory-swap race (R4-F1) is closed for the output side by pinning the directory (`snapstudio_core/safe_publish.py`); `backend/tests/passport/test_export_publication.py` reproduces the swap and fails on the previous write path. Only the Windows pin was exercised locally; the POSIX descriptor path is exercised by Linux CI. No real third-party program, printer, slicer run or project file was used.
+test yet. The `export -o` directory-swap race (R4-F1) is closed for the output side by pinning the directory (`snapstudio_core/safe_publish.py`); `backend/tests/passport/test_export_publication.py` reproduces the swap and fails on the previous write path. Only the Windows pin was exercised locally (directory swap, ancestor swap and in-place junction on an empty directory); the POSIX descriptor path has no local run and depends on the Linux CI job. On Windows the passport is now written with LF line endings. No real third-party program, printer, slicer run or project file was used.
 
 ## What a passport is
 
@@ -85,7 +85,7 @@ through the real `u1convert` entry point. Studio refuses, up front, a UNC or dev
 style, a symlink or junction whose target is one of those, a folder given as the output, and an
 existing output file. It never overwrites an input or an existing file.
 
-For `export -o` the output directory is pinned once and the passport is created and published through that pin (a held directory descriptor on POSIX; a handle that forbids rename and delete of the directory and its ancestors on Windows), so swapping the directory or an ancestor after the check cannot redirect the write. A platform that cannot pin and report the real path is refused. Input paths are still checked and then opened separately (see below). The checks reduce
+For `export -o` the output directory is pinned once and the passport is created and published through that pin (a held directory descriptor on POSIX; a handle that forbids rename and delete of the directory and its ancestors on Windows), so swapping the directory or an ancestor after the check cannot redirect the write. On Windows an in-place junction on an empty directory is caught by re-checking the pinned directory and by verifying the created file's own final path before any content is written; the residual exposure is an empty file created and immediately removed in the redirected location. A platform that cannot pin and report the real path is refused. Input paths are still checked and then opened separately (see below). The checks reduce
 accidents; they are not a filesystem sandbox and not a guarantee that no network location is ever
 reached. Input paths are read-only opens of regular files and are checked the same way, with the same
 validation-versus-use gap; no separate input-path exploit has been demonstrated.

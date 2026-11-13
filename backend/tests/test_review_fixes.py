@@ -120,21 +120,26 @@ def test_export_refuses_a_destination_that_appears_before_publication(tmp_path, 
     original = tmp_path / "a.3mf"
     original.write_bytes(b"synthetic")
     target = tmp_path / "out.passport.json"
-    # the publishing primitive is a no-replace link on POSIX (dir_fd-relative) and a rename on Windows
-    name = "rename" if os.name == "nt" else "link"
-    real = getattr(os, name)
+    if os.name == "nt":
+        # Windows creates the final name exclusively through the pinned directory: the destination appears
+        # after the pin and before the create.
+        from snapstudio_core import safe_publish
 
-    def racing(src, dst, *a, **k):
-        dir_fd = k.get("dst_dir_fd")
-        if dir_fd is None:
-            Path(dst).write_text("someone else's file", encoding="utf-8")   # appears after validation
-        else:
-            fd = os.open(dst, os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=dir_fd)
+        def appears():
+            target.write_text("someone else's file", encoding="utf-8")
+
+        monkeypatch.setattr(safe_publish, "_after_pin", appears)
+    else:
+        # POSIX publishes with a dir_fd-relative no-replace link.
+        real = os.link
+
+        def racing(src, dst, *a, **k):
+            fd = os.open(dst, os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=k["dst_dir_fd"])
             os.write(fd, "someone else's file".encode("utf-8"))
             os.close(fd)
-        return real(src, dst, *a, **k)
+            return real(src, dst, *a, **k)
 
-    monkeypatch.setattr(os, name, racing)
+        monkeypatch.setattr(os, "link", racing)
     result = CliRunner().invoke(passport_cli.passport, ["export", "--original", str(original), "-o", str(target)])
     assert result.exit_code == 1
     assert json.loads(result.output)["error"]["code"] == "output_exists"
