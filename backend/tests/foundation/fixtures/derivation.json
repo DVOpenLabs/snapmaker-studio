@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-01-01T12:00:00Z",
+  "declared_by": "passport",
+  "derivation_id": "drv:be77dd56f56ace850b3331185073956141ccdf94",
+  "inputs": [
+    {
+      "kind": "artifact",
+      "ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1234"
+    },
+    {
+      "kind": "settings",
+      "ref": "preset:x"
+    }
+  ],
+  "output": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:10",
+  "producer": {
+    "tool": "studio-prepare",
+    "version": "1"
+  },
+  "schema_version": "derivation/1",
+  "witness": "declared"
+}
