@@ -79,27 +79,6 @@ def test_firmware_caps_topology_details_and_legacy_text():
     assert any("head count unknown" in x["name"] for x in incomplete["features"])
 
 
-def test_preserve_per_logical_vectors_and_legacy_behavior():
-    cfg = {"nozzle_temperature": [float(i) for i in range(8)]}
-    original = copy.deepcopy(cfg)
-    changes, warnings = preserve.prepare_preserved_values(cfg, 8, logical_slots=8)
-    assert cfg == original and not warnings
-    assert changes[0]["category"] == "kept_per_logical"
-    assert "logical slot" in changes[0]["reason"]
-
-    short = {"nozzle_temperature": [1, 2, 3]}
-    _, warnings = preserve.prepare_preserved_values(short, 8, logical_slots=8)
-    assert len(short["nozzle_temperature"]) == 4 and warnings
-
-    before = {"nozzle_temperature": [float(i) for i in range(8)]}
-    changes, warnings = preserve.prepare_preserved_values(before, 8)
-    # explicit legacy result, not a comparison of the implementation with itself
-    assert before == {"nozzle_temperature": [0.0, 1.0, 2.0, 3.0]}
-    assert warnings == [] and len(changes) == 1
-    assert changes[0]["category"] == "mapped" and changes[0]["reason"] == "resized to 4 toolheads (values preserved)"
-    assert changes[0]["old"] == [float(i) for i in range(8)]
-
-
 def _gcode(tmp_path, nozzle_line):
     path = tmp_path / "fixture.gcode"
     path.write_text(
@@ -260,46 +239,6 @@ def test_firmware_caps_legacy_text_is_unchanged_without_a_topology():
 
 # --- preserved per-extruder vectors ------------------------------------------------------
 
-def test_preserve_keeps_every_per_logical_vector_when_the_slot_count_matches():
-    keys = sorted(preserve.PER_EXTRUDER_VECTORS)
-    cfg = {key: [f"{key}-{i}" for i in range(8)] for key in keys}
-    original = copy.deepcopy(cfg)
-    changes, warnings = preserve.prepare_preserved_values(cfg, 8, logical_slots=8)
-    assert cfg == original and warnings == []
-    assert sorted(c["key"] for c in changes) == keys
-    assert all(c["category"] == "kept_per_logical" and c["new"] == c["old"] for c in changes)
-
-
-def test_preserve_still_resizes_when_the_slot_count_does_not_match():
-    for slots in (None, 6, 4, True, False, "8", 0):
-        cfg = {"nozzle_temperature": list(range(8))}
-        changes, warnings = preserve.prepare_preserved_values(cfg, 8, logical_slots=slots)
-        assert cfg["nozzle_temperature"] == [0, 1, 2, 3], slots
-        assert changes[0]["category"] == "mapped", slots
-    cfg = {"nozzle_temperature": list(range(8))}
-    _, warnings = preserve.prepare_preserved_values(cfg, 6, logical_slots=None)
-    assert warnings and "mapped to four U1 toolheads" in warnings[0]
-    five = {"nozzle_temperature": [1, 2, 3, 4, 5]}
-    _, warnings = preserve.prepare_preserved_values(five, 8, logical_slots=8)
-    assert five["nozzle_temperature"] == [1, 2, 3, 4] and warnings
-
-
-def test_repair_without_a_topology_still_cuts_per_logical_vectors_to_four_inside_preserve():
-    """Stock U1 behaviour: with no topology, conform_filament_arrays leaves the vectors alone and
-    prepare_preserved_values resizes them to four. Repair passes a validated topology's slot count
-    through (tests/integration/test_prepare_with_topology.py)."""
-    from snapstudio_core.filaments import conform_filament_arrays
-    vectors = {key: list(range(8)) for key in preserve.PER_EXTRUDER_VECTORS}
-    cfg = copy.deepcopy(vectors)
-    conform_filament_arrays(cfg, 8)
-    assert cfg == vectors                       # the earlier pass leaves them alone
-    changes, _ = preserve.prepare_preserved_values(cfg, 8)
-    assert all(value == [0, 1, 2, 3] for value in cfg.values())
-    assert {c["category"] for c in changes} == {"mapped"}
-    repair_source = (Path(__file__).resolve().parents[1] / "snapstudio_core" / "repair.py").read_text(encoding="utf-8")
-    assert "logical_slots=logical_slots" in repair_source
-
-
 def test_self_contradicting_topology_is_unknown_not_a_fit():
     raw = topology(lanes=2, reach=[head_id(0)])
     raw["units"][0]["lanes"][1]["reachable_heads"] = [head_id(9)]     # head:9 is not listed
@@ -352,3 +291,18 @@ def test_gcode_unreadable_physical_vector_never_invents_a_count(tmp_path):
         assert "physical_nozzle_diameter_mm" not in facts, raw
         assert any("physical toolhead count" in item for item in facts["unknowns"]), raw
         assert facts["slot_count"] == 8
+
+
+def test_the_old_slot_count_keyword_is_gone_and_scope_replaces_it():
+    """The first version kept a vector whole whenever its length equalled the slot count. A length is not a
+    scope: nozzle_temperature* is a filament setting and z_hop* an extruder setting (tests/test_setting_scopes.py)."""
+    import inspect
+    assert "logical_slots" not in inspect.signature(preserve.prepare_preserved_values).parameters
+    assert "physical_heads" in inspect.signature(preserve.prepare_preserved_values).parameters
+
+
+def test_without_a_setup_prepare_preserved_values_still_maps_every_vector_to_four():
+    cfg = {key: list(range(8)) for key in preserve.PER_EXTRUDER_VECTORS}
+    changes, _ = preserve.prepare_preserved_values(cfg, 8)
+    assert all(value == [0, 1, 2, 3] for value in cfg.values())
+    assert {c["category"] for c in changes} == {"mapped"}

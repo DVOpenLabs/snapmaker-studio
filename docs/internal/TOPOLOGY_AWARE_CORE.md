@@ -10,11 +10,9 @@ information. Firmware capability details report physical toolheads separately
 from feeder lanes. When no valid topology is supplied, both functions retain
 their previous behavior.
 
-Preserved per-extruder vectors can now remain intact when a caller identifies a
-matching logical-slot count greater than four. G-code facts keep the existing
-`slot_count`, report a separately supplied FOrcaSlicer physical nozzle vector,
-and leave physical head count unknown when a longer nozzle vector may be
-indexed per filament.
+Preserved per-slot vectors are handled by setting scope (see "Setting scopes" below), not by length.
+G-code facts keep the existing `slot_count`, report a separately supplied FOrcaSlicer physical nozzle vector,
+and leave physical head count unknown when a longer nozzle vector may be indexed per filament.
 
 `color_plan` is unchanged. Using several materials at once needs physical heads, so
 color planning continues to use the physical-head model rather than treating
@@ -40,18 +38,24 @@ Self-contradicting topology. Preflight and firmware capability text run the
 foundation `validate` check first. A topology with an error, such as a lane that
 reaches a head that is not listed, gives unknown and no head count, never a fit.
 
-Known limit. The preservation keyword `logical_slots` exists, but the repair
-path does not pass it. `conform_filament_arrays` skips the per-extruder vectors
-(`PER_EXTRUDER_VECTORS`: nozzle temperatures, their range limits, z-hop and its
-types), so they reach `prepare_preserved_values` unchanged. `repair.py` then
-calls it without `logical_slots`, and that call cuts any such vector longer than
-four to four entries. A test runs both steps and records the result. Per-logical
-vectors are therefore kept only when a caller of `prepare_preserved_values`
-supplies the slot count; wiring the repair path is part of the integration PR.
-Nothing here is hardware-verified.
+Setting scopes. A per-slot project setting is addressed by one of three things, and a vector's length
+is never evidence of which. Read from the Snapmaker Orca source (commit b1831e5, Preset.cpp and
+PrintConfig.cpp; not measured in a running Orca): `nozzle_temperature`, `nozzle_temperature_initial_layer`
+and the two range limits are filament options, one entry per project filament; `z_hop`, `z_hop_types`
+and `z_hop_when_prime` belong to the printer's extruder options, one entry per physical head. The table is
+`data/u1_setting_scopes.json`. With a valid setup, `prepare_preserved_values(physical_heads=H)` keeps each
+vector at its own length (filament vectors at the project filament count, head vectors at H) and resizes
+only a vector that does not match, with a warning. With no setup the old behaviour is unchanged: every
+such vector is mapped to the four U1 toolheads.
 
-This branch does not wire adapter output into the core. Callers must supply the
-topology; end-to-end adapter-to-core wiring is planned for the integration PR.
+Setup states. `preserve.assess_setup` returns absent, invalid or valid. Absent is stock behaviour. Invalid
+(unreadable, a contradiction, an unknown head, an incomplete head list, slots not numbered from zero)
+blocks `convert_to_u1` with an actionable message and writes nothing; preparing without a setup is a
+separate request. Valid but partly bound lists the unbound slots; they stay unresolved and nothing assigns
+them a head.
+
+Callers must supply the topology. `/setups/evaluate` returns the one read from a host and `/convert`
+accepts it, but no desktop screen sends it yet.
 The fixtures verify the core's handling of complete head lists, known and
 unknown feeder reach, material contention, incomplete topology, and the
 FOrcaSlicer physical nozzle vector. They do not establish that a particular

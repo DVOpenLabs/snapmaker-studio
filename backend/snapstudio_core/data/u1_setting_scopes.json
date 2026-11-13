@@ -1,0 +1,19 @@
+{
+  "schema": "u1-setting-scopes/1",
+  "comment": "Which index a per-slot project setting vector is addressed by. Taken from the Snapmaker Orca source, not inferred from vector lengths.",
+  "source": {
+    "repository": "Snapmaker/OrcaSlicer",
+    "commit": "b1831e5dcb464172de33783142425aafda834fbc",
+    "evidence": [
+      "src/libslic3r/Preset.cpp s_Preset_filament_options lists nozzle_temperature, nozzle_temperature_initial_layer, nozzle_temperature_range_high and nozzle_temperature_range_low: they are filament-preset options, one entry per filament.",
+      "src/libslic3r/Preset.cpp s_Preset_printer_options lists z_hop_types and z_hop_when_prime: printer-preset options, one entry per extruder.",
+      "src/libslic3r/PrintConfig.cpp declares z_hop with the printer extruder retraction group (retraction_length, z_hop, z_hop_types, ...); a filament only overrides it through the separate filament_z_hop key (Preset.cpp filament options)."
+    ],
+    "method": "Read from the committed source files; no printer and no slicer run. Not measured in a running Snapmaker Orca."
+  },
+  "logical_filament": [
+    "nozzle_temperature", "nozzle_temperature_initial_layer",
+    "nozzle_temperature_range_high", "nozzle_temperature_range_low"
+  ],
+  "physical_head": ["z_hop", "z_hop_types", "z_hop_when_prime"]
+}
