@@ -125,8 +125,8 @@ def repair(tm: ThreeMF, mode: str = "u1", remap: dict | None = None,
         report["orca_compatibility"] = orca_import.apply_compatibility(
             work, filament_count(work))
 
-    # Where things sit is not a creator's setting, so the plate grid and the prime tower are corrected in
-    # both modes (see ``regrid``): translation of build items and one tower position per plate, nothing else.
+    # Where things sit is not a creator's setting, so the plate grid is corrected in both modes (see
+    # ``regrid``): translation of build items only. The prime tower is assessed and reported, never moved.
     # It reads the original file for geometry, so it runs only when the caller says where that is.
     layout = None
     if mode in ("preserve", "u1", "optimize") and source_path:

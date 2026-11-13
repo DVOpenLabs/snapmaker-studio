@@ -1,13 +1,13 @@
-"""Prepare-time layout correction: the plate grid and the prime tower.
+"""Prepare-time layout correction: the plate grid, and an assessment of the prime tower.
 
 A multi-plate project from another printer carries its build items on THAT printer's plate grid. Snapmaker
 Orca rebuilds plate membership from geometry when it opens a file, so an item that is not inside the U1's
 cell for its plate is listed under *Outside* and the plate will not slice. The same project carries a prime
 (wipe) tower position written for the source bed, which can lie outside the U1 plate or on top of a model.
 
-Both are corrected here, in BOTH prepare modes (where things sit is not a creator's setting), by
-translating build items and moving a tower. Nothing else changes: not a mesh, not a paint attribute, not a
-part transform, not a rotation or scale token.
+The plate grid is corrected here, in BOTH prepare modes (where things sit is not a creator's setting), by
+translating build items. The tower is only assessed, never moved. Nothing else changes: not a mesh, not a
+paint attribute, not a part transform, not a rotation or scale token.
 
 The grid rule (Orca 2.4.0 ``PartPlate.cpp``; confirmed on 24 of 24 build items of the four multi-plate
 benchmark projects, and by the creator's own Orca-made U1 file):
@@ -27,12 +27,12 @@ corner or its known width leaves it) or MAY sit on an object (its corner is insi
 which an L-shaped or ring-shaped object can contain without being under it), and never enough to say it is
 inside or clear. So each plate's tower is reported as ``outside_proven``, ``overlap_possible`` or ``unknown``,
 with the known extents and, clearly marked as an estimate, a square of the tower's width and its clearances.
-``wipe_tower_x/y`` are never changed, except that a project already authored on this very U1 plate keeps its
-creator's tower position. Nothing here claims a tower is safe.
+This module never writes ``wipe_tower_x/y``. (Recommended mode's repair pipeline applies the U1 starter
+profile's tower position before this runs; the report says so in ``tower_source``/``tower_note``.) Nothing
+here claims a tower is safe.
 """
 from __future__ import annotations
 
-import copy
 import math
 import re
 
@@ -79,7 +79,7 @@ def origin(index: int, cols: int, stride: tuple) -> tuple[float, float]:
 # --- the correction ------------------------------------------------------------------------------
 
 def correct(tm, work: dict, source_cfg: dict, source_path: str) -> dict:
-    """Re-grid the plates and place the prime tower, on ``tm`` (build items) and ``work`` (tower keys).
+    """Re-grid the plates (on ``tm``'s build items) and assess the prime tower recorded in ``work``.
 
     Returns the report (``status``, per-plate cells and deltas, the formula check, the tower decisions,
     ``setting_changes`` for the keys it wrote and ``disclosure`` for people). Never raises: whatever it
@@ -190,20 +190,13 @@ def _correct(tm, work, source_cfg, source_path, report) -> None:
                     "min": (item["bounds"]["min"][0] + dx, item["bounds"]["min"][1] + dy, item["bounds"]["min"][2]),
                     "max": (item["bounds"]["max"][0] + dx, item["bounds"]["max"][1] + dy, item["bounds"]["max"][2])}
 
-    # --- a project already authored on THIS U1 plate keeps the tower where its creator put it ----
-    # The starter profile owns a tower position (a constant written for no particular model). A project
-    # whose bed IS the U1's printable area was laid out in Orca for this very plate, tower included, so its
-    # position is placement, not tuning, and is kept in every mode.
-    src_polygon, dst_polygon = placement.polygon_of(source_cfg), placement.polygon_of(work)
-    if src_polygon and dst_polygon and sorted(src_polygon) == sorted(dst_polygon):
-        for key in ("wipe_tower_x", "wipe_tower_y"):
-            if key in source_cfg and work.get(key) != source_cfg[key]:
-                work[key] = copy.deepcopy(source_cfg[key])
-                report.setdefault("tower_kept_from_source", []).append(key)
-
     # --- the prime tower, per plate, against the footprints as they now are ----------------------
+    # This module never writes ``wipe_tower_x/y``. In Recommended mode the repair pipeline has already
+    # applied the U1 starter profile's tower position before this point; the assessment below judges the
+    # coordinates the prepared copy actually carries, and says where they came from.
     _assess_towers(work, by_index, plate_index, multi, cols, target if target else None, report,
-                   plates_known=cells_ok or not multi)
+                   plates_known=cells_ok or not multi, source_cfg=source_cfg,
+                   n_plates=len(numbers) if multi else 1)
     _disclose(report, multi)
 
 
@@ -287,7 +280,8 @@ def _gap(rect, box) -> float:
     return math.hypot(dx, dy)
 
 
-def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, plates_known: bool) -> None:
+def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, plates_known: bool,
+                   source_cfg: dict | None = None, n_plates: int | None = None) -> None:
     """Per plate: what the file PROVES about the prime tower, and nothing it does not.
 
     ``outside_proven``: the corner, or the known width plus brim, leaves the U1 printable area.
@@ -307,7 +301,8 @@ def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, 
         brim = max(0.0, float(work.get("prime_tower_brim_width") or 0))
     except (TypeError, ValueError):
         brim = 0.0
-    n_plates = (len(set(plate_index.values())) or 1) if multi else 1
+    # every RECORDED plate is assessed, empty ones included, so a later plate's tower is never skipped
+    n_plates = max(1, n_plates if n_plates is not None else (len(set(plate_index.values())) or 1)) if multi else 1
     xs, ys = work.get("wipe_tower_x"), work.get("wipe_tower_y")
     footprints: dict[int, list[tuple]] = {i: [] for i in range(n_plates)}
     for index, item in by_index.items():
@@ -351,8 +346,17 @@ def _assess_towers(work, by_index, plate_index, multi, cols, target, report, *, 
         else:
             record["reason"] = ("the tower's depth is decided when Snapmaker Orca plans the tool changes, "
                                 "so whether it is inside the plate and clear of the objects is not known")
-    report["tower_note"] = ("Studio did not move any prime tower: its full footprint (depth, ribs, brim, "
-                            "clearance) is only fixed when Snapmaker Orca plans the tool changes.")
+    from_starter = bool(source_cfg is not None and any(
+        work.get(k) != source_cfg.get(k) for k in ("wipe_tower_x", "wipe_tower_y")))
+    report["tower_source"] = "u1_starter_profile" if from_starter else "project"
+    if from_starter:
+        report["tower_note"] = ("The tower position in this copy comes from the U1 starter profile, which replaces "
+                                "the project's own wipe_tower_x/y in this mode (listed in the settings changes). "
+                                "Studio did not place it relative to your objects, and its full footprint (depth, "
+                                "ribs, brim, clearance) is only fixed when Snapmaker Orca plans the tool changes.")
+    else:
+        report["tower_note"] = ("Studio did not move any prime tower: its full footprint (depth, ribs, brim, "
+                                "clearance) is only fixed when Snapmaker Orca plans the tool changes.")
 
 
 def _disclose(report: dict, multi: bool) -> None:
@@ -362,8 +366,14 @@ def _disclose(report: dict, multi: bool) -> None:
                  or abs(p["fit_shift"][0]) > _TOLERANCE or abs(p["fit_shift"][1]) > _TOLERANCE]
         for p in moved:
             nudge = abs(p["fit_shift"][0]) > _TOLERANCE or abs(p["fit_shift"][1]) > _TOLERANCE
-            tail = (f"; this includes a fit adjustment of X {p['fit_shift'][0]:+g} mm, Y {p['fit_shift'][1]:+g} mm "
-                    "so the plate's objects sit inside the U1 plate") if nudge else ""
+            if nudge and p["fits_u1_plate"]:
+                tail = (f"; this includes a fit adjustment of X {p['fit_shift'][0]:+g} mm, Y {p['fit_shift'][1]:+g} mm "
+                        "so the plate's objects sit inside the U1 plate")
+            elif nudge:
+                tail = (f"; this includes a fit adjustment of X {p['fit_shift'][0]:+g} mm, Y {p['fit_shift'][1]:+g} mm "
+                        "that does not make them fit")
+            else:
+                tail = ""
             lines.append(f"Repositioned plate {p['plate']} objects to the U1 plate layout "
                          f"(X {p['delta'][0] + p['fit_shift'][0]:+g} mm, Y {p['delta'][1] + p['fit_shift'][1]:+g} mm{tail}). "
                          "The objects keep their positions relative to each other; rotation and scale are unchanged.")

@@ -307,9 +307,65 @@ def test_an_already_u1_multi_plate_project_comes_out_placement_identical(tmp_pat
     result = run(tmp_path, src, mode)
     assert [i["tag"] for i in rf.items_of(result.output_path)] == [i["tag"] for i in rf.items_of(src)]
     cfg = rf.settings_of(result.output_path)
-    assert (cfg["wipe_tower_x"], cfg["wipe_tower_y"]) == (["39.25", "37.6"], ["212.1", "207.2"])
-    assert result.settings_summary["layout"]["status"] == "same_grid"
+    layout = result.settings_summary["layout"]
+    if mode == "preserve":
+        assert (cfg["wipe_tower_x"], cfg["wipe_tower_y"]) == (["39.25", "37.6"], ["212.1", "207.2"])
+        assert layout["tower_source"] == "project" and "did not move" in layout["tower_note"]
+    else:
+        # Recommended applies the U1 starter tower position exactly as it did before this change; regrid
+        # neither restores nor hides it, and the report says where the position came from
+        assert (cfg["wipe_tower_x"], cfg["wipe_tower_y"]) == (["165"], ["200.821"])
+        assert layout["tower_source"] == "u1_starter_profile" and "U1 starter profile" in layout["tower_note"]
+    assert layout["status"] == "same_grid"
     assert not result.settings_summary["placement_changes"]
+
+
+def test_a_foreign_bed_tower_replaced_by_the_starter_profile_is_not_called_unmoved(tmp_path):
+    cfg = {"wipe_tower_x": ["236.895", "165"], "wipe_tower_y": ["233.729", "250"], "prime_tower_width": "60"}
+    src = rf.project(tmp_path, plates=2, cfg=cfg)
+    recommended = run(tmp_path, src, "recommended")
+    layout = recommended.settings_summary["layout"]
+    assert tower_values(recommended.output_path) == (["165"], ["200.821"])
+    assert layout["tower_source"] == "u1_starter_profile"
+    assert "did not move any prime tower" not in layout["tower_note"] and "starter profile" in layout["tower_note"]
+    preserve = run(tmp_path, src, "preserve")
+    assert tower_values(preserve.output_path) == (["236.895", "165"], ["233.729", "250"])
+    assert preserve.settings_summary["layout"]["tower_source"] == "project"
+
+
+def test_every_recorded_plate_gets_a_tower_assessment_even_when_an_earlier_plate_is_empty():
+    # plates 1 and 3 hold objects, plate 2 is recorded but empty: plate 3's outside tower must not be skipped
+    work = {"enable_prime_tower": "1", "prime_tower_width": "60", "prime_tower_brim_width": "3",
+            "wipe_tower_x": ["10", "10", "300"], "wipe_tower_y": ["10", "10", "10"]}
+    by_index = {0: {"bounds": {"min": (50, 50, 0), "max": (60, 60, 5)}},
+                1: {"bounds": {"min": (50, 50, 0), "max": (60, 60, 5)}}}
+    report = {"tower": []}
+    regrid._assess_towers(work, by_index, {0: 0, 1: 2}, True, 2, None, report, plates_known=True,
+                          source_cfg=dict(work), n_plates=3)
+    assert [t["plate"] for t in report["tower"]] == [1, 2, 3]
+    assert report["tower"][2]["status"] == "outside_proven"
+
+
+def test_a_partial_fit_adjustment_never_claims_the_objects_now_fit():
+    plate = {"plate": 2, "delta": [-72.0, -60.0], "fit_shift": [0.0, -5.0], "fits_u1_plate": False}
+    report = {"status": "regridded", "plates": [plate], "tower": [], "unresolved": [], "disclosure": []}
+    regrid._disclose(report, True)
+    line = next(d for d in report["disclosure"] if d.startswith("Repositioned plate 2"))
+    assert "fit adjustment" in line and "does not make them fit" in line and "sit inside" not in line
+    assert any("larger than the U1 plate" in d for d in report["disclosure"])
+    fits = dict(plate, fits_u1_plate=True)
+    report = {"status": "regridded", "plates": [fits], "tower": [], "unresolved": [], "disclosure": []}
+    regrid._disclose(report, True)
+    assert "sit inside the U1 plate" in report["disclosure"][0]
+
+
+def test_global_support_on_with_mixed_object_switches_shows_the_per_object_statement_only(tmp_path):
+    result, intent, declared = support_case(tmp_path, {"object", "object_off"}, cfg={"enable_support": "1"})
+    summary = result.settings_summary
+    assert intent["decision"] == "per_object"
+    # the blanket "Orca will open with supports off" note must not contradict the per-object statement
+    assert "supports_note" not in summary
+    assert "set per object" in summary["support_intent"]["statement"]
 
 
 @pytest.mark.parametrize("mode", MODES)

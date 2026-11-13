@@ -294,7 +294,7 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
     layout = outcome.report.get("layout")
     if layout:
         summary["layout"] = {k: layout.get(k) for k in (
-            "status", "plates", "formula_check", "tower", "tower_note", "stride_source", "stride_target",
+            "status", "plates", "formula_check", "tower", "tower_note", "tower_source", "stride_source", "stride_target",
             "cols", "items_moved", "unresolved")}
         summary["placement_changes"] = list(layout.get("disclosure") or [])
         summary["warnings"] = summary["warnings"] + [
@@ -512,6 +512,10 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
     supports_note = _supports_note(tm, before, after, prepare_mode)
+    # A per-object decision is stated by support_intent; the blanket "Orca will open with supports off" note
+    # would contradict objects whose own enable_support=1 survives.
+    if (summary.get("support_intent") or {}).get("decision") == "per_object":
+        supports_note = None
     if supports_note:
         summary["supports_note"] = supports_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:
