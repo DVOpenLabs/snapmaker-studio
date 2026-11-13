@@ -1,0 +1,11 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "api_version": {
+      "server": "2.0.0",
+      "text": "OctoPrint 2.0.0"
+    }
+  },
+  "note": "OctoPrint docs (dev branch, blob 4c57bad4 lines 55-106): with the X-OctoPrint-Api-Version request header the reply has no api key"
+}
