@@ -145,6 +145,10 @@ export interface SettingsSummary {
   recommended_changes: SettingsChange[];
   /** Present only when the creator's supports will not be in effect in Orca (Recommended mode). */
   supports_note?: string;
+  /** Plain-language lines about where Studio moved a multi-plate project's objects (and what it left alone). */
+  placement_changes?: string[];
+  /** What Studio decided about the project's own support settings in Recommended mode, in one sentence. */
+  support_intent?: { decision: string; statement: string; blocker_evidence?: string[] };
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
 }

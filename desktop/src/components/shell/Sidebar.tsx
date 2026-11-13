@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Sparkles, SlidersHorizontal } from "lucide-react";
@@ -6,7 +7,7 @@ import { library } from "@/api";
 import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { useOpenFile } from "@/hooks/useOpenFile";
-import { PRIMARY_NAV, SECONDARY_NAV, SIMPLE_SECONDARY_NAV, BEGINNER_NAV, MORE_NAV } from "@/lib/nav";
+import { PRIMARY_NAV, SECONDARY_NAV, SIMPLE_SECONDARY_NAV, BEGINNER_NAV, MORE_NAV, type NavItem } from "@/lib/nav";
 import { JOB_ROUTE } from "@/lib/routes";
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -14,6 +15,33 @@ function navClass({ isActive }: { isActive: boolean }) {
     "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
     isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
   );
+}
+
+export function AdvancedNav({ items = PRIMARY_NAV }: { items?: readonly NavItem[] }) {
+  // Instance prefix keeps heading ids unique when two sidebars (desktop + drawer) are mounted together.
+  const instance = useId();
+  // Consecutive items of one group share a single labelled group with one heading.
+  const runs: { group?: string; items: NavItem[] }[] = [];
+  for (const n of items) {
+    const last = runs[runs.length - 1];
+    if (last && last.group === n.group) last.items.push(n);
+    else runs.push({ group: n.group, items: [n] });
+  }
+  const link = (n: NavItem) => (
+    <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
+      <n.icon className="h-4 w-4" /> {n.label}
+    </NavLink>
+  );
+  return <>
+    {runs.map((run, i) => {
+      if (!run.group) return run.items.map(link);
+      const headingId = `nav-group-${instance}-${run.group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${i}`;
+      return <div key={headingId} role="group" aria-labelledby={headingId} className="flex flex-col gap-1">
+        <div id={headingId} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{run.group}</div>
+        {run.items.map(link)}
+      </div>;
+    })}
+  </>;
 }
 
 export function Sidebar({ className, id, onNavigate }: { className?: string; id?: string; onNavigate?: () => void }) {
@@ -74,11 +102,7 @@ export function Sidebar({ className, id, onNavigate }: { className?: string; id?
             </details>
           </>
         ) : (
-          PRIMARY_NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
-              <n.icon className="h-4 w-4" /> {n.label}
-            </NavLink>
-          ))
+          <AdvancedNav />
         )}
       </nav>
 

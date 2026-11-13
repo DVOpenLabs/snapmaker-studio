@@ -1,0 +1,271 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "note": "HYPOTHETICAL: a 32-entry filament array is not an observed U1 shape (u1-klipper blob 340b4232 lines 8-9, 25-45 gives 4-entry arrays)",
+  "bundle": {
+    "server_info": {
+      "result": {
+        "klippy_connected": true,
+        "klippy_state": "ready",
+        "moonraker_version": "v0.9.3-synthetic",
+        "components": [
+          "octoprint_compat"
+        ]
+      }
+    },
+    "objects_list": {
+      "result": {
+        "objects": [
+          "webhooks",
+          "toolhead",
+          "print_task_config",
+          "extruder",
+          "extruder1",
+          "extruder2",
+          "extruder3"
+        ]
+      }
+    },
+    "print_task_config": {
+      "result": {
+        "status": {
+          "print_task_config": {
+            "filament_type": [
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA",
+              "PLA"
+            ],
+            "filament_sub_type": [
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic",
+              "Basic"
+            ],
+            "filament_color_rgba": [
+              "000000FF",
+              "255B05FF",
+              "4AB60AFF",
+              "6F110FFF",
+              "946C14FF",
+              "B9C719FF",
+              "DE221EFF",
+              "037D23FF",
+              "28D828FF",
+              "4D332DFF",
+              "728E32FF",
+              "97E937FF",
+              "BC443CFF",
+              "E19F41FF",
+              "06FA46FF",
+              "2B554BFF",
+              "50B050FF",
+              "750B55FF",
+              "9A665AFF",
+              "BFC15FFF",
+              "E41C64FF",
+              "097769FF",
+              "2ED26EFF",
+              "532D73FF",
+              "788878FF",
+              "9DE37DFF",
+              "C23E82FF",
+              "E79987FF",
+              "0CF48CFF",
+              "314F91FF",
+              "56AA96FF",
+              "7B059BFF"
+            ],
+            "filament_vendor": [
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic",
+              "Synthetic"
+            ],
+            "filament_exist": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ],
+            "extruder_map_table": [
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      }
+    },
+    "system_info": {
+      "result": {
+        "system_info": {
+          "product_info": {
+            "nozzle_diameter": [
+              0.4,
+              0.4,
+              0.4,
+              0.4
+            ],
+            "device_name": "SYNTH-NAME-DO-NOT-SURFACE",
+            "serial_number": "SYNTH-SERIAL-0001"
+          },
+          "sd_info": {
+            "total_bytes": 0
+          },
+          "network": {
+            "wlan0": {
+              "mac_address": "00:00:5E:00:53:01",
+              "ip_addresses": [
+                {
+                  "address": "192.0.2.10"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

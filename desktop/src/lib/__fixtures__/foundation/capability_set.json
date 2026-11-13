@@ -1,0 +1,37 @@
+{
+  "capabilities": {
+    "lut": [
+      {
+        "evidence": [
+          "obs-2"
+        ],
+        "key": "lut",
+        "scope": {
+          "generator": null,
+          "host": null,
+          "process": "basis-A",
+          "slicer": null,
+          "version": null
+        },
+        "state": "unsupported"
+      }
+    ],
+    "multi_head": [
+      {
+        "evidence": [
+          "obs-1"
+        ],
+        "key": "multi_head",
+        "scope": {
+          "generator": null,
+          "host": null,
+          "process": null,
+          "slicer": "orca",
+          "version": "2.3"
+        },
+        "state": "supported"
+      }
+    ]
+  },
+  "schema_version": "capability_set/1"
+}

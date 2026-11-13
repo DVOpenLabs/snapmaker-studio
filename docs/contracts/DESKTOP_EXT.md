@@ -1,0 +1,19 @@
+# Desktop extension seam
+
+The desktop discovers extension tracks from paired files in `src/routes/ext`:
+
+- `<track>.meta.ts` exports pure route metadata: `path`, `label`, `title`, the `Studio+` group, and an icon. `meta.path` is the single authority for the route path.
+- `<track>.route.tsx` exports a default `{ path, Component }` object. The joined route always takes its path from `meta.path`; any path declared by a route module must match it.
+- `meta.ts` eagerly collects metadata modules. `index.ts` eagerly collects route modules and joins both collections by filename stem. A path becomes routable and visible in navigation only when both halves exist. `App.tsx` is the only app module that imports the joined route index. Navigation and `AppShell` import only `routes/ext/meta.ts`. Route modules must never import `@/lib/nav` or shell components; this avoids an eager route loader import cycle. Meta modules likewise must not import `@/lib/nav`, `@/components/shell` or the `routes/ext` index (absolute or relative, including `./index` and `./meta`); `routes/ext/index.test.ts` enforces this.
+- Vite may print a warning for the non-eager route glob (keys only); this is expected and harmless. Rollup/Vite 5 words it "dynamic import will not move module into another chunk"; Rolldown reports it as `INEFFECTIVE_DYNAMIC_IMPORT`.
+- Pairing is computed in `meta.ts`: it takes the glob keys of `./*.route.tsx` (keys only, no route module import) and keeps only metadata whose stem matches a route key, exporting that as `PAIRED_EXTENSION_METADATA` via the pure `pairExtensionMetadata(metas, routeKeys)`. Navigation, `isKnownRoute` and `extensionTitleFor` consume only the paired collection, so an unpaired `*.meta.ts` yields no nav entry, no known route and no title.
+
+With no track files present, the extension route and navigation lists are empty. Tests can supply synthetic route and metadata objects to exercise the join without adding placeholder tracks. `extensionTitleFor` matches a track path and nested segments, using a segment boundary (`/tool` matches `/tool/child`, not `/toolbox`).
+
+`App.tsx` mounts the joined route list. `AppShell` resolves extension page titles from metadata. The `Studio+` group appears in Advanced navigation and is exposed as an accessible named group. Grouped destinations are omitted from Simple mode's More tools list. The More tools reachability invariant was deliberately relaxed for grouped items: it applies to ungrouped core tools, while grouped extensions remain Advanced-only unless Simple-mode support is designed separately.
+
+The extension HTTP helper `callExt<T>` delegates to the existing authenticated `post<T>` function in `src/api.ts`, preserving its error behavior. Extensions should use the shared helper rather than creating a separate transport path. Extensions must never persist credentials; authentication remains owned by the desktop API layer.
+
+`installAppLifecycle()` is called once by `App.tsx`. It installs the `beforeunload` and `visibilitychange` DOM listeners before emitting start. Start is emitted once and replays synchronously to subscribers that register later, allowing recovery subscribers to attach after the application starts. Each lifecycle handler is isolated: a throwing handler is logged with `console.error` and does not prevent other handlers from running. Each subscription returns an unsubscribe function.
+
+The seven JSON files in `src/lib/__fixtures__/foundation` are byte-for-byte copies of `backend/tests/foundation/fixtures`. After any backend fixture change, copy all seven backend fixture files byte-for-byte into the desktop fixture directory. Keep the structural `CapabilityEvaluation` mirror and its `inputs_revision` envelope in `extTypes.test.ts` in sync with the backend document contract as well. Tests compare bytes when the backend fixtures directory is available in the checkout; otherwise they report the skip reason.
