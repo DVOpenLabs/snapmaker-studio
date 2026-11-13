@@ -1,0 +1,11 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "loadcell",
+  "body": {
+   "ok": false,
+   "error": "timeout",
+   "_http": 503
+  }
+ }
+}

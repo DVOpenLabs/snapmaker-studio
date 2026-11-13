@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "klipper_text",
+  "text": "; sliced file start\nBMCU_PRINT_BEGIN SCHEMA=1 RESET=1\nBMCU_PRINT_REQUIRE TOOL=0\nBMCU_PRINT_REQUIRE TOOL=5\nBMCU_PRINT_MAP TOOL=0\nBMCU_MAP_TOOL TOOL=5 DEVICE=bmcu0 CHANNEL=1 MATERIAL=\"PLA\" COLOR=\"#ff0000\"\nBMCU_PRINT_COMMIT\n"
+ }
+}
