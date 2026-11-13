@@ -19,6 +19,7 @@ from snapstudio_core import paths as _paths
 from snapstudio_core.errors import SnapStudioError
 from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
+from . import ext_routes
 from . import service
 from . import scene_jobs
 from . import request_validation as rv
@@ -1378,6 +1379,8 @@ def _make_handler(token: str):
                 # falls through and the process exits on its own.
                 self._send(200, {"ok": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
+            elif ext_routes.dispatch(self, self.path, data):
+                pass
             else:
                 self._send(404, {"error": "not found"})
 

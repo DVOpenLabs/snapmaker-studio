@@ -13,6 +13,7 @@ import {
   ShieldCheck, Compass, Maximize2, Stethoscope, Rocket, ListChecks, type LucideIcon,
 } from "lucide-react";
 import { DOCTORS } from "@/lib/doctors";
+import { PAIRED_EXTENSION_METADATA as EXTENSION_METADATA, type ExtensionMeta } from "@/routes/ext/meta";
 
 export interface NavItem {
   to: string;
@@ -21,6 +22,8 @@ export interface NavItem {
   end?: boolean;
   /** Doctor id when this item is one of the Doctors (for grouping assertions). */
   doctorId?: string;
+  /** Named navigation group; grouped extension tools are Advanced-only. */
+  group?: string;
 }
 
 const doctorRoute = (id: string) => DOCTORS.find((d) => d.id === id)!.route;
@@ -28,7 +31,7 @@ const doctorRoute = (id: string) => DOCTORS.find((d) => d.id === id)!.route;
 // Primary workflow — Dashboard, where to open models, then the Doctors in the
 // order a user meets them, with Plate Color Remap beside the Multi-Material
 // Doctor, and Batch Prepare last.
-export const PRIMARY_NAV: NavItem[] = [
+const CORE_PRIMARY_NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   // One job, through its stages. The individual Doctors stay where they were.
   { to: "/this-print", label: "This job", icon: FileCheck2 },
@@ -58,6 +61,17 @@ export const PRIMARY_NAV: NavItem[] = [
   { to: "/batch", label: "Batch Prepare", icon: Wand2 },
 ];
 
+/** Studio+ routes are supplied by matched extension metadata, if any tracks exist. */
+export function studioNavItems(metadata: readonly ExtensionMeta[] = EXTENSION_METADATA): NavItem[] {
+  return metadata.map(({ path, label, icon }) => ({ to: path, label, icon, group: "Studio+" }));
+}
+
+export function primaryNavItems(metadata: readonly ExtensionMeta[] = EXTENSION_METADATA): NavItem[] {
+  return [...CORE_PRIMARY_NAV, ...studioNavItems(metadata)];
+}
+
+export const PRIMARY_NAV: NavItem[] = primaryNavItems();
+
 // Simple mode IA (beta.21 "one clear path for a novice"): six items
 // with novice labels — Home / This job / My designs / Ready now / Printer / Help.
 // Everything else lives under "More tools". Advanced mode keeps the full
@@ -74,8 +88,10 @@ export const BEGINNER_NAV: NavItem[] = [
   { to: doctorRoute("printer"), label: "Printer", icon: HeartPulse, doctorId: "printer" },
   { to: "/help", label: "Help", icon: BookOpen },
 ];
-export const MORE_NAV: NavItem[] =
-  PRIMARY_NAV.filter((n) => !BEGINNER_NAV.some((b) => b.to === n.to));
+export function moreNavItems(primary: readonly NavItem[], beginner: readonly NavItem[]): NavItem[] {
+  return primary.filter((n) => !n.group && !beginner.some((b) => b.to === n.to));
+}
+export const MORE_NAV: NavItem[] = moreNavItems(PRIMARY_NAV, BEGINNER_NAV);
 
 // Secondary — supporting / about / help. "Why Studio?" is here on purpose so it
 // supports the story without interrupting the task flow.
@@ -97,8 +113,9 @@ export const STATIC_ROUTES = new Set<string>([
 ]);
 
 /** True when a nav `to` resolves to a real route — guards against blank pages. */
-export function isKnownRoute(to: string): boolean {
+export function isKnownRoute(to: string, extensionMetadata: readonly ExtensionMeta[] = EXTENSION_METADATA): boolean {
   if (STATIC_ROUTES.has(to)) return true;
+  if (extensionMetadata.some((metadata) => metadata.path === to)) return true;
   const m = /^\/doctor\/([a-z-]+)$/.exec(to);
   return !!m && DOCTORS.some((d) => d.id === m[1]);
 }

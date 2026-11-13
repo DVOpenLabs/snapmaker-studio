@@ -1,0 +1,16 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "server_info": {
+      "result": {
+        "klippy_connected": false,
+        "klippy_state": "disconnected",
+        "moonraker_version": "v0.9.3-synthetic",
+        "components": [
+          "octoprint_compat"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+ "http_status": 200,
+ "body": {
+  "status:": {
+   "AFC": {
+    "Turtle_1": {
+     "lane1": {},
+     "system": {
+      "type": "Box_Turtle",
+      "hub_loaded": false
+     }
+    },
+    "system": {
+     "current_load": null,
+     "num_units": 1,
+     "num_lanes": 1,
+     "num_extruders": 2,
+     "spoolman": null,
+     "td1_present": false,
+     "lane_data_enabled": true,
+     "current_toolchange": 0,
+     "number_of_toolchanges": 0,
+     "extruders": {
+      "extruder": {
+       "tool_start_sensor": false
+      },
+      "extruder1": {
+       "tool_start_sensor": false
+      }
+     },
+     "hubs": {
+      "Turtle_1": {
+       "state": false
+      }
+     },
+     "buffers": {
+      "TN": {
+       "state": "Advancing"
+      }
+     },
+     "led_state": true
+    }
+   }
+  }
+ }
+}
