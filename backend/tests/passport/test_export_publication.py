@@ -108,10 +108,19 @@ def test_publish_new_file_never_replaces_and_leaves_no_temporary(tmp_path):
 
 
 @pytest.mark.skipif(safe_publish is None, reason="needs safe_publish")
-@pytest.mark.parametrize("name", ["", "..", "a/b", "a\\b"])
+@pytest.mark.parametrize("name", ["", "..", "a/b"])
 def test_publish_refuses_a_name_that_is_not_a_plain_file_name(tmp_path, name):
     with pytest.raises(safe_publish.UnsafeOutput):
         safe_publish._check_name(name)
+
+
+@pytest.mark.skipif(safe_publish is None, reason="needs safe_publish")
+def test_a_backslash_is_a_separator_only_on_windows():
+    if os.name == "nt":
+        with pytest.raises(safe_publish.UnsafeOutput):
+            safe_publish._check_name("a\\b")
+    else:
+        safe_publish._check_name("a\\b")             # an ordinary POSIX file name
 
 
 @pytest.mark.skipif(safe_publish is None, reason="needs safe_publish")

@@ -192,14 +192,18 @@ def _publish_windows(parent: str, name: str, data: bytes) -> None:
                 raise FileExistsError(destination)
             raise OSError(ctypes.get_last_error(), "the passport could not be created")
 
-        def discard():
+        def discard(reason):
             flag = wintypes.DWORD(1)
-            kernel32.SetFileInformationByHandle(out, FILE_DISPOSITION_INFO, ctypes.byref(flag), ctypes.sizeof(flag))
+            if not kernel32.SetFileInformationByHandle(out, FILE_DISPOSITION_INFO, ctypes.byref(flag),
+                                                       ctypes.sizeof(flag)):
+                raise UnsafeOutput("the output could not be verified and the file it created could not be "
+                                   "removed") from reason
 
         try:
             landed = final_path(out)
-            expected = os.path.normcase(os.path.normpath(destination))
-            if os.path.normcase(os.path.normpath(landed)) != expected or localpath._reaches_network(landed):
+            # Both strings are canonical on-disk spellings (GetFinalPathNameByHandle), so compare them exactly:
+            # case-folding would accept a junction to a distinct directory on a case-sensitive volume.
+            if os.path.normpath(landed) != os.path.normpath(destination) or localpath._reaches_network(landed):
                 raise UnsafeOutput("the output was redirected away from the verified directory")
             view = memoryview(data)
             while len(view):
@@ -208,8 +212,8 @@ def _publish_windows(parent: str, name: str, data: bytes) -> None:
                 if not kernel32.WriteFile(out, chunk, len(chunk), ctypes.byref(written), None):
                     raise OSError(ctypes.get_last_error(), "the passport could not be written")
                 view = view[written.value:]
-        except BaseException:
-            discard()
+        except BaseException as error:
+            discard(error)
             raise
     finally:
         if out not in (None, invalid):
