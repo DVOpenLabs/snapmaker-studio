@@ -2,26 +2,38 @@ import { useEffect, useRef, useState } from "react";
 import { Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
-import { CREATIVE_FORMATS, inspectCreative, type CreativeFormat, type CreativeInspectResponse } from "@/lib/creativeApi";
+import {
+  fetchCreativeFormats, inspectCreative, normalizedProjectPath, prepareCreative,
+  type CreativeFormat, type CreativeFormatInfo, type CreativeInspectResponse, type CreativePrepareResponse,
+} from "@/lib/creativeApi";
+import { beginPrepare, linkPreparedCopy, useUnlinkedCopies } from "@/store/job";
+import CreativeFormatChooser from "./CreativeFormatChooser";
+import CreativePreparePanel from "./CreativePreparePanel";
 import CreativeReportView from "./CreativeReportView";
 
-/** Inspect one local creative project file. The path is sent to the local Studio service only, which
- *  opens the file for reading, never writes it, and never slices or contacts a printer. */
-export default function CreativeView() {
+/** Inspect one local creative project file, then optionally write a prepared copy. The path is sent to the local
+ *  Studio service only. Inspecting never writes anything; Prepare writes one new file and never the original. */
+export default function CreativeView({ initialFormats = [] }: { initialFormats?: CreativeFormatInfo[] }) {
   const [path, setPath] = useState("");
   const [format, setFormat] = useState<CreativeFormat>("auto");
+  const [outDir, setOutDir] = useState("");
+  const [formats, setFormats] = useState<CreativeFormatInfo[]>(initialFormats);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<CreativeInspectResponse | null>(null);
+  const [prepared, setPrepared] = useState<CreativePrepareResponse | null>(null);
+  const [linkNote, setLinkNote] = useState<string | null>(null);
+  const unlinked = useUnlinkedCopies((state) => state.items);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
+    fetchCreativeFormats().then((r) => { if (alive.current) setFormats(r.formats); }).catch(() => undefined);
     return () => { alive.current = false; };
   }, []);
 
   const run = async () => {
     // A failed inspection must not leave the previous file's report under the new path.
-    setBusy(true); setError(null); setReport(null);
+    setBusy(true); setError(null); setReport(null); setPrepared(null);
     try {
       const res = await inspectCreative(path, format);
       if (alive.current) setReport(res);
@@ -32,21 +44,60 @@ export default function CreativeView() {
     }
   };
 
+  const prepare = async () => {
+    setBusy(true); setError(null); setPrepared(null); setLinkNote(null);
+    const started = beginPrepare();
+    try {
+      const res = await prepareCreative(path, format, outDir);
+      // A written copy that passed validation joins this project's job (original -> prepared) so Recovery and Passport can
+      // use it, unless a newer Prepare or project change took over the job meanwhile. A refusal wrote nothing.
+      let note: string | null = null;
+      if (res.prepared && res.output.local_path) {
+        if (!res.prepare.validated_ok) note = "This copy did not pass Studio's validation, so it was not linked to the job: Recovery and Passport will not track it.";
+        else if (!linkPreparedCopy(normalizedProjectPath(path), res.output.local_path, res.prepare.mode || "creative", started)) {
+          note = "This copy was written, but a newer Prepare or project change happened while it ran, so it was not linked to the current job.";
+        }
+      }
+      if (note && res.prepared) useUnlinkedCopies.getState().add(`${res.output.name}: ${note}`);
+      if (alive.current) { setPrepared(res); setLinkNote(note); }
+    } catch (e) {
+      if (alive.current) setError(e instanceof Error ? e.message : "Prepare failed.");
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+
   const field = "h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
+  const undecided = report !== null && (report.origin.status === "unknown" || report.origin.status === "ambiguous");
   return (
     <div className="space-y-5 p-6">
-      <PageHeader icon={Palette} title="Creative project inspection" subtitle="Open a 3MF project made by a colour or multi-nozzle tool and see what Studio understood, what it kept untouched and what it could not interpret. Studio only reads the file; it does not slice or change it." />
+      <PageHeader icon={Palette} title="Creative project inspection" subtitle="Open a 3MF project made by a colour or multi-nozzle tool and see what Studio understood, what it kept untouched and what it could not interpret. Inspecting only reads the file. Studio does not slice." />
       <div className="flex flex-wrap items-end gap-2">
         <input className={`${field} min-w-[22rem] flex-1`} aria-label="Project file path" placeholder="Path of a .3mf project file" value={path}
                onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !busy && path.trim() !== "") void run(); }} />
-        <select className={field} aria-label="Project format" value={format} onChange={(e) => setFormat(e.target.value as CreativeFormat)}>
-          {CREATIVE_FORMATS.map((f) => <option key={f} value={f}>{f === "auto" ? "Detect from settings" : f}</option>)}
-        </select>
         <Button size="sm" disabled={busy || path.trim() === ""} onClick={() => void run()}>{busy ? "Reading..." : "Inspect project"}</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Studio does not guess the generator: when the settings do not identify it, the origin is reported as unknown.</p>
+      <CreativeFormatChooser value={format} onChange={setFormat} formats={formats} needsChoice={undecided} />
       {error && <p className="text-sm text-risk" role="alert">{error}</p>}
       {report && <CreativeReportView report={report} />}
+      {report && (
+        <section className="space-y-2 rounded-lg border border-border bg-card p-4" aria-label="Prepare a U1 copy">
+          <h3 className="text-sm font-semibold tracking-tight">Prepare a U1 copy</h3>
+          <p className="text-xs text-muted-foreground">Writes a new file with Studio's Prepare and never touches the original. The copy is then compared with the original part by part. Studio refuses a file whose tool it cannot identify.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <input className={`${field} min-w-[18rem] flex-1`} aria-label="Output folder (optional)" placeholder="Output folder (optional; Studio's own folder when empty)" value={outDir}
+                   onChange={(e) => setOutDir(e.target.value)} />
+            <Button size="sm" disabled={busy || path.trim() === ""} onClick={() => void prepare()}>{busy ? "Working..." : "Prepare a U1 copy"}</Button>
+          </div>
+        </section>
+      )}
+      {unlinked.length > 0 && <div className="text-sm" role="status" data-testid="creative-unlinked">
+        <p>Written earlier but not linked to the job:</p>
+        <ul className="list-disc pl-5">{unlinked.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        <button className="text-xs underline" onClick={() => useUnlinkedCopies.getState().clear()}>Dismiss</button>
+      </div>}
+      {linkNote && <p className="text-sm" role="status" data-testid="creative-link-note">{linkNote}</p>}
+      {prepared && <CreativePreparePanel result={prepared} />}
     </div>
   );
 }
