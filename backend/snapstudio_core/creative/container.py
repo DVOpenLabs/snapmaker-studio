@@ -61,8 +61,8 @@ def _safe_name(name: str) -> str:
     return normalized
 
 
-def _check_model(xml: bytes) -> None:
-    # UTF-8 only. A byte-substring DOCTYPE check is bypassed by UTF-16/UTF-32 (NUL-interleaved), which expat
+def parse_xml(xml: bytes) -> ElementTree.Element:
+    # The one guarded XML parse for every part of an archive (model, object parts, settings). UTF-8 only. A byte-substring DOCTYPE check is bypassed by UTF-16/UTF-32 (NUL-interleaved), which expat
     # auto-detects and then expands entities from, so the text is decoded first and anything else is refused.
     try:
         text = xml.decode("utf-8-sig")
@@ -77,6 +77,11 @@ def _check_model(xml: bytes) -> None:
         root = ElementTree.fromstring(text.encode("utf-8"))
     except ElementTree.ParseError as exc:
         raise ContainerError("bad_xml") from exc
+    return root
+
+
+def _check_model(xml: bytes) -> None:
+    root = parse_xml(xml)
     if root.tag != f"{{{CORE_NS}}}model":
         raise ContainerError("unsupported_3mf_version")
 

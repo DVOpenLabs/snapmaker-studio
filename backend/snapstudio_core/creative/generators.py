@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 from xml.etree import ElementTree
 
-from .container import CORE_NS, ContainerError, ThreeMFManifest, read_3mf
+from .container import CORE_NS, ContainerError, ThreeMFManifest, parse_xml, read_3mf
 from .readers import CreativeProject, _digest_obj
 
 _C = f"{{{CORE_NS}}}"
@@ -65,13 +65,7 @@ class WrongShape(ValueError):
 
 
 def _xml(blob: bytes) -> ElementTree.Element:
-    upper = blob.upper()
-    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
-        raise ContainerError("unsafe_xml")
-    try:
-        return ElementTree.fromstring(blob)
-    except ElementTree.ParseError as exc:
-        raise ContainerError("bad_xml") from exc
+    return parse_xml(blob)   # decode-first guard shared with the container (UTF-16/32 entity bypass, OP144-1)
 
 
 def _model_metadata(root: ElementTree.Element) -> dict[str, str]:
