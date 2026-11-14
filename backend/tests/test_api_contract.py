@@ -57,6 +57,7 @@ _CONTRACT = {
         ["schema_version", "readable", "format", "notes"]),
     "/project_cost": ({"path": "none"}, ["schema_version", "available", "basis"]),
     "/placement_check": ({"path": "none"}, ["schema_version", "available", "items"]),
+    "/painted_preview": ({"path": "none"}, ["schema", "available", "state", "reason", "slots", "meshes", "instances"]),
     "/preflight": ({"path": "none"}, ["schema_version", "checks", "counts", "summary"]),
     "/fidelity": ({"original": "none", "prepared": "none"},
         ["schema_version", "available", "rows", "claims", "summary"]),

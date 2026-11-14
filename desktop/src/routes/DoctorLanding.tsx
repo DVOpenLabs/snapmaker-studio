@@ -9,6 +9,7 @@ import { useOpenFile } from "@/hooks/useOpenFile";
 import { useSession } from "@/store/session";
 import { BusinessDoctors } from "@/components/BusinessDoctors";
 import NotFound from "@/routes/NotFound";
+import { JOB_ROUTE } from "@/lib/routes";
 
 const BIZ_DOCTORS = new Set(["cost", "pricing", "profit"]);
 
@@ -77,7 +78,7 @@ export default function DoctorLanding() {
             <Plus className="h-4 w-4" /> Open a model
           </Button>
           {file && (
-            <Button size="sm" variant="secondary" onClick={() => nav("/workspace")}>
+            <Button size="sm" variant="secondary" onClick={() => nav(JOB_ROUTE)}>
               Continue with {file.name} <ArrowRight className="h-4 w-4" />
             </Button>
           )}

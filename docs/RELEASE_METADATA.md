@@ -11,9 +11,56 @@ this file disagree, if a superseded hash survives in a download instruction, if 
 app manifests carry a different version, or if `TRUST_STATUS.md` does not lead with
 the release named here.
 
+A second, equally deliberate copy is the "Verify your download" block of `RELEASE_NOTES.md`, which is published as the
+GitHub release body and must carry both platforms' size and SHA256 inline (`RELEASE_CHECKLIST.md` §9). It must be
+kept identical to this file by hand when a candidate is rebuilt; no test checks it.
+
 Every *other* document must link here rather than restate these values.
 
 ## Current release
+
+| Field | Value |
+|---|---|
+| Version | v1.7.0 |
+| Installer | `Snapmaker.Studio_1.7.0_x64-setup.exe` |
+| Size (bytes) | 22,748,251 |
+| SHA256 | `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04` |
+| Linux installer | `snapmaker-studio_1.7.0_amd64_210d86868882.deb` |
+| Linux size (bytes) | 26,325,960 |
+| Linux SHA256 | `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/40129442382 |
+| Real-printer verification harness | Separate branch `verify/v1.7.0-rc2-hardware-harness`, commit [584906a](https://github.com/DVOpenLabs/snapmaker-studio/commit/584906a1ee0e9581ee915c8985481935517aca97); not part of the candidate packages; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0 |
+| Trust status | ACCEPTED; see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+
+**These are the bytes published as v1.7.0.** They were built once by the build run named here from source
+commit `210d86868882293e974bcc4b7c1276096319e6c7` and promoted, not rebuilt, by `release-publish.yml`, which
+re-hashes both artifacts against this file before it creates the release. v1.7.0 is a stable release,
+not a prerelease, and its hashes are also published as `SHA256SUMS` on the release. The GitHub Releases page is the
+authority for the publication time. The previous release,
+[v1.6.0](https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0), is listed below.
+
+Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
+`sha256sum <file>.deb` (Linux).
+
+## Previous release
+
+| Field | Value |
+|---|---|
+| Version | v1.6.0 |
+| Installer | `Snapmaker.Studio_1.6.0_x64-setup.exe` |
+| Size (bytes) | 22,444,501 |
+| SHA256 | `d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0` |
+| Linux installer | `snapmaker-studio_1.6.0_amd64_ab507e531bb8.deb` |
+| Linux size (bytes) | 26,004,974 |
+| Linux SHA256 | `aaf13a23becc624ffff04d4fd4e317b886b81fa82c7b61c44f6075ea2cd62cfc` |
+| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/39413867451 |
+| Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0 |
+| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
+
+Superseded by v1.7.0, which is the current download.
+
+## Superseded
 
 | Field | Value |
 |---|---|
@@ -24,17 +71,9 @@ Every *other* document must link here rather than restate these values.
 | Linux installer | `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` |
 | Linux size (bytes) | 25,944,098 |
 | Linux SHA256 | `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a` |
-| Build run | https://github.com/DVOpenLabs/snapmaker-studio/actions/runs/37533259845 |
 | Release URL | https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.5.0 |
-| Trust status | ACCEPTED — see [docs/TRUST_STATUS.md](TRUST_STATUS.md) |
 
-A stable release, not a prerelease, so GitHub's "latest release" points at it.
-Hashes for both files are also published as `SHA256SUMS` on the release.
-
-Note: verify with `Get-FileHash -Algorithm SHA256 <installer>` (Windows) or
-`sha256sum <file>.deb` (Linux).
-
-## Previous release
+## Superseded
 
 | Field | Value |
 |---|---|

@@ -257,3 +257,133 @@ describe("a Prepare that wrote nothing is not reported as a success", () => {
     expect(screen.queryByRole("button", { name: /Copy path/ })).toBeNull();
   });
 });
+
+// --- a readable project Studio would refuse to prepare ---------------------------------------------
+// The findings below are the engine's own output (backend test_the_committed_compatibility_fixture_*).
+import blockedFixture from "@/test-fixtures/compat-blocked.json";
+
+describe.each(["nil_speeds", "u1_auto_brim"] as const)("prepare.blocked finding: %s", (name) => {
+  it("offers no Prepare entry point and explains the next step", async () => {
+    api.compatibilityCheck.mockResolvedValue((blockedFixture as Record<string, unknown>)[name]);
+    api.projectMaterials.mockResolvedValue(analysis());
+    page();
+    await screen.findByText("Studio cannot prepare a U1 copy of this project yet");
+    const copy = await screen.findByTestId("prepare-blocked-copy");
+    expect(copy.textContent).toContain("cannot prepare a U1 copy");
+    expect(screen.queryByText(/Studio can prepare a U1 profile copy/)).toBeNull();
+    expect(plainPrepare()?.disabled).toBe(true);
+    await waitFor(() => expect(materialsCard()).toBeNull());          // Project Materials' Prepare is off too
+    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.length).toBe(2);
+    for (const radio of radios) expect(radio.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Review settings" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(plainPrepare()!);
+    expect(api.convert).not.toHaveBeenCalled();
+  });
+});
+
+it("an eligible project with findings keeps its Prepare entry points", async () => {
+  api.compatibilityCheck.mockResolvedValue((blockedFixture as Record<string, unknown>).clean);
+  api.projectMaterials.mockResolvedValue({ schema: "project-materials/1", supported: false, reason: "no slots" });
+  page();
+  await screen.findByText("Invalid value for raft_first_layer_expansion");
+  expect(plainPrepare()?.disabled).toBe(false);
+  expect(screen.queryByTestId("prepare-blocked-copy")).toBeNull();
+  for (const radio of screen.getAllByRole("radio") as HTMLInputElement[]) expect(radio.disabled).toBe(false);
+});
+
+describe("project.unreadable finding", () => {
+  const UNREADABLE = { findings: [{ id: "project.unreadable", severity: "error", title: "Studio cannot read this project",
+    explanation: "A required part is missing.", suggested_action: "Re-export it.", setting_path: "3D/3dmodel.model", evidence: "missing" }],
+    summary: "Cannot read.", recommendation: "Open it in Orca." };
+
+  it("offers no Prepare entry point and sends no request", async () => {
+    api.compatibilityCheck.mockResolvedValue(UNREADABLE);
+    api.projectMaterials.mockResolvedValue(analysis());
+    page();
+    await screen.findByText("Studio cannot read this project");
+    const copy = await screen.findByTestId("prepare-blocked-copy");
+    expect(copy.textContent).toContain("cannot read this file as a project");
+    expect(plainPrepare()?.disabled).toBe(true);
+    await waitFor(() => expect(materialsCard()).toBeNull());
+    for (const radio of screen.getAllByRole("radio") as HTMLInputElement[]) expect(radio.disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Review settings" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(plainPrepare()!);
+    fireEvent.click(screen.getByRole("button", { name: "Review settings" }));
+    expect(api.convert).not.toHaveBeenCalled();
+  });
+});
+
+describe("eligibility closing after Prepare was already offered", () => {
+  const SUMMARY = { source_has_creator_settings: true, kept_count: 0, compat_changed: [], mapped_to_u1: [], could_not_carry: [], warnings: [],
+    recommendations_available: false, recommended_changes: [],
+    project_materials: { fidelity: { schema: "x", mode: "preserve", lines: ["Slot 1: mapped."], slots: [] } } };
+  const REVIEW = { schema_version: "convert/2", prepare_mode: "preserve", output_path: "", output_name: "", validated_ok: true, errors: [], settings_summary: SUMMARY };
+  const DONE = { ...REVIEW, output_path: "C:/p/out.3mf", output_name: "out.3mf" };
+  const BLOCKING = { findings: [{ id: "project.unreadable", severity: "error", title: "Studio cannot read this project",
+    explanation: "x", suggested_action: "y", setting_path: "p", evidence: "e" }], summary: "s", recommendation: "r" };
+
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  function mappedSlots() {
+    api.projectMaterials.mockResolvedValue(analysis({ slots: [slot({ candidates: [candidate({ mapping: {
+      status: "proven", match_source: "saved_spool", preset_name: "P @U1", base_name: "P @U1", reason: "", candidates: [], stale: false } })] })] }));
+  }
+  async function startMaterialsPrepare() {
+    fireEvent.click(await screen.findByRole("button", { name: /^(?!Forget).*Yoopai PLA Matte/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Review & prepare/ }));
+    await screen.findByText("Slot 1: mapped.");
+    fireEvent.click(screen.getByRole("button", { name: "Prepare with these choices" }));
+  }
+
+  it("clears an existing preparation result when a blocking answer arrives, and sends nothing more", async () => {
+    const check = deferred<unknown>();
+    api.compatibilityCheck.mockReturnValue(check.promise);
+    mappedSlots();
+    api.convert.mockImplementation(async (_p: string, _o: unknown, _m: string, dry: boolean) => (dry ? REVIEW : DONE));
+    page();
+    await startMaterialsPrepare();
+    await screen.findByText("U1 profile copy created");
+    const before = api.convert.mock.calls.length;
+    check.resolve(BLOCKING);
+    await screen.findByText("Studio cannot read this project");
+    await waitFor(() => expect(screen.queryByText("U1 profile copy created")).toBeNull());
+    expect(screen.queryByRole("button", { name: /Prepare with/ })).toBeNull();
+    expect(api.convert.mock.calls.length).toBe(before);
+  });
+
+  it("discards a preparation that finishes after the blocking answer", async () => {
+    const check = deferred<unknown>();
+    const real = deferred<unknown>();
+    api.compatibilityCheck.mockReturnValue(check.promise);
+    mappedSlots();
+    api.convert.mockImplementation((_p: string, _o: unknown, _m: string, dry: boolean) => (dry ? Promise.resolve(REVIEW) : real.promise));
+    page();
+    await startMaterialsPrepare();
+    check.resolve(BLOCKING);
+    await screen.findByText("Studio cannot read this project");
+    real.resolve(DONE);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("U1 profile copy created")).toBeNull();
+    expect(screen.queryByTestId("prepare-no-file")).toBeNull();
+  });
+
+  it("keeps no settings review or Prepare button once the next project is unreadable", async () => {
+    api.compatibilityCheck.mockImplementation(async (p: string) => (p === "C:/p/other.3mf" ? BLOCKING : WITH_FINDINGS));
+    api.projectMaterials.mockResolvedValue({ schema: "project-materials/1", supported: false, reason: "no slots" });
+    api.open3mfDialog.mockResolvedValue("C:/p/other.3mf");
+    api.convert.mockResolvedValue(REVIEW);
+    page();
+    await screen.findByText("Printer profile is for another machine");
+    fireEvent.click(screen.getByRole("button", { name: "Review settings" }));
+    await screen.findByRole("button", { name: "Prepare with preserved settings" });
+    fireEvent.click(screen.getByRole("button", { name: /Choose another 3MF|Using your open 3MF/ }));
+    await screen.findByText("Studio cannot read this project");
+    expect(screen.queryByRole("button", { name: "Prepare with preserved settings" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prepare with recommended settings" })).toBeNull();
+    expect(api.convert).toHaveBeenCalledTimes(1);
+  });
+});

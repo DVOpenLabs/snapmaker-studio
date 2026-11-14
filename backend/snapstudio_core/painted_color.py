@@ -574,16 +574,22 @@ def read_container(tm: ThreeMF) -> dict:
         return _unavailable("This project carries no model geometry.")
 
     dialect = None
+    readable = failed = 0
     for part in model_parts:
         try:
             found = _dialect_of(tm.read_part(part))
+            readable += 1
         except Exception:
+            failed += 1
             continue
         if found:
             dialect = found
             break
     if dialect is None:
-        return _none_found(len(model_parts))
+        if failed:
+            # A part that could not be read may be the painted one: nothing can be said about painting.
+            return _unavailable(f"Studio could not read {failed} of {len(model_parts)} model geometry part(s).")
+        return _none_found(readable)
 
     attribute = _ATTRIBUTE[dialect]
     version, version_part = _version(tm, dialect)
@@ -1047,7 +1053,7 @@ def _none_found(model_parts: int, marker_seen: bool = False) -> dict:
         "format_version_source": None, "format_version_known": False,
         "objects": [], "slots": [], "slots_referenced": [],
         "painted_triangle_count": 0, "malformed_triangle_count": 0,
-        "truncated": False, "default_slot_resolved": True,
+        "truncated": False, "default_slot_resolved": True, "paint_marker_undecodable": marker_seen,
         "confidence": CONFIRMED,
         "evidence": f"no paint attribute in {model_parts} mesh part(s)",
         "limits": {},

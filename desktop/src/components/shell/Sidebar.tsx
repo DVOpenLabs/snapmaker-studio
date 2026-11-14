@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Sparkles, SlidersHorizontal } from "lucide-react";
@@ -6,7 +7,8 @@ import { library } from "@/api";
 import { useSession } from "@/store/session";
 import { useMode } from "@/store/mode";
 import { useOpenFile } from "@/hooks/useOpenFile";
-import { PRIMARY_NAV, SECONDARY_NAV, SIMPLE_SECONDARY_NAV, BEGINNER_NAV, MORE_NAV } from "@/lib/nav";
+import { PRIMARY_NAV, SECONDARY_NAV, SIMPLE_SECONDARY_NAV, BEGINNER_NAV, MORE_NAV, type NavItem } from "@/lib/nav";
+import { JOB_ROUTE } from "@/lib/routes";
 
 function navClass({ isActive }: { isActive: boolean }) {
   return cn(
@@ -15,7 +17,34 @@ function navClass({ isActive }: { isActive: boolean }) {
   );
 }
 
-export function Sidebar() {
+export function AdvancedNav({ items = PRIMARY_NAV }: { items?: readonly NavItem[] }) {
+  // Instance prefix keeps heading ids unique when two sidebars (desktop + drawer) are mounted together.
+  const instance = useId();
+  // Consecutive items of one group share a single labelled group with one heading.
+  const runs: { group?: string; items: NavItem[] }[] = [];
+  for (const n of items) {
+    const last = runs[runs.length - 1];
+    if (last && last.group === n.group) last.items.push(n);
+    else runs.push({ group: n.group, items: [n] });
+  }
+  const link = (n: NavItem) => (
+    <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
+      <n.icon className="h-4 w-4" /> {n.label}
+    </NavLink>
+  );
+  return <>
+    {runs.map((run, i) => {
+      if (!run.group) return run.items.map(link);
+      const headingId = `nav-group-${instance}-${run.group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${i}`;
+      return <div key={headingId} role="group" aria-labelledby={headingId} className="flex flex-col gap-1">
+        <div id={headingId} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{run.group}</div>
+        {run.items.map(link)}
+      </div>;
+    })}
+  </>;
+}
+
+export function Sidebar({ className, id, onNavigate }: { className?: string; id?: string; onNavigate?: () => void }) {
   const nav = useNavigate();
   const setFile = useSession((s) => s.setFile);
   const openFile = useOpenFile();
@@ -24,7 +53,8 @@ export function Sidebar() {
   const recent = (data ?? []).slice(0, 3);
 
   return (
-    <aside className="flex h-full w-[230px] flex-col border-r border-border bg-card">
+    <aside id={id} onClick={(e) => { if (onNavigate && (e.target as HTMLElement).closest("a,[data-closes-menu]")) onNavigate(); }}
+           className={cn("h-full w-[230px] flex-col border-r border-border bg-card", className ?? "flex")}>
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border">
         {/* Brand mark — ribbon stubs → core → cube (Intelligence Layer) */}
         <div className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm" style={{ background: "linear-gradient(135deg,#141A2C,#0A101C)" }}>
@@ -46,11 +76,11 @@ export function Sidebar() {
         </div>
       </div>
 
-      <button onClick={openFile} className="mx-3 mt-3 mb-1 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground">
+      <button data-closes-menu onClick={openFile} className="mx-3 mt-3 mb-1 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground">
         <Plus className="h-4 w-4" /> Open a model
       </button>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+      <nav aria-label="Main" className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
         {mode === "simple" ? (
           <>
             {BEGINNER_NAV.map((n) => (
@@ -72,11 +102,7 @@ export function Sidebar() {
             </details>
           </>
         ) : (
-          PRIMARY_NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
-              <n.icon className="h-4 w-4" /> {n.label}
-            </NavLink>
-          ))
+          <AdvancedNav />
         )}
       </nav>
 
@@ -87,7 +113,8 @@ export function Sidebar() {
             {recent.map((p) => (
               <button
                 key={p.id}
-                onClick={() => { setFile(p.source_path); nav("/workspace"); }}
+                data-closes-menu
+                onClick={() => { setFile(p.source_path); nav(JOB_ROUTE); }}
                 title={p.source_path}
                 className={navClass({ isActive: false }) + " w-full text-left"}
               >
@@ -125,7 +152,7 @@ export function Sidebar() {
             </button>
           </div>
         </div>
-        <nav className="flex flex-col gap-1">
+        <nav aria-label="Settings and help" className="flex flex-col gap-1">
           {(mode === "simple" ? SIMPLE_SECONDARY_NAV : SECONDARY_NAV).map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} className={navClass}>
               <n.icon className="h-4 w-4" /> {n.label}

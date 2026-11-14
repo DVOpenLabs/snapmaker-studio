@@ -36,13 +36,13 @@ entry would say, and what any judge reading the repository should be reading.
 
 ## The fund, as published today
 
-Re-read from the official page on **2026-08-23**. Source:
+Re-read from the official page on **2026-08-23**; the Phase 2 row was re-read on **2026-10-25**. Source:
 <https://www.snapmaker.com/innovation-fund>.
 
 | | |
 |---|---|
 | Phase 1 | 9 Jun – **7 Sep 2026**; community voting 22–30 Sep; **provisional results 9 Oct 2026**; review window closes 15 Oct; prizes by 13 Nov |
-| Phase 2 | Submissions 19 Oct – 14 Dec 2026; results 31 Dec; final 14 Jan 2027; prizes by 29 Jan |
+| Phase 2 | Submissions 28 Oct – 24 Dec 2026 ("Last day to submit"); results posted 14 Jan 2027; same open structure as Phase 1, including the two-week review window before results are final (official page, read 2026-10-25; it gives no prize date for Phase 2) |
 | Scoring | **80%** tech committee (Snapmaker product and engineering staff, invited industry experts, long-standing community members) + **20%** community vote |
 | Community vote | GitHub repository stars, community-channel likes, project-page upvotes |
 | Committee criteria | Innovation & Technical Depth · Openness & Quality · Practicality & Adaptability |
@@ -170,7 +170,7 @@ guessing in the direction that looks better.
   to end and prints a 27-check pass/fail table, so the claims can be verified
   without reading the source. It runs in CI on every pull request.
 - **An acceptance harness that drives the installed application**, not a dev
-  server: 45 checks over the real window and the frozen engine, including that the
+  server: 54 checks over the real window and the frozen engine, including that the
   input file is byte-identical afterwards and that uninstalling leaves nothing
   behind.
 - **Regression tests against genuine slicer output** — real OrcaSlicer,
@@ -208,19 +208,18 @@ simply the machine it is verified against.
 
 ## Evidence
 
-Everything below was verified against the **v1.5.0 release-candidate build** (the same
-application published on the release page; the installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
+Everything below was verified against the **v1.7.0 build** that was then published unchanged (the
+installed-application run used an acceptance copy of its installer, and the real installer was exercised only on a disposable GitHub-hosted runner), not a development build. The backend and desktop test counts come from the
 source at the release commit, not from the installer. Commands, counts and full reports:
 [TRUST_STATUS.md](TRUST_STATUS.md).
 
 | What | Result |
 |---|---|
-| Installed-application acceptance, through the real UI | 45/45 |
-| Read-only verification against a real Snapmaker U1, from the Windows-installed app | 58/58 |
-| Regression tests against genuine Orca/Bambu/Prusa projects | 36 tests |
+| Installed-application acceptance, through the real UI | 54/54 |
+| Read-only verification against a real Snapmaker U1 | 76/76 on its second attempt (the first attempt failed on verification-tooling defects; both are recorded) |
 | End-to-end pipeline self-check | 27/27 |
-| Backend tests | 2804 passed, 13 skipped |
-| Desktop tests | 725 passed |
+| Backend tests | 3824 passed, 49 skipped |
+| Desktop tests | 1328 passed |
 | TypeScript, Rust, production build | clean |
 
 Demo: [`docs/media/snapmaker-studio-demo.mp4`](media/snapmaker-studio-demo.mp4) —

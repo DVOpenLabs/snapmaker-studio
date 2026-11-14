@@ -37,6 +37,17 @@ archive entry names are never used as filesystem paths, so the OrcaSlicer-class 
 path-traversal issue does not apply. This behaviour is pinned by
 `backend/tests/test_container_paths.py`.
 
+## Runtime and trust-store floors
+
+The repository's build and test scripts, and every workflow that sets up Node, run only on a Node.js release that carries the October 2026 security fixes (22.23.4, 24.22.1, 26.12.1 or newer;
+CVE-2026-111497 is the Brotli decoder). `.nvmrc` names the CI version and `scripts/check-node-floor.mjs` enforces the floor in
+those workflows and in the desktop `pretest`/`prebuild` scripts; the acceptance and hardware harnesses use the machine's Node and
+have no floor check of their own. Studio ships no Node.js runtime.
+
+The one public-CA TLS client in the shell (the update check) uses embedded roots. `desktop/src-tauri/tests/trust_store.rs` fails if the
+lockfile resolves `webpki-roots` below 1.0.10 or `rustls-webpki` below 0.103.16, or if the removed emSign ECC G3 root is embedded. The release link
+from the update check is limited to this repository's `releases/latest` and `releases/tag/<tag>` pages. Full audit: `docs/internal/SECURITY_ADVISORY_NODE2SHELL_EMUDHRA_2026-10-23.md`.
+
 ## Reporting
 This is an independent open-source project (not affiliated with Snapmaker). Report
 security issues via a GitHub issue marked security, or the repository contact.

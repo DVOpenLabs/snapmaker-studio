@@ -7,6 +7,7 @@ import pytest
 
 from snapstudio_api import service
 from snapstudio_core import project_compare as pc
+from snapstudio_core import project_materials as pm
 from tests.test_project_materials import MATTE, _cfg, env, profiles  # noqa: F401  (fixtures)
 
 MODEL_SETTINGS = """<?xml version="1.0"?><config>
@@ -211,3 +212,121 @@ def test_unicode_digits_are_not_numbers_here(tmp_path, capsys):
     project = _five_colour_project(tmp_path, name="s.3mf", wall_filament="\u0662")
     by3 = {s["slot"]: s["usage"] for s in pc.snapshot(project)["slots"]}
     assert "wall_filament" not in by3[2]["process_roles"]
+
+
+# --- the Project Materials card carries the usage verdicts (issue 39), read-only ---------------
+
+def test_project_materials_reports_usage_per_slot_and_the_toolhead_overflow(env, tmp_path):
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["toolheads"] == 4 and out["beyond_toolheads"] == 1 and out["usage_readable"] is True
+    verdicts = [s["usage"]["verdict"] for s in out["slots"]]
+    assert verdicts == ["referenced", "referenced", "referenced", "referenced", "no_reference_found"]
+    assert out["slots"][3]["usage"]["referenced_by"] == ["colour_changes"]
+    # existing shape is untouched: the new fields only add
+    assert {"slot", "material", "colour", "candidates", "current_preset"} <= set(out["slots"][0])
+
+
+def test_unreadable_object_list_keeps_an_unreferenced_slot_unknown(env, tmp_path):
+    path = _five_colour_project(tmp_path, model_settings="<config><object")        # not well-formed
+    out = service.project_materials(str(path))
+    assert out["usage_readable"] is False
+    assert out["slots"][4]["usage"]["verdict"] == "unknown"
+
+
+def test_no_usage_at_all_is_unknown_never_unused():
+    analysis = {"slots": [{"slot": 0}, {"slot": 1}]}
+    out = pm.attach_usage(analysis, None)
+    assert [s["usage"]["verdict"] for s in out["slots"]] == ["unknown", "unknown"]
+    assert out["beyond_toolheads"] == 0 and out["usage_readable"] is False
+
+
+def test_the_usage_answer_names_no_object_and_does_not_change_the_file(env, tmp_path):
+    path = _five_colour_project(tmp_path)
+    before = _sha(path)
+    out = service.project_materials(str(path))
+    assert _sha(path) == before
+    assert "Private" not in json.dumps(out["slots"][0]["usage"])
+    assert set(out["slots"][0]["usage"]) == {"verdict", "referenced_by"}
+
+
+def _fixture(name):
+    from pathlib import Path
+    return str(Path(__file__).parent / "fixtures" / "painted" / name)
+
+
+def test_painted_only_slots_are_referenced_through_the_service(env):
+    out = service.project_materials(_fixture("bambustudio-2.08.02.61-authored.3mf"))
+    by = {s["slot"]: s["usage"] for s in out["slots"]}
+    assert by[1] == {"verdict": "referenced", "referenced_by": ["painted"]}        # nothing but its paint names this slot
+    assert by[2]["verdict"] == "no_reference_found" and out["usage_readable"] is True
+
+
+def test_incomplete_painting_makes_usage_unreadable_and_unreferenced_slots_unknown(env):
+    out = service.project_materials(_fixture("snapmaker-orca-2.3.5-authored.3mf"))
+    by = {s["slot"]: s["usage"]["verdict"] for s in out["slots"]}
+    assert by[1] == by[2] == by[3] == "referenced" and by[4] == "unknown"
+    assert out["usage_readable"] is False and out["beyond_toolheads"] == 1
+
+
+def test_usage_readable_needs_the_object_list_and_the_painting():
+    ok = {"slots": {}, "object_list_readable": True, "painting": {"complete": True}}
+    assert pm.attach_usage({"slots": []}, ok)["usage_readable"] is True
+    assert pm.attach_usage({"slots": []}, {**ok, "painting": {"complete": False}})["usage_readable"] is False
+    assert pm.attach_usage({"slots": []}, {**ok, "object_list_readable": False})["usage_readable"] is False
+
+
+def _project_without_geometry(tmp_path):
+    cfg = _cfg(filament_colour=["#FF0000", "#00FF00", "#0000FF", "#FFFFFF", "#FFFF00"], filament_type=["PLA"] * 5,
+               filament_vendor=["Bambu Lab"] * 5, filament_settings_id=["Bambu PLA Basic @BBL H2D"] * 5)
+    path = tmp_path / "nogeo.3mf"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("Metadata/project_settings.config", json.dumps(cfg))
+        z.writestr("Metadata/model_settings.config", "<config><object id='1'><metadata key='extruder' value='1'/></object></config>")
+    return path
+
+
+def test_a_project_whose_geometry_is_missing_leaves_unreferenced_slots_unknown(env, tmp_path):
+    out = service.project_materials(str(_project_without_geometry(tmp_path)))
+    verdicts = [s["usage"]["verdict"] for s in out["slots"]]
+    assert verdicts == ["referenced", "unknown", "unknown", "unknown", "unknown"]
+    assert out["usage_readable"] is False
+
+
+def test_paint_the_file_mentions_but_studio_cannot_decode_leaves_slots_unknown(env, tmp_path, monkeypatch):
+    monkeypatch.setattr(pc.painted_color, "read_container", lambda tm: pc.painted_color._none_found(1, marker_seen=True))
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["usage_readable"] is False
+    assert out["slots"][4]["usage"]["verdict"] == "unknown" and out["slots"][0]["usage"]["verdict"] == "referenced"
+
+
+def test_a_file_with_no_painting_at_all_is_still_readable(env, tmp_path):
+    out = service.project_materials(str(_five_colour_project(tmp_path)))
+    assert out["usage_readable"] is True and out["slots"][4]["usage"]["verdict"] == "no_reference_found"
+
+
+def test_geometry_parts_that_cannot_be_read_are_unavailable_not_no_painting(tmp_path, monkeypatch):
+    from snapstudio_core import painted_color
+    tm = pc.ThreeMF.open(_five_colour_project(tmp_path))
+    def boom(part):
+        raise OSError("unreadable")
+    monkeypatch.setattr(tm, "read_part", boom)
+    assert painted_color.read_container(tm)["available"] is False
+
+
+def test_one_geometry_part_unreadable_among_readable_ones_leaves_slots_unknown(env, tmp_path, monkeypatch):
+    path = tmp_path / "two.3mf"
+    src = _five_colour_project(tmp_path, name="one.3mf")
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(path, "w") as zout:
+        for info in zin.infolist():
+            zout.writestr(info, zin.read(info.filename))
+        zout.writestr("3D/Objects/second.model", '<?xml version="1.0"?><model/>')
+    real = pc.ThreeMF.read_part
+    def flaky(self, part):
+        if part.endswith("second.model"):
+            raise OSError("unreadable")
+        return real(self, part)
+    monkeypatch.setattr(pc.ThreeMF, "read_part", flaky)
+    from snapstudio_core import painted_color
+    assert painted_color.read_container(pc.ThreeMF.open(path))["available"] is False
+    out = service.project_materials(str(path))
+    assert out["usage_readable"] is False and out["slots"][4]["usage"]["verdict"] == "unknown"

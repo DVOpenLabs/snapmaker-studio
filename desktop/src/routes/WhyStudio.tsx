@@ -7,9 +7,9 @@ import { PageHeader } from "@/components/ui/layout";
 // can't, before you waste filament. Each row is a question a maker actually asks.
 type Cell = { v: "yes" | "partial" | "no"; t: string };
 const ROWS: { q: string; orca: Cell; fluidd: Cell; studio: Cell }[] = [
-  { q: "Will it print — before I slice?",
+  { q: "What is at risk — before I slice?",
     orca: { v: "no", t: "Slices, then errors" }, fluidd: { v: "no", t: "No model analysis" },
-    studio: { v: "yes", t: "Project Doctor verdict" } },
+    studio: { v: "yes", t: "Project Doctor findings (advisory)" } },
   { q: "Why won't it slice (and the fix)?",
     orca: { v: "no", t: "“Out of bounds”, no reason" }, fluidd: { v: "no", t: "—" },
     studio: { v: "yes", t: "Cause + exact fix" } },
@@ -19,9 +19,9 @@ const ROWS: { q: string; orca: Cell; fluidd: Cell; studio: Cell }[] = [
   { q: "What should I sell it for / my profit?",
     orca: { v: "no", t: "—" }, fluidd: { v: "no", t: "—" },
     studio: { v: "yes", t: "Pricing + Profit Doctor" } },
-  { q: "Is my printer healthy?",
+  { q: "What does my printer report about itself?",
     orca: { v: "no", t: "—" }, fluidd: { v: "partial", t: "Raw telemetry" },
-    studio: { v: "yes", t: "0–100 health score" } },
+    studio: { v: "yes", t: "Firmware state + print history (read-only)" } },
   { q: "What's the community's fix for this?",
     orca: { v: "no", t: "—" }, fluidd: { v: "no", t: "—" },
     studio: { v: "yes", t: "Built-in, per risk" } },

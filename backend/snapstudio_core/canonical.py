@@ -41,6 +41,7 @@ class CanonicalProject:
     color_count: int | None = None
     painted: bool | None = None
     dimensions_mm: dict | None = None
+    geometry_basis: dict | None = None   # whether dimensions_mm is the physical size
     triangles: int | None = None
     complexity: str | None = None
     verdict: str | None = None
@@ -124,6 +125,7 @@ def to_canonical(path: str) -> CanonicalProject:
         color_count=color_count,
         painted=info.get("painted"),
         dimensions_mm=info.get("dimensions_mm"),
+        geometry_basis=info.get("geometry_basis"),
         triangles=info.get("triangles"),
         complexity=info.get("complexity"),
         verdict=info.get("verdict"),

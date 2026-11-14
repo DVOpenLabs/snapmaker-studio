@@ -16,6 +16,7 @@ import {
   READY_NOW_TITLE, READY_NOW_FOOTER, DECLARED_NOTE, NO_PRINTER_TITLE, NO_PRINTER_TEXT,
   summarySentence, progressText, readyNowView,
 } from "@/lib/readyNow";
+import { JOB_ROUTE } from "@/lib/routes";
 
 export default function ReadyNow() {
   const nav = useNavigate();
@@ -57,7 +58,7 @@ export default function ReadyNow() {
     jobError: job.isError, status: data?.status,
   });
 
-  const open = (r: ReadyNowProject) => { setFile(r.path); nav("/workspace"); };
+  const open = (r: ReadyNowProject) => { setFile(r.path); nav(JOB_ROUTE); };
   const prepare = (r: ReadyNowProject) => { setFile(r.path); nav("/compatibility"); };
 
   return (

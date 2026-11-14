@@ -1,0 +1,38 @@
+{
+  "acceptance": {
+    "passed": 50,
+    "report": "acceptance-1.6.0.json",
+    "total": 50
+  },
+  "backend": {
+    "passed": 3185,
+    "skipped": 49
+  },
+  "demo": {
+    "file": "docs/media/snapmaker-studio-demo.mp4",
+    "seconds": 66
+  },
+  "desktop": {
+    "passed": 1091
+  },
+  "hardware": {
+    "passed": 78,
+    "report": "hardware-1.6.0.json",
+    "total": 78
+  },
+  "installer": {
+    "name": "Snapmaker.Studio_1.6.0_x64-setup.exe",
+    "sha256": "d39b1321579376bb7b804531c25343c22dde109889e4a44a7639122ecf0a98f0",
+    "size_bytes": 22444501,
+    "url": "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.6.0"
+  },
+  "released": "2026-10-21",
+  "schema_version": "evidence-snapshot/1",
+  "screenshots_dir": "docs/screenshots/v1.6.0",
+  "selfcheck": {
+    "passed": 27,
+    "total": 27
+  },
+  "source": "recorded when this release was published",
+  "version": "1.6.0"
+}

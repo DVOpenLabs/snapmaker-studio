@@ -142,6 +142,8 @@ def test_end_to_end_from_a_real_file(tmp_path):
     )
     p = tmp_path / "sliced.3mf"
     with zipfile.ZipFile(p, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
         z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr("Metadata/project_settings.config",
                    json.dumps({"printer_model": "Snapmaker U1"}))
@@ -166,6 +168,8 @@ def test_traits_module_and_cost_module_agree_on_the_shape(tmp_path):
     """Guards the seam: cost reads exactly what traits writes."""
     p = tmp_path / "x.3mf"
     with zipfile.ZipFile(p, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
         z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr("Metadata/slice_info.config",
                    "<config><plate><metadata key='weight' value='10'/>"

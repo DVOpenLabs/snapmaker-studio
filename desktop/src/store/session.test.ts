@@ -18,6 +18,18 @@ describe("session conversion", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ path: "C:/model.stl", prepare_mode: "recommended" });
   });
 
+  it("never sends a known blocked project to Prepare or preview in either mode", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    useSession.setState({ doctor: { status: "done", data: { prepare_blocked: true }, error: null } });
+    await useSession.getState().runConvert("preserve");
+    await useSession.getState().runConvert("recommended");
+    await useSession.getState().previewConvert();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useSession.getState().convert.status).toBe("idle");
+    expect(useSession.getState().preview.status).toBe("idle");
+  });
+
   it("defaults prepare mode to preserve", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ output_path: "C:/out.3mf", output_name: "out.3mf", validated_ok: true, prepare_mode: "preserve", settings_summary: {} }) });
     vi.stubGlobal("fetch", fetchMock);
@@ -55,5 +67,26 @@ describe("session conversion", () => {
     await conversion;
     expect(useSession.getState().file?.path).toBe("C:/other.3mf");
     expect(useSession.getState().convert).toMatchObject({ status: "idle", data: null });
+  });
+});
+
+describe("a sliced file belongs to the project it was opened beside", () => {
+  beforeEach(async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const { useSliced } = await import("./sliced");
+    useSession.setState({ file: { path: "C:/a.3mf", name: "a.3mf", ext: "3mf" } });
+    useSliced.getState().setSliced("C:/out/a.gcode");
+  });
+
+  it("opening a different project drops the G-code that was open for the earlier one", async () => {
+    const { useSliced } = await import("./sliced");
+    useSession.getState().setFile("C:/b.3mf");
+    expect(useSliced.getState().path).toBeNull();
+  });
+
+  it("opening the same project again keeps its G-code", async () => {
+    const { useSliced } = await import("./sliced");
+    useSession.getState().setFile("C:/a.3mf");
+    expect(useSliced.getState().path).toBe("C:/out/a.gcode");
   });
 });

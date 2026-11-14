@@ -1,73 +1,93 @@
-# Snapmaker Studio v1.5.0 — Project Materials
+# Snapmaker Studio v1.7.0 — One job screen, print risk signals and a colour preview
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.**
 > "Snapmaker" is a trademark of its respective owner.
 
-Which real spool is in which colour slot, and which installed Snapmaker Orca preset goes with it,
-is now part of preparing a project (#39). Studio shows what the model asks for, suggests spools from
-your inventory, and writes your choices into a prepared copy. You pick every one of them.
+> These notes describe the build named in
+> [RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md),
+> published unchanged from release-candidate run 40129442382. The previous release is v1.6.0.
 
-**Model → the materials and colours it needs → suggested spools from your inventory → the installed
-Orca preset you confirm → review → Prepare.**
+This release puts a project on one job screen, replaces the readiness percentage with a list of the risks Studio
+found, draws a read-only colour preview, tightens the checks that decide whether a project fits the plate, and
+updates the update check's TLS dependencies.
 
-## Project Materials
+## One job screen
 
-- **It appears on Prepare whenever the project has filament slots**, whether or not the
-  compatibility check found anything. Nothing on the page waits for a check result.
-- **Top spool candidates, with the reasons.** For each slot Studio lists the best three spools
-  from your provider (Spoolman, SpoolEase or Bambuddy) and says why: material match, whether the
-  subtype could be compared, colour distance, and whether the filament left looks like enough
-  (always marked as an estimate Studio cannot fully trust).
-- **Nothing is chosen for you.** No spool is selected automatically and no preset is confirmed
-  silently. Studio may suggest a generic preset; it never applies one on its own.
-- **You choose the physical spool**, then the installed Orca preset for it. The spool's colour is
-  carried into the prepared copy.
-- **Remember a mapping** for one spool or for similar spools. It is saved only after the prepared
-  copy was actually written, and it is checked again every time: a preset that was deleted,
-  renamed, replaced or no longer fits is not applied.
-- **Review before Prepare.** A plain-language summary lists, per slot, what was mapped, what
-  changed, what was kept and what the preset controls. Spool details are labelled as what you
-  selected, not as read from the file.
-- **Same-preset safety.** Snapmaker Orca copies a declared value to every slot that uses the same
-  preset. Studio removes only its own declarations from such a group, and stops (writing nothing,
-  and saying why) if the project's own vendor or type declarations would be copied onto a slot they
-  do not belong to.
-- **Recommended mode no longer silently writes the legacy "Snapmaker PLA" preset.** A slot keeps
-  the project's own filament identity unless you confirmed an installed preset for it.
+- **Opening a project lands on one screen:** the model in the middle, the target, materials and copy settings in a
+  pane beside it, and a single button for the next step (create the U1 copy, open it in Snapmaker Orca, compare the
+  slice). The copy's file name and folder, and the settings comparison after slicing, appear in the same place.
+- Opening or restoring a job never prepares, opens Orca or slices by itself, and every existing check still applies.
 
-## Snapmaker Orca's own presets
+## A colour preview
 
-Studio reads the filament presets installed with Snapmaker Orca and can check each one against the
-U1 and your nozzle size. A preset Studio verifies that way is shown as **Proven**, and a confirmed
-Orca preset is the verified path: Snapmaker Orca applies its temperature, flow and cooling.
+For a millimetre 3MF, Studio draws the model by the filament that prints each part, links each filament to its
+toolhead, and lets you compare the project's own colours, the spool colours you have chosen so far, and the colours
+read back from the copy Studio wrote. It is read-only. More than four colours stay visible, each in its own colour;
+Studio does not remove or merge them. Surface the project does not assign is shown grey. When a preview cannot be
+built (another unit, an unreadable file, too much detail, no 3D graphics) Studio says why and shows the plate
+instead.
 
-## Presets you made yourself — an important limit
+## Print risk signals replace the readiness percentage
 
-- Studio can find compatible filament presets you created in Snapmaker Orca, map a spool to one,
-  and remember that mapping.
-- They are shown as **"Confirmed by you"** and **"Manual check in Orca required"**, never as Proven.
-- In testing, when Snapmaker Orca opened a project that names a preset someone made, it kept the
-  project's own values and showed the preset as modified, rather than applying the preset's own
-  temperature, flow and cooling (in one profile it also showed a "Customized Preset" prompt).
-- **Studio therefore does not say Orca will apply those values.** Check the filament in Snapmaker
-  Orca before slicing.
+The "Print readiness (estimate)" percentage, the star rating and the Studio score are gone. Studio now lists each
+risk it found, once per condition, with what it means and what to do, and says what it did and did not check.
+Community guidance attaches only to the conditions it actually fits.
 
-## Not in this release
+## Placement and size checks say what they did not check
 
-- Creating custom Orca presets.
-- Changing or decrementing anything in your spool provider.
-- Choosing a spool for you.
-- Writing print parameters of its own.
-- Keeping a project's arbitrary print parameters underneath a different preset.
+- Bed fit reports each object's size and the instances' placement as separate facts; several small, separated
+  objects are no longer summed into one "too big" object.
+- A copy of a repeated object that hangs off the plate is no longer hidden by one that does not.
+- Placement and plate-fit checks are reported as **not checked** for projects whose physical size the file does not
+  establish (a non-millimetre unit, or a rotated or scaled object).
+- A project with several plates is no longer called ready just because each plate fits on its own.
+- Studio no longer recommends Arrange all plates as a fix; it says to review the project in Snapmaker Orca before
+  slicing.
+- When the bed-fit check could not run, the report says it was not verified instead of reading as a clean result.
+- Each setting Studio adjusts when it prepares a copy says why, and labels whether that statement is Studio's own
+  check or advice to verify the setting in Snapmaker Orca. The labels make no claim about how Snapmaker Orca behaves.
+- The cost line in the Business Doctors says "estimated cost".
 
-Studio does not slice and does not start prints: Snapmaker Orca slices, and anything sent to your
-printer is something you confirm.
+## Security
+
+- The update check's TLS dependencies are updated (rustls 0.23.46, rustls-webpki 0.103.16), and it no longer trusts
+  the `emSign ECC Root CA - G3` root that webpki-roots 1.0.10 removed (RUSTSEC-2026-0381, the October 2026 eMudhra
+  disclosure).
+- The update check only follows `releases/latest` and `releases/tag/<tag>` links of this repository.
+- If you build Studio from source, Node.js 22.23.4 or a newer fixed line is required.
+
+This does not change what is already installed: people running an earlier release still have its binary until they
+install a newer one.
+
+## What was checked, and what was not
+
+The candidate was built once by the project's release-candidate workflow. Its Windows installer and Linux `.deb`
+were re-downloaded and checked by SHA256 against the build manifest. The Windows installed-application acceptance
+run used an **acceptance copy** of the installer (same application files, separate install identity) on a clean
+local account and passed 54/54; that run includes an upgrade from an acceptance copy of v1.6.0, which is **not** a
+production upgrade. The real installer's own install, upgrade and uninstall were exercised only on a disposable
+GitHub-hosted runner. The Linux package passed its in-container acceptance run and clean-environment validation on
+Ubuntu 22.04 and 24.04 (49/49 each).
+
+**Real printer:** read-only verification against a real Snapmaker U1 passed 76/76 on its second attempt, using real
+Spoolman and Bambuddy containers with synthetic spools. The first attempt failed on defects in the verification
+tooling, not the product; the tooling was corrected and reviewed before the second. **Snapmaker Orca:** a painted
+project and its prepared copies loaded in an isolated Orca 2.4.1 profile; the bundled sample project (`examples/demo_u1_showcase.3mf`) would not load in Orca 2.4.1 even
+unprepared (known issue: the file is a minimal synthetic package whose content-type and relationship parts are empty stubs, which isolated testing confirmed is what Orca 2.4.1 rejects; the file shipped in this release is unchanged), so it proves nothing about its prepared copies. **Not checked:** any real SpoolEase device.
+
+Studio is advisory. It does not slice, it does not promise a successful print, and anything sent to your printer
+is something you confirm.
 
 ## Verify your download
 
-- Windows: `Snapmaker.Studio_1.5.0_x64-setup.exe` — 21,944,474 bytes — SHA256 `d443f64f5167239f1422c719882cf245cff5d00d40c55fb67fc5a1e497b84e82`
-- Linux: `snapmaker-studio_1.5.0_amd64_5245cf9f9664.deb` — 25,944,098 bytes — SHA256 `7fca28d9d4e2558f8a6bdc765b121e2290c54abd39e2a1b9b2efaeea6d923e5a`
+These are the values of the v1.7.0 downloads on this release.
 
-Neither installer is code-signed yet; verify the hash before you run it. Verification for this
-release is in
-[TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.5.0/docs/TRUST_STATUS.md).
+- Windows: `Snapmaker.Studio_1.7.0_x64-setup.exe` — 22,748,251 bytes — SHA256 `71c91b0c2cf2ec41d80bc75bff828ff6b35d6ff3fd93764b894676ec9d360b04`
+- Linux: `snapmaker-studio_1.7.0_amd64_210d86868882.deb` — 26,325,960 bytes — SHA256 `2af5ceb2f6b08e4f732df8457924ea7e9135c7f9408dda41c688c189298ccabc`
+
+These values repeat the canonical record in
+[RELEASE_METADATA.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/RELEASE_METADATA.md) on purpose:
+this file becomes the GitHub release body, and a downloader must be able to verify a hash without opening a second page.
+
+Neither installer is code-signed yet; verify the hash before you run it. Verification status for this build is
+in [TRUST_STATUS.md](https://github.com/DVOpenLabs/snapmaker-studio/blob/v1.7.0/docs/TRUST_STATUS.md).

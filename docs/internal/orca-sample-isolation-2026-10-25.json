@@ -1,0 +1,40 @@
+{
+  "schema_version": "orca-isolation/1",
+  "date": "2026-10-25",
+  "orca": "Snapmaker Orca 2.4.1, isolated profile (--datadir plus redirected user directories), loading only; nothing sliced, no printer contacted",
+  "subject": "examples/demo_u1_showcase.3mf as shipped in v1.7.0, sha256 7d0daae0c663a56919e79cf30f24c16b9cfcc163f311c7cf4d804d0d5d88f665",
+  "method": "Copies of the shipped file with only the named parts changed were opened one at a time in a fresh isolated Orca process; the real user profile hashes were identical before and after every run; one run per variant.",
+  "variants": [
+    {
+      "name": "v0_current",
+      "sha256": "29e0dba09433592094125ea00ec88f5d8c865662a7b1de2ba49d14ea2e39718d",
+      "changes": "none (the shipped parts, repacked)",
+      "observed": "Snapmaker Orca error: Loading of model file failed."
+    },
+    {
+      "name": "v1_pkg_only",
+      "sha256": "e34e44eb196d7f5107a3c135b9230ddfe62e2eb1cdeeb53dcfd2f9e78fba2e04",
+      "changes": "[Content_Types].xml and _rels/.rels replaced with minimal real parts (rels and model content types; a relationship to /3D/3dmodel.model)",
+      "observed": "No load error. Orca shows its Customized Preset prompt for the file's foreign printer settings; the automation stopped there, so full plate loading was not confirmed."
+    },
+    {
+      "name": "v2_settings_only",
+      "sha256": "f31e1d6de1535ced51254ca88083f8611dd362ad5e9f541c925c12c75d3e5391",
+      "changes": "Metadata/model_settings.config reduced to the one object the model contains; empty package stubs kept",
+      "observed": "Snapmaker Orca error: Loading of model file failed."
+    },
+    {
+      "name": "v3_both",
+      "sha256": "b12fbeac3666d259b27b910332d628eb43ca68598f9a424d658fda2eaa67e167",
+      "changes": "both of the above",
+      "observed": "No load error; Customized Preset prompt (same as v1_pkg_only)."
+    },
+    {
+      "name": "v4_fixed_sample",
+      "sha256": "83b7a5a59ec4ee01e8913ec95c117b18abd7a05519e8b52470891e123dc38e78",
+      "changes": "the corrected fixture (only [Content_Types].xml and _rels/.rels differ from the shipped file; all other parts byte-identical)",
+      "observed": "No load error; Customized Preset prompt (same as v1_pkg_only)."
+    }
+  ],
+  "conclusion": "With the empty [Content_Types].xml and _rels/.rels stubs Orca 2.4.1 refuses the file; with real parts that load error does not appear (the runs stopped at Orca's preset prompt, so later loading stages were not exercised), whether or not the extra model_settings objects are kept. The two stubs were changed together, so the cause is pinned to that pair, not to either alone. The shipped v1.7.0 file is unchanged; a corrected file is follow-up work."
+}

@@ -32,6 +32,11 @@ def evidence_for(symptom: str, mesh: dict | None, insights: dict | None,
     overhang = mesh.get("overhang") or {}
     stability = mesh.get("stability") or {}
     footprint = mesh.get("footprint") or {}
+    # Footprint area and heights are raw-mesh numbers; without an established physical size they
+    # are not evidence, so they are not offered as such.
+    if not (mesh.get("geometry_basis") or {}).get("established", True):
+        footprint = {}
+        stability = {k: v for k, v in stability.items() if k == "tip_risk"}
 
     def add(label, level, text, doctor):
         if text:

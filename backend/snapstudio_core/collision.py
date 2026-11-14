@@ -25,11 +25,11 @@ def assess_spacing(object_count: int | None, is_stl: bool) -> dict:
 
     - STL is wrapped into a fresh single-object project — nothing to collide with.
     - A single-object 3MF cannot collide with other objects.
-    - Any multi-object 3MF is 'unknown': spacing is not checked and must be
-      verified in Snapmaker Orca.
+    - Any multi-object 3MF, and any 3MF whose object count is unknown (None or 0),
+      is 'unknown': spacing is not checked and must be verified in Snapmaker Orca.
 
     Returns {"status": "pass" | "unknown", "messages": [...]}.
     """
-    if is_stl or (object_count or 0) <= 1:
+    if is_stl or object_count == 1:
         return {"status": "pass", "messages": []}
     return {"status": "unknown", "messages": [SPACING_MESSAGE]}

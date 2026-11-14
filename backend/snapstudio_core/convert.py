@@ -2,8 +2,8 @@
 
 Pure engine orchestration (no network/UI): STL files are wrapped into a minimal
 U1 3MF; Bambu/Orca 3MF projects are repaired into U1 form. The original is never
-overwritten — output is written next to the source as `<stem>_SnapmakerU1.3mf`,
-and 3MF repairs also leave a `<stem>.orig.3mf` backup.
+overwritten — output is written next to the source as `<stem>_SnapmakerU1.3mf`.
+No `<stem>.orig.3mf` backup is written unless the caller passes `keep_backup=True`.
 """
 from __future__ import annotations
 from dataclasses import dataclass, asdict
@@ -21,7 +21,7 @@ from .repair import repair as do_repair
 from .validate import validate as do_validate
 from .u1_identity import is_u1_clean
 from .profile import load_profile
-from .preserve import config_diff, display_value, machine_compat_keys
+from .preserve import assess_setup, config_diff, display_value, machine_compat_keys
 
 SETTINGS = "Metadata/project_settings.config"
 
@@ -77,6 +77,17 @@ def _engine_version() -> str:
         return "unknown"
 
 
+def _with_unused_setup(summary: dict, setup: dict) -> dict:
+    """A starter project has no per-head print settings, so a valid printer setup changes nothing in it.
+    Say so rather than dropping the setup without a word."""
+    if setup["state"] == "valid":
+        summary["setup"] = {"state": "valid", "applied": False, "heads": setup["heads"], "slots": setup["slots"],
+                            "unbound": list(setup["unbound"])}
+        summary.setdefault("warnings", []).append(
+            "The printer setup was read but not applied: this file has no print settings to keep per head.")
+    return summary
+
+
 def _starter_summary(*, geometry_only: bool) -> dict:
     subject = "This file" if geometry_only else "This STL"
     warnings = [f"{subject} does not include creator slicer settings. Studio will use a U1 starter profile unless you choose another Orca profile."]
@@ -94,12 +105,12 @@ def _starter_summary(*, geometry_only: bool) -> dict:
     }
 
 
-def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], dict[str, str]]:
+def _action_reasons(report: dict) -> tuple[dict[str, dict], set[str], set[str]]:
     """Consume RepairOutcome detail while the independent diff remains authoritative.
 
-    The last item is the plain-language explanation some pipeline steps write next to their reason."""
-    reasons: dict[str, str] = {}
-    explanations: dict[str, str] = {}
+    Each key has one atomic record. A later record replaces or clears all four
+    provenance fields together, so an explanation can never retain old source data."""
+    records: dict[str, dict] = {}
     cleared: set[str] = set()
     mapped: set[str] = set()
     groups = [report.get("normalizations", []), report.get("profile_changes", []),
@@ -113,25 +124,34 @@ def _action_reasons(report: dict) -> tuple[dict[str, str], set[str], set[str], d
               [report["preset_deviations_declared"]]
               if report.get("preset_deviations_declared") else []]
     groups.append(report.get("project_materials_changes", []))
+    # the prime tower keys the layout correction moved: reported with their own reason
+    groups.append(report.get("placement_corrections", []))
     identity = report.get("identity", {})
     groups.append(identity.get("changed", []) if isinstance(identity, dict) else [])
     for group in groups:
         for item in group:
             if not isinstance(item, dict) or "key" not in item:
                 continue
+            key = item["key"]
             reason = item.get("reason")
             if isinstance(reason, str) and reason:
-                reasons[item["key"]] = reason
-                explanations.pop(item["key"], None)  # an explanation belongs to the reason it came with
-                explanation = item.get("explanation")
-                if isinstance(explanation, str) and explanation:
-                    explanations[item["key"]] = explanation
+                # reason always; the other three only when this step supplied them, so a
+                # later record never inherits an earlier explanation, source or kind.
+                records[key] = {"reason": reason, **{field: item[field] for field in ("explanation", "source", "kind")
+                                                      if isinstance(item.get(field), str) and item[field]}}
+            elif reason == "":
+                # An explicit empty reason clears the complete atomic record.
+                records.pop(key, None)
+            else:
+                # A later report item without a reason is not a clear marker.
+                # Preserve the prior complete record.
+                pass
             if item.get("category") == "mapped":
                 mapped.add(item["key"])
     for item in report.get("foreign_cleared", []):
         if isinstance(item, dict):
             cleared.add(item["key"])
-    return reasons, cleared, mapped, explanations
+    return records, cleared, mapped
 
 
 def _strict_value_equal(a, b) -> bool:
@@ -169,12 +189,49 @@ def _is_preserved_value_mapping(old, new) -> bool:
     return _strict_value_equal(new, expected)
 
 
+def _is_on(value) -> bool:
+    """Whether a project-settings switch such as `enable_support` is on."""
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return str(value).strip().lower() in ("1", "true")
+
+
+def _supports_note(tm: ThreeMF, before: dict, after: dict, prepare_mode: str) -> str | None:
+    """Say so when the creator's supports will not be in effect in Snapmaker Orca.
+
+    Orca resets every process value the project does not declare in
+    `different_settings_to_system` to the U1 preset, where supports are off.
+    Recommended blanks the source's declaration and re-declares only what Studio
+    itself changed, so a creator's `enable_support=1` stays in the file but is not
+    used. Computed from the source and the written config, never asserted; Preserve
+    keeps the declaration, so it has nothing to say.
+    """
+    from .preset_deviation import declared_process_keys
+
+    if prepare_mode == "preserve" or not _is_on(before.get("enable_support")):
+        return None
+    if "enable_support" in declared_process_keys(after) and _is_on(after.get("enable_support")):
+        return None
+    note = ("Supports: the creator turned supports on. This mode does not keep them; "
+            "Snapmaker Orca will open with supports off. Turn them on in Orca's Support tab "
+            "or prepare with Preserve creator settings.")
+    try:
+        painted = sum(tm.read_part(p).count(b"paint_supports")
+                      for p in tm.list_parts() if p.endswith(".model"))
+    except Exception:
+        painted = 0
+    if painted:
+        note += (" The painted support areas stay in the file but do nothing while "
+                 "supports are off.")
+    return note
+
+
 def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
                       prepare_mode: str, profile_name: str = "snapmaker_u1",
                       recommended_after: dict | None = None) -> dict:
     profile = load_profile(profile_name)
     diffs = config_diff(before, after)  # independent source of truth (A13)
-    reasons, cleared, mapped_keys, explanations = _action_reasons(outcome.report)
+    records, cleared, mapped_keys = _action_reasons(outcome.report)
     allowlist = machine_compat_keys(profile)
     slice_info = {
         item["key"]: item["reason"]
@@ -189,19 +246,16 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         if key in cleared:
             # Values in this category were deliberately discarded.  They may
             # be credentials or arbitrary creator G-code, so never echo them.
-            could_not_carry.append({"key": key, "reason": reasons[key]})
+            could_not_carry.append({"key": key, "reason": records[key]["reason"]})
         elif key in mapped_keys and _is_preserved_value_mapping(item["old"], item["new"]):
             mapped_to_u1.append({
                 "key": key, "old": display_value(item["old"], key=key),
                 "new": display_value(item["new"], key=key),
                 "reason": "carried over to U1 toolheads (values preserved)",
             })
-        elif key in reasons:
+        elif key in records:
             entry = {"key": key, "old": display_value(item["old"], key=key),
-                     "new": display_value(item["new"], key=key),
-                     "reason": reasons[key]}
-            if key in explanations:
-                entry["explanation"] = explanations[key]
+                     "new": display_value(item["new"], key=key), **records[key]}
             compat.append(entry)
         elif key in allowlist:
             compat.append({"key": key, "old": display_value(item["old"], key=key),
@@ -226,7 +280,9 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
     if prepare_mode == "preserve" and recommended_after is not None:
         # This is the actual recommended pipeline's complete dry-run result,
         # not a hand-maintained subset of profile swaps.
-        for item in config_diff(before, recommended_after):
+        # Optional means the Recommended result differs from the copy being made now: the diff is taken from the
+        # Preserve copy, so "old" is what that copy holds, and anything both modes set identically is not offered.
+        for item in config_diff(after, recommended_after):
             key = item["key"]
             recommended_changes.append({
                 "key": key, "old": display_value(item["old"], key=key),
@@ -246,6 +302,25 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         "recommendations_available": prepare_mode == "preserve",
         "recommended_changes": recommended_changes if prepare_mode == "preserve" else [],
     }
+    layout = outcome.report.get("layout")
+    if layout:
+        summary["layout"] = {k: layout.get(k) for k in (
+            "status", "plates", "formula_check", "tower", "tower_note", "tower_source", "stride_source", "stride_target",
+            "cols", "items_moved", "unresolved")}
+        summary["placement_changes"] = list(layout.get("disclosure") or [])
+        summary["warnings"] = summary["warnings"] + [
+            line for line in layout.get("disclosure") or []
+            if line.startswith("Plate positions were left")
+            or ("prime tower is outside" in line) or ("prime tower may sit on an object" in line)]
+    intent = outcome.report.get("support_intent")
+    if intent:
+        from . import support_intent as _support_intent
+
+        summary["support_intent"] = {
+            "decision": intent["decision"], "kept": bool(intent["explicit"]),
+            "evidence": intent["evidence"], "blocker_evidence": intent["blocker_evidence"],
+            "disable_evidence": intent["disable_evidence"], "keys": intent["keys"],
+            "statement": _support_intent.statement(intent)}
     # Preservation invariant: every changed source setting needs a specific
     # repair-pipeline reason, a deliberate foreign-value clear, or the
     # profile-owned machine/compat allowlist.  The independent diff is the
@@ -325,6 +400,17 @@ def _carry_prusa_settings(source: ThreeMF, wrapped: ThreeMF) -> dict | None:
         return None
 
 
+def structure_problems(tm) -> list[str]:
+    """Everything `check_structure` would refuse on, as plain strings; empty when sound.
+
+    Shared by Prepare (which raises on a non-empty list) and by the Doctor (which
+    must not recommend a Prepare the same engine would refuse). Read-only.
+    """
+    from . import eligibility
+
+    return eligibility.structure_problems(tm)
+
+
 def check_structure(tm) -> None:
     """Refuse to save a prepared copy whose descriptions of itself disagree.
 
@@ -333,18 +419,18 @@ def check_structure(tm) -> None:
     would have reached the user as a project Snapmaker Orca opens wrongly. It runs
     on every prepared copy now, before the file is written.
     """
-    from . import multipart
     from .errors import UnsoundOutput
 
-    result = multipart.validate_archive(tm)
-    if not result.get("ok", True):
-        raise UnsoundOutput(result.get("problems") or ["the structure is unsound"])
+    problems = structure_problems(tm)
+    if problems:
+        raise UnsoundOutput(problems)
 
 
 def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "preserve",
                   dry_run: bool = False, confirmed_presets: dict | None = None,
                   filament_catalog=None, confirmed_colours: dict | None = None,
-                  material_context: dict | None = None) -> ConversionResult:
+                  material_context: dict | None = None,
+                  keep_backup: bool = False, topology=None) -> ConversionResult:
     """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
 
     `confirmed_presets` maps a filament slot to the exact installed Orca preset the
@@ -355,12 +441,27 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     only feeds the plain-language record of what happened and changes nothing in the copy.
 
     With `confirmed_presets`, a project whose existing vendor/type declarations Orca would
-    copy between slots sharing a preset is not prepared: the result is `blocked`."""
+    copy between slots sharing a preset is not prepared: the result is `blocked`.
+
+    The output is always a NEW file and the original is never touched, so no backup of
+    the original is written unless `keep_backup=True` (a `<stem>.orig.3mf` copy, made only
+    after the prepared copy has been saved). The desktop and the API never ask for one."""
     src = Path(path)
     if prepare_mode == "u1":
         prepare_mode = "recommended"
     if prepare_mode not in ("preserve", "recommended"):
         raise ValueError("prepare_mode must be 'preserve' or 'recommended'")
+    setup = assess_setup(topology)
+    if setup["state"] == "invalid":
+        # A setup the person supplied but that cannot be used is never a licence to discard project entries.
+        # Nothing is written. Preparing without a setup is a separate request.
+        message = ("The printer setup cannot be used: " + "; ".join(setup["reasons"]) + ". Nothing was prepared. "
+                   "Read the printer again, or prepare without a setup: per-head values are then mapped to the "
+                   "four U1 toolheads and entries beyond four are dropped.")
+        return ConversionResult(
+            "blocked", "", "", False, [message], prepare_mode,
+            {"setup": {"state": "invalid", "reasons": list(setup["reasons"]),
+                       "stock_alternative": "Prepare without a printer setup."}}, blocked=True)
     out_parent = Path(out_dir) if out_dir else None
     if out_parent and not dry_run:
         out_parent.mkdir(parents=True, exist_ok=True)
@@ -375,7 +476,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             tm.save(out)
         res = do_validate(tm, against=None)
         return _finish("stl", tm, out, res, prepare_mode="starter",
-                       settings_summary=_starter_summary(geometry_only=False))
+                       settings_summary=_with_unused_setup(_starter_summary(geometry_only=False), setup))
 
     tm = ThreeMF.open(src)
     if not tm.has_part(SETTINGS):
@@ -399,7 +500,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             summary["mapped_to_u1"] = carried["evidence"]
             summary["kept_count"] = len(carried["evidence"])
         return _finish("3mf-geometry", wrapped, out, res, prepare_mode="starter",
-                       settings_summary=summary)
+                       settings_summary=_with_unused_setup(summary, setup))
 
     # 3MF: repair into U1, validate against the source fingerprint (preservation).
     src_fp = compute_fingerprint(tm)
@@ -410,7 +511,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                        confirmed_colours=confirmed_colours)
+                        confirmed_colours=confirmed_colours, topology=topology, source_path=str(src))
     after = load_project_settings(tm.read_part(SETTINGS))
     if confirmed_presets:
         # Judged on what this mode will actually write, not on what the source declared:
@@ -428,10 +529,19 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # results cannot diverge from a real recommended conversion or write.
         do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
                   confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                  confirmed_colours=confirmed_colours)
+                  confirmed_colours=confirmed_colours, topology=topology, source_path=str(src))
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    if outcome.report.get("setup"):
+        summary["setup"] = outcome.report["setup"]
+    supports_note = _supports_note(tm, before, after, prepare_mode)
+    # A per-object decision is stated by support_intent; the blanket "Orca will open with supports off" note
+    # would contradict objects whose own enable_support=1 survives.
+    if (summary.get("support_intent") or {}).get("decision") == "per_object":
+        supports_note = None
+    if supports_note:
+        summary["supports_note"] = supports_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:
         # Only when Project Materials is in use, so a plain Prepare reports exactly what it did.
         summary["project_materials"] = {
@@ -445,11 +555,12 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
                 context=material_context, catalog=filament_catalog, nozzle=pm.project_nozzle(before),
                 guard=material_guard)
     check_structure(tm)
-    backup = src.with_suffix(".orig.3mf")
-    if not dry_run and not backup.exists():
-        shutil.copy2(src, backup)
     if out:
         tm.save(out)
+        if keep_backup:
+            backup = src.with_suffix(".orig.3mf")
+            if not backup.exists():
+                shutil.copy2(src, backup)
     res = do_validate(tm, against=src_fp)
     return _finish("3mf", tm, out, res, prepare_mode=prepare_mode, settings_summary=summary)
 

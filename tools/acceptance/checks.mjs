@@ -23,7 +23,7 @@
 // spool-edit-validate, spool-record-used, nozzle-confirm,
 // spool-nozzle-restored and spool-nozzle-remove — local spool notes and
 // per-printer nozzle confirmation (plan v12-plan-final.md, brief W1-W9), all
-// against the placeholder host "u1.local" (no printer required). The real-U1
+// against an owned loopback printer address (no real printer required). The real-U1
 // half of the same feature (a live nozzle reading and a conflict against it)
 // is tools/hardware/checks.mjs, run separately with a real printer. Every new
 // screenshot goes through shotRedacted()/redactAndAssert() first (A2.3).
@@ -42,9 +42,20 @@
 
 import { chromium } from "playwright-core";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import * as geo from "./geometry-expect.mjs";
 
 const [, , phase, cdpUrl, outDir, samplePath, gcodePath, paintedPath, spoolmanUrl] = process.argv;
+
+// Phase 2 (#112) made the printer explicit: with no address saved, Settings has no spool-notes or nozzle
+// controls. The v1.2 phases below therefore set a printer up through Settings first. The address is a
+// loopback one and the harness OWNS the listener on it (it accepts, counts and resets every connection),
+// so the printer is "unreachable" exactly as before, nothing leaves this machine, and a port that
+// something else already holds fails closed instead of being trusted.
+const PRINTER_HOST = "127.0.0.1";
+const PRINTER_PORT = 7125;
+const PRINTER_PHASES = new Set(["spool-nozzle-empty", "spool-notes-create", "spool-edit-validate",
+  "spool-record-used", "nozzle-confirm", "spool-nozzle-restored", "spool-nozzle-remove"]);
 
 // A material provider is optional everywhere in Studio, so it is optional here.
 // Without one, the checks below still prove the important half: that the frozen
@@ -53,12 +64,47 @@ const [, , phase, cdpUrl, outDir, samplePath, gcodePath, paintedPath, spoolmanUr
 // Given one — pass a local Spoolman address as the last argument — they also
 // prove the whole path end to end inside the installed build.
 mkdirSync(outDir, { recursive: true });
+let printerMock = null;
 
 const results = [];
 const record = (name, ok, detail = "") => {
   results.push({ name, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  — ${detail}` : ""}`);
 };
+
+/** Owned loopback "printer": listens on 127.0.0.1:PRINTER_PORT, counts and resets every connection. */
+async function startPrinterMock() {
+  const { createServer } = await import("node:net");
+  const state = { connections: 0 };
+  const server = createServer((socket) => { state.connections++; socket.on("error", () => {}); socket.destroy(); });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(PRINTER_PORT, "127.0.0.1", resolve);
+  });
+  return { state, close: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
+/** Sets the printer up the way a person does: Settings, type the address, "Save and connect". Idempotent. */
+async function setUpPrinter(page) {
+  await bounceRoute(page, "/settings");
+  const saved = () => page.evaluate(() => localStorage.getItem("u1Host"));
+  const unq = (v) => { try { return JSON.parse(v); } catch { return v; } };
+  if (unq(await saved()) !== PRINTER_HOST) {
+    const input = page.getByLabel("Printer network name or IP");
+    await input.fill(PRINTER_HOST);
+    await page.getByRole("button", { name: "Save and connect", exact: true }).click();
+    await page.waitForTimeout(800);
+  }
+  const now = unq(await saved());
+  record("Printer set up explicitly through Settings with an owned loopback address",
+    now === PRINTER_HOST, `saved address: ${now}`);
+  await bounceRoute(page, "/settings");
+}
+
+/** The Save button that belongs to the same card as `inside` (Settings now has a printer-address Save too). */
+function saveWithin(inside) {
+  return inside.locator('xpath=ancestor::*[.//button[normalize-space()="Save"]][1]').getByRole("button", { name: "Save", exact: true });
+}
 
 async function appPage(browser) {
   const ctx = browser.contexts()[0];
@@ -327,7 +373,7 @@ async function openEditorForSlot(page, slotN) {
  *  a save still in flight, or that could time out before a slow one lands. */
 async function clickSaveExpectClose(page, timeoutMs = 15000) {
   const materialField = page.locator('input[aria-label="Material"]');
-  await page.getByRole("button", { name: "Save" }).first().click();
+  await saveWithin(materialField.first()).click();
   await materialField.waitFor({ state: "detached", timeout: timeoutMs });
 }
 
@@ -361,6 +407,62 @@ async function phaseStartup(page) {
   await shot(page, "01-dashboard");
 }
 
+/** A route entry's verify function and metadata from a list of named expectations (see geometry-expect.mjs). */
+function expecting(expectations, fixture) {
+  return [(b) => geo.failedExpectations(expectations, b).length === 0, { fixture, expectations }];
+}
+
+/** Routes + predicates for the geometry-basis fixtures that run.ps1 writes next to the sample. */
+function geometryRoutes() {
+  const dir = dirname(samplePath);
+  const mm = join(dir, "acceptance_geom_mm.3mf");
+  const onPlate = join(dir, "acceptance_geom_mm_onplate.3mf");
+  const inch = join(dir, "acceptance_geom_inch.3mf");
+  const scaled = join(dir, "acceptance_geom_scaled.3mf");
+  const host = { host: "", port: 7125 };
+  const reasonIs = (b, code) => Array.isArray(b.geometry_basis?.reasons) && b.geometry_basis.reasons.includes(code)
+    && b.geometry_basis.established === false && typeof b.reason === "string" && b.reason.length > 0;
+  const fitCheck = (b) => (b.checks ?? []).find((c) => c.name === "Fits the print bed");
+  const notChecked = (code, scope) => (b) => b.status === "not_checked" && b.scope === scope && reasonIs(b, code);
+  const out = [];
+  for (const [file, code, fixture] of [[inch, "unit_not_millimeter", "inch"], [scaled, "transform_scaled", "scaled"]]) {
+    out.push(
+      ["/bed_fit", { path: file, ...host }, ...expecting(geo.bedNotEstablished(code), fixture)],
+      ["/report", { path: file },
+        (b) => fitCheck(b)?.status === "not_checked" && b.ready === false && b.print_setup_ready === false
+          && b.geometry_basis?.established === false],
+      ["/predict_success", { path: file, ...host }, ...expecting(geo.predictNotEstablished(code), fixture)],
+      ["/first_layer", { path: file, ...host },
+        (b) => b.available === false && !("overall_level" in b) && notChecked(code, "first-layer footprint checks")(b)],
+      ["/scale_preview", { path: file, scale_percent: 150 },
+        (b) => b.available === true && b.fits_build_volume === null && b.recommendation === "not checked"
+          && notChecked(code, "the Scale Doctor size preview")(b)],
+      ["/scale_options", { path: file },
+        (b) => b.available === false && notChecked(code, "the Scale Doctor size preview")(b)],
+      ["/insights", { path: file },
+        (b) => b.geometry_basis?.established === false && b.geometry_basis.reasons.includes(code)],
+    );
+  }
+  out.push(
+    // The origin-corner box fits by size but sits off the plate: the stable placement finding is the expected answer.
+    ["/bed_fit", { path: mm, ...host }, ...expecting(geo.bedOffPlate, "mm (origin corner, off-plate control)")],
+    // The same box placed on the plate is the passing control. Neither answer is accepted for the other fixture.
+    ["/bed_fit", { path: onPlate, ...host }, ...expecting(geo.bedOnPlate, "mm_onplate")],
+    ["/report", { path: mm },
+      (b) => fitCheck(b)?.status === "pass" && b.geometry_basis?.established === true],
+    ["/predict_success", { path: mm, ...host }, ...expecting(geo.predictEstablished, "mm")],
+    ["/predict_success", { path: onPlate, ...host }, ...expecting(geo.predictEstablished, "mm_onplate")],
+    ["/first_layer", { path: mm, ...host },
+      (b) => b.available === true && ["ok", "warn", "risk"].includes(b.overall_level)],
+    ["/scale_preview", { path: mm, scale_percent: 150 },
+      (b) => b.available === true && b.fits_build_volume === true && b.recommendation !== "not checked"],
+    ["/scale_options", { path: mm }, (b) => b.available === true && Array.isArray(b.options)],
+    ["/insights", { path: mm },
+      (b) => b.geometry_basis?.established === true && b.geometry_basis.reasons.length === 0],
+  );
+  return out;
+}
+
 async function phaseRoutes(page) {
   const routes = [
     ["/project_traits", { path: samplePath }, (b) => b.readable === true],
@@ -370,6 +472,9 @@ async function phaseRoutes(page) {
     // project is painted with filament 2 at the bottom and filament 3 thirty
     // millimetres up, so the answers are known before the app is asked: two
     // slots, and a separation the geometry proves.
+    // The generated painted project must be a readable 3MF package (it carries [Content_Types].xml and _rels/.rels),
+    // otherwise the engine refuses it before reading any paint; this proves the fixture, then the painting.
+    ["/project_traits", { path: paintedPath }, (b) => b.readable === true],
     ["/project_traits", { path: paintedPath }, (b) => b.has_painted_color?.value === true],
     ["/color_plan", { path: paintedPath },
       (b) => b.painted?.painted === true
@@ -383,6 +488,13 @@ async function phaseRoutes(page) {
     ["/color_plan", { path: paintedPath },
       (b) => (b.painted?.coexistence?.pairs ?? []).length > 0
         && (b.painted?.coexistence?.pairs ?? []).every((p) => p.verdict === "separate")],
+    // Geometry basis (the correction in v1.6.0 RC2). Four boxes that differ only in what the file says about
+    // physical size or where it sits (millimetres at the origin corner, off the plate; millimetres on the plate; inch; scaled).
+    // A declared-inch or build-scaled file must get scoped not_checked answers and no affirmative fit or readiness;
+    // the valid millimetre files must keep their established verdicts (the corner box reports its placement).
+    // Assertions are on structured fields (status, scope, reasons, findings), never on a word like "Fits".
+    // The successpredict/3 answer carries signals/checked/not_checked, not a likelihood or band.
+    ...geometryRoutes(),
     ["/project_cost", { path: samplePath }, (b) => b.available === false && Boolean(b.reason)],
     ["/ecosystem_advice", { path: samplePath }, (b) => Boolean(b.primary?.why?.length)],
     ["/preflight", { path: samplePath, host: "", port: 7125 }, (b) => Array.isArray(b.checks) && b.checks.length > 0],
@@ -451,15 +563,25 @@ async function phaseRoutes(page) {
     ["/slice_provenance", { project_path: samplePath, gcode_path: gcodePath },
       (b) => ["confirmed", "likely", "ambiguous", "no_match", "unknown"].includes(b.verdict)],
   ];
-  for (const [route, body, verify] of routes) {
+  const geometryEvidence = [];
+  for (const [route, body, verify, meta] of routes) {
+    // Entries with a fixture identity keep it in the record, along with the status, the failed expectations and a
+    // path-free rendering of the response, so a failure explains itself.
+    const label = meta ? `Engine route ${route} [${meta.fixture}]` : `Engine route ${route}`;
     try {
       const { status, body: payload } = await callRoute(page, route, body);
-      record(`Engine route ${route}`, status === 200 && verify(payload),
-        status === 200 ? "" : `HTTP ${status}`);
+      const ok = status === 200 && verify(payload);
+      if (!meta) { record(label, ok, status === 200 ? "" : `HTTP ${status}`); continue; }
+      const failed = status === 200 ? geo.failedExpectations(meta.expectations, payload) : [];
+      geometryEvidence.push(geo.routeEvidence({ route, fixture: meta.fixture, status, failed, payload }));
+      record(label, ok, geo.routeDetail({ status, ok, failed, payload }));
     } catch (e) {
-      record(`Engine route ${route}`, false, String(e).slice(0, 90));
+      const err = geo.routeError({ route, fixture: meta?.fixture, error: e });
+      if (meta) geometryEvidence.push(err.evidence);
+      record(label, false, `${meta ? `fixture ${meta.fixture}; ` : ""}${err.text}`);
     }
   }
+  if (geometryEvidence.length) writeFileSync(join(outDir, "geometry-responses.json"), JSON.stringify(geometryEvidence, null, 1));
 }
 
 async function phasePostSlice(page) {
@@ -544,13 +666,15 @@ async function phaseCockpit(page) {
   const body = await page.locator("body").innerText();
   const lower = body.toLowerCase();
 
+  // v1.7.0: "This print" with Before/After-slicing sections became the one job screen ("This job"): a five-step
+  // journey, the full checks one click away, and the settings receipt once a sliced job is compared.
   record("Cockpit renders the job's stages",
-    lower.includes("this print") && lower.includes("before slicing")
-    && lower.includes("after slicing"), "");
-  record("Cockpit shows the real findings, not placeholders",
-    /hangs [\d.]+ mm past the \w+ edge/i.test(body), "");
-  record("Cockpit keeps the honest unknown",
-    lower.includes("studio can’t tell") || lower.includes("studio can't tell"), "");
+    lower.includes("this job") && ["open project", "choose materials", "create u1 copy", "open in orca", "compare slice"]
+      .every((stage) => lower.includes(stage)), "");
+  record("Cockpit offers the full checks",
+    (await page.getByRole("button", { name: /^Full checks$/ }).count()) + (await page.getByRole("link", { name: /^Full checks$/ }).count()) > 0, "");
+  record("Cockpit shows the compared settings receipt with its not-checked count",
+    /settings receipt/i.test(body) && /\d+ changed, \d+ missing, \d+ not checked, \d+ unchanged/i.test(body), "");
   record("Cockpit still says Orca slices", /snapmaker orca/i.test(body), "");
   await shot(page, "06-cockpit");
 }
@@ -747,6 +871,7 @@ async function phasePrepared(page) {
 const browser = await chromium.connectOverCDP(cdpUrl);
 try {
   const page = await appPage(browser);
+  if (PRINTER_PHASES.has(phase)) printerMock = await startPrinterMock();   // fails closed if the port is already held
   if (phase === "startup") await phaseStartup(page);
   else if (phase === "routes") await phaseRoutes(page);
   else if (phase === "ui") await phaseUi(page);
@@ -1491,6 +1616,7 @@ PRINT_END
       "kind=" + off.kind + " url=" + off.url + " map=" + off.map);
 
   } else if (phase === "spool-nozzle-empty") {
+    await setUpPrinter(page);
     // v1.2 W1 + W6a: the empty states for both new Settings cards, and the
     // negative half of W9 — "Record filament used" lives only inside the
     // spool editor, so it must not exist anywhere before one is open.
@@ -1515,8 +1641,11 @@ PRINT_END
     record("Four rows render from the U1 profile while the printer is unreachable (W1/W6)",
       nozzleRowCount === 4, `${nozzleRowCount} row(s)`);
 
-    await shotRedacted(page, "v12-spool-empty", "u1.local", "Your spool notes · for");
+    record("Spool notes card names the configured printer (printer-dependent control exists)",
+      new RegExp("Your spool notes · for " + PRINTER_HOST.replace(/\./g, "\\."), "i").test(quickBody), "");
+    await shotRedacted(page, "v12-spool-empty", PRINTER_HOST, "Your spool notes · for");
   } else if (phase === "spool-notes-create") {
+    await setUpPrinter(page);
     // v1.2 W2: two notes made through the real editor — Slot 2 first, so the
     // list reads like a real person's, then Slot 1, which is asserted.
     await bounceRoute(page, "/settings");
@@ -1574,12 +1703,13 @@ PRINT_END
     // A6: capture only once both rows actually show their saved text — not
     // merely once the Save clicks returned.
     if (slot1Ok && slot2Ok) {
-      await shotRedacted(page, "v12-spool-notes", "u1.local", "Your spool notes · for");
+      await shotRedacted(page, "v12-spool-notes", PRINTER_HOST, "Your spool notes · for");
     } else {
       record("Screenshot skipped: v12-spool-notes", false,
         "Slot 1 and/or Slot 2 did not yet show their saved text — see the checks above");
     }
   } else if (phase === "spool-edit-validate") {
+    await setUpPrinter(page);
     // v1.2 W3/W5/W9: editing an existing note, the tri-state clear rule
     // (A2.2/A3.3), and both invalid-input cases. Every assertion below reads
     // Slot 1's own row, not the whole page body (A2) — the desktop app's
@@ -1631,12 +1761,12 @@ PRINT_END
     // the very route the UI itself calls — still against the installed,
     // frozen sidecar. Labelled as an API-level check, per A2.
     const badColour = await callRoute(page, "/local_spools/save",
-      { host: "u1.local", slot: 2, material: "PLA", color: "not-a-colour" });
+      { host: PRINTER_HOST, slot: 2, material: "PLA", color: "not-a-colour" });
     record("API-level check (native colour input cannot hold an invalid value): "
       + "an invalid colour is refused by the installed sidecar (W5)",
       badColour.status === 400 && badColour.body?.error === "invalid_color",
       `HTTP ${badColour.status} ${JSON.stringify(badColour.body)}`.slice(0, 90));
-    const afterBadColour = await callRoute(page, "/local_spools", { host: "u1.local" });
+    const afterBadColour = await callRoute(page, "/local_spools", { host: PRINTER_HOST });
     const afterBadColourRows = afterBadColour.body?.rows;
     // A7-5: fails on a missing/malformed rows array rather than defaulting to
     // "empty" (`?? []`) — a broken response with no rows key at all used to
@@ -1668,7 +1798,7 @@ PRINT_END
       }
     };
     page.on("request", onSaveRequest);
-    await page.getByRole("button", { name: "Save" }).first().click();
+    await saveWithin(page.locator('input[aria-label="Material"]').first()).click();
     await inlineError.waitFor({ state: "visible", timeout: 5000 });
     await page.waitForLoadState("networkidle").catch(() => {});
     page.off("request", onSaveRequest);
@@ -1679,7 +1809,7 @@ PRINT_END
       (await inlineError.count()) > 0, "");
     record("The editor is still open — the save did not silently succeed (W5)",
       (await newMaterialField.count()) > 0, "");
-    const afterBadWeight = await callRoute(page, "/local_spools", { host: "u1.local" });
+    const afterBadWeight = await callRoute(page, "/local_spools", { host: PRINTER_HOST });
     const afterBadWeightRows = afterBadWeight.body?.rows;
     // A4/A7-5: same non-vacuous shape as the colour case above.
     record("The rejected weight created no row (W5)",
@@ -1688,6 +1818,7 @@ PRINT_END
       Array.isArray(afterBadWeightRows) ? `${afterBadWeightRows.length} row(s)` : "rows array missing/malformed");
     await page.getByRole("button", { name: "Cancel" }).first().click();
   } else if (phase === "spool-record-used") {
+    await setUpPrinter(page);
     // v1.2 W4: the editor's secondary "Record filament used" action, through
     // its confirm step, on the slot that still carries a weight.
     await bounceRoute(page, "/settings");
@@ -1724,6 +1855,7 @@ PRINT_END
     // row silently changed.
     writeFileSync(join(outDir, "slot2-snapshot.json"), JSON.stringify({ text: slot2Text }));
   } else if (phase === "nozzle-confirm") {
+    await setUpPrinter(page);
     // v1.2 W6: confirming nozzle sizes with no printer present. Offline, 4
     // rows render from the U1 profile (D-6) once the status fetch settles —
     // drive the confirmation through the real selects and Save button, the
@@ -1741,7 +1873,7 @@ PRINT_END
       await selects.nth(1).selectOption("0.4");
       await selects.nth(2).selectOption("0.6");
       await selects.nth(3).selectOption("not_sure");
-      await page.getByRole("button", { name: "Save" }).first().click();
+      await saveWithin(selects.nth(0)).click();
       // Confirm currently re-probes the printer (7-9s observed offline); wait
       // for the Save button to re-enable and the loading text to clear rather
       // than assert while the save is still in flight.
@@ -1750,9 +1882,9 @@ PRINT_END
       // Fallback diagnostic only — not what W6 itself is asserting, but keeps
       // the rest of this phase (and W7/W8 downstream) informative rather than
       // silent when the offline row count did not come up as expected.
-      const before = await callRoute(page, "/nozzles/status", { host: "u1.local", port: 7125 });
+      const before = await callRoute(page, "/nozzles/status", { host: PRINTER_HOST, port: 7125 });
       const confirmedDiag = await callRoute(page, "/nozzles/confirm", {
-        host: "u1.local", port: 7125, diameters: [0.4, 0.4, 0.6, null],
+        host: PRINTER_HOST, port: 7125, diameters: [0.4, 0.4, 0.6, null],
         expected_revision: before.body?.revision ?? 0,
       });
       record("Fallback diagnostic: the sidecar route still accepts a confirmation",
@@ -1770,8 +1902,9 @@ PRINT_END
     // A6: shotRedacted's own heading-in-view check (below) supersedes the
     // separate scrollNozzleCardIntoView() call this used to make — same
     // scroll target, now also asserted, not just attempted.
-    await shotRedacted(page, "v12-nozzle-confirmed", "u1.local", "Nozzles · for");
+    await shotRedacted(page, "v12-nozzle-confirmed", PRINTER_HOST, "Nozzles · for");
   } else if (phase === "spool-nozzle-restored") {
+    await setUpPrinter(page);
     // v1.2 W7: after the app was closed and relaunched (the existing
     // relaunch mechanism — see run.ps1's painted-project restart), each
     // slot's OWN row text must still be there (A2) — not just some mention of
@@ -1797,6 +1930,7 @@ PRINT_END
       confirmedCount === 3 && /Unknown — tell Studio/.test(body),
       `${confirmedCount} confirmed row(s); last seen: ${body.slice(0, 200)}`);
   } else if (phase === "spool-nozzle-remove") {
+    await setUpPrinter(page);
     // v1.2 W8: removing every nozzle note, deleting one spool note, and
     // switching provider kind twice — none of which may touch the other.
     await bounceRoute(page, "/settings");
@@ -1880,6 +2014,11 @@ PRINT_END
     throw new Error(`unknown phase ${phase}`);
   }
 } finally {
+  if (printerMock) {
+    await printerMock.close();
+    record("Owned loopback printer saw only its own local connections",
+      Number.isInteger(printerMock.state.connections), `${printerMock.state.connections} loopback connection(s), all reset`);
+  }
   writeFileSync(join(outDir, `results-${phase}.json`), JSON.stringify(results, null, 2));
   await browser.close();
 }

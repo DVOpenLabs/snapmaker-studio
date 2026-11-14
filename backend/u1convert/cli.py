@@ -12,12 +12,13 @@ from snapstudio_core.doctor import diagnose_path as do_diagnose_path
 from snapstudio_core.diff import diff_projects as do_diff
 from snapstudio_core.report import write_fix_report
 from snapstudio_core.errors import SnapStudioError
+from snapstudio_core.convert import check_structure
 
 @click.group()
 def cli():
     """Snapmaker Studio engine — a local-first workflow for modern 3D printing.
 
-    Understand a design, check whether it will print, and get it print-ready.
+    Understand a design, see what is at risk, and prepare it for the U1.
     Bambu/Orca/STL today; Snapmaker U1 is the first printer target.
     """
 
@@ -52,14 +53,25 @@ def _run_repair(path, mode, remap, out, dry_run, opt_profile=None):
     src_fp = compute_fingerprint(tm)
     outcome = do_repair(tm, mode=mode, remap=parse_remap(remap), dry_run=dry_run,
                         opt_profile=opt_profile)
+    # The same gate Prepare and `doctor` use: a copy Studio cannot vouch for is not written.
+    check_structure(tm)
     if dry_run:
         click.echo("DRY RUN - no files written")
         click.echo(str(outcome.report)); return
+    # `repair` / `optimize` keep a `<stem>.orig.3mf` snapshot of the input: that is
+    # this command's documented in-place contract (the desktop and the API do not).
     backup = src.with_suffix(".orig.3mf")
-    if not backup.exists(): shutil.copy2(src, backup)
+    made_backup = not backup.exists()
+    if made_backup: shutil.copy2(src, backup)
     out = Path(out) if out else src.with_name(src.stem + "_SnapmakerU1.3mf")
-    tm.save(out)
-    res = do_validate(ThreeMF.open(out), against=src_fp)
+    try:
+        tm.save(out)
+        res = do_validate(ThreeMF.open(out), against=src_fp)
+    except BaseException:
+        # A failure must not leave a snapshot of a repair that never happened.
+        if made_backup:
+            backup.unlink(missing_ok=True)
+        raise
     entry = {"file": src.name, "output": out.name, **outcome.report,
              "validated_ok": res.ok, "errors": res.errors}
     write_fix_report(out.parent / "FIX_REPORT.json", [entry], base_dir=out.parent)
@@ -112,10 +124,11 @@ def doctor(path, as_json):
     if as_json:
         click.echo(json.dumps(d.to_dict(), indent=2, ensure_ascii=False))
     else:
-        score = "n/a" if d.score is None else f"{d.score}/100"
+        n_struct = len(d.validation_issues or [])
+        n_compat = len(d.compatibility_issues or [])
         click.echo(f"Diagnosis: {Path(path).name}\n")
         click.echo(f"  Verdict : {d.verdict}")
-        click.echo(f"  Score   : {score}\n")
+        click.echo(f"  Issues  : {n_struct} in the file's structure, {n_compat} for U1 compatibility\n")
         click.echo(f"  Project type           : {_PROJECT_TYPE.get(d.family, d.family)}")
         if d.input_type == "3mf":
             click.echo(f"  Snapmaker U1 compatible : {'yes' if d.is_u1 else 'no'}")
@@ -132,6 +145,7 @@ def doctor(path, as_json):
                 click.echo("  Issues                  : none")
         click.echo(f"\nRecommended action: {d.recommended_action}")
         click.echo("Read-only check - no files were modified.")
+        click.echo("These are rule checks Studio ran on the file; they are not a prediction that a print will succeed.")
     sys.exit(0 if d.verdict == "READY" else 1)
 
 @cli.command()

@@ -1,7 +1,9 @@
 import { CheckCircle2, AlertTriangle, ShieldAlert, Droplets, Boxes, MoveVertical, LifeBuoy, Ruler } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MeshReport } from "@/api";
+import type { MeshReport, ObjectSize } from "@/api";
+import { sizeRow } from "@/lib/sizeFit";
+import { sizeNotEstablished } from "@/components/GeometryNotice";
 
 // U1 build volume (mm) — matches the engine's bed-fit check.
 const U1_BED = { x: 270, y: 270, z: 270 };
@@ -18,12 +20,15 @@ const STATUS_ICON: Record<Level, LucideIcon> = { ok: CheckCircle2, warn: AlertTr
 
 function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } | null,
                    bed?: { x: number; y: number; z: number } | null,
-                   mode: "simple" | "advanced" = "simple"): Row[] {
+                   mode: "simple" | "advanced" = "simple", objects?: ObjectSize[] | null,
+                   unmeasured = 0): Row[] {
   const rows: Row[] = [];
   const integ = mesh.integrity;
   const fitBed = bed ?? U1_BED;
   const bedSource = bed ? "your connected U1" : "the U1’s";
   const simple = mode === "simple";
+  const basis = mesh.geometry_basis;
+  const unsure = sizeNotEstablished(basis);
 
   // 1. Watertight — plain "No holes" for novices; the technical term stays in Advanced.
   if (integ) {
@@ -52,9 +57,10 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
     const tip = mesh.stability.tip_risk;
     rows.push({ key: "stability", label: "Stability", icon: MoveVertical, level: tip ? "warn" : "ok",
       status: tip ? "Tip risk" : "Stable",
-      detail: tip
+      detail: (tip
         ? `Tall and narrow (aspect ${mesh.stability.aspect}). It may tip over or knock off the bed — add a brim or reorient, and consider the Maximum Reliability strategy.`
-        : "Footprint is broad enough relative to height — low tip-over risk." });
+        : "Footprint is broad enough relative to height — low tip-over risk.")
+          + (unsure ? " (Measured on the file's own mesh, not a confirmed physical size.)" : "") });
   }
 
   // 4. Supports recommended
@@ -67,30 +73,37 @@ function buildRows(mesh: MeshReport, dims?: { x: number; y: number; z: number } 
         : "Few steep overhangs — this should print without supports." });
   }
 
-  // 5. Bed fit (from dimensions vs the real connected printer bed, else the U1 default)
-  if (dims) {
-    const fits = dims.x <= fitBed.x && dims.y <= fitBed.y && dims.z <= fitBed.z;
-    const bedStr = `${fitBed.x} × ${fitBed.y} × ${fitBed.z} mm`;
-    rows.push({ key: "bedfit", label: "Bed fit", icon: Ruler, level: fits ? "ok" : "risk",
-      status: fits ? "Fits" : "Too big",
-      detail: fits
-        ? `${dims.x} × ${dims.y} × ${dims.z} mm fits ${bedSource} ${bedStr} bed.`
-        : `${dims.x} × ${dims.y} × ${dims.z} mm is larger than ${bedSource} ${bedStr} bed — scale it down or split it.` });
+  // 5. Bed fit BY SIZE: each object against the real connected printer bed, else the U1 default.
+  //    A size says nothing about position; placement is its own card. When the file does not establish
+  //    its physical size, the numbers are not judged against the bed at all.
+  if (unsure) {
+    rows.push({ key: "bedfit", label: "Bed fit", icon: Ruler, level: "warn", status: "Not checked",
+      detail: dims
+        ? `${basis!.summary} The ${dims.x} × ${dims.y} × ${dims.z} numbers stored in the file are not judged against the bed.`
+        : `${basis!.summary} The sizes stored in the file are not judged against the bed.` });
+  } else {
+    const fit = sizeRow(objects, dims, fitBed, bedSource, unmeasured);
+    if (fit) {
+      rows.push({ key: "bedfit", label: "Bed fit (by size)", icon: Ruler, level: fit.level,
+        status: fit.status, detail: fit.detail });
+    }
   }
   return rows;
 }
 
 /** Design Health — at-a-glance geometry verdicts with plain-language what/why/do.
  *  `mode` "advanced" appends the raw metric footer. */
-export function DesignHealth({ mesh, dims, bed, mode = "simple" }: {
+export function DesignHealth({ mesh, dims, objects, unmeasured, bed, mode = "simple" }: {
   mesh?: MeshReport; dims?: { x: number; y: number; z: number } | null;
+  objects?: ObjectSize[] | null; unmeasured?: number;
   bed?: { x: number; y: number; z: number } | null; mode?: "simple" | "advanced";
 }) {
   if (!mesh) return null;
   if (!mesh.available) {
     return <p className="text-xs text-muted-foreground">Geometry analysis isn’t available for this file (it may be too large).</p>;
   }
-  const rows = buildRows(mesh, dims, bed, mode);
+  const rows = buildRows(mesh, dims, bed, mode, objects, unmeasured);
+  const unsure = sizeNotEstablished(mesh.geometry_basis);
   if (!rows.length) return null;
 
   return (
@@ -114,7 +127,7 @@ export function DesignHealth({ mesh, dims, bed, mode = "simple" }: {
       })}
       {mode === "advanced" && (
         <p className="border-t border-border pt-2 text-[11px] text-muted-foreground">
-          {mesh.triangle_count?.toLocaleString()} triangles · {mesh.volume_cm3} cm³ · {mesh.surface_area_mm2} mm² ·
+          {mesh.triangle_count?.toLocaleString()} triangles · {mesh.volume_cm3} cm³{unsure ? " (from the file's own numbers)" : ""} · {mesh.surface_area_mm2} mm² ·
           overhang {mesh.overhang?.overhang_pct}% (severe {mesh.overhang?.severe_pct}%) ·
           aspect {mesh.stability?.aspect} · open edges {mesh.integrity?.open_edges}
         </p>

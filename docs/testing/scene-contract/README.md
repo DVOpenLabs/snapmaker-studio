@@ -303,12 +303,15 @@ py -3.13 tools/scene_benchmark.py --out ../docs/testing/scene-contract/results.j
 
 ## Known limitations (carry into the PR description)
 
-1. **Size-only consumers are not placement-aware.** DesignHealth, `bed_fit`, `validation_report` and the service
-   bed-fit path answer "does the SIZE fit". A small object translated off the plate is not detected by them, and
-   separated instances inflate the union. The scene's placement findings are the placement-aware source. Tracked
-   as issue #91; the copy change qualifying those claims "by size" is the planned PR 3c.
-2. **Repeated build items of one object id are mis-placed by `plate_placement.assess` on `main`**
-   (`placement.py` keeps the last transform: a cube at X=500 and X=100 reports "inside"). Not fixed here (tracked as issue #93). The scene reports `REPEATED_INSTANCE_PLACEMENT_UNVERIFIED` and attaches no finding to those nodes.
+1. **Size-only consumers say so (issue #91, addressed by PR #104).** DesignHealth, `bed_fit`, `validation_report` and
+   the service bed-fit path judge each object's SIZE on its own and say "By size"; where the instances sit is
+   reported separately ("By placement"). Several small, separated objects are no longer summed into one "too big"
+   object, and an object whose size cannot be measured stays unknown. The scene's placement findings remain the
+   viewer's placement source.
+2. **Repeated build items of one object id (issue #93, addressed by PR #102).** `plate_placement.assess` now judges
+   every build item on its own, keyed by build item and part. The scene still reports
+   `REPEATED_INSTANCE_PLACEMENT_UNVERIFIED` and attaches no engine finding to those nodes; enabling them is a
+   separate change.
 3. **Plates.** Non-Bambu projects (Prusa, plain 3MF, STL) have no plate records (`PLATES_UNAVAILABLE`). Grid origins
    of multi-plate projects are unknown, so multi-plate projects get no placement findings.
 4. **Stuck native calls** cannot be interrupted in-process (fail-closed `WORKER_WEDGED` backstop, no multiprocessing).

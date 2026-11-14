@@ -884,6 +884,34 @@ async fn check_for_update() -> Result<UpdateInfo, String> {
         .map_err(|e| format!("the update check task panicked: {e}"))?
 }
 
+const RELEASES_URL: &str = "https://github.com/DVOpenLabs/snapmaker-studio/releases/latest";
+
+/// The page the "newer version" link points at. The answer arrives over TLS, but the link it carries is shown to
+/// the user as-is, so only a page of this repository is ever passed on; anything else (a different host, another
+/// repository, a lookalike prefix, a non-https scheme, dot segments or encoded characters that a browser would
+/// normalise out of the repository) is replaced by the releases page. Only `releases/latest` and
+/// `releases/tag/<tag>` with a plain tag name are passed on.
+fn release_page_url(candidate: Option<&str>) -> String {
+    const PREFIX: &str = "https://github.com/DVOpenLabs/snapmaker-studio/";
+    let allowed = candidate
+        .and_then(|u| u.strip_prefix(PREFIX))
+        .map(|rest| match rest.strip_prefix("releases/tag/") {
+            Some(tag) => {
+                !tag.is_empty()
+                    && tag.len() <= 100
+                    && tag != "."
+                    && tag != ".."
+                    && tag.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+            }
+            None => rest == "releases/latest" || rest == "releases",
+        })
+        .unwrap_or(false);
+    match candidate {
+        Some(u) if allowed => u.to_string(),
+        _ => RELEASES_URL.to_string(),
+    }
+}
+
 fn check_for_update_blocking() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let response = ureq::get(
@@ -912,11 +940,7 @@ fn check_for_update_blocking() -> Result<UpdateInfo, String> {
     Ok(UpdateInfo {
         newer: is_newer(&latest, &current),
         current,
-        url: body
-            .get("html_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("https://github.com/DVOpenLabs/snapmaker-studio/releases/latest")
-            .to_string(),
+        url: release_page_url(body.get("html_url").and_then(|v| v.as_str())),
         published: body
             .get("published_at")
             .and_then(|v| v.as_str())
@@ -1160,6 +1184,36 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_links_are_limited_to_this_repository() {
+        let ok = "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1.7.0";
+        assert_eq!(release_page_url(Some(ok)), ok);
+        for bad in [
+            "https://evil.example/DVOpenLabs/snapmaker-studio/releases",
+            "https://github.com.evil.example/DVOpenLabs/snapmaker-studio/x",
+            "https://github.com/DVOpenLabs/snapmaker-studio-evil/releases",
+            "https://github.com/someone-else/snapmaker-studio/releases",
+            "http://github.com/DVOpenLabs/snapmaker-studio/releases",
+            "javascript:alert(1)",
+            "https://github.com/DVOpenLabs/snapmaker-studio/ spaced",
+            "https://github.com/DVOpenLabs/snapmaker-studio/../../attacker/project/releases",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/..",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/../../../attacker/x",
+            "https://github.com/DVOpenLabs/snapmaker-studio/%2e%2e/%2e%2e/attacker/project",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/%2e%2e/x",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1\\..\\x",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1/x",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1?next=https://evil.example",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/v1#frag",
+            "https://github.com/DVOpenLabs/snapmaker-studio/releases/tag/",
+            "https://github.com/DVOpenLabs/snapmaker-studio/issues/1",
+            "",
+        ] {
+            assert_eq!(release_page_url(Some(bad)), RELEASES_URL, "{bad}");
+        }
+        assert_eq!(release_page_url(None), RELEASES_URL);
+    }
 
     #[test]
     fn first_existing_returns_none_when_no_candidate_exists() {

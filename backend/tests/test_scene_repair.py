@@ -89,13 +89,13 @@ def test_a2_the_unit_comes_from_the_real_root_element(tmp_path, name):
     assert b["max"][0] == pytest.approx(12 * units.MM_PER_UNIT[want], abs=1e-4)
 
 
-def test_a2_legacy_readers_see_the_same_unit_through_a_long_preamble(tmp_path):
-    from snapstudio_core.intelligence import project_info
-    xml = UNIT_DOCS["long_comment"]()
-    path = str(fx.three_mf(tmp_path / "l.3mf", xml))
-    assert project_info(path)["dimensions_mm"] == {"x": 304.8, "y": 304.8, "z": 304.8}
-    decoy = str(fx.three_mf(tmp_path / "d.3mf", UNIT_DOCS["decoy_comment"]()))
-    assert project_info(decoy)["dimensions_mm"] == {"x": 12.0, "y": 12.0, "z": 12.0}
+def test_a2_the_shared_unit_reader_sees_the_unit_through_a_long_preamble():
+    # The size consumers on main stay behind geometry_basis (not checked for non-mm); only the scene
+    # contract and this helper normalise units, so the helper is asserted directly.
+    def raw(xml):
+        return xml if isinstance(xml, bytes) else xml.encode("utf-8")
+    assert units.unit_of(raw(UNIT_DOCS["long_comment"]())) == ("inch", 25.4)
+    assert units.unit_of(raw(UNIT_DOCS["decoy_comment"]())) == ("millimeter", 1.0)
 
 
 def test_a2_an_unrecognised_unit_is_not_the_same_as_an_absent_one():
@@ -526,19 +526,6 @@ def test_b7_unsupported_unit_lists_the_affected_nodes(tmp_path):
     assert {s["part"]: s["unit"] for s in sc["sources"]}["3D/Objects/y.model"] == "millimeter"   # the documented fallback
     description = scene.load_schema()["$defs"]["source"]["description"]
     assert "UNSUPPORTED_UNIT" in description and "fallback" in description.lower()
-
-
-# ------------------------------------------------------------------ B8: the failure wording is pinned
-
-def test_b8_a_failed_move_says_it_kept_no_copy(tmp_path, monkeypatch):
-    from snapstudio_core import plate_placement
-    path = str(fx.three_mf(tmp_path / "m.3mf", fx.model_xml([fx.cube_object("1", 25.4)], [("1", fx.tf(290.0, 3.0, 0.0))])))
-    monkeypatch.setattr(plate_placement, "_rewrite_items", lambda raw, offset_for: (raw, 1))
-    monkeypatch.setattr(plate_placement, "verify_only_placement_moved", lambda a, b: {"passed": True, "checks": []})
-    res = plate_placement.prepare_placed_copy(path, out_dir=str(tmp_path / "out"))
-    assert res["ok"] is False
-    assert res["reason"] == ("Studio could not move the objects onto the plate, so it did not keep a copy. "
-                             "Open the original in Snapmaker Orca and use Arrange.")
 
 
 # ------------------------------------------------------------------ B9: id collisions are detected

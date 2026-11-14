@@ -19,6 +19,7 @@ from snapstudio_core import paths as _paths
 from snapstudio_core.errors import SnapStudioError
 from snapstudio_core.material_mapping import MappingFileUnavailable
 from . import _lifeline
+from . import ext_routes
 from . import service
 from . import scene_jobs
 from . import request_validation as rv
@@ -207,7 +208,13 @@ def _make_handler(token: str):
             (with its traceback) in the local engine log and answered as 500 with only its class name, so a report can say
             what failed without anything private leaving the machine."""
             if isinstance(exc, SnapStudioError):
-                self._send(422, {"error": str(exc), "refusal": type(exc).__name__})
+                body = {"error": str(exc), "refusal": type(exc).__name__}
+                # A refusal may carry its raw technical wording separately, so the
+                # `error` stays a sentence a person can act on.
+                details = getattr(exc, "details", None)
+                if isinstance(details, str) and details:
+                    body["details"] = details
+                self._send(422, body)
                 return
             _log_unexpected(exc)
             self._send(500, {"error": "internal error", "kind": type(exc).__name__})
@@ -340,6 +347,24 @@ def _make_handler(token: str):
                     self._send(200, service.watch_folder(
                         rv.require_path_string(data, "folder"),
                         project_path=rv.optional_str(data, "project_path", "") or None))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/job_check":
+                try:
+                    files = data.get("files") if isinstance(data, dict) else None
+                    self._send(200, service.job_check(files))
+                except (ValidationError, ValueError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
+            elif self.path == "/settings_receipt":
+                try:
+                    self._send(200, service.settings_receipt(
+                        rv.require_path_string(data, "original_path"),
+                        rv.optional_str(data, "prepared_path", "") or None,
+                        rv.optional_str(data, "sliced_path", "") or None))
                 except ValidationError as e:
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
@@ -603,6 +628,13 @@ def _make_handler(token: str):
                     self._send(400, {"error": str(e)})
                 except Exception as exc:
                     self._send_exception(exc)
+            elif self.path == "/painted_preview":
+                try:
+                    self._send(200, service.painted_preview(rv.require_path_string(data)))
+                except ValidationError as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as exc:
+                    self._send_exception(exc)
             elif self.path == "/prepare_placed":
                 try:
                     self._send(200, service.prepare_placed(
@@ -728,9 +760,13 @@ def _make_handler(token: str):
                 if materials is not None and not isinstance(materials, dict):
                     self._send(400, {"error": "materials must be an object"})
                     return
+                topology = data.get("topology")
+                if topology is not None and (not isinstance(topology, dict) or len(str(topology)) > 400_000):
+                    self._send(400, {"error": "topology must be an object"})
+                    return
                 try:
                     result = service.convert(path, data.get("out_dir"), prepare_mode, dry_run,
-                                             materials)
+                                             materials, topology=topology)
                     if not dry_run and not result.get("blocked"):
                         service.record_conversion(path, result)  # best-effort index
                     self._send(200, result)
@@ -1347,6 +1383,8 @@ def _make_handler(token: str):
                 # falls through and the process exits on its own.
                 self._send(200, {"ok": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
+            elif ext_routes.dispatch(self, self.path, data):
+                pass
             else:
                 self._send(404, {"error": "not found"})
 

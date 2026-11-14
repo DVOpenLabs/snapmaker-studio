@@ -66,6 +66,16 @@ _ROLES = {
     "negative_part": NEGATIVE,
     "support_enforcer": SUPPORT_ENFORCER,
     "support_blocker": SUPPORT_BLOCKER,
+    # Orca's precise-seam helper volumes (written by Orca 2.4.2 and later). Like a modifier they steer the
+    # slicer and print nothing, so they are the modifier role. The strings are taken from Orca's own
+    # subtype list as reported to us; Snapmaker Orca 2.4.0 may not write them, and they are treated as
+    # known helper roles regardless. Any other word stays unknown (and so counts), see ``roles``.
+    "precise_seam_center": MODIFIER,
+    "precise_seam_left": MODIFIER,
+    "precise_seam_right": MODIFIER,
+    "precise_seam_enforced": MODIFIER,
+    "precise_seam_blocked": MODIFIER,
+    "precise_seam_neutral": MODIFIER,
 }
 
 #: Object-level keys that are the assignment itself or the object's identity,
@@ -149,7 +159,7 @@ def _prusa(text: str) -> list[dict]:
                  # Zero placements is not a statement, it is a broken one.
                  "instances": (_int(_INSTANCES.search(head).group(1)) or None)
                               if _INSTANCES.search(head) else None,
-                 "overrides": {}}
+                 "overrides": {}, "dialect": DIALECT_PRUSA}
         for kind, key, value in _PRUSA_META.findall(chunk.split("<volume", 1)[0]):
             if key == "extruder":
                 slot = _int(value)
@@ -192,7 +202,7 @@ def _bambu(text: str) -> list[dict]:
         entry = {"object_id": found.group(1) if found else str(position + 1),
                  "index": position, "name": None, "slot": None,
                  "source": DEFAULT, "volume_slots": [], "volumes": [],
-                 "instances": None, "overrides": {}}
+                 "instances": None, "overrides": {}, "dialect": DIALECT_BAMBU}
         for key, value in _BAMBU_META.findall(chunk.split("<part", 1)[0]):
             if key == "extruder":
                 # Snapmaker Orca writes `extruder="0"` for an object nobody has
@@ -534,7 +544,13 @@ def _override_rows(source: dict, prepared: dict, name: str, index: int,
 
     # Settings that arrive in Snapmaker Orca's own words are kept as they are, not
     # translated: compare them key for key, before the translation table sees them.
-    for key in sorted(k for k in source_overrides if k in object_overrides.NATIVE_KEPT):
+    # Only a Bambu/Orca-dialect source states these in Orca's words. A PrusaSlicer
+    # project can reuse a name (its own `brim_type`) with its own meaning, which the
+    # prepared copy does not carry: that falls through to the translation table below,
+    # which reports it as not carried, exactly as before.
+    native = [] if source.get("dialect") == DIALECT_PRUSA else sorted(
+        k for k in source_overrides if k in object_overrides.NATIVE_KEPT)
+    for key in native:
         said = source_overrides.pop(key)
         found = kept.pop(key, None)
         if found == said and object_overrides.NATIVE_KEPT[key](said):

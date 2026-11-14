@@ -1,0 +1,42 @@
+{
+  "schema": "orca-native-gui-validation/1",
+  "recorded_at": "2026-10-13T16:22:59.6197057Z",
+  "engine_commit": "6e35fe607123ad371c29b187c55f560edc13d694",
+  "orca_version": "2.4.0",
+  "runner_sha256": "A61E60E3E3A77A5B5292BBEBDA864E120E4843134F3B3A1F83B42DA9A5F6D9C7",
+  "scope": "single C02 Preserve attempt",
+  "launcher_exit_code": "not captured; console returned to prompt after result",
+  "preflight_passed": true,
+  "input_sha256": "DC21A6D807034D28349F9377E74AE03FB6B7EEF32549BC5A2DE23A118E1044E2",
+  "process": {
+    "task_owned_process_verified": true,
+    "main_window_ready": true,
+    "activation_call_return_value": false,
+    "foreground_owned_after_call": false,
+    "failure_stage": "activation-verification",
+    "foreground_identity": "non-Orca host application window; exact PID/HWND/title/path/start time retained privately",
+    "input_sent": false,
+    "dialogs_observed": 0,
+    "loaded": false,
+    "plate_membership": "unobserved",
+    "settings": "unobserved",
+    "closure": "normal"
+  },
+  "preservation": {
+    "input_unchanged": true,
+    "production_profile_unchanged": true,
+    "unrelated_processes_stopped": 0,
+    "task_owned_orca_remaining": false
+  },
+  "warning_acknowledgement": "not reached",
+  "other_outputs_started": 0,
+  "prior_completed_loads": "D01 Preserve and Recommended only",
+  "console_output_was_pasted": true,
+  "limitations": [
+    "C02 did not load; no prompt, plate membership or GUI setting was observed.",
+    "The foreground HWND remained owned by the host application, so the single activation call returned false and the runner stopped.",
+    "No activation retry, input to another window, slicing, G-code execution, upload or printer connection occurred.",
+    "Opening does not establish slicing correctness or print success."
+  ],
+  "evidence_statement": "Self-contained record. The raw logs, screenshots and run directory are not part of the repository; this file states only what was observed in the attempt it describes, and its limitations list states what was not run or not observed."
+}

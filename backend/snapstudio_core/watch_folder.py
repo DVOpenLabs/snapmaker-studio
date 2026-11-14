@@ -207,7 +207,7 @@ def scan(folder: str | Path, *, since: float | None = None,
             continue
         if stat.st_mtime < cutoff:
             continue
-        recent.append((stat.st_mtime, stat.st_size, str(path), path))
+        recent.append((stat.st_mtime, stat.st_size, str(path), path, stat.st_mtime_ns))
     recent.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
 
     now = time.time()
@@ -215,13 +215,16 @@ def scan(folder: str | Path, *, since: float | None = None,
     out["seen"] = len(entries)
     if unreadable:
         out["unreadable"] = unreadable
-    for modified, size, _text, path in recent[:(limit or MAX_CANDIDATES)]:
+    for modified, size, _text, path, modified_ns in recent[:(limit or MAX_CANDIDATES)]:
         complete, why = _looks_finished(path, size, modified, now)
         out["candidates"].append({
             "path": str(path),
             "name": path.name,
             "size_bytes": size,
             "modified": modified,
+            # Exact modification time as text (a JSON number would lose digits). Lets a caller
+            # tell "the same file" from "rewritten" without reading it.
+            "modified_ns": str(modified_ns),
             "age_seconds": int(max(0, now - modified)),
             "complete": complete,
             "state": why,

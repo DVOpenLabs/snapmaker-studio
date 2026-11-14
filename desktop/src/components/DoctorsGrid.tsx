@@ -32,8 +32,9 @@ export function DoctorsGrid({ showP1 = true }: { showP1?: boolean }) {
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-sm font-semibold">
                 {d.name}
-                <span className="rounded-full px-1.5 py-px text-[9px] font-medium uppercase tracking-wide"
-                      style={{ color: `hsl(var(${d.token}))`, backgroundColor: `hsl(var(${d.token}) / 0.12)` }}>
+                {/* The stage word is text, so it reads in the foreground colour; the doctor's hue stays on the tint. */}
+                <span className="rounded-full px-1.5 py-px text-[9px] font-medium uppercase tracking-wide text-foreground"
+                      style={{ backgroundColor: `hsl(var(${d.token}) / 0.12)` }}>
                   {d.stage}
                 </span>
               </p>

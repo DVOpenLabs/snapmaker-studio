@@ -255,6 +255,8 @@ def test_advise_reads_a_real_file(tmp_path):
 
     p = tmp_path / "u1.3mf"
     with zipfile.ZipFile(p, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("_rels/.rels", "<Relationships/>")
         z.writestr("3D/3dmodel.model", '<model unit="millimeter"><build/></model>')
         z.writestr("Metadata/project_settings.config",
                    json.dumps({"printer_model": "Snapmaker U1"}))

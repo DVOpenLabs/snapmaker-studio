@@ -17,8 +17,13 @@ SCHEMA_VERSION = "mmdoctor/1"
 U1_TOOLHEADS = 4
 
 
-def _f(level: str, text: str) -> dict:
-    return {"level": level, "text": text}
+def _f(level: str, text: str, id: str | None = None, action: str | None = None) -> dict:
+    out = {"level": level, "text": text}
+    if id:
+        out["id"] = id         # the stable condition id (snapstudio_core.conditions)
+    if action:
+        out["action"] = action  # the step that belongs to THIS finding
+    return out
 
 
 def assess(colors, heads=None, heads_known: bool = False, painted: bool = False,
@@ -49,9 +54,11 @@ def assess(colors, heads=None, heads_known: bool = False, painted: bool = False,
     if not multi:
         if painted:
             bump("warn")
+            _fix = "Add the other filament colours in Orca (or remap the painted regions), then re-check."
             findings.append(_f("warn", "This design has painted regions but only one filament "
-                                       "colour is configured — the paint won't print as separate colours."))
-            fixes.append("Add the other filament colours in Orca (or remap the painted regions), then re-check.")
+                                       "colour is configured — the paint won't print as separate colours.",
+                               id="painted-regions", action=_fix))
+            fixes.append(_fix)
         else:
             findings.append(_f("ok", "Single colour — no multi-material setup needed."))
     else:
@@ -61,11 +68,13 @@ def assess(colors, heads=None, heads_known: bool = False, painted: bool = False,
         else:
             over = n - h
             bump("risk")
+            _fix = (f"Remap to {h} colours in Orca, or pause-and-swap filament mid-print. "
+                    f"Studio keeps all {n} original colours in the file either way.")
             findings.append(_f("risk", f"{n} colours but only {h} toolheads — {over} colour"
                                        f"{'s' if over != 1 else ''} can't be loaded at once. This is the most "
-                                       f"common reason a multicolour print fails or prints wrong on the U1."))
-            fixes.append(f"Remap to {h} colours in Orca, or pause-and-swap filament mid-print. "
-                         f"Studio keeps all {n} original colours in the file either way.")
+                                       f"common reason a multicolour print fails or prints wrong on the U1.",
+                               id="toolhead-fit", action=_fix))
+            fixes.append(_fix)
         if painted:
             findings.append(_f("ok", "Painted regions present — check each region is assigned to "
                                      "the right toolhead/colour in Orca before slicing."))
@@ -73,9 +82,11 @@ def assess(colors, heads=None, heads_known: bool = False, painted: bool = False,
     if metadata_issues:
         bump("warn")
         detail = "; ".join(str(m) for m in metadata_issues)
+        _fix = "Run repair to conform the filament arrays and purge volumes to the colour count."
         findings.append(_f("warn", f"Filament settings are inconsistent ({detail}) — Orca flags "
-                                   f"this as a Customized Preset and can misprint or refuse the colours."))
-        fixes.append("Run repair to conform the filament arrays and purge volumes to the colour count.")
+                                   f"this as a Customized Preset and can misprint or refuse the colours.",
+                           id="filament-metadata", action=_fix))
+        fixes.append(_fix)
 
     overall_text = {
         "ok": ("Single colour print." if not multi else "Multi-material setup looks correct."),

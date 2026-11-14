@@ -98,3 +98,15 @@ def test_printer_name_confidence_matches_the_guide():
 def test_matching_header_is_confirmed_and_looks_right():
     ok = post_slice._machine_match({"printer_model": "Snapmaker U1"}, {})
     assert ok["result"] == "ok" and ok["confidence"] == post_slice.CONFIRMED
+
+
+def test_print_risk_signals_are_a_list_not_a_measured_chance():
+    """The behavior check cannot establish that the signals predict physical printer behavior, prose clarity, source fitness, honest dates, paraphrased overclaims, or screen-reader behavior."""
+    from snapstudio_core import success_predict
+    flagged = success_predict.findings(readiness={"ready": False, "warnings": ["one", "two"]})
+    assert [s["id"] for s in flagged["signals"]] == ["design-validation"]
+    assert flagged["signals"][0]["details"] == ["one", "two"]
+    for out in (flagged, success_predict.findings(readiness={"ready": True})):
+        assert not {"likelihood", "band", "verdict", "factors"} & set(out)
+        assert out["checked"] and out["not_checked"] and out["limitations"]
+    assert any("cannot know" in x for x in success_predict.LIMITATIONS)

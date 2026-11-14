@@ -112,17 +112,19 @@ describe("PrepareSettingsSummary explanations", () => {
     kept_count: 12,
     mapped_to_u1: [{ key: "nozzle_temperature", old: "[200]", new: "[200,200,200,200]", reason: "carried over to U1 toolheads (values preserved)" }],
     compat_changed: [
-      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 default." },
-      { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses." },
+      { key: "prime_tower_brim_width", old: "-1", new: "5", reason: "U1 compatibility clamp: -1 → 5", explanation: "-1 is outside the valid range for this setting (0 or more), which the Compatibility check flags as an invalid value. Studio used 5, the U1 default.", source: "Studio's valid range for this setting", kind: "engine" as const },
+      { key: "brim_type", old: "auto_brim", new: "no_brim", reason: "the creator left the brim on automatic", explanation: "Automatic means the slicer chooses.", source: "Studio's rule for how Snapmaker Orca imports this setting", kind: "orca" as const },
       { key: "some_setting", old: "1", new: "2", reason: "changed only for U1 compatibility" },
     ],
     recommended_changes: [{ key: "speed", old: 20, new: 40, reason: "available with the recommended U1 profile" }],
   };
 
   it("shows the engine's explanation under each compatibility change that has one", () => {
-    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />);
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={withNotes} mode="preserve" />).replace(/&#x27;/g, "'");
     expect(html).toContain("which the Compatibility check flags as an invalid value");
     expect(html).toContain("Automatic means the slicer chooses.");
+    expect(html).toContain("Studio's check");
+    expect(html).toContain("Studio's rule for how Snapmaker Orca imports this setting");
   });
 
   it("does not repeat a reason that only restates the change", () => {
@@ -143,3 +145,48 @@ describe("PrepareSettingsSummary explanations", () => {
     expect(html).not.toContain("available with the recommended U1 profile");
   });
 });
+
+describe("PrepareSettingsSummary in Recommended mode", () => {
+  const SUPPORTS = "Supports: the creator turned supports on. This mode does not keep them; Snapmaker Orca will open with supports off. Turn them on in Orca's Support tab or prepare with Preserve creator settings.";
+
+  it("states that the creator's supports are not kept, before handoff", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, supports_note: SUPPORTS }} mode="recommended" />).replace(/&#x27;/g, "'");
+    expect(html).toContain(SUPPORTS);
+  });
+
+  it("does not describe the written settings as kept", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, kept_count: 501 }} mode="recommended" />).replace(/&#x27;/g, "'");
+    expect(html).not.toContain("501 creator settings kept");
+    expect(html).not.toContain("kept from the original file");
+    expect(html).toContain("501 creator settings are written in the file");
+    expect(html).toContain("Studio's U1 starter settings replace the creator's print settings");
+  });
+
+  it("shows the layout lines and the support decision the engine reports, once", () => {
+    const moved = "Repositioned plate 2 objects to the U1 plate layout (X -72 mm, Y +0 mm). The objects keep their positions relative to each other; rotation and scale are unchanged.";
+    const still = "Plate 3's objects are larger than the U1 plate, so they still will not fit it; Snapmaker Orca will show them outside.";
+    const html = renderToStaticMarkup(<PrepareSettingsSummary mode="recommended" summary={{
+      ...summary, warnings: [still],
+      placement_changes: [moved, still],
+      support_intent: { decision: "kept", statement: "This model marks where it needs support (painted support enforcers), so its support settings were kept as the creator set them." },
+    }} />).replace(/&#x27;/g, "'");
+    expect(html).toContain("Plate layout");
+    expect(html).toContain(moved);
+    expect(html.split(still).length - 1).toBe(1); // already under Warnings, not repeated under Plate layout
+    expect(html).toContain("kept as the creator set them");
+  });
+
+  it("stays quiet about supports when the starter reset applied with no blocker data", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary mode="recommended" summary={{
+      ...summary, support_intent: { decision: "starter_reset", statement: "Supports use the U1 starter settings, as this mode states." },
+    }} />);
+    expect(html).not.toContain("Supports use the U1 starter settings");
+  });
+
+  it("keeps the Preserve wording and shows no supports line when there is no note", () => {
+    const html = renderToStaticMarkup(<PrepareSettingsSummary summary={{ ...summary, kept_count: 501 }} mode="preserve" />);
+    expect(html).toContain("501 creator settings kept");
+    expect(html).not.toContain("Supports");
+  });
+});
+

@@ -1,0 +1,191 @@
+{
+  "nil_speeds": {
+    "findings": [
+      {
+        "id": "value.raft_first_layer_expansion",
+        "severity": "error",
+        "title": "Invalid value for raft_first_layer_expansion",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> raft_first_layer_expansion",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "raft_first_layer_expansion = -1 (valid range [0,2147483647])"
+      },
+      {
+        "id": "value.tree_support_wall_count",
+        "severity": "error",
+        "title": "Invalid value for tree_support_wall_count",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> tree_support_wall_count",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "tree_support_wall_count = -1 (valid range [0,2])"
+      },
+      {
+        "id": "value.solid_infill_filament",
+        "severity": "error",
+        "title": "Invalid value for solid_infill_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> solid_infill_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "solid_infill_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "value.sparse_infill_filament",
+        "severity": "error",
+        "title": "Invalid value for sparse_infill_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> sparse_infill_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "sparse_infill_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "value.wall_filament",
+        "severity": "error",
+        "title": "Invalid value for wall_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> wall_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "wall_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "profile.not_u1",
+        "severity": "warning",
+        "title": "Profile may not be a Snapmaker U1 profile",
+        "explanation": "This file likely carries settings from another printer. Slicing it as-is can produce wrong results.",
+        "setting_path": "Metadata/project_settings.config -> printer_model / printer_settings_id",
+        "suggested_action": "Make sure the active printer profile is Snapmaker U1, or import the model into a clean Snapmaker U1 project.",
+        "evidence": "printer_model=Bambu Lab X1 Carbon; printer_settings_id=Bambu Lab X1 Carbon 0.4 nozzle"
+      },
+      {
+        "id": "prepare.blocked",
+        "severity": "warning",
+        "title": "Studio cannot prepare a U1 copy of this project yet",
+        "explanation": "Snapmaker Orca 2.4.0 cannot load this project: part 1 of object 2 (\"slab.stl\") (inner_wall_speed, outer_wall_speed) has values it cannot read (a blank 'nil' entry), and Orca stops loading the whole file when it meets one. Studio does not edit those values for you. Open the original in the slicer that made it, reset those part settings, and export it again.",
+        "setting_path": "Metadata/model_settings.config",
+        "suggested_action": "Open the original in Snapmaker Orca to review it, or remove the unverified settings in the slicer that made it and export it again.",
+        "evidence": "1 item(s) Studio has not verified Snapmaker Orca reads"
+      },
+      {
+        "id": "extrusion.relative_no_reset",
+        "severity": "warning",
+        "title": "Relative extrusion without a per-layer reset",
+        "explanation": "Your profile uses relative extrusion but may not reset the extruder position each layer. Newer Orca/Snorca versions are stricter about this.",
+        "setting_path": "Metadata/project_settings.config -> layer_change_gcode / before_layer_change_gcode",
+        "suggested_action": "Switch back to the official Snapmaker U1 profile (or reset the profile). Only add G92 E0 to the layer-change g-code if you understand the setting.",
+        "evidence": "use_relative_e_distances is enabled; no 'G92 E0' found in layer-change g-code"
+      },
+      {
+        "id": "layout.object_spacing",
+        "severity": "warning",
+        "title": "Object spacing / collisions are not verified by Studio yet",
+        "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
+        "setting_path": "Object layout (plate)",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
+        "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
+      }
+    ],
+    "summary": "Found 5 invalid-value issue(s) and 4 warning(s).",
+    "recommendation": "Prefer importing the model into a clean Snapmaker U1 project rather than opening this foreign 3MF as the active project. Studio diagnoses these issues read-only; it does not change your file."
+  },
+  "u1_auto_brim": {
+    "findings": [
+      {
+        "id": "prepare.blocked",
+        "severity": "warning",
+        "title": "Studio cannot prepare a U1 copy of this project yet",
+        "explanation": "Studio cannot confirm Snapmaker Orca reads the value of brim_type on object 2 (\"slab.stl\"), and a value Orca cannot read can cost the whole object. Check those values in the original, or remove them and export again.",
+        "setting_path": "Metadata/model_settings.config",
+        "suggested_action": "Open the original in Snapmaker Orca to review it, or remove the unverified settings in the slicer that made it and export it again.",
+        "evidence": "1 item(s) Studio has not verified Snapmaker Orca reads"
+      },
+      {
+        "id": "layout.object_spacing",
+        "severity": "warning",
+        "title": "Object spacing / collisions are not verified by Studio yet",
+        "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
+        "setting_path": "Object layout (plate)",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
+        "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
+      }
+    ],
+    "summary": "Found 0 invalid-value issue(s) and 2 warning(s).",
+    "recommendation": "Prefer importing the model into a clean Snapmaker U1 project rather than opening this foreign 3MF as the active project. Studio diagnoses these issues read-only; it does not change your file."
+  },
+  "clean": {
+    "findings": [
+      {
+        "id": "value.raft_first_layer_expansion",
+        "severity": "error",
+        "title": "Invalid value for raft_first_layer_expansion",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> raft_first_layer_expansion",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "raft_first_layer_expansion = -1 (valid range [0,2147483647])"
+      },
+      {
+        "id": "value.tree_support_wall_count",
+        "severity": "error",
+        "title": "Invalid value for tree_support_wall_count",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> tree_support_wall_count",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "tree_support_wall_count = -1 (valid range [0,2])"
+      },
+      {
+        "id": "value.solid_infill_filament",
+        "severity": "error",
+        "title": "Invalid value for solid_infill_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> solid_infill_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "solid_infill_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "value.sparse_infill_filament",
+        "severity": "error",
+        "title": "Invalid value for sparse_infill_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> sparse_infill_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "sparse_infill_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "value.wall_filament",
+        "severity": "error",
+        "title": "Invalid value for wall_filament",
+        "explanation": "This file likely carries settings from another printer or a stale profile (often a MakerWorld/Bambu-style project). The model may be fine; the project settings are the problem.",
+        "setting_path": "Metadata/project_settings.config -> wall_filament",
+        "suggested_action": "Import the model into a clean Snapmaker U1 project instead of opening the foreign 3MF as the active project.",
+        "evidence": "wall_filament = 0 (valid range [1,2147483647])"
+      },
+      {
+        "id": "profile.not_u1",
+        "severity": "warning",
+        "title": "Profile may not be a Snapmaker U1 profile",
+        "explanation": "This file likely carries settings from another printer. Slicing it as-is can produce wrong results.",
+        "setting_path": "Metadata/project_settings.config -> printer_model / printer_settings_id",
+        "suggested_action": "Make sure the active printer profile is Snapmaker U1, or import the model into a clean Snapmaker U1 project.",
+        "evidence": "printer_model=Bambu Lab X1 Carbon; printer_settings_id=Bambu Lab X1 Carbon 0.4 nozzle"
+      },
+      {
+        "id": "extrusion.relative_no_reset",
+        "severity": "warning",
+        "title": "Relative extrusion without a per-layer reset",
+        "explanation": "Your profile uses relative extrusion but may not reset the extruder position each layer. Newer Orca/Snorca versions are stricter about this.",
+        "setting_path": "Metadata/project_settings.config -> layer_change_gcode / before_layer_change_gcode",
+        "suggested_action": "Switch back to the official Snapmaker U1 profile (or reset the profile). Only add G92 E0 to the layer-change g-code if you understand the setting.",
+        "evidence": "use_relative_e_distances is enabled; no 'G92 E0' found in layer-change g-code"
+      },
+      {
+        "id": "layout.object_spacing",
+        "severity": "warning",
+        "title": "Object spacing / collisions are not verified by Studio yet",
+        "explanation": "Studio does not yet check object-to-object spacing for multi-part 3MF layouts, so it cannot confirm objects aren't too close or colliding.",
+        "setting_path": "Object layout (plate)",
+        "suggested_action": "Review the project in Snapmaker Orca and look for too-close / collision warnings before slicing.",
+        "evidence": "2 object(s) on the plate; spacing unchecked by Studio"
+      }
+    ],
+    "summary": "Found 5 invalid-value issue(s) and 3 warning(s).",
+    "recommendation": "Prefer importing the model into a clean Snapmaker U1 project rather than opening this foreign 3MF as the active project. Studio diagnoses these issues read-only; it does not change your file."
+  }
+}

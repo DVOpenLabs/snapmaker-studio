@@ -39,6 +39,23 @@ _CUBE_TRIS = [(0, 1, 2), (0, 2, 3), (4, 6, 5), (4, 7, 6), (0, 5, 1), (0, 4, 5),
               (2, 6, 7), (2, 7, 3), (1, 5, 6), (1, 6, 2), (0, 3, 7), (0, 7, 4)]
 
 
+# A 3MF is an Open Packaging Convention zip: the root relationships part is what points a
+# reader at the model. Empty stubs here make Snapmaker Orca 2.4.1 refuse the file
+# ("Loading of model file failed"), so the fixtures carry the real minimal parts.
+CONTENT_TYPES_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+    "</Types>")
+ROOT_RELS_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Target="/3D/3dmodel.model" Id="rel-1" '
+    'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+    "</Relationships>")
+
+
 def _model_xml(x: float, y: float) -> str:
     verts = "".join(f'<vertex x="{vx}" y="{vy}" z="{vz}"/>' for vx, vy, vz in _CUBE_VERTS)
     tris = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in _CUBE_TRIS)
@@ -88,8 +105,8 @@ def build_fixture(directory: Path) -> Path:
     )
     path = directory / "selfcheck_sample.3mf"
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml", "<Types/>")
-        z.writestr("_rels/.rels", "<Relationships/>")
+        z.writestr("[Content_Types].xml", CONTENT_TYPES_XML)
+        z.writestr("_rels/.rels", ROOT_RELS_XML)
         z.writestr("3D/3dmodel.model", _model_xml(305.0, 175.0))
         z.writestr("Metadata/project_settings.config", json.dumps(settings, indent=2))
         z.writestr("Metadata/model_settings.config", model_settings)
@@ -857,8 +874,8 @@ def _painted_fixture(workdir: Path) -> Path:
     }
     path = workdir / "selfcheck_painted.3mf"
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml", "<Types/>")
-        z.writestr("_rels/.rels", "<Relationships/>")
+        z.writestr("[Content_Types].xml", CONTENT_TYPES_XML)
+        z.writestr("_rels/.rels", ROOT_RELS_XML)
         z.writestr("3D/3dmodel.model", model)
         z.writestr("Metadata/project_settings.config", json.dumps(settings, indent=2))
         z.writestr("Metadata/model_settings.config",

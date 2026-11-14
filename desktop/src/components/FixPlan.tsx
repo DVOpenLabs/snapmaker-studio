@@ -20,6 +20,7 @@ interface FixPlanProps {
   doctor?: {
     object_count?: number | null;
     filament_count?: number | null;
+    prepare_blocked?: boolean;
   } | null;
   isStl: boolean;
   report?: { ready: boolean; at_risk: string[] } | null;
@@ -70,18 +71,23 @@ export function buildFixPlan(p: FixPlanProps): FixAction[] {
   }
   if (!p.isStl && (p.doctor?.object_count ?? 0) > 1) {
     issues.push({
-      title: "Arrange the plate and check spacing",
-      detail: "Studio can't verify object-to-object spacing for multi-part layouts. In Orca, use Arrange and watch for too-close / collision warnings.",
+      title: "Check object spacing",
+      detail: "Studio can't verify object-to-object spacing for multi-part layouts. Review the project in Snapmaker Orca and watch for too-close / collision warnings.",
       where: "Orca",
       level: "warn",
     });
   }
 
-  // Risks first, then warns; cap at 4 so the prepare step always fits.
+  // Risks first, then warns; cap at 4 so the next step always fits.
   issues.sort((a, b) => (a.level === b.level ? 0 : a.level === "risk" ? -1 : 1));
   const top = issues.slice(0, 4);
 
-  top.push({
+  top.push(p.doctor?.prepare_blocked ? {
+    title: "Review the original in Snapmaker Orca",
+    detail: "Studio cannot prepare this project. Check the reported settings or structure in the slicer that made the file and export it again.",
+    where: "Orca",
+    level: "warn",
+  } : {
     title: "Prepare a U1 profile copy",
     detail: "Studio writes a new copy with U1 profile settings — your original is never changed. Then open the copy in Snapmaker Orca and review it before slicing.",
     where: "Studio",

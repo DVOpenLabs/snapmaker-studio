@@ -177,6 +177,7 @@ def test_traits_read_a_prusa_project_instead_of_shrugging(tmp_path):
     target = tmp_path / "prusa.3mf"
     with zipfile.ZipFile(target, "w") as zf:
         zf.writestr("[Content_Types].xml", "<Types/>")
+        zf.writestr("_rels/.rels", "<Relationships/>")
         zf.writestr("3D/3dmodel.model",
                     '<model unit="millimeter"><build><item objectid="1"/></build></model>')
         zf.writestr(prusa.SETTINGS_PART, CONFIG)

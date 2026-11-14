@@ -4,7 +4,12 @@
   "version": "1.5.0",
   "type": "module",
   "description": "Interactive user guide for Snapmaker Studio (static site; no runtime dependencies).",
+  "engines": {
+    "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1 <27"
+  },
   "scripts": {
+    "check:node": "node ../../scripts/check-node-floor.mjs",
+    "prebuild": "npm run check:node",
     "build": "node tools/build.mjs",
     "build:draft": "node tools/build.mjs --draft",
     "capture": "node tools/capture.mjs",

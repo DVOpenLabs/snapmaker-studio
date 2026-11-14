@@ -13,6 +13,8 @@ address, key, token or remaining-weight history.
 """
 from __future__ import annotations
 
+import re
+
 from . import project_materials as pm
 from . import spool_choices
 from .config_io import load_project_settings
@@ -264,6 +266,18 @@ SPOOL_WITHOUT_PRESET = ("Spool selected, but no Orca preset selected. "
                         "The project's existing filament preset will remain.")
 #: Said with it: what Studio did and did not establish about the preset it leaves alone.
 SPOOL_PRESET_CAVEAT = "Studio leaves its name unchanged and does not check how Snapmaker Orca will treat it."
+#: Said after it when the preset that remains is another printer's (Bambu): picking a spool does not pick a preset.
+SPOOL_FOREIGN_PRESET_HINT = (
+    "This preset's name suggests it comes from another printer's profile set, and choosing a spool does not choose a preset. "
+    "To use an installed Snapmaker preset for this slot, choose one under Orca preset.")
+_FOREIGN_PRESET = re.compile(r"@BBL|^Bambu", re.IGNORECASE)
+
+
+def is_foreign_preset(name) -> bool:
+    """Whether a filament preset name is another printer's profile set (Bambu), not an installed U1 preset."""
+    return bool(name) and bool(_FOREIGN_PRESET.search(str(name)))
+
+
 #: The same, for a slot whose project names no filament preset at all: there is nothing to "remain".
 SPOOL_WITHOUT_PRESET_NONE_EXISTING = ("Spool selected, but no Orca preset selected. "
                                       "The project names no filament preset for this slot, and Studio does not choose one for you.")
@@ -324,6 +338,8 @@ def _line(rec: dict, spool: dict | None) -> str:
         return text + " " + SPOOL_WITHOUT_PRESET_NONE_EXISTING
     if who:
         text += " " + SPOOL_WITHOUT_PRESET + " " + SPOOL_PRESET_CAVEAT
+        if is_foreign_preset(identity):
+            text += " " + SPOOL_FOREIGN_PRESET_HINT
     text += f" Studio keeps the project's filament identity '{identity}'." if identity else \
         " Studio keeps the project's filament identity."
     if any(d["code"] == "customized_preset_possible" for d in rec["discrepancies"]):

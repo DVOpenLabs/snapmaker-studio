@@ -9,8 +9,10 @@ import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { openModelDialog, scalePreview, scaleOptions, prepareScaled, type ScaleResult, type ScaleOptionsResult, type ScaledCopyResult } from "@/api";
 import { SCALE_LADDER_COPY, recommendBlurb, isRecommended, isCaution, riskLabel, fmtDims, partLabel } from "@/lib/scaleOptions";
 import { useModelPath } from "@/hooks/useModelPath";
+import { NotCheckedReason } from "@/components/GeometryNotice";
 
-function recTone(rec?: string): { token: string; label: string } {
+export function recTone(rec?: string): { token: string; label: string } {
+  if (rec === "not checked") return { token: "--doctor-cost", label: "Fit not checked" };
   if (rec === "not recommended") return { token: "--stage-input", label: "Not recommended" };
   if (rec === "caution") return { token: "--doctor-cost", label: "Caution" };
   return { token: "--stage-validate", label: "Recommended" };
@@ -93,20 +95,23 @@ export default function ScaleDoctor() {
       )}
 
       {m.isError && <p className="text-sm text-risk">Couldn't read that file: {(m.error as Error).message}</p>}
-      {res && !res.available && <p className="text-sm text-risk">{res.reason}</p>}
+      {res && !res.available && (res.status === "not_checked"
+        ? <NotCheckedReason reason={res.reason} scope={res.scope} />
+        : <p className="text-sm text-risk">{res.reason}</p>)}
+      {res?.available && res.status === "not_checked" && <NotCheckedReason reason={res.reason} scope={res.scope} />}
 
       {res?.available && (
         <Card><CardContent className="space-y-3 p-5">
           <p className="flex items-center gap-2 text-sm font-semibold"
              style={{ color: `hsl(var(${tone.token}))` }}>
-            {res.recommendation === "not recommended" ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            {res.recommendation === "not recommended" || res.recommendation === "not checked" ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
             {tone.label}
           </p>
           <div className="grid gap-3 text-sm sm:grid-cols-2">
             <div><p className="text-xs text-muted-foreground">Original size</p><p>{dims(res.original_dimensions)}</p></div>
             <div><p className="text-xs text-muted-foreground">Scaled size ({res.scale_percent}%)</p><p>{dims(res.scaled_dimensions)}</p></div>
             <div><p className="text-xs text-muted-foreground">Fits U1 build volume</p>
-              <p>{res.fits_build_volume ? "Yes" : "No — exceeds the 270 mm bed"}</p></div>
+              <p>{res.fits_build_volume == null ? "Not checked" : res.fits_build_volume ? "Yes" : "No — exceeds the 270 mm bed"}</p></div>
             <div><p className="text-xs text-muted-foreground">Material change</p>
               <p>{res.estimated_material_delta ? `${res.estimated_material_delta.grams >= 0 ? "+" : ""}${res.estimated_material_delta.grams} g` : "—"}
                 {res.estimated_cost_delta?.amount != null ? ` · ${res.estimated_cost_delta.amount >= 0 ? "+" : ""}$${Math.abs(res.estimated_cost_delta.amount).toFixed(2)}` : ""}</p></div>
@@ -200,7 +205,9 @@ export default function ScaleDoctor() {
           </div>
 
           {om.isError && <p className="text-sm text-risk">Couldn't read that file: {(om.error as Error).message}</p>}
-          {opts && !opts.available && <p className="text-sm text-risk">{opts.reason}</p>}
+          {opts && !opts.available && (opts.status === "not_checked"
+          ? <NotCheckedReason reason={opts.reason} scope={opts.scope} />
+          : <p className="text-sm text-risk">{opts.reason}</p>)}
 
           {opts?.available && opts.options && (
             <>

@@ -55,3 +55,8 @@ tools/demo/package-lock.json
 # Hardware verification reuses the acceptance harness deps
 tools/hardware/node_modules/
 tools/hardware/package-lock.json
+
+# Tool output (profilers etc.) is never tracked
+*.prof
+*.pstats
+prof.out

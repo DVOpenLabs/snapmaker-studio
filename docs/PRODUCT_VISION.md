@@ -15,7 +15,7 @@ to span more slicers and more printers over time (not a claim of current support
 **Understand → Validate → Prepare → Monitor.**
 Validate is a mandatory stage, never skipped: every prepared file is *proven clean*
 before output. (Brand: see [`brand/`](brand/README.md). Tagline: _Understand any
-design, check if it will print, get it ready._)
+design, see what Studio could check, get a copy ready for Orca._)
 
 ---
 
@@ -30,7 +30,7 @@ or silent compatibility failures.**
 ## 2. Vision
 
 In three years, when a maker downloads a model, inherits a project, or switches
-printers, the answer to "will this print, and how do I make it print here?" is a
+printers, the answer to "what can I check here, and how do I get a copy ready for Orca?" is a
 single app: **Snapmaker Studio.** It diagnoses, repairs, converts, optimizes,
 validates, and manages — locally, openly, and across ecosystems — the way an IDE
 became the home for code regardless of language or compiler.
@@ -67,7 +67,7 @@ pillars do not change when printers do.
 
 | Pillar | What it owns | Today |
 |---|---|---|
-| **Diagnose** | Compatibility scoring, issue detection, "will it print here?" | Doctor (READY/REPAIRABLE/CONVERTIBLE/HIGH_RISK, score/100) |
+| **Diagnose** | Compatibility scoring, issue detection, "what can Studio check here?" | Doctor (READY/REPAIRABLE/CONVERTIBLE/HIGH_RISK, score/100) |
 | **Transform** | Convert/repair/normalize across ecosystems, preserving design | Bambu/Orca→U1, Prusa/geometry-only 3MF wrap, STL wrap, identity normalization |
 | **Validate** | Prove output is clean before the user wastes a print | `is_u1_clean` gate + real-world corpus (112 files, 100% structurally valid — internal gate, not print success) |
 | **Manage** | Projects, versions, libraries, comparison, history | Workspace + diff foundation (mock UI shipped; engine in progress) |
@@ -254,7 +254,7 @@ _(Merged from the former PRODUCT_MISSION.md.)_
 multi-material print — without losing their work to format wars, vendor
 lock-in, or silent compatibility failures.**
 
-_Understand any design, check if it will print, get it ready._ The flow is always
+_Understand any design, see what Studio could check, get a copy ready for Orca._ The flow is always
 **Understand → Validate → Prepare → Monitor** — Validate never skipped.
 
 ## What we believe

@@ -12,12 +12,22 @@ here is staged, and nothing is a mock-up.
 object, which edge, how many millimetres, why — fixes it in a new copy, proves
 what survived, and checks it against your actual printer.*
 
+**Known limitation (v1.7.0).** The sample project is a minimal synthetic file written by
+Studio's self-check: its `[Content_Types].xml` and `_rels/.rels` parts are present but empty stubs
+(`<Types/>` and `<Relationships/>`), so nothing points a standard 3MF reader at `3D/3dmodel.model`, and its
+`model_settings.config` lists objects 2 to 4 that the model does not contain. In an isolated test, Snapmaker Orca
+2.4.1 answered "Loading of model file failed" for the unprepared sample; it loaded a differently built painted
+project that has a real relationship file. Isolated on 2026-10-25 by loading copies in an isolated Orca 2.4.1 profile: variants with real package parts (content types and a relationship to the model) get past the load error, while variants with the empty stubs are refused, whether or not the extra `model_settings.config` objects are kept. The empty stubs are the cause of that load error; the extra objects are not (one run per variant; the corrected copies stopped at the preset prompt; record: [../internal/orca-sample-isolation-2026-10-25.json](../internal/orca-sample-isolation-2026-10-25.json)). Studio itself reads the sample fine. The line "Orca says out of bounds" is the story of a
+real downloaded project, not something this sample shows in Orca.
+
 ---
 
 ## 1. The beats
 
 ### 0:00 – 0:10 · The problem, in the user's words
-**On screen:** the sample project open in Snapmaker Orca, showing its error.
+**On screen:** Studio's own first frame (the recording starts in Studio and does not show Snapmaker Orca).
+This beat is narration only. Do not open `examples/demo_u1_showcase.3mf` in Orca on camera: Snapmaker Orca 2.4.1
+refused the file shipped in v1.7.0, with a load failure rather than an out-of-bounds message (see the known limitation above). The corrected file on main gets past that error but its full load in Orca is unconfirmed, so the advice stands.
 
 > I downloaded a model. I don't know if it's right for my U1 — and my slicer just
 > says out of bounds.

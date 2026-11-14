@@ -14,7 +14,6 @@ export interface ReadinessView {
   tone: ReadinessTone;
   headline: string;          // user-facing headline
   badge: string;             // short chip label
-  scoreCap: number | null;   // score for stars (capped while review remains)
   atRisk: string[];
   nextActions: string[];
 }
@@ -23,13 +22,13 @@ export function readinessView(report: ReadinessReport | null | undefined): Readi
   if (!report) {
     return {
       ready: false, tone: "checking", headline: "Checking readiness…", badge: "Checking…",
-      scoreCap: null, atRisk: [], nextActions: [],
+      atRisk: [], nextActions: [],
     };
   }
   if (report.ready) {
     return {
       ready: true, tone: "ready", headline: "Ready for Orca review", badge: "Ready for Orca",
-      scoreCap: report.readiness_score, atRisk: [],
+      atRisk: [],
       nextActions: ["Open in Snapmaker Orca to slice."],
     };
   }
@@ -37,7 +36,6 @@ export function readinessView(report: ReadinessReport | null | undefined): Readi
   const next = deriveNextActions(atRisk);
   return {
     ready: false, tone: "risk", headline: "Review before printing", badge: "Review needed",
-    scoreCap: report.readiness_score == null ? null : Math.min(report.readiness_score, 70),
     atRisk,
     nextActions: next.length ? next : ["Open in Snapmaker Orca and review before slicing."],
   };
@@ -50,8 +48,8 @@ function deriveNextActions(atRisk: string[]): string[] {
     out.push("Plan colour swaps or remap to 4 colours in Snapmaker Orca.");
   if (blob.includes("support") || blob.includes("overhang"))
     out.push("Check / enable supports in Snapmaker Orca.");
-  if (blob.includes("plate") || blob.includes("layout") || blob.includes("arrange"))
-    out.push("Arrange all plates in Snapmaker Orca before slicing.");
+  if (blob.includes("plate") || blob.includes("layout"))
+    out.push("Review the plates in Snapmaker Orca before slicing.");
   return out;
 }
 

@@ -22,8 +22,13 @@ _FOOT_NARROW_DIM = 10.0
 _DEFAULT_BED = 270.0  # printable bed edge per Snapmaker Orca U1 profile (270x270)
 
 
-def _f(level, text):
-    return {"level": level, "text": text}
+def _f(level: str, text: str, id: str | None = None, action: str | None = None) -> dict:
+    out = {"level": level, "text": text}
+    if id:
+        out["id"] = id         # the stable condition id (snapstudio_core.conditions)
+    if action:
+        out["action"] = action  # the step that belongs to THIS finding
+    return out
 
 
 def assess(footprint: dict | None, stability: dict | None, bed: dict | None,
@@ -52,10 +57,12 @@ def assess(footprint: dict | None, stability: dict | None, bed: dict | None,
         used.append("contact area")
         if area < _FOOT_TINY_AREA or (min_dim is not None and min_dim < _FOOT_NARROW_DIM / 2):
             bump("risk")
-            findings.append(_f("risk", f"Very small base ({area} mm²) — little grips the bed, so it can pop off mid-print. Add a brim or a raft, and slow the first layer."))
+            findings.append(_f("risk", f"Very small base ({area} mm²) — little grips the bed, so it can pop off mid-print. Add a brim or a raft, and slow the first layer.",
+                                  id="first-layer-adhesion", action="Add a brim or a raft, and slow the first layer."))
         elif area < _FOOT_SMALL_AREA or (min_dim is not None and min_dim < _FOOT_NARROW_DIM):
             bump("warn")
-            findings.append(_f("warn", f"Small base ({area} mm²) — adhesion may be marginal. A brim is a cheap insurance."))
+            findings.append(_f("warn", f"Small base ({area} mm²) — adhesion may be marginal. A brim is a cheap insurance.",
+                                  id="first-layer-adhesion", action="Add a brim."))
 
     # 2. Bed flatness UNDER the print (the open-stack insight).
     bed_ok = bool(bed and bed.get("available"))
@@ -67,10 +74,12 @@ def assess(footprint: dict | None, stability: dict | None, bed: dict | None,
         if region is not None:
             if region >= _BED_HIGH:
                 bump("risk")
-                findings.append(_f("risk", f"Your printer's bed varies about {region} mm {where} — enough to leave the first layer too squished on one side and barely stuck on the other. Re-run bed leveling / Z-tramming, or add a brim and watch the first layer."))
+                findings.append(_f("risk", f"Your printer's bed varies about {region} mm {where} — enough to leave the first layer too squished on one side and barely stuck on the other. Re-run bed leveling / Z-tramming, or add a brim and watch the first layer.",
+                                  id="first-layer-bed-flatness", action="Re-run bed leveling / Z-tramming, or add a brim and watch the first layer."))
             elif region >= _BED_MILD:
                 bump("warn")
-                findings.append(_f("warn", f"Your bed varies about {region} mm {where} — a slight first-layer unevenness is possible. A brim helps; a fresh bed mesh helps more."))
+                findings.append(_f("warn", f"Your bed varies about {region} mm {where} — a slight first-layer unevenness is possible. A brim helps; a fresh bed mesh helps more.",
+                                  id="first-layer-bed-flatness", action="Add a brim, or take a fresh bed mesh."))
             else:
                 findings.append(_f("ok", f"Your measured bed is flat ({region} mm {where}) — first layer should lay down evenly."))
 
@@ -81,15 +90,18 @@ def assess(footprint: dict | None, stability: dict | None, bed: dict | None,
     if wide_flat and tall:
         if corner is not None and corner >= _BED_MILD:
             bump("risk")
-            findings.append(_f("risk", f"Wide flat base + tall print, and your bed's corners differ by ~{corner} mm — corners are likely to lift/warp. Use a brim, ensure good first-layer adhesion, and avoid drafts."))
+            findings.append(_f("risk", f"Wide flat base + tall print, and your bed's corners differ by ~{corner} mm — corners are likely to lift/warp. Use a brim, ensure good first-layer adhesion, and avoid drafts.",
+                                  id="first-layer-corner-lift", action="Use a brim, ensure good first-layer adhesion, and avoid drafts."))
         else:
             bump("warn")
-            findings.append(_f("warn", "Wide flat base on a tall print — corners can lift as it cools. A brim and a warm, draft-free area reduce warping."))
+            findings.append(_f("warn", "Wide flat base on a tall print — corners can lift as it cools. A brim and a warm, draft-free area reduce warping.",
+                                  id="first-layer-corner-lift", action="Add a brim and keep the print in a warm, draft-free area."))
 
     # 4. Orientation suggestion.
     if tip or (area is not None and area < _FOOT_SMALL_AREA):
         used.append("stability")
-        findings.append(_f("warn", "Consider reorienting so a larger, flatter face sits on the bed — more contact means a more reliable first layer and less tip-over risk."))
+        findings.append(_f("warn", "Consider reorienting so a larger, flatter face sits on the bed — more contact means a more reliable first layer and less tip-over risk.",
+                                  id="first-layer-orientation", action="Reorient so a larger, flatter face sits on the bed."))
 
     if not findings:
         findings.append(_f("ok", "No first-layer red flags — solid contact and (where measured) a flat bed."))

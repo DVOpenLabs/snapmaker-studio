@@ -275,3 +275,25 @@ def test_the_two_cases_never_share_a_review_line(env, tmp_path):
         {"slot": 1, "preset": None, "colour": "#00AA11", "spool": SPOOL_SEL}], src, "both")
     lines = [s["line"] for s in result["settings_summary"]["project_materials"]["fidelity"]["slots"]]
     assert SENTENCE not in lines[0] and SENTENCE in lines[1]
+
+
+def test_a_bambu_preset_that_remains_is_followed_by_how_to_choose_a_snapmaker_one(env, tmp_path):
+    from snapstudio_core.materials_fidelity import SPOOL_FOREIGN_PRESET_HINT, SPOOL_PRESET_CAVEAT, is_foreign_preset
+    src = _project(tmp_path, _cfg(**BAMBU))
+    result = _convert(tmp_path, [{"slot": 1, "preset": None, "colour": "#00AA11", "spool": SPOOL_SEL}], src, "foreign")
+    line = result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
+    # the existing sentence is unchanged and the new one follows it, after the caveat
+    assert SENTENCE in line
+    assert line.index(SENTENCE) < line.index(SPOOL_PRESET_CAVEAT) < line.index(SPOOL_FOREIGN_PRESET_HINT)
+    assert "name suggests" in line and "does not choose a preset" in line and "choose one under Orca preset" in line
+    assert "ready" not in SPOOL_FOREIGN_PRESET_HINT.lower()
+    assert is_foreign_preset("Bambu PLA Basic @BBL H2D") and is_foreign_preset("Generic PLA @BBL X1C")
+    assert not is_foreign_preset("Snapmaker PLA Matte @U1") and not is_foreign_preset("") and not is_foreign_preset(None)
+
+
+def test_the_foreign_preset_hint_is_not_said_for_a_snapmaker_preset(env, tmp_path):
+    from snapstudio_core.materials_fidelity import SPOOL_FOREIGN_PRESET_HINT
+    src = _project(tmp_path, _cfg(**{**BAMBU, "filament_settings_id": [MATTE, MATTE, MATTE]}))
+    result = _convert(tmp_path, [{"slot": 1, "preset": None, "colour": "#00AA11", "spool": SPOOL_SEL}], src, "own")
+    line = result["settings_summary"]["project_materials"]["fidelity"]["slots"][1]["line"]
+    assert SENTENCE in line and SPOOL_FOREIGN_PRESET_HINT not in line

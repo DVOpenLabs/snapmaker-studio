@@ -74,6 +74,11 @@ CREATE TABLE IF NOT EXISTS nozzle_confirmation_meta (
   revision INTEGER NOT NULL,
   PRIMARY KEY (host, port)
 );
+CREATE TABLE IF NOT EXISTS project_eligibility (
+  project_id INTEGER PRIMARY KEY,
+  prepare_blocked INTEGER NOT NULL DEFAULT 0,
+  summary TEXT
+);
 CREATE TABLE IF NOT EXISTS project_sources (
   project_id INTEGER PRIMARY KEY,
   site TEXT NOT NULL,
@@ -161,13 +166,41 @@ def upsert_project(conn: sqlite3.Connection, *, name: str, source_path: str,
     return int(row["id"])
 
 
+# A readable project Studio would refuse to prepare is stored next to the verdict, so a badge
+# drawn long after the Model Connect card is gone still says so. Additive table (no schema
+# bump, same terms as `project_sources`); a project with no row is simply not blocked.
+_ELIGIBILITY_COLUMNS = ("COALESCE(e.prepare_blocked, 0) AS prepare_blocked, "
+                        "e.summary AS prepare_summary")
+
+
+def _with_eligibility(row) -> dict:
+    d = dict(row)
+    d["prepare_blocked"] = bool(d.get("prepare_blocked"))
+    return d
+
+
+def set_eligibility(conn: sqlite3.Connection, project_id: int, prepare_blocked: bool,
+                    summary: str | None = None) -> None:
+    with conn:
+        conn.execute(
+            """INSERT INTO project_eligibility (project_id, prepare_blocked, summary)
+               VALUES (?,?,?)
+               ON CONFLICT(project_id) DO UPDATE SET
+                 prepare_blocked=excluded.prepare_blocked, summary=excluded.summary""",
+            (project_id, 1 if prepare_blocked else 0, summary if prepare_blocked else None))
+
+
 def list_projects(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
-    return [dict(r) for r in rows]
+    rows = conn.execute(
+        f"SELECT p.*, {_ELIGIBILITY_COLUMNS} FROM projects p "
+        "LEFT JOIN project_eligibility e ON e.project_id=p.id "
+        "ORDER BY p.updated_at DESC").fetchall()
+    return [_with_eligibility(r) for r in rows]
 
 
 def search_projects(conn: sqlite3.Connection, query: str = "", tag: str | None = None) -> list[dict]:
-    sql = "SELECT p.* FROM projects p"
+    sql = (f"SELECT p.*, {_ELIGIBILITY_COLUMNS} FROM projects p "
+           "LEFT JOIN project_eligibility e ON e.project_id=p.id")
     params: list = []
     if tag:
         sql += (" JOIN project_tags pt ON pt.project_id=p.id"
@@ -177,7 +210,7 @@ def search_projects(conn: sqlite3.Connection, query: str = "", tag: str | None =
         sql += (" WHERE " if "WHERE" not in sql else " AND ") + "p.name LIKE ?"
         params.append(f"%{query}%")
     sql += " ORDER BY p.updated_at DESC"
-    return [dict(r) for r in conn.execute(sql, params).fetchall()]
+    return [_with_eligibility(r) for r in conn.execute(sql, params).fetchall()]
 
 
 def delete_project(conn: sqlite3.Connection, project_id: int) -> None:
@@ -185,6 +218,7 @@ def delete_project(conn: sqlite3.Connection, project_id: int) -> None:
         conn.execute("DELETE FROM project_tags WHERE project_id=?", (project_id,))
         conn.execute("DELETE FROM history WHERE project_id=?", (project_id,))
         conn.execute("DELETE FROM project_sources WHERE project_id=?", (project_id,))
+        conn.execute("DELETE FROM project_eligibility WHERE project_id=?", (project_id,))
         conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
 

@@ -290,3 +290,11 @@ def test_what_the_watcher_remembers_is_bounded(tmp_path, monkeypatch):
         write(tmp_path, f"job{index}.gcode")
     watch_folder.scan(tmp_path)
     assert len(watch_folder._OBSERVED) <= 4
+
+
+def test_a_candidate_carries_its_exact_modification_time_as_text(tmp_path):
+    f = tmp_path / "job.gcode"
+    f.write_text(COMPLETE)
+    out = watch_folder.match_project(str(tmp_path), None)
+    candidate = next(c for c in out["candidates"] if c["name"] == "job.gcode")
+    assert candidate["modified_ns"] == str(os.stat(f).st_mtime_ns)

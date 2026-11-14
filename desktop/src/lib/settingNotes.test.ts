@@ -5,11 +5,11 @@ const change = (extra: Record<string, unknown>) => ({ key: "k", old: "a", new: "
 
 describe("settingNote", () => {
   it("prefers the engine's explanation", () => {
-    expect(settingNote(change({ reason: "short", explanation: "Because the importer says so." }))).toBe("Because the importer says so.");
+    expect(settingNote(change({ reason: "short", explanation: "Because the importer says so." }))).toEqual({ note: "Because the importer says so.", source: null, kind: null });
   });
 
   it("falls back to a specific reason", () => {
-    expect(settingNote(change({ reason: "the creator left the brim on automatic" }))).toBe("the creator left the brim on automatic");
+    expect(settingNote(change({ reason: "the creator left the brim on automatic" }))).toEqual({ note: "the creator left the brim on automatic", source: null, kind: null });
   });
 
   it("says nothing when the reason only restates that the setting changed", () => {
@@ -29,6 +29,12 @@ describe("settingNote", () => {
   });
 
   it("keeps an honest 'not reported' reason, because that is itself a statement of what Studio does not know", () => {
-    expect(settingNote(change({ reason: "change was not reported by the repair pipeline" }))).toBe("change was not reported by the repair pipeline");
+    expect(settingNote(change({ reason: "change was not reported by the repair pipeline" }))).toEqual({ note: "change was not reported by the repair pipeline", source: null, kind: null });
+  });
+
+  it("returns source and kind with the same note record", () => {
+    expect(settingNote(change({ explanation: "It was outside the range.", source: "Studio's valid range for this setting", kind: "engine" }))).toEqual({
+      note: "It was outside the range.", source: "Studio's valid range for this setting", kind: "engine",
+    });
   });
 });

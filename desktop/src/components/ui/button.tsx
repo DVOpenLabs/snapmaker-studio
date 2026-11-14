@@ -8,10 +8,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:opacity-90 shadow-sm",
+        primary: "bg-primary text-primary-foreground hover:brightness-90 dark:hover:brightness-100 dark:hover:opacity-90 shadow-sm",
         secondary: "border border-border bg-card hover:bg-muted",
         ghost: "hover:bg-muted",
-        danger: "bg-risk text-white hover:opacity-90",
+        danger: "bg-risk text-white hover:brightness-90 dark:hover:brightness-100 dark:hover:opacity-90",
       },
       size: {
         sm: "h-8 px-3",

@@ -27,20 +27,28 @@ import NotFound from "@/routes/NotFound";
 import { ModelDownloadListener } from "@/components/ModelDownloadListener";
 import { useTheme } from "@/store/theme";
 import { useSession } from "@/store/session";
+import { trackJob } from "@/store/job";
 import { launchFile, maybeAutoCheckUpdate } from "@/api";
 import { useSliced } from "@/store/sliced";
 import { useUpdateCheckStore } from "@/store/updateCheck";
 import { useToast } from "@/store/toast";
+import { EXTENSION_ROUTES } from "@/routes/ext";
+import { installAppLifecycle } from "@/lib/extLifecycle";
 
 const queryClient = new QueryClient();
 
 export default function App() {
   const { theme } = useTheme();
 
+  useEffect(() => installAppLifecycle(), []);
+
   // Keep the <html> class in sync with the persisted theme on load.
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
+
+  // Note which files belong to the job in hand, so it can be picked up after a restart.
+  useEffect(() => trackJob(), []);
 
   // A model handed to Studio on the command line — a file association, "Open
   // with", or an automated run — should be open when the window appears, rather
@@ -112,6 +120,9 @@ export default function App() {
             <Route path="/first-layer" element={<FirstLayer />} />
             <Route path="/start" element={<BeginnerWorkflow />} />
             <Route path="/doctor/:id" element={<DoctorLanding />} />
+            {EXTENSION_ROUTES.map(({ path, Component }) => (
+              <Route key={path} path={path} element={<Component />} />
+            ))}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

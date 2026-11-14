@@ -15,6 +15,7 @@ Rules:
 from __future__ import annotations
 import math
 from .geometry import load_mesh, Mesh
+from . import geometry_basis
 
 SCHEMA_VERSION = "mesh/1"
 
@@ -302,4 +303,7 @@ def analyze(path: str) -> dict:
         "material_estimate_g": grams,
         "footprint": _footprint(m),
         "findings": _plain(integrity, overhang, stability, vol_cm3, grams),
+        # footprint, stability height and volume are measured on the file's raw mesh; this says
+        # whether that raw mesh is the physical size, so a consumer can qualify or withhold them.
+        "geometry_basis": geometry_basis.assess(path),
     }

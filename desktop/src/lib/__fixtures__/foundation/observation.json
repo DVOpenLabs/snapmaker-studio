@@ -1,0 +1,22 @@
+{
+  "ageing_ok": false,
+  "field": "state",
+  "historical": false,
+  "observation_id": "obs-1",
+  "observed_at": "2026-01-01T12:00:00Z",
+  "received_at": "2026-01-01T12:00:00Z",
+  "schema_version": "observation/1",
+  "source": {
+    "kind": "multiace",
+    "provider_instance_id": "multiace-1",
+    "snapshot_id": "snap-1",
+    "source_version": "1.0"
+  },
+  "source_kind": "live_query",
+  "subject": {
+    "id": "lane:unit:multiace:a:0",
+    "kind": "lane"
+  },
+  "ttl_s": 600,
+  "value": "loaded"
+}

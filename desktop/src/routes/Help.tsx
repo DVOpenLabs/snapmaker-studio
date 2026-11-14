@@ -29,7 +29,7 @@ export default function Help() {
         <p className="text-muted-foreground">
           Orca slices. Fluidd monitors. Studio helps decide what to fix before you
           print. Studio checks a model and your U1 before a layer is sliced —
-          local-first, nothing leaves your network.
+          local-first: your files and checks stay on this computer.
         </p>
         <Link to="/why" className="inline-flex items-center gap-1 text-primary hover:underline">
           Why Studio? <ArrowRight className="h-3.5 w-3.5" />

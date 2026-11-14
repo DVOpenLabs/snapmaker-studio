@@ -212,10 +212,13 @@ def test_preflight_compares_the_project_to_this_printers_real_numbers():
 
 def test_bed_check_uses_this_printers_bed_not_the_u1s():
     project = {"filament_count": {"value": 1, "confidence": "confirmed", "evidence": "t"}}
-    placement = {"available": True, "off_plate": [], "fixable": False}
+    # the service judges a Voron against ITS recorded printable volume, and says which area that was
+    placement = {"available": True, "off_plate": [], "fixable": False, "bed_height_mm": 252.0,
+                 "bed": {"min_x": 0.0, "min_y": 0.0, "max_x": 250.0, "max_y": 250.0},
+                 "items": [{"object_id": "1", "bounds_mm": {"min": [10, 10, 0], "max": [20, 20, 30]}}]}
     out = pf.evaluate(project, voron_facts(), placement=placement)
     bed = next(c for c in out["checks"] if c["id"] == "bed.fit")
-    assert "250.0 × 250.0 × 252.0 mm" in bed["evidence"]
+    assert "250 × 250 mm printable area" in bed["evidence"] and "252" in bed["evidence"]
     assert "270" not in bed["evidence"]
 
 

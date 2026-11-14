@@ -4,6 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { providerTest, type ProviderTest } from "@/api";
 import { useProvider, PROVIDERS, type ProviderKind } from "@/store/provider";
+import { usePrinter } from "@/store/printer";
+import { isPrinterSetUp } from "@/lib/printerSetup";
 import LocalSpoolSettings from "@/components/LocalSpoolSettings";
 import SpoolListbox from "@/components/SpoolListbox";
 
@@ -31,6 +33,7 @@ function plural(count: number, singular: string, pluralForm: string): string {
 }
 
 export default function MaterialProviderSettings() {
+  const printerHost = usePrinter((s) => s.host);
   const { kind, url, key, keyEpoch, slotMap, slotBase, lastSeen, setKind, setUrl, setKey, setSlot, setSlotBase, markSeen } =
     useProvider();
   const [draft, setDraft] = useState(url);
@@ -228,7 +231,9 @@ export default function MaterialProviderSettings() {
           </div>
         )}
 
-        <LocalSpoolSettings />
+        {isPrinterSetUp(printerHost) ? <LocalSpoolSettings /> : (
+          <p className="mt-4 text-xs text-muted-foreground">Spool notes are kept per printer. Set up your printer in Settings to add them.</p>
+        )}
       </CardContent>
     </Card>
   );
