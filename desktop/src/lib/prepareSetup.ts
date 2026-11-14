@@ -191,6 +191,7 @@ export type TopologyOutcome =
   | { state: "used"; heads: number | null; slots: number | null; unbound: string[] | null }
   | { state: "unused"; heads: number | null; slots: number | null; reason: string | null }
   | { state: "blocked"; reasons: string[]; alternative: string | null }
+  | { state: "not_evaluated" }
   | { state: "unknown" };
 
 const count = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
@@ -199,7 +200,8 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 /**
  * What the engine says about the setup it was sent. Choosing a setup is not proof the engine used it, so each answer comes only
  * from the engine's own `settings_summary.setup` (backend convert.py / repair.py):
- *   state "invalid" (or a blocked result)  -> blocked: nothing was written; its reasons and the stock alternative are carried through
+ *   state "invalid"                       -> blocked: nothing was written; its reasons and the stock alternative are carried through
+ *   a blocked result with no invalid setup report -> not_evaluated: Prepare stopped for another reason (for example the Project Materials guard), so nothing is said about the setup
  *   state "valid" with applied === false   -> unused: read but not applied; not_applied_reason says why
  *   state "valid" with applied === true    -> used: the engine echoes the heads, slots and unbound slots it applied
  *   state "valid" with no applied field   -> unknown (an engine that does not say)
@@ -213,8 +215,9 @@ export function topologyOutcome(requested: boolean, result: {
   const blocked = (): TopologyOutcome => ({
     state: "blocked", reasons: strings(rep?.reasons), alternative: typeof rep?.stock_alternative === "string" ? rep.stock_alternative : null,
   });
-  if (!rep || typeof rep !== "object") return result?.blocked ? blocked() : { state: "unknown" };
-  if (rep.state === "invalid" || result?.blocked) return blocked();
+  if (!rep || typeof rep !== "object") return result?.blocked ? { state: "not_evaluated" } : { state: "unknown" };
+  if (rep.state === "invalid") return blocked();
+  if (result?.blocked) return { state: "not_evaluated" };
   if (rep.state !== "valid") return { state: "unknown" };
   const heads = count(rep.heads), slots = count(rep.slots);
   // The engine echoing a different shape than the one sent is not confirmation that this setup was the one used.
@@ -234,11 +237,12 @@ export function topologyOutcomeLine(o: TopologyOutcome): string | null {
   switch (o.state) {
     case "used": {
       const u = o.unbound ?? [];
-      const unbound = u.length ? ` ${u.length} ${u.length === 1 ? "slot has" : "slots have"} no reported feeder lane: ${u.join(", ")}.` : "";
+      const unbound = u.length ? ` ${u.length} ${u.length === 1 ? "slot has" : "slots have"} no reported binding: ${u.join(", ")}.` : "";
       return `The engine reports it used this printer setup${shape(o.heads, o.slots)}.${unbound}`;
     }
     case "unused": return `The engine read this printer setup${shape(o.heads, o.slots)} but did not apply it. ${o.reason ?? "The engine gave no reason."}`;
-    case "blocked": return `The engine could not use this printer setup, so nothing was prepared.${o.reasons.length ? ` ${sentenceCase(o.reasons.join("; "))}.` : ""}${o.alternative ? ` ${o.alternative}` : ""}`;
+    case "blocked": return `The engine could not use this printer setup, so nothing was prepared.${o.reasons.length ? ` ${sentenceCase(endSentence(o.reasons.join("; ")))}` : ""}${o.alternative ? ` ${o.alternative}` : ""}`;
+    case "not_evaluated": return "Prepare stopped for another reason, so this printer setup was not used or checked. The reason is shown above.";
     case "unknown": return "The engine did not say whether it used this printer setup, so Studio cannot confirm it did.";
     default: return null;
   }
