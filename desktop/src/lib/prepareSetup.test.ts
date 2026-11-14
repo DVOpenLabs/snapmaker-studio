@@ -162,6 +162,29 @@ describe("topologyOutcome (engine-authoritative)", () => {
     expect(o).toEqual({ state: "blocked", reasons: ["3 heads"], alternative: "Prepare without a printer setup." });
     expect(outcomeIsGood(o)).toBe(false);
   });
+  it("a block for another reason (Project Materials guard) says nothing false about a valid setup", () => {
+    const guard = { blocked: true, settings_summary: { project_materials: { guard: {} } } } as never;
+    const o = topologyOutcome(true, guard, sent);
+    expect(o).toEqual({ state: "not_evaluated" });
+    expect(outcomeIsGood(o)).toBe(false);
+    const line = topologyOutcomeLine(o)!;
+    expect(line).toMatch(/stopped for another reason/);
+    expect(line).not.toMatch(/could not use this printer setup/);
+    expect(topologyOutcome(true, result({ state: "valid", applied: true, heads: 4, slots: 8 }, true), sent)).toEqual({ state: "not_evaluated" });
+  });
+  it("an engine echoing a different shape, or a non-boolean applied, is unknown, not used", () => {
+    expect(topologyOutcome(true, result({ state: "valid", applied: true, heads: 3, slots: 8 }), sent).state).toBe("unknown");
+    expect(topologyOutcome(true, result({ state: "valid", applied: "true", heads: 4, slots: 8 }), sent).state).toBe("unknown");
+  });
+  it("does not double the full stop when an engine reason already ends with one", () => {
+    const line = topologyOutcomeLine({ state: "blocked", reasons: ["the printer setup has 3 heads."], alternative: null })!;
+    expect(line).toContain("The printer setup has 3 heads.");
+    expect(line).not.toContain("..");
+  });
+  it("names unbound slots as having no reported binding", () => {
+    const line = topologyOutcomeLine({ state: "used", heads: 4, slots: 8, unbound: ["slot 5"] })!;
+    expect(line).toContain("no reported binding: slot 5");
+  });
   it("does not double the full stop when a read failure already ends its sentence", () => {
     const sel = selectionFromFailure({ label: "host:1", projectPath: "p", token: 1 } as never, new Error("That address was refused."));
     expect(setupStatusLine(sel)).toBe("host:1: That address was refused.");
