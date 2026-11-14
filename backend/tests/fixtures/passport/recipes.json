@@ -1,0 +1,12 @@
+[
+  {"schema_version": "virtual_recipe/1", "recipe_id": "synthetic:mix-a",
+   "generator": {"name": "synthetic-generator", "version": "1"}, "kind": "custom",
+   "components": [{"slot_ref": "slot:0", "ratio": 0.6, "ratio_kind": "mass"},
+                  {"slot_ref": "slot:1", "ratio": 0.4, "ratio_kind": "mass"}],
+   "simulated": true, "execution_supported": null},
+  {"schema_version": "virtual_recipe/9", "recipe_id": "synthetic:from-the-future",
+   "generator": {"name": "synthetic-generator", "version": "9"}, "kind": "custom", "components": []},
+  {"schema_version": "virtual_recipe/1", "recipe_id": "synthetic:loops",
+   "generator": {"name": "synthetic-generator", "version": "1"}, "kind": "custom",
+   "components": [{"slot_ref": "recipe:synthetic:loops", "ratio": 1, "ratio_kind": "mass"}]}
+]

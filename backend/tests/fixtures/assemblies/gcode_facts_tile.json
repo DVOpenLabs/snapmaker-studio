@@ -1,0 +1,8 @@
+{
+  "available": true,
+  "slots": [
+    {"tool": 0, "used": true, "grams": 12.5, "mm": 4100.0},
+    {"tool": 1, "used": null, "grams": null, "mm": null},
+    {"tool": 2, "used": true, "grams": 4.0, "mm": 1300.0}
+  ]
+}
