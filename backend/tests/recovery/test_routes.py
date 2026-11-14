@@ -81,6 +81,23 @@ def test_monitoring_route_refuses_public_host_and_bad_input(api):
     assert api("/monitoring/history", {})[0] == 400
 
 
+@pytest.mark.parametrize("port", [0, 65536, -1, 7125.5, True, "not-a-port"])
+def test_monitoring_routes_reject_invalid_ports(api, port):
+    assert api("/monitoring/read", {"host": "127.0.0.1", "port": port})[0] == 400
+    assert api("/monitoring/history", {"host": "127.0.0.1", "port": port})[0] == 400
+
+
+def test_monitoring_custom_loopback_port_stays_within_the_read_only_boundary(api):
+    mock = MockHost({"/printer/objects/query": (200, STATUS)}).start()
+    try:
+        code, _ = api("/monitoring/read", {"host": "127.0.0.1", "port": mock.server_address[1]})
+        requests = list(mock.requests)
+    finally:
+        mock.stop()
+    assert code == 200
+    assert [(request["method"], request["path"]) for request in requests] == [("GET", "/printer/objects/query")]
+
+
 def test_malformed_monitoring_host_is_a_400_not_a_500(api):
     for host in ("evil.com/path", "user@host", "http://x"):
         code, _ = api("/monitoring/read", {"host": host})

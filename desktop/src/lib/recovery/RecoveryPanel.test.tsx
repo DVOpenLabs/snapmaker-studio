@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MonitorSummary, RestorePreview } from "./RecoveryPanel";
+import { isValidPort } from "./api";
 import type { RestoreResult } from "./api";
 
 const base: RestoreResult = {
@@ -43,5 +44,14 @@ describe("MonitorSummary", () => {
     expect(html).toContain("match to a local file: unverified");
     expect(html).toContain("Camera: unknown");
     expect(renderToStaticMarkup(<MonitorSummary read={null} />)).toBe("");
+  });
+});
+
+describe("monitor port validation", () => {
+  it("accepts only whole-number ports in the TCP range", () => {
+    for (const value of ["1", "7125", "65535"]) expect(isValidPort(value)).toBe(true);
+    for (const value of ["", "0", "65536", "7125.5", "1e3", " 7125", "port"]) {
+      expect(isValidPort(value)).toBe(false);
+    }
   });
 });
