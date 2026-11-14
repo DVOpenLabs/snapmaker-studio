@@ -260,6 +260,151 @@ def test_cli_runner_timeout_returns_when_grandchild_keeps_pipes_open(tmp_path):
             os.kill(grandchild_pid, signal.SIGTERM)
 
 
+@pytest.mark.parametrize("stop_kind", ["timeout", "cancel"])
+def test_cli_runner_timeout_or_cancel_stops_descendant_writer(tmp_path, stop_kind):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    pid_file = tmp_path / "writer.pid"
+    marker = tmp_path / "writes.log"
+    child_script = tmp_path / "writer.py"
+    script = tmp_path / "engine.py"
+    child_script.write_text(
+        "import sys,time\n"
+        "from pathlib import Path\n"
+        "path=Path(sys.argv[1])\n"
+        "while True:\n"
+        "    with path.open('a', encoding='utf-8') as handle: handle.write('x')\n"
+        "    time.sleep(0.02)\n",
+        encoding="utf-8",
+    )
+    script.write_text(
+        "import subprocess,sys,time\n"
+        "from pathlib import Path\n"
+        "pid_file,marker=sys.argv[1:]\n"
+        f"child=subprocess.Popen([sys.executable,{str(child_script)!r},marker])\n"
+        "Path(pid_file).write_text(str(child.pid))\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    runner = CliRunner(sys.executable, root, (str(script), str(pid_file), str(marker)), timeout_s=0.25)
+    cancel = threading.Event() if stop_kind == "cancel" else None
+    outcome: list[object] = []
+
+    def run():
+        try:
+            outcome.append(runner.run(cancel_event=cancel))
+        except Exception as exc:  # noqa: BLE001 - asserted below
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    if cancel is not None:
+        deadline = time.monotonic() + 3
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        cancel.set()
+    worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert isinstance(outcome[0], RunnerError), repr(outcome)
+    assert outcome[0].code == ("cancelled" if stop_kind == "cancel" else "timeout")
+    grandchild_pid = int(pid_file.read_text(encoding="utf-8"))
+    first_size = marker.stat().st_size if marker.exists() else 0
+    time.sleep(0.12)
+    second_size = marker.stat().st_size if marker.exists() else 0
+    try:
+        assert not _pid_alive(grandchild_pid), "runner left its descendant alive"
+        assert second_size == first_size, "descendant kept writing after the runner returned"
+    finally:
+        if _pid_alive(grandchild_pid):
+            os.kill(grandchild_pid, signal.SIGTERM)
+
+
+def test_cli_runner_failed_run_leaves_no_job_directory(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "raise SystemExit(7)"), timeout_s=2)
+    with pytest.raises(RunnerError, match="process_failed"):
+        runner.run()
+    assert list(root.iterdir()) == []
+
+
+def test_cli_runner_keeps_successful_job_until_explicit_cleanup(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "pass"), timeout_s=2)
+    result = runner.run()
+    assert result.job_dir.is_dir()
+    runner.cleanup(result)
+    assert not result.job_dir.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the launcher is the Windows path")
+def test_cli_runner_refuses_windows_launch_when_frozen(monkeypatch, tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    runner = CliRunner(sys.executable, root, ("-c", "pass"), timeout_s=2)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    with pytest.raises(RunnerError, match="windows_launcher_unavailable_in_packaged_app"):
+        runner.run()
+    assert list(root.iterdir()) == []
+
+
+@pytest.mark.parametrize("name", ["orca", "Snapmaker-Orca.EXE", "Snapmaker_Orca.exe", "bambu-studio.exe", "UltiMaker-Cura", "Snapmaker_Orca_Linux_2.AppImage", "bambu", "PrusaSlicer", "SuperSlicer", "cura", "kiri", "custom-slicer-engine"])
+def test_cli_runner_refuses_slicer_named_executable(tmp_path, name):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    executable = tmp_path / name
+    executable.write_bytes(b"synthetic executable placeholder")
+    with pytest.raises(RunnerError, match="executable_policy_refused"):
+        CliRunner(executable, root, ())
+
+
+def _copy_interpreter_as(tmp_path, name):
+    import shutil
+    copy = tmp_path / name
+    shutil.copy2(sys.executable, copy)
+    return copy
+
+
+def _sha256_of(path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_cli_runner_refuses_unpinned_renamed_copy(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    with pytest.raises(RunnerError, match="executable_not_approved"):
+        CliRunner(copy, root, ())
+
+
+def test_cli_runner_admits_renamed_copy_with_matching_pin(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    # Admission only: a copied interpreter may not start outside its install directory, so it is not run here.
+    runner = CliRunner(copy, root, ("-c", "pass"), timeout_s=5, approved_sha256=[_sha256_of(copy).upper()])
+    assert runner.executable == copy.resolve()
+
+
+@pytest.mark.parametrize("pin", ["0" * 64, "not-a-hash", ""])
+def test_cli_runner_refuses_wrong_or_malformed_pin(tmp_path, pin):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "engine.exe" if os.name == "nt" else "engine")
+    with pytest.raises(RunnerError, match="executable_not_approved"):
+        CliRunner(copy, root, (), approved_sha256=[pin])
+
+
+def test_cli_runner_name_rail_still_wins_over_a_matching_pin(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    copy = _copy_interpreter_as(tmp_path, "orca.exe" if os.name == "nt" else "orca")
+    with pytest.raises(RunnerError, match="executable_policy_refused"):
+        CliRunner(copy, root, (), approved_sha256=[_sha256_of(copy)])
+
+
 def test_cli_runner_stops_child_after_unexpected_poll_exception(monkeypatch, tmp_path):
     root = tmp_path / "jobs"
     root.mkdir()
