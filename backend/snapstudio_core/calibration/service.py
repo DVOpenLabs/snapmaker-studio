@@ -30,21 +30,32 @@ CREATE TABLE IF NOT EXISTS calibration_runs (
 """
 
 
-def basis_document(family: str, layer_height_mm: float, nozzle_mm: float, material: str) -> dict:
+def basis_document(family: str, layer_height_mm: float, nozzle_mm: float, material: str,
+                   *, source: str | None = None, model: str | None = None,
+                   first_layer_height_mm: float | None = None) -> dict:
     if family not in ("frontlit", "backlit"):
         raise ValueError("family must be frontlit or backlit")
-    values = (layer_height_mm, nozzle_mm)
+    values = (layer_height_mm, nozzle_mm) + (() if first_layer_height_mm is None else (first_layer_height_mm,))
+    if not isinstance(material, str) or not material.strip() or len(material) > 32:
+        raise ValueError("material must be a non-empty name of at most 32 characters")
+    if source not in (None, "ditherforge_txt", "kromacut_json"):
+        raise ValueError("unknown palette source")
+    if model is not None and (not isinstance(model, str) or len(model) > 128):
+        raise ValueError("model must be at most 128 characters")
     if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in values):
         raise ValueError("layer height and nozzle must be positive finite numbers")
     normalized = {"family": family, "layer_height_mm": round(float(layer_height_mm), 4),
                   "nozzle_mm": round(float(nozzle_mm), 4), "material": material.strip().upper()}
+    normalized.update(source=source, model=(model.strip() or None) if model else None,
+                      first_layer_height_mm=round(float(first_layer_height_mm), 4) if first_layer_height_mm is not None else None)
     return {**normalized, "calibration_basis_id": "calibration-basis:" + content_hash(normalized).split(":", 1)[1]}
 
 
 def evaluate(palette: dict, basis: dict, physical_colors: dict[str, str], owned_filaments: list[dict]) -> dict:
     entries = []
     for index, item in enumerate(palette["entries"]):
-        physical = physical_colors.get(str(index))
+        enabled = item.get("enabled", True)
+        physical = physical_colors.get(str(index)) if enabled else None
         alternatives = []
         for spool in owned_filaments:
             color = spool.get("color") if isinstance(spool, dict) else None
@@ -57,7 +68,7 @@ def evaluate(palette: dict, basis: dict, physical_colors: dict[str, str], owned_
         entries.append({"label": item["label"], "simulated_color": item["color"],
                         "physical_color": physical, "physical_distance": material_plan.colour_distance(
                             item["color"], physical), "td": item["td"],
-                        "td_provenance": item["td_provenance"], "alternatives": alternatives[:3]})
+                        "td_provenance": item["td_provenance"], "enabled": enabled, "alternatives": alternatives[:3] if enabled else []})
     return {"calibration_basis": basis, "entries": entries,
             "advisory": "Palette colours are simulated targets; physical readings are separate observations. Owned-filament matches are advisory."}
 

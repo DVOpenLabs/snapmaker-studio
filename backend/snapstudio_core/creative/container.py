@@ -62,10 +62,19 @@ def _safe_name(name: str) -> str:
 
 
 def _check_model(xml: bytes) -> None:
-    if b"<!DOCTYPE" in xml.upper() or b"<!ENTITY" in xml.upper():
+    # UTF-8 only. A byte-substring DOCTYPE check is bypassed by UTF-16/UTF-32 (NUL-interleaved), which expat
+    # auto-detects and then expands entities from, so the text is decoded first and anything else is refused.
+    try:
+        text = xml.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ContainerError("bad_xml") from exc
+    if "\x00" in text:
+        raise ContainerError("unsafe_xml")
+    upper = text.upper()
+    if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
         raise ContainerError("unsafe_xml")
     try:
-        root = ElementTree.fromstring(xml)
+        root = ElementTree.fromstring(text.encode("utf-8"))
     except ElementTree.ParseError as exc:
         raise ContainerError("bad_xml") from exc
     if root.tag != f"{{{CORE_NS}}}model":
