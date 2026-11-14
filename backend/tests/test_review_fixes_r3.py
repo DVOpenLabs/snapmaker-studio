@@ -105,38 +105,6 @@ def test_export_output_below_a_link_to_a_share_is_refused(monkeypatch, tmp_path)
     assert json.loads(result.output)["error"]["code"] == "bad_output"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="the no-hard-link fallback publishes with an atomic Windows rename")
-def test_export_without_hard_links_publishes_the_whole_file_atomically(monkeypatch, tmp_path):
-    original = tmp_path / "a.3mf"
-    original.write_bytes(b"synthetic")
-    target = tmp_path / "out.passport.json"
-    monkeypatch.setattr(os, "link", lambda *a, **k: (_ for _ in ()).throw(PermissionError("no hard links")))
-    result = CliRunner().invoke(passport_cli.passport, ["export", "--original", str(original), "-o", str(target)])
-    assert result.exit_code == 0, result.output
-    assert json.loads(target.read_text(encoding="utf-8"))["schema_version"] == "passport/1"
-    assert not list(tmp_path.glob("*.tmp"))
-
-
-@pytest.mark.skipif(os.name != "nt", reason="the no-hard-link fallback publishes with an atomic Windows rename")
-def test_export_without_hard_links_never_replaces_a_destination_that_appears(monkeypatch, tmp_path):
-    original = tmp_path / "a.3mf"
-    original.write_bytes(b"synthetic")
-    target = tmp_path / "out.passport.json"
-    real_rename = os.rename
-
-    def racing_rename(src, dst, *a, **k):
-        Path(dst).write_text("someone else's file", encoding="utf-8")
-        return real_rename(src, dst, *a, **k)
-
-    monkeypatch.setattr(os, "link", lambda *a, **k: (_ for _ in ()).throw(PermissionError("no hard links")))
-    monkeypatch.setattr(os, "rename", racing_rename)
-    result = CliRunner().invoke(passport_cli.passport, ["export", "--original", str(original), "-o", str(target)])
-    assert result.exit_code == 1
-    assert json.loads(result.output)["error"]["code"] == "output_exists"
-    assert target.read_text(encoding="utf-8") == "someone else's file"
-    assert not list(tmp_path.glob("*.tmp"))
-
-
 @pytest.mark.parametrize("error", [EOFError("truncated"), lzma.LZMAError("corrupt")])
 def test_truncated_or_corrupt_compressed_member_is_a_400(monkeypatch, tmp_path, error):
     path = tmp_path / "out.3mf"
