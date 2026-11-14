@@ -60,9 +60,15 @@ def evaluate(data: dict) -> tuple[int, dict]:
     family = data.get("family")
     if family not in ("frontlit", "backlit"):
         raise rv.ValidationError("Invalid 'family'")
+    material = rv.require_bounded_str(data, "material", 32) if "material" in data else "PLA"
+    if not material.strip():
+        raise rv.ValidationError("Material must not be empty")
     basis = service.basis_document(family, rv.require_positive_float(data, "layer_height_mm"),
                                    rv.optional_positive_float(data, "nozzle_mm", 0.4),
-                                   rv.optional_bounded_str(data, "material", 32) or "PLA")
+                                   material,
+                                   source=source, model=rv.optional_bounded_str(data, "model", 128),
+                                   first_layer_height_mm=rv.require_positive_float(data, "first_layer_height_mm")
+                                   if "first_layer_height_mm" in data else None)
     palette = decoded.value.to_dict()
     result = service.evaluate(palette, basis, _colors(data), _owned(data))
     saved = service.save_run(basis, palette, result, data_dir=paths.data_dir())
