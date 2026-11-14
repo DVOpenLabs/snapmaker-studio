@@ -161,6 +161,12 @@ def test_doctype_in_a_part_file_is_not_parsed() -> None:
             + b"http://schemas.microsoft.com/3dmanufacturing/core/2015/02" + b'"/>')
     project = generators.read_ditherforge(make_ditherforge(extra={"3D/Objects/object_9.model": evil}))
     assert "object_model_unreadable:3D/Objects/object_9.model" in project.diagnostics
+    # an unreadable part may hold the only painted geometry: totals are unknown, never a measured absence (SOL-144-2)
+    assert project.understood["per_face_paint"] is None
+    assert project.understood["triangle_count"] is None
+    assert project.understood["painted_triangle_count"] is None
+    assert project.understood["paint_extruders_used"] is None
+    assert any(u.startswith("geometry totals incomplete") for u in project.unknown)
 
 
 def test_unreadable_model_settings_is_a_diagnostic() -> None:

@@ -193,11 +193,13 @@ def _build(generator: str, data: bytes) -> CreativeProject:
 
     # -- geometry facts: main model plus every object part file (DitherForge keeps meshes there)
     models = [("3D/3dmodel.model", root)]
+    unreadable_models = 0
     for name in sorted(manifest.parts):
         if name.startswith("3D/Objects/") and name.endswith(".model"):
             try:
                 models.append((name, _xml(manifest.parts[name])))
             except ContainerError:
+                unreadable_models += 1
                 diagnostics.append(f"object_model_unreadable:{name}")
     stats = {"triangles": 0, "painted": 0, "values": {}}
     for _, tree in models:
@@ -211,6 +213,11 @@ def _build(generator: str, data: bytes) -> CreativeProject:
     decoded = {k: _decode_paint(k) for k in stats["values"]}
     undecoded = sorted(k for k, v in decoded.items() if v is None)
     slots_used = sorted({v for v in decoded.values() if v is not None})
+    # An unreadable object part may hold the only painted or counted geometry, so the aggregates built
+    # from the remaining parts are incomplete: report them as unknown, never as a measured zero/absence.
+    incomplete = unreadable_models > 0
+    if incomplete:
+        unknown.append(f"geometry totals incomplete: {unreadable_models} object part(s) could not be read")
 
     # -- model_settings.config
     ms_objects: list[dict[str, Any]] = []
@@ -229,10 +236,10 @@ def _build(generator: str, data: bytes) -> CreativeProject:
         facts["designer"] = meta.get("Designer", "")
         facts["build_item_count"] = len(list(root.iter(f"{_C}item")))
         facts["object_part_files"] = [n for n, _ in models[1:]]
-        facts["triangle_count"] = stats["triangles"]
-        facts["per_face_paint"] = stats["painted"] > 0
-        facts["painted_triangle_count"] = stats["painted"]
-        facts["paint_extruders_used"] = slots_used
+        facts["triangle_count"] = None if incomplete else stats["triangles"]
+        facts["per_face_paint"] = None if incomplete else stats["painted"] > 0
+        facts["painted_triangle_count"] = None if incomplete else stats["painted"]
+        facts["paint_extruders_used"] = None if incomplete else slots_used
         facts["objects"] = [{"name": o["name"], "extruder": o["extruder"]} for o in ms_objects]
     elif generator == "kromacut":
         facts["layer_object_count"] = len(mesh_objects)
@@ -245,7 +252,7 @@ def _build(generator: str, data: bytes) -> CreativeProject:
         parts = [part for o in ms_objects for part in o["parts"]]
         facts["parts"] = [{"name": p["name"], "extruder": p["extruder"]} for p in parts]
         facts["palette"] = _palette(root)
-        facts["per_face_paint"] = stats["painted"] > 0
+        facts["per_face_paint"] = None if incomplete else stats["painted"] > 0
         if KROMACUT_CONFIG_PART in manifest.parts:
             unknown.append(f"{KROMACUT_CONFIG_PART} payload (format not documented in the exporter output)")
     else:  # sindricad
@@ -259,9 +266,9 @@ def _build(generator: str, data: bytes) -> CreativeProject:
         facts["body_count"] = len(mesh_objects)
         facts["bodies"] = bodies
         facts["palette"] = _palette(root)
-        facts["per_face_paint"] = stats["painted"] > 0
-        facts["painted_triangle_count"] = stats["painted"]
-        facts["paint_extruders_used"] = slots_used
+        facts["per_face_paint"] = None if incomplete else stats["painted"] > 0
+        facts["painted_triangle_count"] = None if incomplete else stats["painted"]
+        facts["paint_extruders_used"] = None if incomplete else slots_used
     if undecoded:
         unknown.append("paint_color values not decoded: " + ", ".join(undecoded[:8]))
 
