@@ -242,7 +242,7 @@ export function topologyOutcomeLine(o: TopologyOutcome): string | null {
     }
     case "unused": return `The engine read this printer setup${shape(o.heads, o.slots)} but did not apply it. ${o.reason ?? "The engine gave no reason."}`;
     case "blocked": return `The engine could not use this printer setup, so nothing was prepared.${o.reasons.length ? ` ${sentenceCase(endSentence(o.reasons.join("; ")))}` : ""}${o.alternative ? ` ${o.alternative}` : ""}`;
-    case "not_evaluated": return "Prepare stopped for another reason, so this printer setup was not used or checked. The reason is shown above.";
+    case "not_evaluated": return "Prepare stopped for another reason, so this printer setup was not used, and the engine did not report on it. Studio shows why Prepare stopped.";
     case "unknown": return "The engine did not say whether it used this printer setup, so Studio cannot confirm it did.";
     default: return null;
   }
