@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "gcode",
+  "text": ";SIDECAR:PROCESSED=1\nG28\nT0\nT4\nT5\nT13\n"
+ }
+}

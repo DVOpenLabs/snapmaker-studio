@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "gcode",
+  "text": ";SIDECAR:BLOCKED=1\n;SIDECAR:REQUEST=1\n;SIDECAR:REASON=no lane map\nT4\n"
+ }
+}

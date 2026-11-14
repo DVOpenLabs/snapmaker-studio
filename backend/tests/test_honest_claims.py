@@ -98,8 +98,10 @@ def build(tmp_path, name="two-plate.3mf", *, plates=2, plate_json=0, supports=Fa
                             "enable_support;support_type", "", "", "", ""]
                 data = json.dumps(cfg, indent=4).encode("utf-8")
             elif item.filename == "3D/Objects/object_1.model" and painted_supports:
+                # True paints an enforcer facet ("4"); "blocker" paints a blocker facet ("8").
+                paint = b"8" if painted_supports == "blocker" else b"4"
                 data = data.replace(b'<triangle v1="4" v2="5" v3="6"/>',
-                                    b'<triangle v1="4" v2="5" v3="6" paint_supports="4"/>')
+                                    b'<triangle v1="4" v2="5" v3="6" paint_supports="' + paint + b'"/>')
             dst.writestr(item, data)
         for n in range(1, plate_json + 1):
             dst.writestr(f"Metadata/plate_{n}.json", "{}")
@@ -217,13 +219,26 @@ def test_doctor_ready_for_a_single_plate_project_is_unchanged(tmp_path):
 # --- 4. Recommended mode and the creator's supports ---------------------------------
 
 def test_recommended_says_it_does_not_keep_the_creators_supports(tmp_path):
-    src = build(tmp_path, supports=True, painted_supports=True)
+    # Blocker paint only says where not to support, so it never keeps the creator's supports.
+    src = build(tmp_path, supports=True, painted_supports="blocker")
     summary = convert(src, "recommended", tmp_path)["settings_summary"]
     note = summary["supports_note"]
     assert note.startswith("Supports: the creator turned supports on. This mode does not keep them;")
     assert "Snapmaker Orca will open with supports off" in note
     assert "Support tab" in note and "Preserve creator settings" in note
     assert "painted support areas" in note
+    assert summary["support_intent"]["decision"] == "starter_reset"
+
+
+def test_recommended_keeps_supports_the_model_paints_and_does_not_say_it_dropped_them(tmp_path):
+    src = build(tmp_path, supports=True, painted_supports=True)
+    r = convert(src, "recommended", tmp_path)
+    summary = r["settings_summary"]
+    assert summary["support_intent"]["decision"] == "kept"
+    assert "supports_note" not in summary
+    with zipfile.ZipFile(r["output_path"]) as z:
+        cfg = json.loads(z.read(SETTINGS))
+    assert "enable_support" in cfg["different_settings_to_system"][0]  # Orca will use it
 
 
 def test_recommended_does_not_mention_painted_supports_that_do_not_exist(tmp_path):
