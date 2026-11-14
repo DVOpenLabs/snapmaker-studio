@@ -65,6 +65,21 @@ processes** on graceful close, crash, or force-kill.
   recommend a Prepare the engine would refuse.
 - **`repair`** — clamp rules -> profile swap -> conform filament arrays ->
   **`u1_identity`** normalize -> scrub foreign tokens -> blank slice_info version.
+- **`regrid`** — prepare-time layout correction, both modes: a multi-plate project's
+  build items are translated onto the U1 plate grid (Orca's rule: stride =
+  `int(bed) * 1.2`, `cols = compute_colum_count`, origin `(col*sx, -row*sy)`) only
+  when every item's whole bounding box lies in the cell its own plate record names;
+  otherwise nothing moves and it says why. Translation tokens only. Prime towers
+  are assessed (proven outside / possibly on an object / unknown) and never moved
+  (a project already authored on the U1 plate keeps its creator's tower position),
+  because their depth is decided by Orca at slice time.
+- **`support_intent`** — the one exception to Recommended's starter-settings reset.
+  Precedence: explicit disable (`enable_support` 0 in the project or on an object)
+  > positive intent (painted support *enforcers*, `support_enforcer` volumes,
+  `enable_support` 1 on an object) > starter reset (no data, or blocker-only data)
+  > the creator's values. Positive intent keeps and declares `enable_support`,
+  `support_type`, `support_filament`, `support_interface_filament`; Preserve never
+  reaches it.
 - **`u1_identity`** — the authoritative U1 identity layer: preset ids, version,
   filament identity (from the known-good reference), foreign Bambu/BBL/H2D scrub,
   newer-schema value normalization, and `is_u1_clean()` (the validation gate).

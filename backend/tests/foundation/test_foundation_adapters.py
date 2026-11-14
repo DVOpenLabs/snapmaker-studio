@@ -173,9 +173,9 @@ def test_discover_skips_absent_packages(monkeypatch):
 
 
 def test_discover_re_raises_for_a_present_but_broken_package(monkeypatch):
+    # once the host package has been imported anywhere, `from . import host` is answered from the parent
+    # package's cached attribute and never consults sys.modules: drop it so the import is attempted again
     import snapstudio_core.adapters as adapters_pkg
-    # An earlier import leaves `host` as an attribute of the package, and `from . import host` would then
-    # succeed without consulting sys.modules. Remove it so this test does not depend on test order.
     monkeypatch.delattr(adapters_pkg, "host", raising=False)
     monkeypatch.setitem(sys.modules, "snapstudio_core.adapters.host", None)
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: object())

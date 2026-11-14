@@ -276,3 +276,28 @@ def test_octoprint_accepts_a_reply_without_an_api_key():
 def test_moonraker_compat_server_is_the_octo_version_constant():
     doc = load(*O, "moonraker_compat")
     assert doc["bundle"]["api_version"]["server"] == "1.5.0"
+
+
+def _head_subjects(res):
+    return {o.subject["id"] for o in res.observations if o.subject.get("kind") == "head"}
+
+
+def test_no_observation_is_attached_to_a_head_the_topology_does_not_contain():
+    res = run(STOCK, *S, "hypothetical_thirty_two_logical_four_heads")
+    heads = {h.id for h in res.topology.heads}
+    assert len(heads) == 4
+    assert _head_subjects(res) <= heads
+    assert any(d.code == "observation_head_unknown" for d in res.diagnostics)
+    assert "occupancy" in res.unknowns            # entries past the head list have no occupancy answer
+
+    res = run(STOCK, *S, "hypothetical_thirty_two_logical_no_head_objects")
+    assert res.topology.heads == []
+    assert _head_subjects(res) == set()           # every filament entry would have dangled
+    assert any(d.code == "observation_head_unknown" for d in res.diagnostics)
+
+
+def test_a_normal_four_head_host_gets_no_unknown_head_diagnostic():
+    res = parse(
+        STOCK, load("moonraker_stock", "u1-klipper-340b4232", "upstream_default_shape"))
+    assert not any(d.code == "observation_head_unknown" for d in res.diagnostics)
+    assert _head_subjects(res) <= {h.id for h in res.topology.heads}
