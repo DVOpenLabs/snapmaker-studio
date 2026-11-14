@@ -82,7 +82,8 @@ def _with_unused_setup(summary: dict, setup: dict) -> dict:
     Say so rather than dropping the setup without a word."""
     if setup["state"] == "valid":
         summary["setup"] = {"state": "valid", "applied": False, "heads": setup["heads"], "slots": setup["slots"],
-                            "unbound": list(setup["unbound"])}
+                            "unbound": list(setup["unbound"]),
+                            "not_applied_reason": "This file has no per-head print settings to keep."}
         summary.setdefault("warnings", []).append(
             "The printer setup was read but not applied: this file has no print settings to keep per head.")
     return summary

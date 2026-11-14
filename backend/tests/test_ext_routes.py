@@ -220,16 +220,28 @@ def test_every_route_module_that_exists_registers_its_prefix():
 
 
 def test_missing_module_is_skipped(monkeypatch):
+    import snapstudio_api
+    # drop the package attribute too, or `from . import routes_setups` never reads the sys.modules entry below
+    monkeypatch.delattr(snapstudio_api, "routes_setups", raising=False)
     monkeypatch.setitem(sys.modules, "snapstudio_api.routes_setups", None)   # import raises ImportError
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None)
     ext_routes.load_all()
 
 
 def test_present_but_broken_module_re_raises_import_error(monkeypatch):
+    import snapstudio_api
+    real_find_spec = importlib.util.find_spec
+    all_present = all(real_find_spec(f"snapstudio_api.{m}") is not None for m in ext_routes.TRACK_MODULES)
+    # `from . import x` returns an already-imported submodule from the package attribute without consulting
+    # sys.modules; drop it so the import is really attempted. Otherwise the ImportError comes from whichever
+    # earlier track module happens to be absent, and once all eight exist nothing raises at all.
+    monkeypatch.delattr(snapstudio_api, "routes_passport", raising=False)
     monkeypatch.setitem(sys.modules, "snapstudio_api.routes_passport", None)
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: object())
-    with pytest.raises(ImportError):
+    with pytest.raises(ImportError) as raised:
         ext_routes.load_all()
+    if all_present:   # with every module present the failure must be the broken one, not an absent neighbour
+        assert raised.value.name == "snapstudio_api.routes_passport"
 
 
 def test_a_real_broken_route_module_fails_loudly(tmp_path, monkeypatch):

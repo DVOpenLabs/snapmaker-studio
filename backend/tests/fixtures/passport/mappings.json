@@ -1,0 +1,7 @@
+[
+  {"slot_ref": "slot:0", "material": "PLA", "colour": "#ff8800",
+   "spool": {"provider_instance_id": "synthetic-provider", "provider_spool_id": "42"}},
+  {"slot_ref": "project:1:2", "material": "PETG", "colour": "#00AAFF", "note": "not a retained field"},
+  {"slot_ref": "banana", "material": "PLA"},
+  {"slot_ref": "slot:0", "material": "ABS"}
+]

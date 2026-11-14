@@ -8,6 +8,7 @@ import { JobWorkspaceCard } from "@/components/JobWorkspaceCard";
 import { usePlacement } from "@/components/PlacementCard";
 import { PreflightCard } from "@/components/PreflightCard";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
+import { ConnectedPrepareSetupSelector } from "@/components/PrepareSetupSelector";
 import { PrepareSettingsSummary } from "@/components/PrepareSettingsSummary";
 import { ProjectMaterialsCard } from "@/components/ProjectMaterialsCard";
 import { CompactSlotRow } from "@/components/job/CompactSlot";
@@ -171,6 +172,10 @@ function JobScreen({ file }: { file: FileRef }) {
       el: (
         <FlatCards>
           <div className="space-y-4">
+            {file.ext === "3mf" && !closed && (
+              <ConnectedPrepareSetupSelector projectPath={file.path} disabled={ctl.pending} result={ctl.result ?? ctl.preview}
+                onPrepareWithoutSetup={holding ? undefined : () => { setView("copy"); ctl.startWithoutSetup(file.path, mode).catch(() => { /* shown by the result area */ }); }} />
+            )}
             <PrepareModeChooser mode={mode} onModeChange={setMode} blocked={closed}
               onCustom={() => ctl.startPreview(file.path)} previewing={ctl.previewing || ctl.pending} />
             {ctl.previewError ? <p className="text-sm text-risk" role="alert">Couldn&apos;t review settings: {(ctl.previewError as Error).message}</p> : null}
