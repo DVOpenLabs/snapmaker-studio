@@ -8,11 +8,16 @@ import os
 import re
 import zipfile
 import zlib
+import xml.etree.ElementTree as ET
 from snapstudio_core import localpath
 from pathlib import Path
 
 from snapstudio_core import paths, preserve
 from snapstudio_core.foundation import artifacts, capabilities, topology
+
+GCODE_SETTINGS = {"layer_height", "wall_loops", "sparse_infill_density", "support_type",
+                           "brim_type", "nozzle_diameter", "temperature", "bed_temperature",
+                           "print_speed", "filament_type", "filament_colour"}
 
 MAX_GCODE_SCAN = 8 * 1024 * 1024
 MAX_3MF_ENTRY = 2 * 1024 * 1024
@@ -59,15 +64,17 @@ def _read_gcode(path: Path) -> dict:
         raw = handle.read(MAX_GCODE_SCAN + 1)
     truncated = size > MAX_GCODE_SCAN or len(raw) > MAX_GCODE_SCAN
     text = raw[:MAX_GCODE_SCAN].decode("utf-8", errors="replace")
+    if truncated:
+        text = text.rsplit("\n", 1)[0] if "\n" in text else ""  # never parse a metadata value cut at the scan boundary
     parsed: dict = {"settings": {}, "reported_tool_indices": None, "grams_by_tool": None,
                     "time_seconds": None, "tower": None}
-    body_started = False
     active: int | None = None
     used: set[int] = set()
     changes = 0
+    time_priority = -1
     for line in text.splitlines():
         stripped = line.strip()
-        if not body_started and stripped.startswith(";"):
+        if stripped.startswith(";"):
             match = GCODE_WEIGHT_RE.match(stripped)
             if match:
                 grams = _parse_number_list(match.group(1))
@@ -76,7 +83,11 @@ def _read_gcode(path: Path) -> dict:
                     parsed["reported_tool_indices"] = [i for i, amount in enumerate(grams) if amount > 0]
             match = GCODE_TIME_RE.match(stripped)
             if match:
-                parsed["time_seconds"] = _parse_time(match.group(1))
+                priority = 2 if "(normal mode)" in stripped.lower() else 0 if "(silent mode)" in stripped.lower() else 1
+                seconds = _parse_time(match.group(1))
+                if seconds is not None and priority > time_priority:
+                    parsed["time_seconds"] = seconds
+                    time_priority = priority
             match = GCODE_TOWER_RE.match(stripped)
             if match:
                 parsed["tower"] = _parse_number_list(match.group(1))
@@ -84,16 +95,11 @@ def _read_gcode(path: Path) -> dict:
             if "=" in stripped:
                 key, value = stripped[1:].split("=", 1)
                 key = key.strip()
-                if key in {"layer_height", "wall_loops", "sparse_infill_density", "support_type",
-                           "brim_type", "nozzle_diameter", "temperature", "bed_temperature",
-                           "print_speed", "filament_type", "filament_colour"}:
+                if key in GCODE_SETTINGS:
                     parsed["settings"][key] = value.strip()[:300]
-            if "EXECUTABLE_BLOCK_START" in stripped:
-                body_started = True
             continue
         if stripped.startswith(";") or not stripped:
             continue
-        body_started = True
         match = TOOL_RE.match(stripped)
         if match:
             tool = int(match.group(1))
@@ -101,6 +107,31 @@ def _read_gcode(path: Path) -> dict:
             if active is not None and active != tool:
                 changes += 1
             active = tool
+    if truncated:
+        # Read a separate bounded tail for slicer summaries; never use it to
+        # infer complete tool changes across the unscanned middle of the file.
+        with path.open("rb") as handle:
+            handle.seek(max(0, size - 256 * 1024))
+            tail = handle.read(256 * 1024).decode("utf-8", errors="replace")
+        for line in tail.splitlines()[1:]:
+            stripped = line.strip()
+            if stripped.startswith(";") and "=" in stripped:
+                key, value = stripped[1:].split("=", 1)
+                if key.strip() in GCODE_SETTINGS:
+                    parsed["settings"][key.strip()] = value.strip()[:300]
+            match = GCODE_WEIGHT_RE.match(line.strip())
+            if match:
+                grams = _parse_number_list(match.group(1))
+                if grams is not None:
+                    parsed["grams_by_tool"] = grams
+                    parsed["reported_tool_indices"] = [i for i, amount in enumerate(grams) if amount > 0]
+            match = GCODE_TIME_RE.match(line.strip())
+            if match:
+                priority = 2 if "(normal mode)" in stripped.lower() else 0 if "(silent mode)" in stripped.lower() else 1
+                seconds = _parse_time(match.group(1))
+                if seconds is not None and priority > time_priority:
+                    parsed["time_seconds"] = seconds
+                    time_priority = priority
     parsed["scan"] = {"truncated": truncated, "tools_used": sorted(used) if used and not truncated else None,
                       "tool_changes": changes if not truncated else None}
     if parsed["reported_tool_indices"] is None and used:
@@ -126,6 +157,54 @@ def _read_3mf(path: Path) -> dict:
         raise ValueError("A selected 3MF could not be read as a valid archive.") from None
 
 
+def _slice_xml(raw: bytes) -> dict:
+    """Read bounded Orca/Bambu plate summaries, preserving incomplete totals as unknown."""
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return {}
+    if "\x00" in text or "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+        return {}
+    try:
+        root = ET.fromstring(text)
+    except (ET.ParseError, ValueError):
+        return {}
+    plates = root.findall(".//plate")
+    if not plates or len(plates) > 256:
+        return {}
+    totals: dict[int, float] = {}
+    grams_known = True
+    times = []
+    for plate in plates:
+        filaments = plate.findall("filament")
+        if not filaments or len(filaments) > 256:
+            grams_known = False
+        seen = set()
+        for filament in filaments:
+            try:
+                index = int(filament.attrib["id"]) - 1
+                amount = float(filament.attrib["used_g"])
+                if not 0 <= index < 256 or index in seen or not _finite_amount(amount):
+                    raise ValueError()
+            except (KeyError, ValueError, OverflowError):
+                grams_known = False
+                continue
+            seen.add(index)
+            totals[index] = totals.get(index, 0.0) + amount
+        predictions = [m.get("value") for m in plate.findall("metadata") if m.get("key") == "prediction"]
+        try:
+            seconds = float(predictions[0]) if len(predictions) == 1 else None
+        except (TypeError, ValueError, OverflowError):
+            seconds = None
+        times.append(seconds)
+    result = {}
+    if grams_known and totals and all(_finite_amount(v) for v in totals.values()):
+        result["filament_used_g"] = [totals.get(i, 0.0) for i in range(max(totals) + 1)]
+    if all(_finite_amount(t) for t in times) and _finite_amount(sum(times)):
+        result["time_seconds"] = sum(times)
+    return result
+
+
 def _read_3mf_archive(path: Path) -> dict:
     settings: dict = {}
     slice_info: dict = {}
@@ -145,7 +224,9 @@ def _read_3mf_archive(path: Path) -> dict:
             try:
                 value = json.loads(raw.decode("utf-8"))
             except (ValueError, RecursionError):
-                continue                                    # readable bytes that are not JSON: the metadata stays unknown
+                if name == "Metadata/slice_info.config":
+                    target.update(_slice_xml(raw))
+                continue
             if isinstance(value, dict):
                 target.update(value)
     parsed = {"settings": settings, "reported_tool_indices": None, "grams_by_tool": None,

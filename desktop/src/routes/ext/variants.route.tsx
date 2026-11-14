@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { GitCompareArrows } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,15 @@ function OutputCard({ output, name }: { output: VariantOutput; name: string }) {
 }
 
 function VariantsView() {
+  const revision = useRef(0);
+  useEffect(() => () => { revision.current += 1; }, []);
   const [files, setFiles] = useState<[string | null, string | null]>([null, null]);
   const [result, setResult] = useState<VariantReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   function setPath(index: 0 | 1, value: string | null) {
+    revision.current += 1;
+    setBusy(false); setError(null);
     setFiles((current) => { const next = [...current] as [string | null, string | null]; next[index] = value; return next; });
     setResult(null);
   }
@@ -45,10 +49,14 @@ function VariantsView() {
   }
   async function compare() {
     if (!files[0] || !files[1]) return;
+    const request = ++revision.current;
     setBusy(true); setError(null); setResult(null);
-    try { setResult(await compareVariants({ outputs: [{ path: files[0] }, { path: files[1] }] })); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "The comparison could not be computed."); }
-    finally { setBusy(false); }
+    try {
+      const report = await compareVariants({ outputs: [{ path: files[0] }, { path: files[1] }] });
+      if (request === revision.current) setResult(report);
+    } catch (reason) {
+      if (request === revision.current) setError(reason instanceof Error ? reason.message : "The comparison could not be computed.");
+    } finally { if (request === revision.current) setBusy(false); }
   }
   return <main className="space-y-5 p-6">
     <PageHeader icon={GitCompareArrows} title="Variant comparison" subtitle="Compare two sliced outputs side by side. Studio reads local files and reports advisory evidence; it does not slice." />
