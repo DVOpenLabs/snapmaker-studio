@@ -21,7 +21,7 @@ from .repair import repair as do_repair
 from .validate import validate as do_validate
 from .u1_identity import is_u1_clean
 from .profile import load_profile
-from .preserve import config_diff, display_value, machine_compat_keys
+from .preserve import assess_setup, config_diff, display_value, machine_compat_keys
 
 SETTINGS = "Metadata/project_settings.config"
 
@@ -77,6 +77,17 @@ def _engine_version() -> str:
         return "unknown"
 
 
+def _with_unused_setup(summary: dict, setup: dict) -> dict:
+    """A starter project has no per-head print settings, so a valid printer setup changes nothing in it.
+    Say so rather than dropping the setup without a word."""
+    if setup["state"] == "valid":
+        summary["setup"] = {"state": "valid", "applied": False, "heads": setup["heads"], "slots": setup["slots"],
+                            "unbound": list(setup["unbound"])}
+        summary.setdefault("warnings", []).append(
+            "The printer setup was read but not applied: this file has no print settings to keep per head.")
+    return summary
+
+
 def _starter_summary(*, geometry_only: bool) -> dict:
     subject = "This file" if geometry_only else "This STL"
     warnings = [f"{subject} does not include creator slicer settings. Studio will use a U1 starter profile unless you choose another Orca profile."]
@@ -113,6 +124,8 @@ def _action_reasons(report: dict) -> tuple[dict[str, dict], set[str], set[str]]:
               [report["preset_deviations_declared"]]
               if report.get("preset_deviations_declared") else []]
     groups.append(report.get("project_materials_changes", []))
+    # the prime tower keys the layout correction moved: reported with their own reason
+    groups.append(report.get("placement_corrections", []))
     identity = report.get("identity", {})
     groups.append(identity.get("changed", []) if isinstance(identity, dict) else [])
     for group in groups:
@@ -289,6 +302,25 @@ def _settings_summary(before: dict, after: dict, raw_config: bytes, outcome,
         "recommendations_available": prepare_mode == "preserve",
         "recommended_changes": recommended_changes if prepare_mode == "preserve" else [],
     }
+    layout = outcome.report.get("layout")
+    if layout:
+        summary["layout"] = {k: layout.get(k) for k in (
+            "status", "plates", "formula_check", "tower", "tower_note", "tower_source", "stride_source", "stride_target",
+            "cols", "items_moved", "unresolved")}
+        summary["placement_changes"] = list(layout.get("disclosure") or [])
+        summary["warnings"] = summary["warnings"] + [
+            line for line in layout.get("disclosure") or []
+            if line.startswith("Plate positions were left")
+            or ("prime tower is outside" in line) or ("prime tower may sit on an object" in line)]
+    intent = outcome.report.get("support_intent")
+    if intent:
+        from . import support_intent as _support_intent
+
+        summary["support_intent"] = {
+            "decision": intent["decision"], "kept": bool(intent["explicit"]),
+            "evidence": intent["evidence"], "blocker_evidence": intent["blocker_evidence"],
+            "disable_evidence": intent["disable_evidence"], "keys": intent["keys"],
+            "statement": _support_intent.statement(intent)}
     # Preservation invariant: every changed source setting needs a specific
     # repair-pipeline reason, a deliberate foreign-value clear, or the
     # profile-owned machine/compat allowlist.  The independent diff is the
@@ -398,7 +430,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
                   dry_run: bool = False, confirmed_presets: dict | None = None,
                   filament_catalog=None, confirmed_colours: dict | None = None,
                   material_context: dict | None = None,
-                  keep_backup: bool = False) -> ConversionResult:
+                  keep_backup: bool = False, topology=None) -> ConversionResult:
     """Convert a single STL or 3MF into a saved U1-ready 3MF. Returns the result.
 
     `confirmed_presets` maps a filament slot to the exact installed Orca preset the
@@ -419,6 +451,17 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         prepare_mode = "recommended"
     if prepare_mode not in ("preserve", "recommended"):
         raise ValueError("prepare_mode must be 'preserve' or 'recommended'")
+    setup = assess_setup(topology)
+    if setup["state"] == "invalid":
+        # A setup the person supplied but that cannot be used is never a licence to discard project entries.
+        # Nothing is written. Preparing without a setup is a separate request.
+        message = ("The printer setup cannot be used: " + "; ".join(setup["reasons"]) + ". Nothing was prepared. "
+                   "Read the printer again, or prepare without a setup: per-head values are then mapped to the "
+                   "four U1 toolheads and entries beyond four are dropped.")
+        return ConversionResult(
+            "blocked", "", "", False, [message], prepare_mode,
+            {"setup": {"state": "invalid", "reasons": list(setup["reasons"]),
+                       "stock_alternative": "Prepare without a printer setup."}}, blocked=True)
     out_parent = Path(out_dir) if out_dir else None
     if out_parent and not dry_run:
         out_parent.mkdir(parents=True, exist_ok=True)
@@ -433,7 +476,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             tm.save(out)
         res = do_validate(tm, against=None)
         return _finish("stl", tm, out, res, prepare_mode="starter",
-                       settings_summary=_starter_summary(geometry_only=False))
+                       settings_summary=_with_unused_setup(_starter_summary(geometry_only=False), setup))
 
     tm = ThreeMF.open(src)
     if not tm.has_part(SETTINGS):
@@ -457,7 +500,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
             summary["mapped_to_u1"] = carried["evidence"]
             summary["kept_count"] = len(carried["evidence"])
         return _finish("3mf-geometry", wrapped, out, res, prepare_mode="starter",
-                       settings_summary=summary)
+                       settings_summary=_with_unused_setup(summary, setup))
 
     # 3MF: repair into U1, validate against the source fingerprint (preservation).
     src_fp = compute_fingerprint(tm)
@@ -468,7 +511,7 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
     internal_mode = "preserve" if prepare_mode == "preserve" else "u1"
     outcome = do_repair(tm, mode=internal_mode, remap=None, dry_run=dry_run, opt_profile=None,
                         confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                        confirmed_colours=confirmed_colours)
+                        confirmed_colours=confirmed_colours, topology=topology, source_path=str(src))
     after = load_project_settings(tm.read_part(SETTINGS))
     if confirmed_presets:
         # Judged on what this mode will actually write, not on what the source declared:
@@ -486,11 +529,17 @@ def convert_to_u1(path: str, out_dir: str | None = None, prepare_mode: str = "pr
         # results cannot diverge from a real recommended conversion or write.
         do_repair(recommended_tm, mode="u1", remap=None, dry_run=True, opt_profile=None,
                   confirmed_presets=confirmed_presets, filament_catalog=filament_catalog,
-                  confirmed_colours=confirmed_colours)
+                  confirmed_colours=confirmed_colours, topology=topology, source_path=str(src))
         recommended_after = load_project_settings(recommended_tm.read_part(SETTINGS))
     summary = _settings_summary(before, after, raw_config, outcome, prepare_mode,
                                 recommended_after=recommended_after)
+    if outcome.report.get("setup"):
+        summary["setup"] = outcome.report["setup"]
     supports_note = _supports_note(tm, before, after, prepare_mode)
+    # A per-object decision is stated by support_intent; the blanket "Orca will open with supports off" note
+    # would contradict objects whose own enable_support=1 survives.
+    if (summary.get("support_intent") or {}).get("decision") == "per_object":
+        supports_note = None
     if supports_note:
         summary["supports_note"] = supports_note
     if confirmed_presets or confirmed_colours or filament_catalog is not None:

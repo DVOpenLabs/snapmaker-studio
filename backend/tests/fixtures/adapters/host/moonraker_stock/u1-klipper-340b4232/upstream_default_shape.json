@@ -1,0 +1,67 @@
+{
+  "source_version": "host_bundle/1",
+  "received_at": "2026-10-26T12:00:00Z",
+  "bundle": {
+    "server_info": {
+      "result": {
+        "klippy_connected": true,
+        "klippy_state": "ready",
+        "moonraker_version": "v0.9.3-synthetic",
+        "components": ["octoprint_compat"]
+      }
+    },
+    "objects_list": {
+      "result": {
+        "objects": ["webhooks", "toolhead", "print_task_config", "extruder", "extruder1", "extruder2", "extruder3"]
+      }
+    },
+    "print_task_config": {
+      "result": {
+        "status": {
+          "print_task_config": {
+            "filament_vendor": ["NONE", "NONE", "NONE", "NONE"],
+            "filament_type": ["NONE", "NONE", "NONE", "NONE"],
+            "filament_sub_type": ["NONE", "NONE", "NONE", "NONE"],
+            "filament_color": [4294967295, 4294967295, 4294967295, 4294967295],
+            "filament_color_rgba": ["FFFFFFFF", "FFFFFFFF", "FFFFFFFF", "FFFFFFFF"],
+            "filament_color_multi": [
+              {"nums": 1, "alpha": 255, "mode": 0, "colors": ["FFFFFF"]},
+              {"nums": 1, "alpha": 255, "mode": 0, "colors": ["FFFFFF"]},
+              {"nums": 1, "alpha": 255, "mode": 0, "colors": ["FFFFFF"]},
+              {"nums": 1, "alpha": 255, "mode": 0, "colors": ["FFFFFF"]}
+            ],
+            "filament_official": [false, false, false, false],
+            "filament_sku": [0, 0, 0, 0],
+            "filament_edit": [true, true, true, true],
+            "filament_exist": [false, false, false, false],
+            "filament_soft": [false, false, false, false],
+            "extruder_map_table": [0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "extruders_used": [false, false, false, false],
+            "extruders_replenished": [0, 1, 2, 3],
+            "time_lapse_camera": false,
+            "auto_bed_leveling": false,
+            "flow_calibrate": false,
+            "flow_calib_extruders": [true, true, true, true],
+            "shaper_calibrate": false,
+            "auto_replenish_filament": true,
+            "replenish_ignore_color": false,
+            "filament_entangle_detect": false,
+            "filament_entangle_sen": "medium",
+            "end_led_turn_off": false,
+            "end_unload_filament": [false, false, false, false],
+            "reprint_info": {
+              "auto_bed_leveling": false,
+              "flow_calibrate": false,
+              "flow_calib_extruders": [true, true, true, true],
+              "time_lapse_camera": false,
+              "extruder_map_table": [0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+              "extruders_used": [false, false, false, false],
+              "end_unload_filament": [false, false, false, false]
+            }
+          }
+        }
+      }
+    }
+  },
+  "note": "print_task_config copied in shape from Snapmaker/u1-klipper print_task_config.py blob 340b4232 DEFAULT_PRINT_TASK_CONFIG lines 25-63 (all filaments empty, as the default). Not a capture."
+}

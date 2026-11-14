@@ -1,0 +1,7 @@
+{
+ "http_status": 200,
+ "body": {
+  "kind": "gcode",
+  "text": "G28\nT4\nT5\n"
+ }
+}

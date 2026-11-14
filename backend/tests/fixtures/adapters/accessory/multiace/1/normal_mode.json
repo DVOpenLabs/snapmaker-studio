@@ -1,0 +1,37 @@
+{
+ "http_status": 200,
+ "body": {
+  "live_slots": [],
+  "head_ctx": {
+   "mode": "normal",
+   "ace_head": 3,
+   "ace_heads": [],
+   "head_ace": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3
+   },
+   "feeders": [],
+   "manual_heads": [],
+   "head_nozzles": {
+    "0": 0.2,
+    "1": 0.4,
+    "2": 0.6,
+    "3": 0.8
+   },
+   "head_nozzle_types": {
+    "0": "standard",
+    "1": "standard",
+    "2": "high_flow",
+    "3": "standard"
+   },
+   "pickup_cleaning": false,
+   "max_copies": 1,
+   "copies_strict": false,
+   "empty_slots": [],
+   "bg_available": true,
+   "bg_heads": []
+  }
+ }
+}

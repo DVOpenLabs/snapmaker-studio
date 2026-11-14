@@ -271,14 +271,21 @@ def test_server_diff_is_exactly_the_authorised_seam():
         if line.startswith(("+++", "---", "@@")):
             continue
         (added if line.startswith("+") else removed).append(line[1:])
-    assert removed == []
+    # The ext_routes dispatch seam plus the one authorised /api/convert extension: an optional,
+    # size-bounded `topology` object is validated and forwarded to service.convert.
+    assert [r.strip() for r in removed] == ["materials)"]
     assert [a.strip() for a in added] == [
         "from . import ext_routes",
+        'topology = data.get("topology")',
+        "if topology is not None and (not isinstance(topology, dict) or len(str(topology)) > 400_000):",
+        'self._send(400, {"error": "topology must be an object"})',
+        "return",
+        "materials, topology=topology)",
         "elif ext_routes.dispatch(self, self.path, data):",
         "pass",
     ]
     hunks = [ln for ln in difflib.unified_diff(base, now, lineterm="", n=0) if ln.startswith("@@")]
-    assert len(hunks) == 2
+    assert len(hunks) == 4
 
 
 def test_dispatch_branch_comes_before_the_final_404_in_do_post():

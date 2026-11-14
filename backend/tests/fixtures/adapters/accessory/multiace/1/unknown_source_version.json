@@ -1,0 +1,61 @@
+{
+ "http_status": 200,
+ "body": {
+  "live_slots": [
+   {
+    "ace": 0,
+    "slot": 0,
+    "material": "PLA",
+    "color": "#26a69a"
+   },
+   {
+    "ace": 0,
+    "slot": 1,
+    "material": "PETG",
+    "color": "#000080"
+   },
+   {
+    "ace": 1,
+    "slot": 0,
+    "material": "PLA",
+    "color": "#f4e2c1"
+   }
+  ],
+  "head_ctx": {
+   "mode": "multi",
+   "ace_head": 3,
+   "ace_heads": [],
+   "head_ace": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3
+   },
+   "feeders": [],
+   "manual_heads": [],
+   "head_nozzles": {
+    "0": 0.2,
+    "1": 0.4,
+    "2": 0.6,
+    "3": 0.8
+   },
+   "head_nozzle_types": {
+    "0": "standard",
+    "1": "standard",
+    "2": "high_flow",
+    "3": "standard"
+   },
+   "pickup_cleaning": false,
+   "max_copies": 1,
+   "copies_strict": false,
+   "empty_slots": [
+    {
+     "ace": 0,
+     "slot": 3
+    }
+   ],
+   "bg_available": true,
+   "bg_heads": []
+  }
+ }
+}
