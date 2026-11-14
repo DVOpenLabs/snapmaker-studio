@@ -360,5 +360,10 @@ def selfcheck_cmd(sample, as_json):
         raise SystemExit(1)
 
 
+from snapstudio_core.passport_cli import passport  # noqa: E402
+
+cli.add_command(passport)
+
+
 if __name__ == "__main__":  # `python -m u1convert.cli` without installing the package
     cli()
