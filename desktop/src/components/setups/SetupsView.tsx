@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/layout";
 import { buildEvaluateBody, evaluateSetup } from "@/lib/setupsApi";
 import type { EvaluateResponse } from "@/lib/setupsTypes";
 import SetupReportView from "./SetupReportView";
+import { runRead } from "./runRead";
 
 /** Reads one host on the local network and shows what it says. The OctoPrint key lives in this
  *  component's state only: it is cleared when the view is left and never stored anywhere. */
@@ -22,17 +23,18 @@ export default function SetupsView() {
     return () => { alive.current = false; setKey(""); };
   }, []);
 
-  const run = async () => {
-    // A failed read must not leave the previous host's report under the new inputs.
-    setBusy(true); setError(null); setResult(null);
-    try {
-      const res = await evaluateSetup(buildEvaluateBody({ host, port, key, materials: materials.split(",") }));
-      if (alive.current) setResult(res);
-    } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "The check failed.");
-    } finally {
-      if (alive.current) setBusy(false);
-    }
+  const latest = useRef(0);
+  const run = () => {
+    const mine = ++latest.current;
+    return runRead(
+      () => evaluateSetup(buildEvaluateBody({ host, port, key, materials: materials.split(",") })),
+      (patch) => {
+        if ("busy" in patch) setBusy(Boolean(patch.busy));
+        if ("error" in patch) setError(patch.error ?? null);
+        if ("result" in patch) setResult(patch.result ?? null);
+      },
+      () => alive.current && latest.current === mine,
+    );
   };
 
   const field = "h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/50";
