@@ -10,7 +10,7 @@ import io
 import posixpath
 import zipfile
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from xml.etree import ElementTree
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
@@ -38,6 +38,9 @@ class ThreeMFManifest:
     passed_through: tuple[MemberDigest, ...]
     model_xml: bytes
     project_settings: dict | None
+    #: Member bytes already read under the container limits; lets format readers look inside
+    #: named parts without opening the archive a second time. Never serialized.
+    parts: dict = field(default_factory=dict, repr=False, compare=False)
 
     def to_dict(self) -> dict:
         """Serialize member identity only; original archive payloads stay untouched."""
@@ -58,8 +61,8 @@ def _safe_name(name: str) -> str:
     return normalized
 
 
-def _check_model(xml: bytes) -> None:
-    # UTF-8 only. A byte-substring DOCTYPE check is bypassed by UTF-16/UTF-32 (NUL-interleaved), which expat
+def parse_xml(xml: bytes) -> ElementTree.Element:
+    # The one guarded XML parse for every part of an archive (model, object parts, settings). UTF-8 only. A byte-substring DOCTYPE check is bypassed by UTF-16/UTF-32 (NUL-interleaved), which expat
     # auto-detects and then expands entities from, so the text is decoded first and anything else is refused.
     try:
         text = xml.decode("utf-8-sig")
@@ -74,6 +77,11 @@ def _check_model(xml: bytes) -> None:
         root = ElementTree.fromstring(text.encode("utf-8"))
     except ElementTree.ParseError as exc:
         raise ContainerError("bad_xml") from exc
+    return root
+
+
+def _check_model(xml: bytes) -> None:
+    root = parse_xml(xml)
     if root.tag != f"{{{CORE_NS}}}model":
         raise ContainerError("unsupported_3mf_version")
 
@@ -139,4 +147,4 @@ def read_3mf(data: bytes) -> ThreeMFManifest:
         understood.append("Metadata/project_settings.config")
     records = tuple(MemberDigest(n, hashlib.sha256(blobs[n]).hexdigest()) for n in sorted(blobs))
     passed = tuple(rec for rec in records if rec.name not in understood)
-    return ThreeMFManifest(records, tuple(understood), passed, model, settings)
+    return ThreeMFManifest(records, tuple(understood), passed, model, settings, blobs)

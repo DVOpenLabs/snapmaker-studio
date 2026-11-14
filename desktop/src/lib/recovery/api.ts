@@ -20,6 +20,13 @@ export type HistoryRead = {
   last_job: { filename: string | null; outcome: string } | null;
 };
 
+/** Accept only an integer port in the range the backend monitoring route allows. */
+export function isValidPort(value: string): boolean {
+  if (!/^\d+$/.test(value)) return false;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
 export const saveCheckpoint = (body: unknown) => callExt<{ revision: number; checkpointed_at: string; file_count: number }>(
   "/recovery/checkpoint", body, "Could not save the checkpoint");
 export const restoreCheckpoint = () => callExt<RestoreResult>("/recovery/restore", {}, "Could not read the checkpoint");
