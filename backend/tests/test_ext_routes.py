@@ -276,8 +276,6 @@ def _baseline_server_lines():
 
 
 def test_server_diff_is_exactly_the_authorised_seam():
-    """server.py differs from the P0a baseline by the ext_routes seam and by the reviewed /convert topology
-    pass-through (a validated object forwarded to convert_to_u1), and by nothing else."""
     base = _baseline_server_lines()
     now = SERVER_PY.read_text(encoding="utf-8").splitlines()
     added, removed = [], []
@@ -285,6 +283,8 @@ def test_server_diff_is_exactly_the_authorised_seam():
         if line.startswith(("+++", "---", "@@")):
             continue
         (added if line.startswith("+") else removed).append(line[1:])
+    # The ext_routes dispatch seam plus the one authorised /api/convert extension: an optional,
+    # size-bounded `topology` object is validated and forwarded to service.convert.
     assert [r.strip() for r in removed] == ["materials)"]
     assert [a.strip() for a in added] == [
         "from . import ext_routes",

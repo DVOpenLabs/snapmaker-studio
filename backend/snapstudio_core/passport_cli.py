@@ -13,24 +13,24 @@ Contract (see docs/internal/PASSPORT.md):
 Nothing here writes next to or over an input: `export -o` refuses an existing file and any
 path that is one of the inputs.
 
-Known limit (accepted for the unmerged development branches): path validation and the filesystem
-operations that follow it are separate steps. Another process or principal able to modify the output
-directory, or any of its ancestors, after validation could redirect `export -o` (for example by
-swapping the directory for a link to a network share). Use an output directory whose ancestors other
-actors cannot modify. The UNC/device/link refusals and the no-overwrite rule are best-effort checks,
-not a filesystem sandbox and not an absolute no-network guarantee. See docs/internal/PASSPORT.md.
+Publication: `export -o` pins the output directory once (a held descriptor on POSIX; a handle that
+forbids rename/delete on Windows) and writes through that pin (snapstudio_core.safe_publish), so swapping the
+directory or an ancestor after the check cannot redirect the write. It is still not a filesystem
+sandbox: someone who can already write inside the pinned directory can create or remove entries there,
+and the UNC/device/link refusals are checks on the pinned path, not an absolute no-network guarantee.
+See docs/internal/PASSPORT.md.
 """
 from __future__ import annotations
 
 import json
 import os
-import tempfile
 from functools import wraps
 from typing import Any
 
 import click
 
 from snapstudio_core import localpath
+from snapstudio_core.safe_publish import UnsafeOutput, publish_new_file
 from snapstudio_core.passport import build_passport, import_passport, verify_passport
 from snapstudio_core.passport.model import decode_passport
 
@@ -140,29 +140,13 @@ def export_cmd(original, prepared, sliced, recipes_file, mappings_file, out):
         if os.path.exists(target):
             _error("output_exists", "The output file already exists.")
         try:
-            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target) or ".", suffix=".tmp")
-        except OSError:
-            _error("write_failed", "The passport could not be written.")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(document, handle, indent=2)
-            try:
-                os.link(tmp, target)                        # fails if the destination appeared meanwhile
-            except FileExistsError:
-                raise
-            except OSError:
-                if os.name != "nt":
-                    raise                                   # POSIX rename would replace; refuse rather than risk it
-                os.rename(tmp, target)                      # Windows rename is atomic and refuses an existing file
+            publish_new_file(target, json.dumps(document, indent=2).encode("utf-8"))
         except FileExistsError:
             _error("output_exists", "The output file already exists.")
+        except UnsafeOutput:
+            _error("bad_output", "The output directory could not be verified as a local folder.")
         except OSError:
             _error("write_failed", "The passport could not be written.")
-        finally:
-            try:
-                os.remove(tmp)                              # the passport is already published or refused
-            except OSError:
-                pass
         written = os.path.basename(target)
     _emit({"ok": True, "passport_id": document["passport_id"], "written": written, "passport": document,
            "diagnostics": [d.to_dict() for d in built.diagnostics], "losses": document["losses"]}, 0)
