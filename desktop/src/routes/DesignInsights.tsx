@@ -29,6 +29,7 @@ import { PlacementCard } from "@/components/PlacementCard";
 import { PreflightCard } from "@/components/PreflightCard";
 import { ColorPlanCard } from "@/components/ColorPlanCard";
 import { DesignHealth } from "@/components/DesignHealth";
+import { ProjectSceneSection } from "@/components/project-scene/ProjectSceneSection";
 import { HeartPulse } from "lucide-react";
 import { PrintRiskSignals } from "@/components/PrintRiskSignals";
 import {
@@ -208,6 +209,8 @@ export default function DesignInsights() {
           </p>
         </div>
       </div>
+
+      {doctor.status === "done" && <ProjectSceneSection path={file.path} />}
 
       {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}

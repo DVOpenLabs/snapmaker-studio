@@ -1,0 +1,12 @@
+pid 22671: node <repo>/docs/testing/project-
+pid 22685: ~/viewer-wk/deb/usr/bin/snapmaker-studio-desktop /
+    libEGL_mesa.so.0.0.0
+    libLLVM.so.20.1
+    libgallium-25.2.8-0ubuntu0.24.04.2.so
+pid 22698: /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProces
+pid 22774: /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 
+    libEGL_mesa.so.0.0.0
+    libLLVM.so.20.1
+    libgallium-25.2.8-0ubuntu0.24.04.2.so
+pid 22784: /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProces
+/dev/dxg: crw-rw-rw- 10, 125
