@@ -17,10 +17,11 @@ class PaletteEntry:
     color: str
     td: float
     td_provenance: str
+    enabled: bool = True
 
     def to_dict(self) -> dict:
         return {"label": self.label, "color": self.color, "td": self.td,
-                "td_provenance": self.td_provenance}
+                "td_provenance": self.td_provenance, "enabled": self.enabled}
 
 
 @dataclass
@@ -48,35 +49,35 @@ def parse_ditherforge(text: str) -> Decoded[Palette]:
     diagnostics: list[Diagnostic] = []
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
-        if not stripped or stripped.startswith(";") or stripped.startswith("//"):
+        if not stripped or stripped.startswith(";") or stripped.startswith("//") or stripped.startswith("# "):
             continue
-        # `td=` is a fallback syntax and may appear after the optional label.
         match = _DITHER.match(stripped)
         if not match:
             diagnostics.append(diag("invalid_palette_line", f"line:{number}", ERROR))
             continue
         color, remainder = match.groups()
         remainder = remainder or ""
-        # The documented `td label` shape carries a label with no measured TD.
-        # A numeric value can follow `td`, while `td=<number>` is the fallback form.
-        fallback = re.search(r"\btd\s*=\s*([0-9.eE+-]+)", remainder, re.IGNORECASE)
-        td_text = fallback.group(1) if fallback else None
-        label = remainder
-        leading_td = re.match(r"^td(?:\s+([0-9.eE+-]+))?(?:\s+|$)(.*)$", remainder, re.IGNORECASE)
+        assignments = list(re.finditer(r"\btd\s*=\s*(\S*)", remainder, re.IGNORECASE))
+        values = [item.group(1) for item in assignments]
+        label = re.sub(r"\btd\s*=\s*\S*", "", remainder, flags=re.IGNORECASE).strip()
+        leading_td = re.match(r"^td(?:\s+([0-9.eE+-]+))?(?:\s+|$)(.*)$", label, re.IGNORECASE)
+        numeric = re.match(r"^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(?:\s+|$)(.*)$", label)
         if leading_td:
             if leading_td.group(1) is not None:
-                td_text = leading_td.group(1)
+                values.append(leading_td.group(1))
             label = leading_td.group(2)
-        if fallback:
-            label = re.sub(r"\btd\s*=\s*[0-9.eE+-]+", "", label or "", flags=re.IGNORECASE).strip()
+        elif numeric:
+            values.append(numeric.group(1))
+            label = numeric.group(2)
         try:
-            td = float(td_text) if td_text is not None else 1.0
+            numbers = [float(value) for value in values]
         except ValueError:
-            diagnostics.append(diag("invalid_td", f"line:{number}", ERROR))
+            numbers = [float("nan")]
+        if len(assignments) > 1 or any(not (0 < value < float("inf")) for value in numbers) or len(set(numbers)) > 1:
+            diagnostics.append(diag("invalid_or_conflicting_td", f"line:{number}", ERROR))
             continue
-        if not (td > 0 and td < float("inf")):
-            diagnostics.append(diag("invalid_td", f"line:{number}", ERROR))
-            continue
+        td = numbers[0] if numbers else 1.0
+        td_text = values[0] if values else None
         entries.append(PaletteEntry((label or f"Color {len(entries) + 1}").strip(),
                                     f"#{color.upper()}", td,
                                     "provided" if td_text is not None else "derived"))
@@ -88,6 +89,31 @@ def parse_ditherforge(text: str) -> Decoded[Palette]:
 
 
 def _build_kromacut(reader) -> Palette:
+    # Kromacut v2 exports parallel arrays in a .kpal JSON object. Keep every
+    # original index, including disabled colours, so readings cannot shift rows.
+    if "colors" in reader.raw:
+        colors = reader.raw["colors"]
+        names = reader.raw.get("colorNames", [])
+        disabled = reader.raw.get("disabledColors", [])
+        if not isinstance(colors, list) or not colors or len(colors) > 256:
+            reader.error("invalid_colors", "colors")
+            return Palette("kromacut_json_v2", [])
+        if not isinstance(names, list) or len(names) > len(colors) or any(not isinstance(n, str) or len(n) > 256 for n in names):
+            reader.error("invalid_color_names", "colorNames")
+            return Palette("kromacut_json_v2", [])
+        if not isinstance(disabled, list) or any(type(i) is not int or not 0 <= i < len(colors) for i in disabled):
+            reader.error("invalid_disabled_colors", "disabledColors")
+            return Palette("kromacut_json_v2", [])
+        entries = []
+        for index, raw_color in enumerate(colors):
+            color = _color(raw_color)
+            if color is None:
+                reader.error("invalid_color", f"colors[{index}]")
+                continue
+            label = names[index].strip() if index < len(names) else ""
+            entries.append(PaletteEntry(label or f"Color {index + 1}", color, 1.0, "derived", index not in disabled))
+        return Palette("kromacut_json_v2", entries)
+    # Retain the earlier Studio row representation for saved fixtures.
     rows = reader.items("palette", required=True)
     if not rows:
         reader.error("empty_palette", "palette")
