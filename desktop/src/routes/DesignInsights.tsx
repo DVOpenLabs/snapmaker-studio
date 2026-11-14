@@ -20,6 +20,7 @@ import { useOpenFile } from "@/hooks/useOpenFile";
 import { useToast } from "@/store/toast";
 import { OrcaHandoff } from "@/components/OrcaHandoff";
 import { PrepareModeChooser } from "@/components/PrepareModeChooser";
+import { ConnectedPrepareSetupSelector } from "@/components/PrepareSetupSelector";
 import { PrepareSettingsSummary, STARTER_NOTICE } from "@/components/PrepareSettingsSummary";
 import { StrategyPicker } from "@/components/StrategyPicker";
 import { BusinessDoctors } from "@/components/BusinessDoctors";
@@ -41,6 +42,7 @@ export default function DesignInsights() {
   const convert = useSession((s) => s.convert);
   const runDoctor = useSession((s) => s.runDoctor);
   const runConvert = useSession((s) => s.runConvert);
+  const runConvertWithoutSetup = useSession((s) => s.runConvertWithoutSetup);
   const prepareMode = useSession((s) => s.prepareMode);
   const setPrepareMode = useSession((s) => s.setPrepareMode);
   const preview = useSession((s) => s.preview);
@@ -209,6 +211,7 @@ export default function DesignInsights() {
         </div>
       </div>
 
+      {file.ext !== "stl" && !prepareBlocked && <ConnectedPrepareSetupSelector projectPath={file.path} result={convert.data ?? preview.data} disabled={convert.status === "loading"} onPrepareWithoutSetup={() => void runConvertWithoutSetup()} />}
       {file.ext !== "stl" && <PrepareModeChooser mode={prepareMode} onModeChange={setPrepareMode} onCustom={previewConvert} previewing={preview.status === "loading"} blocked={prepareBlocked} />}
       {file.ext === "stl" && <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">{STARTER_NOTICE}</p>}
       {preview.status === "done" && preview.data?.settings_summary && <PrepareSettingsSummary summary={preview.data.settings_summary} mode={preview.data.prepare_mode} isStl={file.ext === "stl"} preview onPreparePreserve={prepareBlocked ? undefined : () => runConvert("preserve")} onPrepareRecommended={prepareBlocked ? undefined : () => runConvert("recommended")} />}

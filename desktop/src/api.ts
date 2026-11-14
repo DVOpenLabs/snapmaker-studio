@@ -6,6 +6,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { isPrinterSetUp, PrinterNotSetUpError, requirePrinterHost } from "@/lib/printerSetup";
 import type { ModelDownloadEvent, RegisteredModel } from "@/lib/modelDownloads";
 import type { PaintedPreview } from "@/lib/paintedPreview";
+import type { Topology } from "@/lib/extTypes";
+import type { EngineSetupReport } from "@/lib/prepareSetup";
 import type {
   MappingRequest, MaterialGuard, MaterialInventory, MaterialPresetList, MaterialSelection, ProjectMaterialsAnalysis,
 } from "@/lib/projectMaterials";
@@ -151,6 +153,8 @@ export interface SettingsSummary {
   support_intent?: { decision: string; statement: string; blocker_evidence?: string[] };
   /** Present only when Project Materials made a choice (or the engine was given the installed presets). */
   project_materials?: ProjectMaterialsSummary;
+  /** The engine's own report on the printer setup it was sent; absent when none was sent, or when the engine did not say. */
+  setup?: EngineSetupReport;
 }
 
 /** What Prepare reports about Project Materials. `fidelity` is the engine's own record, with its
@@ -203,7 +207,7 @@ export class PrepareRefusalError extends Error {
 }
 
 export async function convert(path: string, outDir?: string, prepareMode: PrepareMode = "preserve", dryRun = false,
-                              materials?: MaterialSelection[]): Promise<ConversionResult> {
+                              materials?: MaterialSelection[], topology?: Topology): Promise<ConversionResult> {
   const { port, token } = await apiInfo();
   const r = await fetch(`http://127.0.0.1:${port}/convert`, {
     method: "POST",
@@ -212,6 +216,8 @@ export async function convert(path: string, outDir?: string, prepareMode: Prepar
       path, out_dir: outDir ?? null, prepare_mode: prepareMode, dry_run: dryRun || undefined,
       // Only when the person chose something in Project Materials; absent means Prepare as before.
       ...(materials && materials.length ? { materials: { selections: materials } } : {}),
+      // Only a printer setup the person chose and Studio accepted (lib/prepareSetup); absent means the stock U1 behaviour.
+      ...(topology ? { topology } : {}),
     }),
   });
   if (!r.ok) {

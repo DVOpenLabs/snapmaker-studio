@@ -46,7 +46,19 @@ def test_valid_eight_slot_setup_keeps_each_vector_at_its_own_scope(tmp_path):
     assert all(out[k] == vec(k, 8) for k in FILAMENT_SCOPE)          # one entry per project filament
     assert all(out[k] == vec(k, 4) for k in HEAD_SCOPE)              # one entry per physical head, not eight
     assert len(out["filament_colour"]) == 8
-    assert res.settings_summary["setup"] == {"state": "valid", "heads": 4, "slots": 8, "unbound": []}
+    assert res.settings_summary["setup"] == {"state": "valid", "applied": True, "heads": 4, "slots": 8, "unbound": []}
+
+
+def test_recommended_mode_reports_the_setup_as_not_applied_and_writes_stock_values(tmp_path):
+    src = _project(tmp_path, project_cfg(8), name="r.3mf")
+    res = convert_to_u1(str(src), out_dir=str(tmp_path / "r"), prepare_mode="recommended", topology=topology())
+    out = saved(res)
+    # Recommended never reads the setup: every vector is the stock four-head shape, so the engine must not say "used".
+    assert all(len(out[k]) == 4 for k in FILAMENT_SCOPE + HEAD_SCOPE)
+    report = res.settings_summary["setup"]
+    assert report["state"] == "valid" and report["applied"] is False
+    assert "U1 starter settings" in report["not_applied_reason"] and "Preserve creator settings" in report["not_applied_reason"]
+    assert "Recommended" not in report["not_applied_reason"]
 
 
 def test_dict_form_of_a_valid_setup_is_accepted(tmp_path):
