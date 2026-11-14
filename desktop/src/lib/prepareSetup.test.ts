@@ -176,6 +176,11 @@ describe("topologyOutcome (engine-authoritative)", () => {
     expect(topologyOutcome(true, result({ state: "valid", applied: true, heads: 3, slots: 8 }), sent).state).toBe("unknown");
     expect(topologyOutcome(true, result({ state: "valid", applied: "true", heads: 4, slots: 8 }), sent).state).toBe("unknown");
   });
+  it("does not double the full stop when an engine reason already ends with one", () => {
+    const line = topologyOutcomeLine({ state: "blocked", reasons: ["the printer setup has 3 heads."], alternative: null })!;
+    expect(line).toContain("The printer setup has 3 heads.");
+    expect(line).not.toContain("..");
+  });
   it("names unbound slots as having no reported binding", () => {
     const line = topologyOutcomeLine({ state: "used", heads: 4, slots: 8, unbound: ["slot 5"] })!;
     expect(line).toContain("no reported binding: slot 5");
