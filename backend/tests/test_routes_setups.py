@@ -65,8 +65,9 @@ def test_list_names_the_host_adapters_without_touching_the_network():
     code, body = call("/setups/list", {})
     assert code == 200
     assert {a["id"] for a in body["adapters"]} >= {"host.moonraker_stock", "host.moonraker_paxx", "host.octoprint"}
-    assert all(a["kind"] == "host" and a["ttl_s"] > 0 for a in body["adapters"])
-    assert "Accessory feeders are not covered" in body["coverage"]
+    assert all(a["kind"] in ("host", "accessory") and a["ttl_s"] > 0 for a in body["adapters"])
+    assert {a["id"] for a in body["adapters"]} >= {"multiace", "afc", "bmcu", "sidecar"}
+    assert "partial" in body["coverage"]
 
 
 # plan test 9

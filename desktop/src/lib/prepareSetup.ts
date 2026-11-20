@@ -19,7 +19,7 @@ export type PrepareSetupSelection =
   | { status: "none"; token: number }
   | { status: "reading"; token: number; projectPath: string; label: string }
   | { status: "ready"; token: number; projectPath: string; label: string; topology: Topology; summary: SetupSummary }
-  | { status: "unknown" | "invalid" | "failed"; token: number; projectPath: string; label: string; reason: string };
+  | { status: "unknown" | "invalid" | "failed"; token: number; projectPath: string; label: string; reason: string; reportedTopology?: Topology };
 
 export interface SetupSummary {
   heads: number;
@@ -128,7 +128,7 @@ export function selectionFromEvaluate(base: SelectionBase, res: unknown): Prepar
   const raw = isObj(res) ? res.topology : undefined;
   if (raw == null) return { status: "unknown", ...base, reason: hostReason(res) };
   const checked = checkTopology(raw);
-  if (!checked.ok) return { status: checked.kind, ...base, reason: checked.reason };
+  if (!checked.ok) return { status: checked.kind, ...base, reason: checked.reason, ...(checked.kind === "unknown" ? { reportedTopology: raw as Topology } : {}) };
   return { status: "ready", ...base, topology: checked.topology, summary: describeTopology(checked.topology) };
 }
 
@@ -167,7 +167,7 @@ export function setupStatusLine(sel: PrepareSetupSelection): string {
   switch (sel.status) {
     case "none": return "No setup chosen. Prepare uses Studio's stock four-toolhead U1 behaviour.";
     case "reading": return `Reading ${sel.label}...`;
-    case "ready": return `Selected setup reported by ${sel.label}: ${sel.summary.text}. Whether Prepare applies it depends on the preparation mode; the engine reports what it did.`;
+    case "ready": return `${sel.topology.evidence?.includes("user-declared-slot-map") ? "Selected setup with your declared logical bindings" : "Selected setup reported by"} ${sel.label}: ${sel.summary.text}. Whether Prepare applies it depends on the preparation mode; the engine reports what it did.`;
     default: return `${sel.label}: ${endSentence(sel.reason)}`;
   }
 }
