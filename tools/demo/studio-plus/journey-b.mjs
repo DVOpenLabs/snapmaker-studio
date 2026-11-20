@@ -266,7 +266,9 @@ await step("B8 no hardware action replayed; file bytes unchanged by preview; moc
   if (JSON.stringify(pre) !== JSON.stringify(post_)) throw new Error("recovery preview changed bytes on disk");
   await fill("Configured printer host", "127.0.0.1"); await fill("Configured printer port", String(printerPort));
   await clickText("Read status"); await waitFor("!!document.querySelector('[data-testid=monitor-summary]')", "monitor summary"); await shot("B8-monitoring-read-only.png");
-  if (mockRequests.length !== 1 || mockRequests[0][0] !== "GET" || mockRequests[0][1] !== "/printer/objects/query") throw new Error("sentinel: " + JSON.stringify(mockRequests));
+  // The monitor makes read-only status and history reads: only these two GET paths are allowed, each at least once, and nothing else.
+  const allowed = new Set(["/printer/objects/query", "/server/history/list"]);
+  if (mockRequests.length < 1 || mockRequests.length > 4 || mockRequests.some((r) => r[0] !== "GET" || !allowed.has(r[1])) || !mockRequests.some((r) => r[1] === "/printer/objects/query")) throw new Error("sentinel: " + JSON.stringify(mockRequests));
   const text = await evaluate("document.querySelector('[data-testid=restore-preview]').innerText");
   return `bytes identical across ${Object.keys(pre).length} files; printer requests=${JSON.stringify(mockRequests)}; job lines: ${(text.match(/Job [^.]*\./g) || []).join(" | ") || "(none recorded)"}`;
 });

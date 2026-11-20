@@ -234,12 +234,20 @@ await step("A3 DitherForge Bambu-path: inspect + Prepare", async () => {
   return `out=${added[0]}; dropped=${v.dropped.join("|") || "-"}; added=${v.added.join("|") || "-"}; paint ${v.source_stats.paint_color_attrs}->${v.output_stats.paint_color_attrs}`;
 });
 await step("A5 DitherForge generic-path: honest refusal, nothing written", async () => {
-  await inspect("sample-ditherforge-generic.3mf", "Looks like DitherForge");
+  // The current build clears the inspection and path when the format changes, so choose the format first, then inspect. The page then says "Read as DitherForge (your choice)".
   await fill("Project format", "ditherforge"); await sleep(300);
-  const before = listOut(); await prepare("No copy was written"); await shot("A5-ditherforge-generic-refused.png");
+  await inspect("sample-ditherforge-generic.3mf", "Read as DitherForge");
+  const before = listOut();
+  await shot("A5-ditherforge-generic-inspected.png");
+  const state = await evaluate("(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Prepare a U1 copy'); return b ? (b.disabled ? 'disabled' : 'enabled') : 'absent'; })()");
+  let how;
+  if (state === "enabled") { await prepare("No copy was written"); how = "clicked Prepare; refused"; }
+  else if (state === "disabled") how = "Prepare disabled by the app";
+  else throw new Error("Prepare control " + state + " for an inspection-only file");
+  await shot("A5-ditherforge-generic-refused.png");
   if (listOut().length !== before.length) throw new Error("a file was written for the generic path");
   const t = await bodyText();
-  return "refused; output folder unchanged (" + before.length + " files); mentions: " + ["inspect", "generic", "part"].filter((k) => t.toLowerCase().includes(k)).join(",");
+  return how + "; output folder unchanged (" + before.length + " files); mentions: " + ["inspect", "generic", "part"].filter((k) => t.toLowerCase().includes(k)).join(",");
 });
 await step("A6 failure: unknown-origin Prepare refused", async () => {
   await fill("Project format", "auto");
