@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { AlertTriangle, FileCheck2, FolderOpen, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FlatCards } from "@/components/ui/card";
@@ -42,10 +42,11 @@ type TabId = "target" | "materials" | "settings";
  * starts it over: choices, previews and results made for the earlier one never carry across.
  */
 export default function Cockpit() {
+  const location = useLocation();
   const file = useSession((s) => s.file);
   const identity = useIdentity(file);
   if (!file) return <NoJob />;
-  return <JobScreen key={identity} file={file} />;
+  return <JobScreen key={identity} file={file} showSetup={location.state?.prepareSetup === true} />;
 }
 
 /** A number that changes whenever a different project is opened, including the same path opened again. */
@@ -79,7 +80,7 @@ function NoJob() {
 
 const VIEW_OF: Record<StageId, View> = { open: "model", materials: "model", copy: "model", orca: "copy", compare: "slice" };
 
-function JobScreen({ file }: { file: FileRef }) {
+function JobScreen({ file, showSetup = false }: { file: FileRef; showSetup?: boolean }) {
   const doctor = useSession((s) => s.doctor);
   const convert = useSession((s) => s.convert);
   const runDoctor = useSession((s) => s.runDoctor);
@@ -99,7 +100,7 @@ function JobScreen({ file }: { file: FileRef }) {
   const [mode, setMode] = useState<PrepareMode>("preserve");
   const [holding, setHolding] = useState(false);
   const [selections, setSelections] = useState<MaterialSelection[]>([]);
-  const [tab, setTab] = useState<TabId>("materials");
+  const [tab, setTab] = useState<TabId>(showSetup ? "settings" : "materials");
 
   // A copy Studio wrote and validated for this project in this session (the shared store only accepts those).
   const data = convert.status === "done" ? convert.data : null;

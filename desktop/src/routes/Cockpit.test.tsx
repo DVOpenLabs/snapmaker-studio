@@ -495,3 +495,12 @@ describe("This job: a project the engine already calls unusable is not prepared"
     expect(primaryButton().disabled).toBe(false);
   });
 });
+
+it("the explicit Setups handoff opens Copy settings without starting preparation", async () => {
+  await open(A); useSession.getState().invalidatePrepareSetup(A.path);
+  render(<MemoryRouter initialEntries={[{ pathname: "/this-print", state: { prepareSetup: true } }]}><Cockpit /></MemoryRouter>);
+  await settle();
+  expect(screen.getByRole("tab", { name: "Copy settings" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByTestId("setup-status").getAttribute("data-state")).toBe("unknown");
+  expect(api.convert).not.toHaveBeenCalled(); expect(api.openInOrca).not.toHaveBeenCalled();
+});

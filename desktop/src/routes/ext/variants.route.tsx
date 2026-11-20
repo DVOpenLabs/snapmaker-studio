@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { GitCompareArrows } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import WorkspaceFileChoices from "@/components/WorkspaceFileChoices";
 import { PageHeader } from "@/components/ui/layout";
 import { compareVariants, type VariantOutput, type VariantReport } from "@/lib/variantsApi";
 
@@ -29,32 +30,43 @@ function OutputCard({ output, name }: { output: VariantOutput; name: string }) {
 }
 
 function VariantsView() {
+  const revision = useRef(0);
+  const pickerSequence = useRef(0);
+  useEffect(() => () => { revision.current += 1; }, []);
   const [files, setFiles] = useState<[string | null, string | null]>([null, null]);
   const [result, setResult] = useState<VariantReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   function setPath(index: 0 | 1, value: string | null) {
+    revision.current += 1;
+    setBusy(false); setError(null);
     setFiles((current) => { const next = [...current] as [string | null, string | null]; next[index] = value; return next; });
     setResult(null);
   }
   async function choose(index: 0 | 1) {
+    const sequence = ++pickerSequence.current, context = revision.current;
+    const current = () => pickerSequence.current === sequence && revision.current === context;
     try {
       const picked = await open({ multiple: false, filters });
-      if (typeof picked === "string") setPath(index, picked);
-    } catch { setError("The file picker is not available here. Type the file path instead."); }
+      if (current() && typeof picked === "string") setPath(index, picked);
+    } catch { if (current()) setError("The file picker is not available here. Type the file path instead."); }
   }
   async function compare() {
     if (!files[0] || !files[1]) return;
+    const request = ++revision.current;
     setBusy(true); setError(null); setResult(null);
-    try { setResult(await compareVariants({ outputs: [{ path: files[0] }, { path: files[1] }] })); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "The comparison could not be computed."); }
-    finally { setBusy(false); }
+    try {
+      const report = await compareVariants({ outputs: [{ path: files[0] }, { path: files[1] }] });
+      if (request === revision.current) setResult(report);
+    } catch (reason) {
+      if (request === revision.current) setError(reason instanceof Error ? reason.message : "The comparison could not be computed.");
+    } finally { if (request === revision.current) setBusy(false); }
   }
   return <main className="space-y-5 p-6">
     <PageHeader icon={GitCompareArrows} title="Variant comparison" subtitle="Compare two sliced outputs side by side. Studio reads local files and reports advisory evidence; it does not slice." />
     <div className="grid gap-3 md:grid-cols-2">
       {([0, 1] as const).map((index) => <Card key={index}><CardHeader><CardTitle>Output {index + 1}</CardTitle></CardHeader>
-        <CardContent className="space-y-2"><Button variant="secondary" onClick={() => void choose(index)}>Choose 3MF or G-code</Button>
+        <CardContent className="space-y-2"><WorkspaceFileChoices extensions={["3mf", "gcode", "g", "gco"]} label={`Use a job file for output ${index + 1}`} disabled={busy} onChoose={value => setPath(index, value)} /><Button variant="secondary" onClick={() => void choose(index)}>Choose 3MF or G-code</Button>
           <input aria-label={`Output ${index + 1} path`} className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" placeholder="or type a local file path"
             value={files[index] ?? ""} onChange={(event) => setPath(index, event.target.value.trim() || null)} />
           <p className="truncate text-sm text-muted-foreground">{files[index] ? files[index]!.split(/[\\/]/).pop() : "No file selected"}</p>

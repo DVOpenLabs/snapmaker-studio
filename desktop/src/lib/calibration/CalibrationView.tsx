@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useCalibrationDraft, type CalibrationDraft } from "./draft";
 import { Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/layout";
@@ -11,16 +12,18 @@ export default function CalibrationView() {
   const generation = useRef(0);
   const importGeneration = useRef(0);
   useEffect(() => () => { generation.current += 1; importGeneration.current += 1; }, []);
-  const [source, setSource] = useState<"ditherforge_txt" | "kromacut_json">("ditherforge_txt");
-  const [content, setContent] = useState("#E94B35 td=0.8 Vermilion\n#2878B8 td Blue\n#F2C14E td=1.1 Ochre");
-  const [family, setFamily] = useState<"frontlit" | "backlit">("frontlit");
-  const [layerHeight, setLayerHeight] = useState("0.20");
-  const [measurementText, setMeasurementText] = useState("");
-  const [ownedText, setOwnedText] = useState("");
-  const [nozzle, setNozzle] = useState("0.4");
-  const [material, setMaterial] = useState("PLA");
-  const [model, setModel] = useState("");
-  const [firstLayer, setFirstLayer] = useState("0.20");
+  const { draft, update, reset } = useCalibrationDraft();
+  const { source, content, family, layerHeight, measurementText, ownedText, nozzle, material, model, firstLayer } = draft;
+  const setSource = (source: CalibrationDraft["source"]) => update({ source });
+  const setContent = (content: string) => update({ content });
+  const setFamily = (family: CalibrationDraft["family"]) => update({ family });
+  const setLayerHeight = (layerHeight: string) => update({ layerHeight });
+  const setMeasurementText = (measurementText: string) => update({ measurementText });
+  const setOwnedText = (ownedText: string) => update({ ownedText });
+  const setNozzle = (nozzle: string) => update({ nozzle });
+  const setMaterial = (material: string) => update({ material });
+  const setModel = (model: string) => update({ model });
+  const setFirstLayer = (firstLayer: string) => update({ firstLayer });
   const [history, setHistory] = useState<CalibrationRun[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -67,6 +70,7 @@ export default function CalibrationView() {
 
   return <main className="space-y-5 p-6">
     <PageHeader icon={Palette} title="Palette calibration" subtitle="Compare palette targets with your physical readings and owned filament colours. This is an advisory check." />
+    <p className="text-xs text-muted-foreground">Inputs stay in memory while Studio is open, including when you use another tool. They are not kept after restart. Compare again or load saved history to see a previous result.</p>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
       <section className="space-y-3 rounded-lg border border-border bg-card p-4">
         <h2 className="font-semibold">Palette input</h2>
@@ -106,6 +110,8 @@ export default function CalibrationView() {
         <label className="block space-y-1 text-sm">Physical colors, one #RRGGBB per palette row<textarea className={`${field} mt-1 min-h-24 w-full font-mono`} aria-label="Physical colors" value={measurementText} onChange={(e) => { invalidate(false); setMeasurementText(e.target.value); }} /></label>
         <label className="block space-y-1 text-sm">Owned filament alternatives, one label #RRGGBB per line<textarea className={`${field} mt-1 min-h-24 w-full font-mono`} aria-label="Owned filaments" value={ownedText} onChange={(e) => { invalidate(false); setOwnedText(e.target.value); }} /></label>
         <Button size="sm" disabled={busy || !content.trim() || !material.trim()} onClick={() => void run()}>{busy ? "Comparing…" : "Compare palette"}</Button>
+        <Button size="sm" variant="ghost" onClick={() => { invalidate(true); reset(); }}>Clear calibration inputs</Button>
+        <p className="text-xs text-muted-foreground">Clearing inputs does not delete saved comparisons or cancel a comparison already sent to the local engine.</p>
         {error && <p role="alert" className="text-sm text-risk">{error}</p>}
       </section>
     </div>
