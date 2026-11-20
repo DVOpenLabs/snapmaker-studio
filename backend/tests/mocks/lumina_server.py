@@ -65,13 +65,14 @@ class LuminaHttpMock:
 
     def __init__(self, *, preview_id: str = "pngfile", glb_id: str | None = "glbfile",
                  version: str = "2.0", artifacts: dict | None = None, host: str = "127.0.0.1",
-                 port: int = 0) -> None:
+                 port: int = 0, generate_id: str | None = None, support_generate: bool = True) -> None:
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
         self.artifacts = dict(artifacts if artifacts is not None else HTTP_ARTIFACTS)
         self.requests: list[tuple[str, str]] = []
         self.uploads: list[dict] = []
+        self.generations: list[dict] = []
         mock = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -93,6 +94,7 @@ class LuminaHttpMock:
                 if path == "/openapi.json":
                     doc = {"info": {"version": version}, "paths": {
                         "/api/health": {}, "/api/convert/preview": {}, "/api/files/{file_id}": {}}}
+                    if support_generate: doc["paths"]["/api/convert/generate"] = {}
                     return self._send(200, "application/json", json.dumps(doc).encode())
                 if path == "/api/health":
                     return self._send(200, "application/json", b"{}")
@@ -107,6 +109,19 @@ class LuminaHttpMock:
                 mock.requests.append(("POST", path))
                 length = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(length)
+                if path == '/api/convert/generate' and support_generate:
+                    try:
+                        request = json.loads(body)
+                        assert request['session_id'] == 'session1'
+                        assert isinstance(request['params']['lut_name'], str)
+                        assert request['params']['source_kind'] == 'legacy_single'
+                        assert isinstance(request['params']['target_width_mm'], (int, float))
+                    except (ValueError, KeyError, TypeError, AssertionError):
+                        return self._send(422, 'application/json', b'{}')
+                    mock.generations.append(request)
+                    payload = {'status': 'ok', 'download_url': f'/api/files/{generate_id or preview_id}',
+                               'threemf_disk_path': None}
+                    return self._send(200, 'application/json', json.dumps(payload).encode())
                 if path != "/api/convert/preview":
                     return self._send(404, "application/json", b"{}")
                 mock.uploads.append({"bytes": body, "type": self.headers.get("Content-Type", "")})

@@ -19,6 +19,7 @@ export interface LuminaStatusResponse {
   status: "ok" | "unknown";
   api_version?: string;
   can_generate?: boolean;
+  can_generate_3mf?: boolean;
   code?: string;
   message?: string;
   progress: "unknown";
@@ -33,6 +34,7 @@ export interface LuminaGenerateRequest {
   lut_name: string;
   format: string;
   out_dir?: string;
+  width_mm?: number;
 }
 
 export interface LuminaGenerateResponse {
@@ -55,6 +57,7 @@ export interface LuminaForm {
   lutName: string;
   format: string;
   outDir?: string;
+  widthMm?: string;
 }
 
 /** Build the request. A missing field is an error here, never a guess: the format in particular is a
@@ -72,6 +75,11 @@ export function buildGenerateBody(form: LuminaForm, formats: readonly LuminaForm
   const body: LuminaGenerateRequest = { service_url, image_path, lut_name, format: form.format };
   const out = (form.outDir ?? "").trim();
   if (out !== "") body.out_dir = out;
+  if (form.format === "3mf" && form.widthMm !== undefined) {
+    const width = Number(form.widthMm);
+    if (!Number.isFinite(width) || width < 10 || width > 270) throw new Error('Model width must be from 10 to 270 mm.');
+    body.width_mm = width;
+  }
   return body;
 }
 
@@ -85,4 +93,9 @@ export function checkLuminaService(serviceUrl: string): Promise<LuminaStatusResp
 
 export function generateWithLumina(body: LuminaGenerateRequest): Promise<LuminaGenerateResponse> {
   return callExt<LuminaGenerateResponse>("/engines/lumina/generate", body, "Lumina generate");
+}
+
+
+export function openGeneratedModel(result: LuminaGenerateResponse, outDir?: string): Promise<{ output: { local_path: string }; kind: "3mf"; sha256: string }> {
+  return callExt("/engines/lumina/open_generated", { file_name: result.file_name, sha256: result.sha256, ...(outDir?.trim() ? { out_dir: outDir.trim() } : {}) }, "Open generated model");
 }
