@@ -1,5 +1,7 @@
 """Routes of the Assemblies track: plan a multi-tile project against shared spools.
 
+    POST /assemblies/import_file {path}                                 -> {assembly, notes, sha256}
+    POST /assemblies/normalize {assembly, supply?}                       -> {assembly}
     POST /assemblies/evaluate  {assembly, supply?, now?}                 -> {report}
     POST /assemblies/save      {assembly, id?, expected_revision?}       -> {id, revision, assembly}
     POST /assemblies/list      {}                                        -> {assemblies}
@@ -127,3 +129,23 @@ def get(data: dict) -> tuple[int, dict]:
 @ext_routes.route("/assemblies/delete")
 def delete(data: dict) -> tuple[int, dict]:
     return 200, {"deleted": store.delete(_id(data))}
+
+
+@ext_routes.route("/assemblies/import_file")
+def import_file(data: dict) -> tuple[int, dict]:
+    from snapstudio_core.assemblies import importer
+    try:
+        return 200, importer.import_file(rv.require_bounded_str(data, "path", 4096))
+    except AssemblyInputError as exc:
+        raise _refused(exc) from None
+
+
+@ext_routes.route("/assemblies/normalize")
+def normalize(data: dict) -> tuple[int, dict]:
+    """Validate legacy JSON inputs into the guided editor, without saving anything."""
+    try:
+        document = read_assembly(data.get("assembly")).to_dict()
+        ev.read_supply(data.get("supply"))
+        return 200, {"assembly": document}
+    except AssemblyInputError as exc:
+        raise _refused(exc) from None
