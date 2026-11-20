@@ -10,10 +10,14 @@ Everything runs from source on your own machine, on loopback, with disposable sy
 - Not shown, not claimed: genuine tool exports, Snapmaker Orca opening or slicing, a real Lumina service, any physical U1 or other hardware.
 
 ## Source identity
-- Product source for all three journeys: commit `22de80733f254c0a38fbca04986c154848e0bc69` (draft PR #144, branch `integ/demo-20261102`). That commit has no demo drivers.
-- The drivers and this recipe are on the follow-up branch `docs/demo-repro-20261102` (a draft PR, not merged). Check out that branch: it adds only documentation, the driver scripts in `tools/demo/studio-plus/`, and `THIRD_PARTY_NOTICES.md` on top of the product commit. Check:
-  `git diff --stat 22de80733f254c0a38fbca04986c154848e0bc69 HEAD` lists only `docs/demo/`, `tools/demo/studio-plus/` and `THIRD_PARTY_NOTICES.md`.
-- Inherited, unresolved: the review finding on PR #140 about `passport export -o` (a directory-swap race) is still open and is not addressed by this build.
+- **Demonstrated runs (2026-11-20).** The 18/18 and 12/12 results below were produced on a detached checkout of the landing branch `integ/codex-landing-20261114` (draft PR #150) with the drivers from this branch copied in unchanged:
+  - product commit `d7344ba` (final head of #150 at the time); an earlier identical pass was recorded at `ed4dab0`;
+  - driver commit `60ee42a` on `docs/demo-repro-20261102` (this branch). `tools/demo/studio-plus/` was byte-identical to it.
+  - Platform: one Windows 11 machine, loopback only, synthetic files, headless Edge. Not a clean machine, not Linux/macOS.
+- #150 is a draft and is NOT merged to main. Until it merges, the product commit above exists only on that branch. Merge or re-pin before presenting it as a stable reference.
+- The older pin `22de80733f254c0a38fbca04986c154848e0bc69` (draft PR #144, since merged) is the build the first recipe was written against; it predates main and #150, and its drivers expected behaviour the current build changed (see A5 and B8 below).
+- Fixed since the earlier text of this file: the passport export directory-swap finding (R4-F1, PR #140) was fixed in #147 and is no longer open.
+- Check this branch adds only documentation and driver scripts relative to the product commit you run: `git diff --stat <product-commit> docs/demo-repro-20261102 -- docs/demo tools/demo/studio-plus`.
 
 ## Prerequisites (tested versions; other versions untested)
 | Item | Tested |
@@ -28,7 +32,7 @@ Everything runs from source on your own machine, on loopback, with disposable sy
 ```bash
 git clone https://github.com/DVOpenLabs/snapmaker-studio.git
 cd snapmaker-studio
-git checkout docs/demo-repro-20261102   # product source 22de807 + docs/tooling; see "Source identity"
+git checkout integ/codex-landing-20261114   # product source d7344ba (draft PR #150); then copy tools/demo/studio-plus/ from docs/demo-repro-20261102 (60ee42a). See "Source identity"
 
 # backend (virtual environment recommended)
 python -m venv .venv                 # Windows: py -3.13 -m venv .venv
@@ -48,10 +52,10 @@ PYTHON="$PWD/.venv/bin/python" node tools/demo/studio-plus/run.mjs
 ```
 Options: `run.mjs ac` or `run.mjs b` run one part; `DEMO_OUT=<folder>` chooses where screenshots and `results-*.json` go (default `<temp>/studio-demo-out`); `EDGE_PATH` selects the browser. The exit code is non-zero if any step failed or the page logged an error. The drivers are a smoke check of the outcomes listed below, not a full test suite; observed on-screen text is also recorded in `results-*.json`.
 
-Expected result on the `docs/demo-repro-20261102` branch: Journeys A and C plus the sidebar sweep **18/18** steps, Journey B **12/12** steps, 0 page errors. (Recorded on one Windows machine; no clean-machine claim.)
+Expected result at product `d7344ba` with drivers `60ee42a`: Journeys A and C plus the sidebar sweep **18/18** steps, Journey B **12/12** steps, 0 page errors (run 2026-11-20). Limits: one Windows machine, loopback, synthetic fixtures and a mock printer; no clean-machine, Orca, real-Lumina or physical-U1 claim. Run the drivers against any other commit and the counts are unverified.
 
 ## What the journeys show (expected on-screen wording)
-**A. Prepare a supported creative project and see what changed.** Sidebar "Creative import", inspect `sample-kromacut.3mf`: "Looks like Kromacut", with "What Studio read", "Kept untouched", "Could not interpret" and "Original unchanged". "Prepare a U1 copy": "A new file was written" and "Export verification": Kept identical (5), Changed (1) `Metadata/project_settings.config`, Dropped (0), Added (0). The DitherForge Bambu-path sample prepares; the generic-path sample is refused with reasons and writes nothing; an unknown-origin file and a missing file are refused.
+**A. Prepare a supported creative project and see what changed.** Sidebar "Creative import", inspect `sample-kromacut.3mf`: "Looks like Kromacut", with "What Studio read", "Kept untouched", "Could not interpret" and "Original unchanged". "Prepare a U1 copy": "A new file was written" and "Export verification": Kept identical (5), Changed (1) `Metadata/project_settings.config`, Dropped (0), Added (0). The DitherForge Bambu-path sample prepares; the generic-path sample is inspect-only: choose the format "DitherForge" first (changing the format clears an earlier inspection), then inspect; the page says "Read as DitherForge (your choice)", Prepare is unavailable with the reason shown, and nothing is written (A5); an unknown-origin file and a missing file are refused.
 **B. Track artifact identity and preview recovery (read-only).** "Recovery" lists exactly the files that will be tracked (original and prepared copy) and why no sliced file is tracked; "Checkpoint this workspace" saves revision 1; "Sample data (not your workspace)" is a separate section. "Passport": "Use this job's files", "Build passport". After the original is replaced and the prepared copy deleted on disk, "Check the files again" marks the original "Invalidated / Bytes changed" and the prepared copy "Invalidated / File not found" because its declared parent changed. The recovery preview shows "changed" and "missing" labelled "Matched by filename only (unverified)". A missing file is a status; it is not byte-verified. Opening another project clears the old passport with a notice. Passport state lives in memory while the app is open, not across a restart. The monitoring stand-in sees only a read-only `GET`, and every file is unchanged after previews.
 **C. A Lumina-compatible service you configure yourself, with an explicit format.** Sidebar "Lumina service": the banner says "Tested only against a synthetic stand-in service. No real Lumina installation has been exercised." The format starts on "Choose a format"; after "Check service" and choosing `png`, "Generate" saves a new file and shows its name, size and SHA-256, marked "(not verified)". A format the service did not produce, a non-local address, a stopped service and a missing image are all refused.
 
@@ -77,3 +81,6 @@ Then follow journeys A, B and C above using the files in `<empty-folder>`. These
 - Windows is the only tested OS; the Linux/macOS code paths in the driver (and SIGTERM cleanup of the Vite shell on Linux) are untested.
 - The driver was written and run on one Windows machine and verified from a fresh checkout directory, not on a clean machine.
 - Upstream credits and licence identifiers for the formats and APIs read are in `THIRD_PARTY_NOTICES.md`.
+
+## Monitoring request note (B8)
+The read-only monitoring context makes two GET requests to the mock printer, `/printer/objects/query` and `/server/history/list`. The driver allows only those two paths and fails on any other request or method.
