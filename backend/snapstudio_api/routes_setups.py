@@ -119,6 +119,11 @@ def evaluate_accessory(data: dict) -> tuple[int, dict]:
         # is sent to the accessory; its authentication contract is not established.
         if raw.get('port') is None:
             raise rv.ValidationError('Enter the accessory service port explicitly.')
+        # Validate every request field before any network I/O.
+        _requirements(data)
+        if data.get('host'):
+            _host_url(data)
+            _api_key(data)
         path = ai.LIVE_PATHS[name]
         attempted = []
         try:

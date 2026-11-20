@@ -36,8 +36,10 @@ it("retains edited tiles and dated readings across navigation without renewing o
 it("retains the sample boundary and New assembly explicitly clears the draft", async () => {
   const view = render(<AssembliesView />); fireEvent.click(screen.getByText("Load sample assembly")); view.unmount(); render(<AssembliesView />);
   expect(screen.getByTestId("assembly-sample-disclosure").textContent).toContain("all figures are invented");
-  fireEvent.change(screen.getByLabelText("Import file path"), { target: { value: "synthetic.3mf" } }); fireEvent.click(screen.getByText("Import file"));
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Start a new assembly")); expect(importAssemblyFile).not.toHaveBeenCalled();
+  // Sample mode clears any earlier real path and blocks file import and inventory reads until New assembly.
+  expect((screen.getByLabelText("Import file path") as HTMLInputElement).disabled).toBe(true); expect((screen.getByLabelText("Import file path") as HTMLInputElement).value).toBe("");
+  expect((screen.getByText("Import file") as HTMLButtonElement).disabled).toBe(true); expect((screen.getByText("Read inventory") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByText("Import file")); expect(importAssemblyFile).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText("New assembly")); expect(useAssemblyDraft.getState().draft).toMatchObject({ sampleMode: false, supply: [], current: null, filePath: "", document: { tiles: [], bindings: {} } });
 });
 it("late import completion after navigation cannot overwrite the newer draft", async () => {

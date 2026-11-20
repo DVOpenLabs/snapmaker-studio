@@ -76,3 +76,12 @@ def test_busy_origin_lookup_is_unavailable_without_claiming_a_get(monkeypatch):
     assert code==200 and body['read']['status']=='unavailable'
     assert body['read']['reason']==str(netguard.NetguardRefused('unavailable'))
     assert body['read']['requests']==[]
+
+
+def test_invalid_request_fields_fail_before_any_network_read(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(routes_setups.netguard,"local_request",lambda *a,**k:calls.append(a))
+    for extra in ({"requirements":"not-a-list"},{"requirements":[{"material":"x"*65}]},{"api_key":"bad key\n","host":"127.0.0.1:8123"}):
+        code,body=call({"accessory":spec(mode="live",host="127.0.0.1",port=8123),**extra})
+        assert code==400,(extra,code,body)
+    assert calls==[]

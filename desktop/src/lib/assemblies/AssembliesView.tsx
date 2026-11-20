@@ -97,13 +97,13 @@ export default function AssembliesView() {
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => { invalidate(); setDocument(empty()); setSampleMode(false); setSupply([]); setInventory([]); setCurrent(null); setFilePath(""); }}>New assembly</Button>
         <Button variant="secondary" disabled={busy} onClick={() => void run(async valid => { const path = await pickFile({ multiple: false, filters: [{ name: "Projects and sliced outputs", extensions: ["3mf", "gcode", "g", "gco", "stl", "obj"] }] }); if (valid() && typeof path === "string") importPath(path); })}>Choose project or slice</Button>
-        <input aria-label="Import file path" className={`${field} flex-1`} placeholder="Or enter a local file path" value={filePath} onChange={e => { invalidate(); setFilePath(e.target.value); setInventory([]); }} />
-        <Button disabled={busy || !filePath.trim()} onClick={() => importPath(filePath)}>Import file</Button>
+        <input aria-label="Import file path" disabled={sampleMode} className={`${field} flex-1`} placeholder="Or enter a local file path" value={filePath} onChange={e => { invalidate(); setFilePath(e.target.value); setInventory([]); }} />
+        <Button disabled={busy || sampleMode || !filePath.trim()} onClick={() => importPath(filePath)}>Import file</Button>
         <Button variant="secondary" disabled={busy} onClick={() => void run(async valid => { const rows = await library(); if (valid()) setProjects(rows); })}>Browse library</Button>
         {projects.length > 0 && <select aria-label="Library project" className={field} value="" onChange={e => { const project = projects.find(p => p.id === Number(e.target.value)); if (project) importPath(project.source_path, project); }}><option value="">Choose library project…</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
       </div>
       <p className="text-xs text-muted-foreground">Each sliced 3MF plate becomes a tile. Unsliced models keep material usage unknown. Original files are not changed. Imported spool readings are cleared when files are added or an assembly is opened.</p>
-      <Button variant="secondary" onClick={() => { invalidate(); setCurrent(null); setDocument(decodeDocument({ ...SAMPLE_ASSEMBLY, attribution: [...SAMPLE_ASSEMBLY.attribution, { data_origin: "synthetic-sample" }] })); setSampleMode(true); setSupply(sampleSupply(Math.floor(Date.now() / 1000))); setNotice(null); }}>Load sample assembly</Button>
+      <Button variant="secondary" onClick={() => { invalidate(); setCurrent(null); setDocument(decodeDocument({ ...SAMPLE_ASSEMBLY, attribution: [...SAMPLE_ASSEMBLY.attribution, { data_origin: "synthetic-sample" }] })); setSampleMode(true); setFilePath(""); setInventory([]); setSupply(sampleSupply(Math.floor(Date.now() / 1000))); setNotice(null); }}>Load sample assembly</Button>
     </section>
     {document.tiles.map((tile, index) => <section key={tile.tile_id} className="space-y-3 rounded-lg border border-border bg-card p-4" aria-label={`Tile ${index + 1}`}>
       <div className="flex flex-wrap gap-2">
@@ -127,7 +127,7 @@ export default function AssembliesView() {
         <input aria-label="Provider address" placeholder="Provider address on your network" className={field} value={providerUrl} onChange={e => { invalidate(); setProviderUrl(e.target.value); setInventory([]); }} />
         <input aria-label="Provider key" placeholder="API key (optional)" type="password" autoComplete="off" className={field} value={providerKey} onChange={e => { invalidate(); setProviderKey(e.target.value); setInventory([]); }} />
         <input aria-label="Provider instance ID" placeholder="Unique provider instance ID" className={field} value={instance} onChange={e => { invalidate(); setInstance(e.target.value); setInventory([]); }} />
-        <Button variant="secondary" disabled={busy || !filePath.trim() || !providerUrl.trim() || !instance.trim()} onClick={() => void run(async valid => { const result = await projectMaterialsInventory(filePath, 0, { provider, provider_url: providerUrl, ...(providerKey ? { provider_key: providerKey } : {}) }); if (valid()) {
+        <Button variant="secondary" disabled={busy || sampleMode || !filePath.trim() || !providerUrl.trim() || !instance.trim()} onClick={() => void run(async valid => { const result = await projectMaterialsInventory(filePath, 0, { provider, provider_url: providerUrl, ...(providerKey ? { provider_key: providerKey } : {}) }); if (valid()) {
           setInventory([]);
           if (result.supported === false) throw new Error(result.reason || "Inventory is not supported for this file. The assembly is unchanged.");
           if (result.provider && !result.provider.available) throw new Error("The inventory provider is unavailable. Check its address and credentials; no inventory was imported.");

@@ -45,9 +45,11 @@ it("clears sample observations when opening a saved assembly", async () => {
 it("does not mix real imports with invented sample tiles", async () => {
   render(<AssembliesView />);
   fireEvent.click(screen.getByText("Load sample assembly"));
-  fireEvent.change(screen.getByLabelText("Import file path"), { target: { value: "synthetic.3mf" } });
+  // The path field and import/inventory buttons are disabled in sample mode, so no real file can be mixed in.
+  expect((screen.getByLabelText("Import file path") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByText("Import file") as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByText("Read inventory") as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByText("Import file"));
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Start a new assembly"));
   expect(importAssemblyFile).not.toHaveBeenCalled();
 });
 it("imports a file, saves and reopens the actual imported document", async () => {
