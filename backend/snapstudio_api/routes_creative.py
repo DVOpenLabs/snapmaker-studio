@@ -379,6 +379,12 @@ def prepare(data: dict) -> tuple[int, dict]:
 
     path = _path(data)
     hint = _format(data)
+    topology = data.get("topology")
+    materials = data.get("materials")
+    if topology is not None and (not isinstance(topology, dict) or len(str(topology)) > 400_000):
+        raise rv.ValidationError("topology must be an object")
+    if materials is not None and (not isinstance(materials, dict) or not isinstance(materials.get("selections"), list) or len(materials["selections"]) > 64):
+        raise rv.ValidationError("materials must contain a selections list with at most 64 entries")
     body, blob, manifest = _inspect(path, hint)
     explanation = body["explanation"]
     if explanation is not None:
@@ -389,7 +395,8 @@ def prepare(data: dict) -> tuple[int, dict]:
     out_dir, out_kind = _out_dir(data)
     original_sha = hashlib.sha256(blob).hexdigest()
     try:
-        result = service.convert(path, out_dir, "preserve")
+        result = (service.convert(path, out_dir, "preserve", False, materials, topology=topology)
+                  if topology is not None or materials is not None else service.convert(path, out_dir, "preserve"))
     except SnapStudioError as exc:
         problems = list(getattr(exc, "problems", []))
         return _refusal("prepare_refused", body, {
@@ -403,10 +410,12 @@ def prepare(data: dict) -> tuple[int, dict]:
             "seen": "The file was read, but Prepare refused it.", "not_supported": str(exc),
             "what_to_do": ["Nothing was written and the original was not changed."]})
     if result.get("blocked") or not result.get("output_path"):
-        return _refusal("prepare_blocked", body, {
+        code, response = _refusal("prepare_blocked", body, {
             "seen": "The file was read, but Prepare did not write a copy.",
             "not_supported": " ".join(str(e) for e in result.get("errors") or []) or "Prepare wrote no file.",
             "what_to_do": ["Nothing was written and the original was not changed."]})
+        response["setup"] = (result.get("settings_summary") or {}).get("setup")
+        return code, response
 
     out_path = result["output_path"]
     verify = _verify(manifest, out_path)
@@ -422,7 +431,8 @@ def prepare(data: dict) -> tuple[int, dict]:
                    "location_label": ("Studio's creative-prepared folder" if out_kind == "studio_default"
                                       else "the folder you chose"),
                    "in_source_folder": same_place},
-        "prepare": {"mode": result.get("prepare_mode"), "validated_ok": bool(result.get("validated_ok")),
+        "prepare": {"schema_version": result.get("schema_version"), "settings_summary": result.get("settings_summary"),
+                    "mode": result.get("prepare_mode"), "validated_ok": bool(result.get("validated_ok")),
                     "errors": [str(e) for e in result.get("errors") or []][:MAX_LISTED],
                     **_summary_subset(result)},
         "verification": verify,
