@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import AssembliesView from "./AssembliesView";
 import { useAssemblyDraft } from "./draft";
+import { useJob } from "@/store/job";
 import { evaluateAssembly, importAssemblyFile, listAssemblies, saveAssembly, getAssembly } from "./api";
 vi.mock("./api", async original => ({ ...await original<object>(), evaluateAssembly: vi.fn(), importAssemblyFile: vi.fn(), listAssemblies: vi.fn(), saveAssembly: vi.fn(), getAssembly: vi.fn() }));
 vi.mock("@/api", () => ({ library: vi.fn(), projectMaterialsInventory: vi.fn() }));
@@ -41,6 +42,18 @@ it("retains the sample boundary and New assembly explicitly clears the draft", a
   expect((screen.getByText("Import file") as HTMLButtonElement).disabled).toBe(true); expect((screen.getByText("Read inventory") as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByText("Import file")); expect(importAssemblyFile).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText("New assembly")); expect(useAssemblyDraft.getState().draft).toMatchObject({ sampleMode: false, supply: [], current: null, filePath: "", document: { tiles: [], bindings: {} } });
+});
+it("sample mode: a verified job file offered by the picker cannot be adopted or imported", async () => {
+  useJob.setState({ record: { original: { path: "C:\work\synthetic.3mf", name: "synthetic.3mf", fingerprint: null }, prepared: null, sliced: null } as never, verified: true } as never);
+  render(<AssembliesView />);
+  const choice = screen.getByText(/Project: synthetic\.3mf/) as HTMLButtonElement; expect(choice.disabled).toBe(false);
+  fireEvent.click(screen.getByText("Load sample assembly"));
+  expect((screen.getByText(/Project: synthetic\.3mf/) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByText(/Project: synthetic\.3mf/));
+  expect((screen.getByLabelText("Import file path") as HTMLInputElement).value).toBe("");
+  expect((screen.getByText("Import file") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByText("Import file")); expect(importAssemblyFile).not.toHaveBeenCalled();
+  useJob.setState({ record: null, verified: false } as never);
 });
 it("late import completion after navigation cannot overwrite the newer draft", async () => {
   let resolve!: (value: never) => void; vi.mocked(importAssemblyFile).mockReturnValueOnce(new Promise(r => { resolve=r; }));
