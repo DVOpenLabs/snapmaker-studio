@@ -1,8 +1,8 @@
 import { callExt } from "./extApi";
-import type { EvaluateRequest, EvaluateResponse, ListResponse } from "./setupsTypes";
+import type { AccessoryInput, EvaluateRequest, EvaluateResponse, ListResponse } from "./setupsTypes";
 
 /** Build the request body. Blank fields are left out; the key is included only when typed. */
-export function buildEvaluateBody(input: { host: string; port?: string; key?: string; materials?: string[] }): EvaluateRequest {
+export function buildEvaluateBody(input: { host: string; port?: string; key?: string; materials?: string[]; accessory?: AccessoryInput }): EvaluateRequest {
   const body: EvaluateRequest = { host: input.host.trim() };
   const port = (input.port ?? "").trim();
   if (port !== "") {
@@ -15,6 +15,7 @@ export function buildEvaluateBody(input: { host: string; port?: string; key?: st
   if (key !== "") body.api_key = key;
   const materials = (input.materials ?? []).map((m) => m.trim()).filter((m) => m !== "");
   if (materials.length > 0) body.requirements = materials.map((material) => ({ material }));
+  if (input.accessory) body.accessory = input.accessory;
   return body;
 }
 

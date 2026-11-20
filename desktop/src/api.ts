@@ -15,7 +15,7 @@ import type {
 type ApiInfo = { port: number; token: string };
 let cached: ApiInfo | null = null;
 
-async function apiInfo(): Promise<ApiInfo> {
+export async function apiInfo(): Promise<ApiInfo> {
   if (cached) return cached;
   // Dev/screenshot-harness only: let headless Edge point at a running backend via
   // ?api=PORT:TOKEN. Stripped from production builds (import.meta.env.DEV === false).
