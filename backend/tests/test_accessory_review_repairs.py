@@ -84,4 +84,5 @@ def test_invalid_request_fields_fail_before_any_network_read(monkeypatch):
     for extra in ({"requirements":"not-a-list"},{"requirements":[{"material":"x"*65}]},{"api_key":"bad key\n","host":"127.0.0.1:8123"}):
         code,body=call({"accessory":spec(mode="live",host="127.0.0.1",port=8123),**extra})
         assert code==400,(extra,code,body)
+        if "api_key" in extra: assert "api_key" in json.dumps(body),body
     assert calls==[]
