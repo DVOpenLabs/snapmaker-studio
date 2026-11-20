@@ -384,17 +384,18 @@ describe("workspace checkpoint and passport continuity (jsdom, real views, fake 
     expect(useJob.getState().record?.prepared ?? null).toBeNull();
   });
 
-  it("a newer Prepare that is refused does not stop an older valid copy from being linked", async () => {
+  it("a newer refused Prepare with unchanged inputs does not stop an older valid copy from being linked", async () => {
     render(<Shell />);
     let release!: () => void;
     prepareGates[PROJECT_A] = new Promise<void>((resolve) => { release = resolve; });
     await startPrepare(PROJECT_A, COPY_A, "bracket_SnapmakerU1.3mf");
     go("recovery");
-    go("creative"); type("Project file path", PROJECT_B);
+    delete prepareGates[PROJECT_A]; // Only the first request stays held.
+    go("creative"); // The retained source is A: no explicit input edit or Clear.
     fireEvent.click(screen.getByText("Inspect project")); await screen.findByLabelText("Prepare a U1 copy");
-    responses[PROJECT_B] = { prepared: false, refusal: { kind: "x", seen: "", not_supported: "", what_to_do: [] }, origin: { status: "detected" } };
+    responses[PROJECT_A] = { prepared: false, refusal: { kind: "x", seen: "", not_supported: "", what_to_do: [] }, origin: { status: "detected" } };
     fireEvent.click(screen.getByRole("button", { name: "Prepare a U1 copy" }));
-    await screen.findByText("prepare-panel");                                      // B was refused: nothing written, nothing linked
+    await screen.findByText("prepare-panel");                                      // The newer A request was refused: nothing written, nothing linked
     await act(async () => { release(); await new Promise((r) => setTimeout(r, 30)); });
     expect(useJob.getState().record?.prepared?.path).toBe(COPY_A);
   });
