@@ -300,7 +300,7 @@ def test_cli_runner_timeout_or_cancel_stops_descendant_writer(tmp_path, stop_kin
     worker.start()
     if cancel is not None:
         deadline = time.monotonic() + 3
-        while not pid_file.exists() and time.monotonic() < deadline:
+        while not (pid_file.exists() and pid_file.read_text().strip()) and time.monotonic() < deadline:
             time.sleep(0.005)
         cancel.set()
     worker.join(timeout=3)
@@ -430,7 +430,7 @@ def test_cli_runner_stops_child_after_unexpected_poll_exception(monkeypatch, tmp
         # its PID. This proves cleanup after an unexpected poll exception without
         # racing process startup or weakening the stopped-child assertion.
         deadline = time.monotonic() + 2
-        while not pid_file.exists():
+        while not (pid_file.exists() and pid_file.read_text().strip()):
             if time.monotonic() >= deadline:
                 raise AssertionError("runner child did not publish its PID")
             time.sleep(0.005)
