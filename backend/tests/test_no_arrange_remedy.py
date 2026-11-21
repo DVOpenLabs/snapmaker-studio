@@ -30,6 +30,11 @@ def _files():
         for path in sorted(base.rglob(pattern)):
             if ".test." in path.name or "node_modules" in path.parts:
                 continue
+            # Vendored viewer engine: its API identifiers (e.g. Viewport.arrange) are not
+            # text shown to people. Reachability is covered by the read-only viewer guards
+            # (project-scene/readOnly.guard.test.ts, readOnlyViewport.test.ts).
+            if path.relative_to(ROOT).parts[:3] == ("desktop", "src", "vendor"):
+                continue
             yield path
 
 

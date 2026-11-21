@@ -26,7 +26,7 @@ export function planWorkspaceCheckpoint(record: JobRecord | null, verified = tru
   }
   if (!record) {
     return { project: null, tracked: [], unavailable: [], canSave: false,
-      why: "No project is open. Prepare one from Creative import (or open a project) and its files appear here." };
+      why: "No project is open. Prepare one from the Creative tool, or open a project, and its files appear here." };
   }
   const tracked: TrackedFile[] = [{ role: "original", name: record.original.name, path: record.original.path }];
   const unavailable: UnavailableFile[] = [];

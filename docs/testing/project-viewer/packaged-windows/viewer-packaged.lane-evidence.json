@@ -1,0 +1,52 @@
+{
+  "schema": "harness-lane-evidence/3",
+  "lane": "rewrapped acceptance-identity installer",
+  "laneKind": "capture",
+  "identity": "acceptance",
+  "status": "pass",
+  "installerSha256": "9e2838461424055fa387eb76385287f0d5f05d0098e3a2b206cba85c52c29ea2",
+  "sourceVersion": "1.5.0",
+  "templateSha256": "d30f5f9d4bc40902addbc895e4211498612c6f0c567a54738c47fe3403ce1028",
+  "rewrappedOnDemand": true,
+  "installDir": "install\\h45b492fe3684424bb8b2a44febc504bd",
+  "installArguments": "/S /NCRC /NS /D=<install dir>",
+  "preflight": {
+    "updateCheck": "absent",
+    "webView2Runtime": "154.0.4258.62"
+  },
+  "keptInstall": false,
+  "repair": null,
+  "journals": [
+    {
+      "runId": "h45b492fe3684424bb8b2a44febc504bd",
+      "installExitCode": 0,
+      "finalized": true
+    }
+  ],
+  "orphanedInstall": null,
+  "uninstallOutcome": "Success",
+  "errorCount": 0,
+  "warningCount": 0,
+  "reasonCodes": [],
+  "warningCodes": [],
+  "tripwire": {
+    "violations": 0,
+    "added": 0,
+    "changed": 0,
+    "removed": 0,
+    "leveldbChanged": 0,
+    "structural": 0,
+    "completed": true,
+    "surfaces": {
+      "uninstallKey": 0,
+      "rememberedKey": 0,
+      "manufacturerKey": 0,
+      "runValue": 0,
+      "startMenuShortcut": 0,
+      "desktopShortcut": 0,
+      "installDir": 0
+    }
+  },
+  "shortcutFindings": 0,
+  "notProven": "Production registration, shortcut creation, default-path install/upgrade/uninstall of the real installer are NOT proven by this lane; they are exercised only on disposable GitHub-hosted CI runners."
+}

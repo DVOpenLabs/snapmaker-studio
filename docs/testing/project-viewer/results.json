@@ -1,0 +1,401 @@
+{
+  "schema": "project-viewer-results/2",
+  "commit": "24d44fa84fb68783533dd7f6e3518ef0f86140eb",
+  "dirtyOutsideEvidenceFolder": false,
+  "collectedAt": "2026-10-10T02:08:26.133Z",
+  "machine": {
+    "os": "win32",
+    "browser": "155.0.4283.45",
+    "webglHardware": true
+  },
+  "checks": {
+    "tsc": {
+      "exitCode": 0
+    },
+    "vitest": {
+      "files": 78,
+      "tests": 938,
+      "passed": 938,
+      "failed": 0
+    },
+    "build": {
+      "exitCode": 0
+    }
+  },
+  "bundle": {
+    "mainChunk": {
+      "bytes": 711409,
+      "gzip9": 190530
+    },
+    "lazyViewerChunk": {
+      "bytes": 908008,
+      "gzip9": 251759
+    },
+    "baseline": {
+      "ref": "58d193a",
+      "commit": "58d193a93c5bd6832bf2b3101e0641b00d6a96ba",
+      "mainChunk": {
+        "bytes": 710447,
+        "gzip9": 190139
+      }
+    }
+  },
+  "interaction": {
+    "facade": {
+      "hit": {
+        "x": 266,
+        "y": 248
+      },
+      "events": {
+        "camera": 189,
+        "pick": 4
+      },
+      "objectCentersBefore": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectCentersAfter": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectsDidNotMove": true,
+      "imagesIdentical": false,
+      "bytesA": 169471,
+      "bytesB": 169240
+    },
+    "control": {
+      "hit": {
+        "x": 266,
+        "y": 248
+      },
+      "events": {
+        "camera": 187,
+        "pick": 2,
+        "select": 2,
+        "transform": 11
+      },
+      "objectCentersBefore": {
+        "b0": [
+          109.5,
+          109,
+          10
+        ],
+        "b1": [
+          149.5,
+          109,
+          10
+        ]
+      },
+      "objectCentersAfter": {
+        "b1": [
+          149.5,
+          109,
+          10
+        ],
+        "b0": [
+          193.507,
+          87.632,
+          10
+        ]
+      },
+      "objectsDidNotMove": false,
+      "imagesIdentical": false,
+      "bytesA": 169471,
+      "bytesB": 169865
+    },
+    "errors": []
+  },
+  "cyclesFacade": {
+    "plannedCycles": 50,
+    "cycles": 50,
+    "contextsCreated": 100,
+    "contextsStillLive": 0,
+    "canvasesConnectedAfter": 0,
+    "canvasesCreatedByViewer": 150,
+    "detachedCanvasesWithLiveContext": 0,
+    "listenersLeftAfter": 0,
+    "listenersLeftByKind": {},
+    "liveObservers": 0,
+    "peakConnectedCanvases": 1,
+    "errors": []
+  },
+  "cyclesApp": {
+    "listenersOnDetachedCanvases": 0,
+    "contextsCreatedDuring": 102,
+    "contextsLiveAtEnd": 1,
+    "liveContextsAttachedToDetachedCanvas": 0,
+    "connectedCanvasesAtEnd": 1,
+    "connectedCanvasesBefore": 1,
+    "listenersOnConnectedTargets": 22,
+    "listenersByKind": {
+      "HTMLDetailsElement:toggle": 1,
+      "HTMLInputElement:invalid": 2,
+      "canvas:webglcontextlost": 2,
+      "canvas:webglcontextrestored": 1,
+      "canvas:webglcontextcreationerror": 1,
+      "canvas:pointerdown": 2,
+      "canvas:pointercancel": 2,
+      "canvas:contextmenu": 1,
+      "canvas:wheel": 2,
+      "document:keydown": 1,
+      "document:visibilitychange": 1,
+      "canvas:pointermove": 1,
+      "canvas:pointerup": 1,
+      "canvas:keydown": 1,
+      "canvas:keyup": 1,
+      "canvas:blur": 1,
+      "canvas:dblclick": 1
+    },
+    "liveObservers": 2,
+    "plannedWaitedMounts": 50,
+    "plannedQuickMounts": 25,
+    "completedWaitedMounts": 50,
+    "completedQuickMounts": 25,
+    "stuckAtCycle": null,
+    "stuckPanelText": null,
+    "stuckPageErrors": null,
+    "mountsAndUnmounts": 75,
+    "ofWhichShownBeforeUnmount": 50,
+    "secondsForAllCycles": 25.336,
+    "panelStillWorks": true,
+    "clickOnModelSelectsRow": {
+      "x": 502,
+      "y": 228
+    },
+    "spaceTogglesRow": true,
+    "errors": []
+  },
+  "memory": {
+    "app": {
+      "panelShownJsHeapBytes": 17728272,
+      "afterFiftyCyclesPanelUnmountedJsHeapBytes": 39055020
+    },
+    "perViewerCreateDispose": [
+      {
+        "mode": "raw-empty",
+        "cycles": 40,
+        "bytesPerCycle": 108111
+      },
+      {
+        "mode": "raw-plate",
+        "cycles": 40,
+        "bytesPerCycle": 115883
+      },
+      {
+        "mode": "facade",
+        "cycles": 40,
+        "bytesPerCycle": 120743
+      }
+    ],
+    "perAppMount": [
+      {
+        "noWebgl": false,
+        "cycles": 40,
+        "bytesPerCycle": 262354
+      },
+      {
+        "noWebgl": true,
+        "cycles": 40,
+        "bytesPerCycle": 11456
+      }
+    ]
+  },
+  "largeScene": {
+    "secondsUntilViewerWorking": 4.363,
+    "jsHeapBeforeBytes": 10451416,
+    "jsHeapAfterBytes": 20191992,
+    "text": "3D view of this project Read-only: Studio never moves or changes your model here. 1 object, 99,458 triangles. Corner view Top Front Back Left Right Whole bed Zoom to objects Slope view Geometric slope",
+    "errors": []
+  },
+  "realEngine": {
+    "scenarios": {
+      "roundTrip": {
+        "passed": true,
+        "observed": [
+          "session -> 200",
+          "start seq=1 -> 200 queued",
+          "status c4410e -> 200 succeeded",
+          "result c4410e -> 200"
+        ]
+      },
+      "cancelRoundTrip": {
+        "passed": true,
+        "observed": [
+          "start seq=2 -> 200 queued",
+          "cancel seq=2 -> 200 cancelled"
+        ]
+      },
+      "abandonedAfterB": {
+        "passed": true,
+        "observed": [
+          "start seq=3 -> no answer",
+          "cancel seq=3 -> 200 cancelled",
+          "start seq=4 -> 200 queued",
+          "status a9929d -> 200 succeeded",
+          "result a9929d -> 200",
+          "start seq=3 -> 409 CANCELLED_BEFORE_START",
+          "start seq=1 -> 409 CANCELLED_BEFORE_START",
+          "start seq=4 -> 200 succeeded",
+          "status a9929d -> 200"
+        ]
+      },
+      "sessionExpiredAfterFreshEngine": {
+        "passed": true,
+        "observed": [
+          "start seq=5 -> 409 SESSION_EXPIRED",
+          "session -> 200",
+          "start seq=1 -> 200 queued",
+          "status c7a26b -> 200 succeeded",
+          "result c7a26b -> 200"
+        ]
+      },
+      "abandonedAfterExpiry": {
+        "passed": true,
+        "observed": [
+          "start seq=3 -> 409 SESSION_EXPIRED",
+          "start seq=3 -> 409 SESSION_EXPIRED",
+          "cancel seq=3 -> 409 SESSION_EXPIRED",
+          "status anythi -> 404"
+        ]
+      },
+      "sessionLimit": {
+        "passed": true,
+        "observed": [
+          "session -> 503"
+        ]
+      }
+    },
+    "failures": [],
+    "notCovered": [
+      "Delivery of an abandoned start that is genuinely in flight at the engine when the browser aborts it: the browser cannot recall a request already on the wire, and a held request was never sent, so that case was replayed by hand against the real route rather than raced.",
+      "Idle expiry of a session after its 15-minute TTL (a fresh engine process was used instead).",
+      "The packaged Windows Tauri app and the Linux WebKitGTK build (NOT RUN)."
+    ]
+  },
+  "csp": {
+    "policy": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'none'",
+    "violations": [
+      "style-src-elem https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    ],
+    "canvasCount": 1,
+    "isProductionBuild": true,
+    "harnessError": null
+  },
+  "originalFilesUnchanged": {
+    "offbed": true,
+    "grid": true,
+    "normal": true,
+    "stl": true,
+    "showcase": true,
+    "roles": true,
+    "plates": true,
+    "inch": true,
+    "csp": true
+  },
+  "screenshots": {
+    "wide-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-light-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-normal": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-selected": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-slope": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-roles": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-stl": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-two-plates": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-inch": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "narrow-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "narrow-light-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "xnarrow-dark-offbed": {
+      "overflowX": false,
+      "canvases": 1,
+      "consoleErrors": []
+    },
+    "wide-dark-no-webgl": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": [
+        "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context."
+      ]
+    },
+    "narrow-light-no-webgl": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": [
+        "THREE.WebGLRenderer: THREE.WebGLRenderer: Error creating WebGL context."
+      ]
+    },
+    "wide-dark-context-lost": {
+      "overflowX": false,
+      "canvases": 0,
+      "consoleErrors": []
+    }
+  },
+  "harnessErrors": [],
+  "notRun": [
+    "Packaged Windows Tauri via tools/acceptance/run.ps1",
+    "Linux WebKitGTK graphics-enabled lane",
+    "macOS WKWebView",
+    "screen reader",
+    "weak or software-rendered GPU",
+    "real printer (never used)"
+  ]
+}

@@ -1,0 +1,21 @@
+network interfaces in the namespace: lo 
+routes: 0
+graphics: WSLg Wayland (wayland-0), compositing NOT disabled
+web view: Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15
+PASS  the page is a real WebKitGTK web view  — Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15
+webgl: {"vendor":"Apple Inc.","webgl2":true,"webgl":true,"renderer":"Apple GPU","version":"WebGL 2.0"}
+PASS  WebGL2 context can be created in this WebKitGTK  — {"vendor":"Apple Inc.","webgl2":true,"webgl":true,"renderer":"Apple GPU","version":"WebGL 2.0"}
+PASS  the '3D view of this project' panel appears  — 3D view of this project
+PASS  a canvas with a real size is drawn  — {"x":485,"ch":405,"w":540,"cw":540,"y":226,"h":404.5}
+PASS  no graphics-failure alert shows  — []
+PASS  the object list has rows  — ["Object 1Part, Plate unknown"]
+PASS  camera buttons exist and are enabled  — [{"disabled":false,"text":"Corner view"},{"disabled":false,"text":"Top"},{"disabled":false,"text":"Front"},{"disabled":false,"text":"Back"},{"disabled":false,"text":"Left"},{"disabled":false,"text":"Right"},{"disabled":false,"text":"Whole bed"},{"disabled":false,"text":"Zoom to objects"},{"disabled":false,"text":"Slope view"}]
+PASS  pressing a camera button leaves no alert and the canvas stays
+PASS  selecting an object marks its row (aria-pressed)  — ["true"]
+PASS  drags with and without modifiers, wheel and key presses leave the object list unchanged  — 48 input actions; rows 1 -> 1
+PASS  the input reached the viewer: the picture changed after the drags, so 'unchanged' is not vacuous  — {"drags":{"actions":19,"pictureChanged":true,"scroll":{"window":0},"listUnchanged":true},"wheel":{"actions":8,"pictureChanged":true,"scroll":{"window":0,"MAIN.flex-1 overflow-y-auto":170},"listUnchanged":true},"keys":{"actions":21,"pictureChanged":true,"scroll":{"window":0},"listUnchanged":true}}
+PASS  after the input run: no alert, canvas still present
+PASS  the page requested nothing from a non-loopback host  — {"hostsSeen":["127.0.0.1:39223"],"nonLoopback":[]}
+PASS  leaving the page removes the viewer and its canvas  — {"scene":false,"canvases":0,"path":"/help"}
+PASS  the project file's sha256 is unchanged  — 7d0daae0c663a569… -> 7d0daae0c663a569…
+15/15 viewer checks passed

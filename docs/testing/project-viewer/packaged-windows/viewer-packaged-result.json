@@ -1,0 +1,58 @@
+{
+  "steps": [
+    {
+      "name": "The packaged app shows the 3D view panel for the project opened on the command line",
+      "ok": true,
+      "detail": "launch file reported: true"
+    },
+    {
+      "name": "A canvas with a real size is drawn and no graphics-failure alert is shown",
+      "ok": true,
+      "detail": "{\"canvases\":1,\"size\":[714,535],\"alerts\":[]}"
+    },
+    {
+      "name": "The object list and the camera buttons are present",
+      "ok": true,
+      "detail": "{\"objects\":1,\"cameras\":9}"
+    },
+    {
+      "name": "Selecting an object marks its row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Every camera view button can be pressed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Mouse drags (all buttons, with modifiers), wheel and keys change nothing in the object list",
+      "ok": true,
+      "detail": "1 objects"
+    },
+    {
+      "name": "Leaving the page removes the canvas",
+      "ok": true,
+      "detail": "0 canvas(es) left"
+    },
+    {
+      "name": "Nothing left the machine (no non-loopback request)",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "No CSP violation or graphics-context problem was logged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "The project file bytes are unchanged",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "ok": true,
+  "requests": [],
+  "consoleProblems": [],
+  "clickNote": "launch file reported: true"
+}
