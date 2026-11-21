@@ -204,7 +204,7 @@ await waitFor("!!document.querySelector('[data-testid=monitor-summary]')", "moni
 const monitorText = await evaluate("document.querySelector('[data-testid=monitor-summary]').innerText");
 if (!monitorText.includes("standby") || !monitorText.includes("synthetic-job.gcode")) throw new Error("configured mock port did not return monitoring data");
 await screenshot(join(out, "restore-preview.png"));
-if (mockRequests.some(([method, path]) => method !== "GET" || path !== "/printer/objects/query")) {
+if (mockRequests.some(([method, path]) => method !== "GET" || !["/printer/objects/query", "/server/history/list"].includes(path))) {
   throw new Error(`monitor sentinel observed an unapproved request: ${JSON.stringify(mockRequests)}`);
 }
 console.log(JSON.stringify({ monitorPort, mockRequests, previewText }));

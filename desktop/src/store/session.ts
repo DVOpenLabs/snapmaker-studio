@@ -38,9 +38,11 @@ interface SessionState {
   /** The printer setup Prepare and its preview use for the open project, if the person chose one. */
   prepareSetup: PrepareSetupSelection;
   /** Read a host and make what it reports the chosen setup. The key is used for this one request and never kept. */
-  readPrepareSetup: (input: { host: string; port?: string; key?: string }, projectPath?: string) => Promise<void>;
+  readPrepareSetup: (input: { host: string; port?: string; key?: string; accessory?: import("@/lib/setupsTypes").AccessoryInput }, projectPath?: string) => Promise<void>;
   /** Drop the chosen setup, and with it any preview or prepared copy made under it. */
   clearPrepareSetup: () => void;
+  /** Editing selected setup inputs pauses preparation until re-read or explicit clearing. */
+  invalidatePrepareSetup: (projectPath?: string) => void;
   /** Prepare with no setup: clears the choice first, so nothing from it is sent. */
   runConvertWithoutSetup: (mode?: PrepareMode) => Promise<void>;
   /** Select a file and immediately run Doctor on it. */
@@ -199,11 +201,11 @@ export const useSession = create<SessionState>((set, get) => ({
     if (!p) return;
     let body;
     try {
-      body = buildEvaluateBody({ host: input.host, port: input.port, key: input.key });
+      body = buildEvaluateBody({ host: input.host, port: input.port, key: input.key, accessory: input.accessory });
     } catch (e) {
       throw e instanceof Error ? e : new Error("Check the host and port.");
     }
-    const base = { token: ++setupSeq, projectPath: p, label: body.port ? `${body.host}:${body.port}` : body.host };
+    const base = { token: ++setupSeq, projectPath: p, label: body.accessory ? `${body.accessory.adapter_id} (${body.accessory.mode})` : body.port ? `${body.host}:${body.port}` : body.host };
     // A new read drops the old choice and everything made under it before the answer arrives.
     prepareRevision++;
     set({ prepareSetup: { status: "reading", ...base }, convert: blank(), diff: blank(), preview: blank(), settingsSummary: null });
@@ -217,6 +219,15 @@ export const useSession = create<SessionState>((set, get) => ({
       if (stale()) return;
       set({ prepareSetup: selectionFromFailure(base, e) });
     }
+  },
+
+  invalidatePrepareSetup: (projectPath) => {
+    const p = projectPath ?? get().file?.path;
+    if (!p) return;
+    prepareRevision++;
+    set({ prepareSetup: { status: "unknown", token: ++setupSeq, projectPath: p,
+      label: "Setup inputs changed", reason: "Read this setup again, or explicitly prepare without a setup." },
+      convert: blank(), diff: blank(), preview: blank(), settingsSummary: null });
   },
 
   clearPrepareSetup: () => {

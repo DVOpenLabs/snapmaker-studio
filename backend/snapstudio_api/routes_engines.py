@@ -7,7 +7,8 @@
 Studio does not slice and does not control anything here. The service is whatever local address the user
 typed; it is reached only through `foundation.netguard` (loopback / LAN, no redirects, bounded). The
 generated artifact is written as a NEW file in a Studio-owned folder (or a local folder the user chose),
-never over or next to the input image. No response carries a filesystem path or a service response body.
+never over or next to the input image. Generation/status responses carry no filesystem path or service response body. The separate,
+explicit open_generated action returns a local-only output.local_path after file identity checks.
 Progress and cancel are `unknown`: the saved Lumina research publishes neither, so none is invented.
 
 Evidence: mock-service-tested. No real Lumina installation has been exercised.
@@ -15,6 +16,7 @@ Evidence: mock-service-tested. No real Lumina installation has been exercised.
 from __future__ import annotations
 
 import os
+import math
 import re
 
 from snapstudio_core import paths
@@ -56,6 +58,8 @@ LUMINA_MESSAGES = {
     "malformed_health": "The service identity check answered in a shape Studio does not recognise.",
     "route_unavailable": "The service does not offer a route Studio needs.",
     "identity_not_confirmed": "The service identity was not confirmed, so Studio did not send anything to it.",
+    "generate_failed": "The service refused or failed final model generation.",
+    "malformed_generation": "The service did not return a readable generated-model download.",
     "preview_failed": "The service refused or failed the request.",
     "malformed_preview": "The service answered in a shape Studio does not recognise.",
     "unknown_preview_locator": "The service pointed at a file location Studio does not recognise.",
@@ -112,6 +116,7 @@ def status(data: dict) -> tuple[int, dict]:
         return 200, {
             "status": "ok",
             "api_version": discovery.api_version,
+            "can_generate_3mf": "/api/convert/generate" in discovery.paths,
             "can_generate": {"/api/convert/preview", "/api/files/{file_id}"} <= set(discovery.paths),
             "progress": "unknown",
             "cancel": "unknown",
@@ -202,6 +207,9 @@ def generate(data: dict) -> tuple[int, dict]:
         raise rv.ValidationError(f"Choose one of the supported formats: {_format_list_text()}. "
                                  "Studio does not guess a format.")
     lut = rv.require_bounded_str(data, "lut_name", 256)
+    width = data.get('width_mm', 60.0)
+    if isinstance(width, bool) or not isinstance(width, (int, float)) or not math.isfinite(width) or not 10 <= width <= 270:
+        raise rv.ValidationError('Model width must be from 10 to 270 mm.')
     image_path = _image_path(data)
     out_dir, location = _out_dir(data, image_path)
     image = _read_input(image_path)
@@ -210,11 +218,16 @@ def generate(data: dict) -> tuple[int, dict]:
 
     client = None
     try:
-        client = LuminaClient(url)
+        client = LuminaClient(url, timeout=120.0, budget_s=240.0)
         client.discover()
         client.health_check()
-        preview = client.preview(image, upload_name, lut_name=lut)
-        locators = [preview.get("preview_url"), preview.get("preview_glb_url")]
+        preview = client.preview(image, upload_name, lut_name=lut,
+                                 fields={"target_width_mm": str(width), "source_kind": "legacy_single"} if fmt == "3mf" else None)
+        if fmt == '3mf':
+            generated = client.generate_model(preview['session_id'], lut_name=lut, width_mm=width)
+            locators = [generated['download_url']]
+        else:
+            locators = [preview.get("preview_url"), preview.get("preview_glb_url")]
         seen: list[str] = []
         artifact = None
         for locator in locators:
@@ -252,3 +265,25 @@ def generate(data: dict) -> tuple[int, dict]:
     finally:
         if client is not None:
             client.close()
+
+
+@ext_routes.route('/engines/lumina/open_generated')
+def open_generated(data: dict) -> tuple[int, dict]:
+    """Explicit local-only path field after name/hash and 3MF validation.
+
+    Generation/status responses remain path-free. Opening is a separate user action;
+    this endpoint neither executes a file nor contacts the configured service.
+    """
+    from snapstudio_core.engines.generated_files import verified_model
+    directory = data.get('out_dir')
+    if directory is None or directory == '':
+        directory = os.path.join(paths.data_dir(), DEFAULT_OUT_FOLDER)
+    if not isinstance(directory, str) or len(directory) > MAX_PATH_CHARS or '\x00' in directory:
+        raise rv.ValidationError('Invalid output folder.')
+    try:
+        target = verified_model(directory, data.get('file_name'), data.get('sha256'))
+    except (ValueError, OSError):
+        # No path or exception contents in an error, including OS errors.
+        return _refusal('generated_model_unavailable', 'The generated model is missing, changed, redirected, or is not a supported 3MF container. Generate or inspect it again.')
+    return 200, {'output': {'local_path': target}, 'kind': '3mf', 'sha256': data['sha256'],
+                 'note': 'Identity checked now; Studio will read the model again when opened. This does not verify how the service generated it.'}

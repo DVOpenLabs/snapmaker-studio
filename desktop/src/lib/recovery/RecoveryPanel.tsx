@@ -8,6 +8,7 @@ export function RestorePreview({ data }: { data: RestoreResult | null }) {
   const changed = data.files.filter(needsAttention);
   return <div className="space-y-2 text-sm" data-testid="restore-preview">
     <p>Last checkpoint: {data.checkpointed_at ?? "time unavailable"} · revision {data.revision}</p>
+    <p>Checkpoint workspace: {typeof data.workspace?.name === "string" && data.workspace.name.trim() ? data.workspace.name.slice(0, 200) : "not recorded"}</p>
     <h3 className="font-medium">Restore preview</h3>
     {data.files.length === 0 ? <p>No tracked files in this checkpoint.</p> : <ul className="list-disc pl-5">
       {data.files.map((file, i) => <li key={`${file.name}-${i}`} className={needsAttention(file) ? "text-amber-700" : undefined}>{fileLine(file)}</li>)}

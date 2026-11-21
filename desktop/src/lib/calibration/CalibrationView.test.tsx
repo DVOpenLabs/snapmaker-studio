@@ -3,10 +3,11 @@ import React from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import CalibrationView from "./CalibrationView";
+import { useCalibrationDraft } from "./draft";
 import { calibrationHistory, evaluateCalibration } from "@/lib/calibrationApi";
 vi.mock("@/lib/calibrationApi", () => ({ evaluateCalibration: vi.fn(), calibrationHistory: vi.fn() }));
 const unknown = { status: "unknown", decoded: { diagnostics: [{ code: "old-result" }] }, result: null };
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); useCalibrationDraft.getState().reset(); });
 afterEach(cleanup);
 
 it("starts without invented physical readings and sends the visible basis", async () => {

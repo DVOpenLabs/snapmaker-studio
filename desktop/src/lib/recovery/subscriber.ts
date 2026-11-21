@@ -10,6 +10,7 @@ export type Preview = { status: "idle" | "loading" | "ready" | "failed"; data: R
 let preview: Preview = { status: "idle", data: null, error: "" };
 const listeners = new Set<() => void>();
 let registered = false;
+let refreshSequence = 0;
 
 function set(next: Preview): void { preview = next; for (const listener of [...listeners]) listener(); }
 
@@ -21,9 +22,14 @@ export function subscribePreview(listener: () => void): () => void {
 
 /** Read the checkpoint now (also used by the page's refresh button). */
 export async function refreshPreview(): Promise<void> {
+  const sequence = ++refreshSequence;
   set({ ...preview, status: "loading", error: "" });
-  try { set({ status: "ready", data: await restoreCheckpoint(), error: "" }); }
-  catch (error) { set({ status: "failed", data: preview.data, error: error instanceof Error ? error.message : "Could not read the checkpoint" }); }
+  try {
+    const data = await restoreCheckpoint();
+    if (sequence === refreshSequence) set({ status: "ready", data, error: "" });
+  } catch (error) {
+    if (sequence === refreshSequence) set({ status: "failed", data: preview.data, error: error instanceof Error ? error.message : "Could not read the checkpoint" });
+  }
 }
 
 /** Idempotent. Returns the lifecycle unsubscribe. */
@@ -35,5 +41,6 @@ export function registerRecoverySubscriber(): () => void {
 }
 
 export function __resetRecoverySubscriberForTests(): void {
+  refreshSequence++;
   preview = { status: "idle", data: null, error: "" }; listeners.clear(); registered = false;
 }

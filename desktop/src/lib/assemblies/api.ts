@@ -33,3 +33,11 @@ export function listAssemblies(): Promise<{ assemblies: SavedAssembly[] }> {
 export function getAssembly(id: number): Promise<{ id: number; revision: number; assembly: unknown }> {
   return callExt("/assemblies/get", { id }, "Open assembly");
 }
+
+export function importAssemblyFile(path: string): Promise<{ assembly: import("./editor").AssemblyDocument; file_name: string; sha256: string; notes: string[] }> {
+  return callExt("/assemblies/import_file", { path }, "Import assembly file");
+}
+
+export function normalizeAssemblyInput(assembly: unknown, supply: unknown): Promise<{ assembly: import("./editor").AssemblyDocument }> {
+  return callExt("/assemblies/normalize", { assembly, supply }, "Read assembly JSON");
+}

@@ -38,12 +38,12 @@ test fails if a fixture gains or loses a key the upstream does not publish.
 
 ## Not covered
 
-No real multiACE, AFC, BMCU or Sidecar device or service was exercised. This package only reads setups.
-Preflight and firmware capability text read a topology only on the separate topology-aware core branch,
-and even there the repair path still cuts per-extruder vectors longer than four to four entries because
-it does not pass the logical slot count to `prepare_preserved_values`. Until that is wired, accessory
-support must not be described as working for preparation, and legacy preparation is not validated by
-this package's output.
+No real multiACE, AFC, BMCU or Sidecar device was exercised. The explicit
+Setups/Prepare integration is documented in ../ACCESSORY_INTEGRATION.md. It can
+read published multiACE/AFC service shapes or import snapshots, combine agreeing
+physical-head evidence, and forward explicit logical bindings to the real Preserve
+conversion path. This is mock-service-tested, not device-verified. Unpublished
+shapes and missing mappings remain unknown; feeder control is not implemented.
 
 Two shapes are Studio's own context and not upstream keys: the Sidecar load-cell wrapper carries the
 `unit` that was asked about (the published reply is `{ok, lanes}`), and every payload sits in a

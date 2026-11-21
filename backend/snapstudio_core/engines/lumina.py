@@ -5,6 +5,8 @@ import hashlib
 import json
 import re
 import uuid
+import time
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -53,14 +55,25 @@ class LuminaClient:
     """Talk to a user-supplied local Lumina service through foundation netguard."""
 
     def __init__(self, service_url: str, *, timeout: float = 15.0,
-                 request: Callable[..., Response] | None = None) -> None:
+                 request: Callable[..., Response] | None = None, budget_s: float | None = None) -> None:
         require_local_url(service_url)
         parts = urlsplit(service_url if "://" in service_url else "http://" + service_url)
         if parts.path not in ("", "/") or parts.query or parts.fragment:
             raise LuminaError("invalid_service_url")
         self.origin = f"{parts.scheme}://{parts.netloc}"
         self.timeout = timeout
-        self._request = request or _REQUEST
+        underlying = request or _REQUEST
+        if budget_s is not None and (not math.isfinite(budget_s) or budget_s <= 0):
+            raise ValueError('Invalid network budget')
+        deadline = time.monotonic() + budget_s if budget_s is not None else None
+        def bounded_request(method, url, **kwargs):
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise NetguardRefused('deadline')
+                kwargs['timeout'] = min(kwargs.get('timeout', self.timeout), remaining)
+            return underlying(method, url, **kwargs)
+        self._request = bounded_request
         self._discovery: Discovery | None = None
         self._write_enabled = False
 
@@ -140,6 +153,28 @@ class LuminaClient:
         if not preview_url.startswith("/api/files/"):
             raise LuminaError("unknown_preview_locator")
         return data
+
+    def generate_model(self, session_id: str, *, lut_name: str, width_mm: float = 60.0) -> dict:
+        """Request a model for the preview session, using the published JSON contract.
+
+        Source interface: Lumina-Layers 9d94bae, converter/generate.py and
+        schemas/converter.py. Preview artifacts are not final printable models.
+        """
+        self._require_discovery('/api/convert/generate')
+        if not self._write_enabled:
+            raise LuminaError('identity_not_confirmed')
+        if not isinstance(session_id, str) or not _FILE_ID.fullmatch(session_id):
+            raise LuminaError('malformed_preview')
+        body = json.dumps({'session_id': session_id, 'params': {
+            'source_kind': 'legacy_single', 'lut_name': lut_name, 'target_width_mm': width_mm,
+        }}, allow_nan=False).encode('utf-8')
+        response = self._request('POST', self.origin + '/api/convert/generate',
+            headers={'Content-Type': 'application/json'}, body=body, timeout=self.timeout,
+            max_bytes=MAX_JSON_BYTES, max_request_bytes=64 * 1024, write_ok=True, origin=self.origin)
+        result = self._json(response, 'generate')
+        if result.get('status') != 'ok' or not isinstance(result.get('download_url'), str):
+            raise LuminaError('malformed_generation')
+        return {'download_url': result['download_url']}
 
     def fetch_artifact(self, file_id: str) -> Artifact:
         """Fetch a documented registered file and derive identity from returned bytes."""

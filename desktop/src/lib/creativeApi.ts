@@ -1,3 +1,7 @@
+import type { SettingsSummary } from "@/api";
+import type { MaterialSelection } from "./projectMaterials";
+import type { Topology } from "./extTypes";
+import type { EngineSetupReport } from "./prepareSetup";
 import { callExt } from "./extApi";
 
 export interface CreativeNamedPart { name: string; sha256: string }
@@ -79,7 +83,7 @@ export interface CreativePrepareDone {
   origin: CreativeOrigin;
   /** `local_path` is the one field that names a location; the UI uses it to link the copy to its job (Passport can then show it in a path field, like every job path). */
   output: { name: string; local_path: string; location: "studio_default" | "chosen"; location_label: string; in_source_folder: boolean };
-  prepare: { mode: string; validated_ok: boolean; errors: string[]; compat_changed: unknown[]; mapped_to_u1: unknown[]; could_not_carry: unknown[]; warnings: unknown[] };
+  prepare: { schema_version?: string; settings_summary?: SettingsSummary; mode: string; validated_ok: boolean; errors: string[]; compat_changed: unknown[]; mapped_to_u1: unknown[]; could_not_carry: unknown[]; warnings: unknown[] };
   verification: CreativeVerification;
   loss_notes: string[];
   original: { name: string; sha256_before: string; sha256_after: string; original_unchanged: boolean };
@@ -88,6 +92,7 @@ export interface CreativePrepareDone {
 }
 
 export interface CreativePrepareRefused {
+  setup?: EngineSetupReport;
   prepared: false;
   refusal: { kind: string; seen: string; not_supported: string; what_to_do: string[]; problems?: string[] };
   origin: CreativeOrigin;
@@ -121,16 +126,19 @@ export function fetchCreativeFormats(): Promise<{ formats: CreativeFormatInfo[];
 }
 
 /** The request body for one Prepare. The output folder is sent only when the person typed one. */
-export function buildPrepareBody(path: string, format: CreativeFormat = "auto", outDir = ""): { path: string; format?: CreativeFormat; out_dir?: string } {
-  const body: { path: string; format?: CreativeFormat; out_dir?: string } = buildInspectBody(path, format);
+export interface CreativePrepareContext { materials?: MaterialSelection[]; topology?: Topology }
+
+export function buildPrepareBody(path: string, format: CreativeFormat = "auto", outDir = "", context: CreativePrepareContext = {}) {
+  const body: { path: string; format?: CreativeFormat; out_dir?: string; materials?: { selections: MaterialSelection[] }; topology?: Topology } = buildInspectBody(path, format);
   const folder = outDir.trim().replace(/^"(.*)"$/, "$1");
   if (folder !== "") body.out_dir = folder;
+  if (context.materials?.length) body.materials = { selections: context.materials };
+  if (context.topology) body.topology = context.topology;
   return body;
 }
 
-/** Write a new prepared copy through the local service and compare it with the original. */
-export function prepareCreative(path: string, format: CreativeFormat = "auto", outDir = ""): Promise<CreativePrepareResponse> {
-  return callExt<CreativePrepareResponse>("/creative/prepare", buildPrepareBody(path, format, outDir), "Prepare a U1 copy");
+export function prepareCreative(path: string, format: CreativeFormat = "auto", outDir = "", context: CreativePrepareContext = {}): Promise<CreativePrepareResponse> {
+  return callExt<CreativePrepareResponse>("/creative/prepare", buildPrepareBody(path, format, outDir, context), "Prepare a U1 copy");
 }
 
 export const GENERATOR_LABEL: Record<string, string> = {

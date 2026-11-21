@@ -85,9 +85,15 @@ export interface ListResponse {
 }
 
 export interface EvaluateRequest {
+  accessory?: AccessoryInput;
   host: string;
   port?: number;
   /** OctoPrint key: sent in this one request, never stored. */
   api_key?: string;
   requirements?: { material?: string | null; colour?: string | null }[];
+}
+
+export interface AccessoryInput {
+  adapter_id: string; source_version: string; mode: "live" | "snapshot";
+  host?: string; port?: number; payload?: Record<string, unknown>; slot_map?: string[];
 }

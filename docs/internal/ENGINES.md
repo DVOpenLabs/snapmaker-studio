@@ -46,7 +46,7 @@ F1-F5 are addressed in the bounded LUMINA1 repair. F6 is partially addressed: pr
 
 - `POST /engines/lumina/formats {}` returns the explicit supported list: `3mf`, `png`, `glb`, each with a one-line meaning and `evidence: mock-service-tested`. A format is chosen by the user and never inferred.
 - `POST /engines/lumina/status {service_url}` runs discovery and the identity check through `LuminaClient`. `ok` means only that the service answered Studio's checks; anything else is `unknown` with a fixed explanation. No response body is echoed. Loopback and LAN addresses only (netguard); a non-local address is a 422 refusal.
-- `POST /engines/lumina/generate {service_url, image_path, lut_name, format, out_dir?}` refuses an unlisted format before any request, names the list, and otherwise submits the image through the adapter. The service's preview and GLB locators are fetched only through validated `/api/files/{id}` ids, and the artifact is kept only if its kind (from the returned `Content-Type`) equals the chosen format; otherwise nothing is saved and the kinds returned are named. The artifact is written as a NEW file (`lumina-<sha12>.<kind>`, exclusive create, never replacing) in `<data dir>/lumina-output` or a local `out_dir` the user chose, which must not be the image's own folder. The response carries only the file name, SHA-256, size, kind, `generated_by` ("a user-configured local Lumina-compatible service (not verified)"), a plain `location_label`, and an advisory that Studio did not watch the file being made. No full path appears in any response. Progress and cancel are reported as `unknown`; no route is invented for them.
+- `POST /engines/lumina/generate {service_url, image_path, lut_name, format, out_dir?}` refuses an unlisted format before any request, names the list, and otherwise submits the image through the adapter. The service's preview and GLB locators are fetched only through validated `/api/files/{id}` ids, and the artifact is kept only if its kind (from the returned `Content-Type`) equals the chosen format; otherwise nothing is saved and the kinds returned are named. The artifact is written as a NEW file (`lumina-<sha12>.<kind>`, exclusive create, never replacing) in `<data dir>/lumina-output` or a local `out_dir` the user chose, which must not be the image's own folder. The response carries only the file name, SHA-256, size, kind, `generated_by` ("a user-configured local Lumina-compatible service (not verified)"), a plain `location_label`, and an advisory that Studio did not watch the file being made. Generation/status responses remain path-free; the explicit `open_generated` user action returns a local-only `output.local_path` after identity/container checks. Progress and cancel are reported as `unknown`; no route is invented for them.
 
 Image-path guard: this branch has no shared `localpath` module (it lives in #140), so `snapstudio_core/engines/local_input.py` refuses UNC and device paths in any slash style, links whose target reaches a network location, non-regular files and files over the adapter's input cap (128 MiB). It is best-effort, not a sandbox: check and open are separate steps. #140's shared guard should replace this helper once both land. A mapped network drive letter looks local and is allowed.
 
@@ -57,3 +57,24 @@ Evidence: `mock-service-tested` against `LuminaHttpMock` (a synthetic loopback H
 F6-F10 above remain deferred as listed. Also: no streaming for large artifact downloads; generation is one synchronous request bounded by the adapter's timeout, so a slow service surfaces as a plain refusal; the UI has no output-folder field (the route accepts `out_dir`); `/api/files` kind mapping knows only 3MF, GLB and PNG content types, so anything else is `unknown` and is not saved.
 
 Usability label: experimental, mock-service-tested and fixture-tested, with one real loopback transport-boundary test. No real Lumina installation or process was exercised.
+
+
+## HTTP workflow repair (2026-11-14)
+
+The earlier preview-only behavior above is superseded for 3MF requests: Studio now
+uses preview to obtain a session, then calls the separately advertised
+`POST /api/convert/generate` with `{session_id, params}` and fetches its validated
+`download_url`. It never substitutes a preview locator or `threemf_disk_path` for
+a final model. PNG/GLB keep the preview path. The model width is explicit and sent
+consistently to preview and generation; other generation settings use service
+defaults and require review. See `desktop/src/lib/lumina/WORKFLOW.md` for pinned
+contract sources, budgets, provenance, file-opening checks and remaining limits.
+
+`POST /engines/lumina/open_generated` is a separate explicit user action. It accepts
+the generated basename and SHA-256 (plus the chosen local output folder, if any),
+checks a bounded regular local file and supported 3MF, and returns only
+`output.local_path` for the desktop's existing normal inspection/Prepare workflow.
+No file is executed; no printer, slicer or external service is contacted by opening.
+Generated service content is not trusted merely because it has a 3MF MIME type.
+All new workflow evidence is synthetic/owned loopback; real Lumina remains unverified.
+This changes no CLI-runner policy or its carried review notes.
