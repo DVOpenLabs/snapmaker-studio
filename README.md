@@ -14,8 +14,7 @@
 what is likely to go wrong, fixes what it can prove, and shows you exactly what
 changed. Snapmaker Orca still does the slicing.**
 
-Free, open source, and local. No account, no cloud, nothing uploaded off your
-local network. Your original file is never modified.
+Free and open source. No account and no telemetry. Studio runs on your machine, and its optional integrations (your printer, a spool inventory, a Lumina-compatible image service) connect only to local-network addresses you configure. The one internet request is an update check against GitHub, which is off unless you press the button or turn on the daily check. Your original file is never modified.
 
 ### [▶ Watch it work — 66 seconds](https://github.com/DVOpenLabs/snapmaker-studio/blob/main/docs/media/snapmaker-studio-demo.mp4) · [⬇ Download for Windows or Linux](https://github.com/DVOpenLabs/snapmaker-studio/releases) · [What it is, in 5 minutes](docs/innovation-fund/JUDGE_OVERVIEW.md)
 
@@ -29,7 +28,7 @@ local network. Your original file is never modified.
 
 > **Independent open-source project — not affiliated with or endorsed by Snapmaker.** "Snapmaker" is a trademark of its respective owner.
 
-<sub>Entered in the Snapmaker U1 Innovation Fund, Phase 1 (provisional results are due 9 October 2026). Entry submitted 24 June 2026; being listed is not an endorsement. What the entry says, and how the project has moved since: [docs/innovation-fund/SUBMITTED_ENTRY.md](docs/innovation-fund/SUBMITTED_ENTRY.md).</sub>
+<sub>Entered in the Snapmaker U1 Innovation Fund, Phase 1. Entry submitted 24 June 2026; being listed is not an endorsement. What the entry says, and how the project has moved since: [docs/innovation-fund/SUBMITTED_ENTRY.md](docs/innovation-fund/SUBMITTED_ENTRY.md).</sub>
 
 ## In 30 seconds
 
@@ -157,8 +156,7 @@ registry is a data file: adding a tool is a small pull request, not a code chang
 See [docs/EXTENDING.md](docs/EXTENDING.md) and
 [docs/innovation-fund/OPEN_ECOSYSTEM.md](docs/innovation-fund/OPEN_ECOSYSTEM.md).
 
-MIT licensed. Local-first: no cloud, no account, no telemetry, nothing uploaded
-off your local network.
+MIT licensed. Local-first: no account, no telemetry. Optional printer, spool and image-service integrations connect to local-network addresses you configure; the only internet request is the optional GitHub update check.
 Every third-party project Studio recommends or interoperates with is listed with
 its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -531,9 +529,7 @@ is the first printer target; the workflow is built to grow across ecosystems.
 
 - **Design-first and novice-friendly.** It explains a design in plain language and
   surfaces likely print risks — before you ever open a slicer.
-- **Local-first.** Everything runs on your machine. No cloud, no account, no
-  telemetry. The only thing Studio ever sends anywhere is a sliced job to your own
-  printer, on your own network, when you press the button and confirm it.
+- **Local-first.** The application runs on your machine: no account, no telemetry. Optional printer, spool-inventory and image-service integrations connect to local-network addresses you configure; check the destination before sending an image to a service. A sliced job reaches your printer only when you press the button and confirm. The one internet request is the optional update check against GitHub (a button you press, or an opt-in daily check).
 - **Multi-ecosystem.** Bambu, OrcaSlicer, Snapmaker Orca, PrusaSlicer and plain STL
   are all read properly — a PrusaSlicer project's printer, bed, filaments, colours,
   layer heights, supports and per-object assignments are read from its own config,
@@ -635,9 +631,9 @@ It reports structure, geometry, settings, and counts. Add `--json` for the full 
 
 ## Architecture
 
-Local-first, no network. Layers:
+Local-first. Network use is limited to the optional integrations, which pass through a local-network guard, and the optional update check. Layers:
 
-- **Engine** — `snapstudio_core`, pure Python (no net, no UI): detect →
+- **Engine** — `snapstudio_core`, pure Python (no UI; its optional network clients refuse non-local addresses): detect →
   understand → validate → prepare, preserving geometry/painting/color. A
   source-neutral canonical model is the seam for multi-ecosystem support.
 - **Local API** — `snapstudio_api`, a loopback (`127.0.0.1`) JSON server, request-authenticated,
