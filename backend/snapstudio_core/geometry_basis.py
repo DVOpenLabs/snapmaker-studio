@@ -181,6 +181,7 @@ def _compute(path: str) -> dict:
     try:
         tm = ThreeMF.open(path)
         parts = _read_parts(tm)
+        raws = {n.lstrip("/"): tm.read_part(n) for n in tm.list_parts() if n.endswith(".model")}
     except Exception:  # noqa: BLE001 - unreadable file: say so, do not vouch
         return _not_established(["structure_unreadable"], [], [], 0, None)
     if _ROOT_PART not in parts:
@@ -197,14 +198,15 @@ def _compute(path: str) -> dict:
         bad = _unit_reason(declared)
         # the extents need an EXACT table key (geometry.measure's rule): " millimeter " or "Millimeter" is
         # read as written, so the extents are not vouched for even though the legacy gate tolerates them
-        if declared is not None and not _units.resolve_unit(declared).recognized:
+        info = _units.read_unit(raws[name])      # the converter's own reader: root element and exact key
+        if not info.recognized:
             unrecognized_unit = True
         if bad is not None:
             reasons.add("unit_not_millimeter")
             declared_bad.append(bad)
             # the SAME rule geometry.measure uses (units.read_unit): an exact table key, never trimmed or
             # case-folded, so " inch " and "Inch" are unrecognised here exactly as they are there
-            if _units.resolve_unit(declared).recognized:
+            if info.recognized:
                 converted_units.add(declared)
             else:
                 unrecognized_unit = True
@@ -276,6 +278,10 @@ def _compute(path: str) -> dict:
 
     for codes in unchecked.values():
         reasons |= codes
+    if "transform_unreadable" in ext_blocked:
+        # an unreadable transform inside the part a build item names is measured as identity by every reader:
+        # the legacy gate may not call that established either
+        reasons.add("transform_unreadable")
     # What Studio CAN still measure exactly. `geometry.measure` applies every transform to the real
     # vertices and converts each part from its own unit, so a placed item's bounds are exact when the
     # structure was followed completely and every declared unit is one the format defines. An object's

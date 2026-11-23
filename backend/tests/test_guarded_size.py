@@ -287,3 +287,48 @@ def test_a_centimetre_sub_part_placed_off_the_plate_is_reported_off_the_plate(tm
     from snapstudio_core import plate_placement as pp
     placed = pp.assess(p, guarded=True)
     assert [o["bounds_mm"]["max"][0] for o in placed["off_plate"]] == [300.0]     # the converted bound, not 215
+
+
+# --- independent review of PR 153 head d6f35c9 (Sol): extents-only blockers must survive; no footprint overwrite ---
+
+def test_an_unreadable_transform_in_the_named_part_is_not_established_even_without_a_rotation(tmp_path):
+    sub = ('<object id="2" type="model">' + _mesh_xml(2) + '</object>'
+           '<object id="1" type="model"><components><component objectid="2" transform="not numbers"/>'
+           '</components></object>')
+    root = '<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+    item = '<item objectid="1" p:path="/3D/Objects/sub.model" transform="1 0 0 0 1 0 0 0 1 100 100 0"/>'
+    p = _write(tmp_path / "named_part_plain.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter"),
+                                                    "3D/Objects/sub.model": _model(sub, "", "millimeter")})
+    basis = geometry_basis.assess(p)
+    assert basis["established"] is False and "transform_unreadable" in basis["reasons"]
+    fit = service.bed_fit(p)
+    assert fit["available"] is False and fit["status"] == "not_checked"
+
+
+def test_footprints_never_overwrite_the_exact_bounds_of_a_guarded_project(tmp_path):
+    """Sol F2: placement.read_objects recognises only vertices written x,y,z; a mixed-order mesh gives it a
+    partial footprint. With every unit factor 1 it used to replace the exact transformed bounds."""
+    from snapstudio_core import plate_placement as pp
+    from tests.test_geometry_verdict import _V, _F
+    vs = "".join(f'<vertex x="{x}" y="{y}" z="{z}"/>' if i < 2 else f'<vertex y="{y}" x="{x}" z="{z}"/>'
+                 for i, (x, y, z) in enumerate(_V))
+    ts = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in _F)
+    mesh = f'<object id="1" type="model"><mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh></object>'
+    root = mesh + '<object id="2" type="model"><components><component objectid="1"/></components></object>'
+    item = '<item objectid="2" transform="0 20 0 -20 0 0 0 0 20 210 10 0"/>'
+    p = _write(tmp_path / "mixed_order.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter")})
+    [exact] = geometry.measure_items(p, mm=True)[0]
+    placed = pp.placed_instances(p, measured=geometry.measure_items(p, mm=True), converted=True)
+    [inst] = placed["instances"]
+    assert inst["bounds_mm"]["min"] == [round(v, 3) for v in exact["bounds"]["min"]]
+    assert inst["bounds_mm"]["max"] == [round(v, 3) for v in exact["bounds"]["max"]]
+
+
+def test_a_non_model_root_element_is_never_called_converted(tmp_path):
+    """Opus N-4: the converter reads no unit from a root that is not <model>, so the basis may not either."""
+    from tests.test_geometry_verdict import _CORE, _PROD
+    xml = _model('<object id="1" type="model">' + _mesh_xml(1) + '</object>',
+                 '<item objectid="1" transform="1 0 0 0 1 0 0 0 1 100 100 0"/>', "inch").replace("<model", "<Model").replace("</model>", "</Model>")
+    p = _write(tmp_path / "rootcase.3mf", {"3D/3dmodel.model": xml})
+    ext = geometry_basis.assess(p)["extents"]
+    assert not ext["converted_units"]

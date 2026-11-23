@@ -235,10 +235,11 @@ def _printable_only(path: str, items: list[dict], converted: bool = False) -> li
     """
     from . import geometry, placement
 
-    # placement.read_objects reads every number as written and converts no unit. When the caller asked for
-    # millimetres (the guarded bed fit) and some part is NOT in millimetres, its footprints would put
-    # file-unit numbers over the converted ones, so the converted measurement stands as it is.
-    if converted and not geometry._unit_invariant(path):
+    # placement.read_objects reads every number as written: no unit conversion, and it may cover only the
+    # vertices it recognises. The guarded bed fit (converted=True) rests on geometry.measure_items, which
+    # applies every transform and unit to ALL real vertices, so the footprints never overwrite it. The price:
+    # a modifier or support blocker is counted like any other part there.
+    if converted:
         return items
     try:
         read = placement.read_objects(path, keep_points=False)
