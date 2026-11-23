@@ -267,15 +267,60 @@ def _placed_sideways(placed: dict, findings: list, fixes: list) -> str | None:
             return "warn"
         findings.append(_f("ok", "By placement, every placed instance sits inside the plate."))
         return None
-    move = ("Move the arrangement onto the plate (Studio can save a corrected copy), "
-            "or review the project in Snapmaker Orca." if placed.get("fixable") else
-            "Review the project in Snapmaker Orca; Studio could not bring every instance onto the plate.")
+    if placed.get("fix_withheld"):
+        # The writer that saves a corrected copy only handles projects whose size Studio has established;
+        # a project measured as placed is read-only here, so no copy is promised.
+        move = ("Move the arrangement onto the plate in Snapmaker Orca; Studio does not save a corrected "
+                "copy of a project it can only measure as placed.")
+    else:
+        move = ("Move the arrangement onto the plate (Studio can save a corrected copy), "
+                "or review the project in Snapmaker Orca." if placed.get("fixable") else
+                "Review the project in Snapmaker Orca; Studio could not bring every instance onto the plate.")
     findings.append(_f("risk", f"By placement: {placed.get('summary')}", id="placement-off-plate", action=move))
     fixes.append(move)
     return "risk"
 
 
 _ORDER = {"ok": 0, "warn": 1, "risk": 2}
+
+
+def sizes_as_placed(placed: dict | None) -> list[dict]:
+    """One size entry per placed instance, from its placed bounds (exact millimetres, every transform
+    applied). Used when a build item scales or shears its object, so the object as modelled is not what
+    prints. An instance Studio could not place is not here; ``unmeasured`` still counts it."""
+    out = []
+    for inst in ((placed or {}).get("instances") or []):
+        dims = inst.get("dimensions_mm")
+        if not dims:
+            continue
+        label = str(inst.get("object_id"))
+        if (inst.get("instance_count") or 1) > 1:
+            label += f", instance {int(inst.get('instance_index') or 0) + 1}"
+        out.append({"object_id": label, "instance_count": 1, "dimensions_mm": dict(dims)})
+    return out
+
+
+def annotate_guarded_basis(out: dict, basis: dict, as_placed: bool) -> None:
+    """Say, on the result itself, what a rotated, scaled or non-millimetre project was measured as.
+    Added only when the legacy size basis was not established but the extents were measurable."""
+    ext = (basis or {}).get("extents") or {}
+    notes = []
+    if ext.get("converted_units"):
+        notes.append("This project declares its unit as " + ", ".join(ext["converted_units"])
+                     + "; Studio converted it to millimetres with the 3MF unit table.")
+    if ext.get("items_rotated"):
+        notes.append("Some items are rotated in the file; their extents are measured after the rotation, "
+                     "as placed.")
+    if as_placed:
+        notes.append("Some items are rotated, scaled or reshaped in the file, so each item is sized as placed, "
+                     "not as the object was modelled.")
+    out["size_basis"] = "as_placed" if as_placed else "measured_mm"
+    # only what this verdict rests on: the legacy summary says the numbers are NOT converted/rotated, which
+    # is true of the other surfaces and would contradict this one
+    out["geometry_basis"] = {"schema_version": basis.get("schema_version"), "extents": ext,
+                             "reasons": basis.get("reasons")}
+    if notes:
+        out.setdefault("findings", []).append(_f("ok", "By size and placement: " + " ".join(notes)))
 
 
 def assess_objects(objects: list[dict] | None, placed: dict | None = None, unmeasured: int = 0,
@@ -339,7 +384,9 @@ def assess_objects(objects: list[dict] | None, placed: dict | None = None, unmea
     if unmeasured:
         out["findings"].append(_f("warn", f"By size, {unmeasured} build item"
                                           f"{'s' if unmeasured != 1 else ''} could not be measured, so "
-                                          "Studio cannot say whether everything fits."))
+                                          "Studio cannot say whether everything fits.",
+                                  id="placement-not-judged",
+                                  action="Check these items in Snapmaker Orca; Studio could not measure them."))
         if out["overall_level"] != "risk":
             out["overall_level"] = "warn"
             out["overall_text"] = ("By size, it fits as far as Studio could measure, but "

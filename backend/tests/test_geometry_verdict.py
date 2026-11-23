@@ -159,8 +159,10 @@ def test_declared_inch_file_is_not_checked_everywhere(tmp_path):
     assert basis["established"] is False and basis["reasons"] == ["unit_not_millimeter"]
     assert "inch" in basis["summary"]
 
-    assert s["bed_fit"]["available"] is False and s["bed_fit"]["status"] == "not_checked"
-    assert "overall_level" not in s["bed_fit"]                      # no ok / warn / risk at all
+    # Bed fit no longer withholds this: the unit is one the 3MF format defines, so Studio converts each
+    # part to millimetres and judges 254 x 508 x 762 mm, which does not fit (see test_guarded_size.py).
+    assert s["bed_fit"]["available"] is True and s["bed_fit"]["overall_level"] == "risk"
+    assert s["bed_fit"]["size_basis"] == "measured_mm"
     fit = next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")
     assert fit["status"] == "not_checked" and basis["summary"] in fit["detail"]
     assert s["readiness"]["ready"] is False and s["readiness"]["print_setup_ready"] is False
@@ -177,11 +179,12 @@ def test_every_surface_gives_the_same_reason_and_names_its_own_scope(tmp_path):
     s = _surfaces(make(tmp_path, "inch2", unit="inch"))
     reason = s["insights"]["geometry_basis"]["summary"]
     assert reason
-    for name in ("bed_fit", "predict", "first_layer", "scale_preview", "scale_options"):
+    # bed fit is measured through the guarded extents (see test_guarded_size.py); the others still withhold
+    for name in ("predict", "first_layer", "scale_preview", "scale_options"):
         assert s[name]["reason"] == reason, name
         assert s[name]["geometry_basis"]["reasons"] == ["unit_not_millimeter"], name
-    scopes = {s[n]["scope"] for n in ("bed_fit", "predict", "first_layer", "scale_options")}
-    assert len(scopes) == 4                                           # each says what IT withheld
+    scopes = {s[n]["scope"] for n in ("predict", "first_layer", "scale_options")}
+    assert len(scopes) == 3                                           # each says what IT withheld
     assert set(s["insights"]["geometry_basis"]["withheld"]) >= {"bed fit", "the print risk signals"}
 
 
@@ -202,11 +205,13 @@ def test_unit_declared_only_by_a_sub_model_part_is_caught(tmp_path):
     (_SCALE20, "transform_scaled"), (_SCALE6, "transform_scaled"),
     (_ROT_X90, "transform_rotated"), (_ROT_Z90, "transform_rotated"),
 ])
-def test_scaled_or_rotated_placement_is_not_checked_even_when_it_would_fit(tmp_path, tf, reason):
-    """Scale 6 really does fit (60 x 120 x 180) and still is not judged: the measurement ignores it."""
+def test_scaled_or_rotated_size_verdicts_stay_not_checked_except_the_guarded_bed_fit(tmp_path, tf, reason):
+    """Every size-dependent surface except bed fit still measures the mesh BEFORE the transform, so it
+    still says not checked. Bed fit measures each placed item after the transform (test_guarded_size.py)."""
     s = _surfaces(make(tmp_path, "tf", items=(("1", tf),)))
     assert s["insights"]["geometry_basis"]["reasons"] == [reason]
-    assert s["bed_fit"]["status"] == "not_checked" and s["predict"]["status"] == "not_checked"
+    assert s["bed_fit"]["available"] is True and s["bed_fit"]["size_basis"] in ("as_placed", "measured_mm")
+    assert s["predict"]["status"] == "not_checked"
     assert s["scale_options"]["status"] == "not_checked"
     assert s["scale_preview"]["fits_build_volume"] is None
     assert next(c for c in s["readiness"]["checks"] if c["name"] == "Fits the print bed")["status"] == "not_checked"
@@ -214,10 +219,13 @@ def test_scaled_or_rotated_placement_is_not_checked_even_when_it_would_fit(tmp_p
 
 def test_build_scaled_item_insights_and_scale_doctor_no_longer_disagree(tmp_path):
     """Before: insights said 10 x 20 x 30 and bed fit "fits", while Scale Doctor placed it at
-    200 x 400 x 600. Now neither gives a size-based verdict and both say why."""
+    200 x 400 x 600. Now bed fit judges the 200 x 400 x 600 mm the item really is, as placed, and says so;
+    Scale Doctor still gives no verdict and says why."""
     s = _surfaces(make(tmp_path, "scale20", items=(("1", _SCALE20),)))
-    assert s["bed_fit"]["status"] == s["scale_options"]["status"] == "not_checked"
-    assert s["bed_fit"]["reason"] == s["scale_options"]["reason"]
+    assert s["scale_options"]["status"] == "not_checked"
+    assert s["bed_fit"]["size_basis"] == "as_placed" and s["bed_fit"]["overall_level"] == "risk"
+    [obj] = s["bed_fit"]["objects_by_size"]
+    assert obj["dims_mm"] == {"x": 200.0, "y": 400.0, "z": 600.0}
 
 
 def test_mixed_objects_cannot_hide_an_unchecked_one(tmp_path):
@@ -227,7 +235,8 @@ def test_mixed_objects_cannot_hide_an_unchecked_one(tmp_path):
     basis = geometry_basis.assess(p)
     assert basis["established"] is False and basis["reasons"] == ["transform_scaled"]
     assert len(basis["unchecked_objects"]) == 1 and basis["objects_total"] == 2
-    assert service.bed_fit(p)["status"] == "not_checked"
+    fit = service.bed_fit(p)                       # the scaled copy is NOT hidden by the plain one
+    assert fit["objects_checked"] == 2 and fit["overall_level"] == "risk"
     assert "1 of 2" in basis["summary"]
 
 
@@ -297,7 +306,8 @@ def test_intelligence_report_does_not_claim_no_blockers(tmp_path):
 def test_quality_evidence_drops_raw_footprint_when_size_is_not_established(tmp_path):
     ev = service.quality_check("bed_adhesion", make(tmp_path, "inch6", unit="inch"))
     labels = {e["label"] for e in (ev.get("result") or {}).get("evidence", [])}
-    assert "Footprint" not in labels and "Bed fit" not in labels
+    # the raw-mesh footprint is withheld; the bed-fit line is now the guarded one (millimetres, converted)
+    assert "Footprint" not in labels
 
 
 def test_every_payload_is_json_serialisable(tmp_path):
@@ -333,7 +343,7 @@ def test_readiness_is_blocked_even_when_raw_dimensions_are_unavailable(tmp_path)
 def test_near_identity_scales_and_shears_are_not_noise(tmp_path, tf):
     p = make(tmp_path, "near", items=(("1", tf),))
     assert geometry_basis.assess(p)["established"] is False
-    assert service.bed_fit(p)["status"] == "not_checked"
+    assert service.bed_fit(p)["size_basis"] == "as_placed"      # measured as placed, never as modelled
     assert service.scale_preview(p, 100)["fits_build_volume"] is None
 
 

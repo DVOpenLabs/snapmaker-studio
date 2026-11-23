@@ -106,9 +106,11 @@ def test_object_size_ignores_scale_and_turn_on_the_first_item(tmp_path):
 def test_a_scaled_instance_beyond_the_bed_is_not_checked_not_judged(tmp_path):
     path = project(tmp_path, [box_object("1", 100, 100, 10)], [("1", "3 0 0 0 3 0 0 0 1 10 10 0")])
     result = service.bed_fit(path)
-    # RC2 guard: a scaled item's size is not established, so the Bed-Fit API withholds its verdict. The placed
-    # footprint (3x) is still measured: the item reaches 310 mm on a 270 mm plate.
-    assert result["available"] is False and result["status"] == "not_checked"
+    # The item scales its object 3x, so the object as modelled (100 mm) is not what prints. Bed fit sizes the
+    # instance as placed (300 mm) and judges THAT: the item reaches 310 mm on a 270 mm plate.
+    assert result["available"] is True and result["size_basis"] == "as_placed"
+    assert result["overall_level"] == "risk"
+    assert result["objects_by_size"][0]["dims_mm"]["x"] == 300.0
     placed = geometry.build_item_dims(path)
     assert placed[0]["dimensions"]["x"] == 300.0
 
@@ -281,10 +283,12 @@ def test_the_caches_survive_many_threads(tmp_path):
     assert errors == []
 
 
-def test_a_cube_scaled_to_300_mm_tall_is_not_checked(tmp_path):
+def test_a_cube_scaled_to_300_mm_tall_is_judged_as_placed(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 0")], name="zscale.3mf")
     result = service.bed_fit(path)
-    assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established
+    assert result["available"] is True and result["size_basis"] == "as_placed"
+    assert result["objects_by_size"][0]["dims_mm"]["z"] == 300.0      # not the 10 mm of the object as modelled
+    assert result["overall_level"] == "risk"                           # 300 mm is above the U1's height
 
 
 def test_a_tall_modifier_does_not_make_the_bed_fit_check_report_over_height(tmp_path):
@@ -316,7 +320,10 @@ def test_the_size_check_counts_only_the_parts_that_print(tmp_path):
     assert service.bed_fit(path2)["overall_level"] == "risk"
 
 
-def test_a_scaled_part_sunk_below_the_plane_is_not_checked(tmp_path):
+def test_a_scaled_part_sunk_below_the_plane_is_judged_as_placed(tmp_path):
     path = project(tmp_path, [fx.cube_object("1", 10)], [("1", "1 0 0 0 1 0 0 0 30 100 100 -100")], name="sunk.3mf")
     result = service.bed_fit(path)
-    assert result["available"] is False and result["status"] == "not_checked"   # RC2 guard: a scaled item's size is not established
+    assert result["available"] is True and result["size_basis"] == "as_placed"
+    ids = {f.get("id") for f in result["findings"]}
+    assert "placement-below-plate" in ids                              # it reaches z = -100 mm
+    assert result["overall_level"] in ("warn", "risk")

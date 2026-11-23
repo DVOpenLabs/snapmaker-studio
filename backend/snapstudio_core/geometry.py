@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 from . import roles as _roles
+from . import units as _units
 from .container import ThreeMF
 from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
@@ -213,7 +214,7 @@ def nonprinting_meshes(tm: ThreeMF) -> set:
         return set()
 
 
-def build_item_dims(path: str) -> list[dict]:
+def build_item_dims(path: str, mm: bool = False) -> list[dict]:
     """Per-build-item bounding-box dimensions (mm), with the 3MF build transform and
     nested component transforms applied — i.e. each placed object's real on-plate
     size, one entry per build item (a repeated object appears once per item).
@@ -222,30 +223,33 @@ def build_item_dims(path: str) -> list[dict]:
 
     An item (or component) that names a ``p:path`` is looked up in THAT part and nowhere
     else; one that cannot be found is left out here and reported by ``measure_items``."""
-    return _measure(path)[0]
+    return _measure(path, mm)[0]
 
 
-def measure_items(path: str) -> tuple[list[dict], list[dict]]:
+def measure_items(path: str, mm: bool = False) -> tuple[list[dict], list[dict]]:
     """``(placed items, unresolved items)``.
 
     ``unresolved`` lists the build items whose object could not be found where the file says
     it is (a ``p:path`` naming a part that is absent, or an object the part does not hold).
     They are never measured against some other object that happens to share the id."""
-    items, unresolved, _sizes = _measure(path)
+    items, unresolved, _sizes = _measure(path, mm)
     return items, unresolved
 
 
-def object_sizes(path: str) -> list[dict]:
+def object_sizes(path: str, mm: bool = False) -> list[dict]:
     """Per-object size (mm): each object as modelled, keyed by (part, object id), with its nested
     component transforms applied but BEFORE any build item moves, turns or scales it. One entry per
     distinct object (``instance_count`` says how many build items use it). This is a SIZE measure
     and says nothing about where anything sits."""
-    return _measure(path)[2]
+    return _measure(path, mm)[2]
 
 
-def measure(path: str) -> tuple[list[dict], list[dict], list[dict]]:
-    """``(placed items, unresolved items, object sizes)`` from a single read of the project."""
-    return _measure(path)
+def measure(path: str, mm: bool = False) -> tuple[list[dict], list[dict], list[dict]]:
+    """``(placed items, unresolved items, object sizes)`` from a single read of the project.
+
+    ``mm=True`` converts every part from its own 3MF unit to millimetres (issue 91; only the Bed-Fit Doctor asks).
+    The default reads the numbers as written, as every other caller always has."""
+    return _measure(path, mm)
 
 
 #: The last few projects measured, keyed by file identity: one request often asks for the size, the
@@ -255,14 +259,25 @@ _CACHE_SLOTS = 4
 _CACHE_LOCK = threading.Lock()      # requests run on several threads; the dict is never touched unlocked
 
 
-def _measure(path: str):
+def _unit_invariant(path: str) -> bool:
+    """True when converting units would change nothing: every model part is in millimetres (or absent)."""
+    try:
+        tm = ThreeMF.open(path)
+        return all(_units.read_unit(tm.read_part(n)).factor == 1.0 for n in tm.list_parts() if n.endswith(".model"))
+    except Exception:
+        return False
+
+
+def _measure(path: str, mm: bool = False):
     key = file_identity(path)
+    if mm and key is not None and _unit_invariant(path):
+        mm = False                # a millimetre project reads the same either way: one measurement, one cache entry
     if key is not None:
         with _CACHE_LOCK:
-            hit = _CACHE.get(key)
+            hit = _CACHE.get((key, mm))
         if hit is not None:
             return copy.deepcopy(hit)
-    result = _measure_uncached(path)
+    result = _measure_uncached(path, True) if mm else _measure_uncached(path)
     # only remember it if the file is still the one that was read: a change during the measurement
     # would otherwise be filed under the identity of the old content
     if key is not None and stat_identity(path) == key[:3]:
@@ -270,11 +285,11 @@ def _measure(path: str):
         with _CACHE_LOCK:
             while len(_CACHE) >= _CACHE_SLOTS:
                 _CACHE.pop(next(iter(_CACHE)), None)
-            _CACHE[key] = stored
+            _CACHE[(key, mm)] = stored
     return result
 
 
-def _measure_uncached(path: str):
+def _measure_uncached(path: str, mm: bool = False):
     try:
         tm = ThreeMF.open(path)
     except Exception:
@@ -286,7 +301,13 @@ def _measure_uncached(path: str):
 
         # (part, object_id) -> (verts, [(component_objectid, component_part|None, component_xform)])
         parsed: dict[str, dict[str, tuple]] = {}
+        # Everything below is in millimetres. A part's own unit (3MF `unit`, default millimetre) scales its
+        # vertices; a transform's translation is in the unit of the part that holds it. A declared unit
+        # outside the six the format defines is not converted (factor 1.0): `geometry_basis` reports that
+        # case as not measurable, so no verdict is built on those numbers.
+        factor: dict[str, float] = {}
         for fname, raw in model_files.items():
+            factor[fname] = _units.read_unit(raw).factor if mm else 1.0
             root = load_model_settings(raw)
             objs: dict[str, tuple] = {}
             for ob in root.iter(f"{_3MF_CORE_NS}object"):
@@ -297,14 +318,15 @@ def _measure_uncached(path: str):
                     vn = mesh.find(f"{_3MF_CORE_NS}vertices")
                     if vn is not None:
                         for v in vn.iterfind(f"{_3MF_CORE_NS}vertex"):
-                            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+                            verts.append((float(v.get("x", 0)) * factor[fname], float(v.get("y", 0)) * factor[fname],
+                                          float(v.get("z", 0)) * factor[fname]))
                 comps = []
                 cn = ob.find(f"{_3MF_CORE_NS}components")
                 if cn is not None:
                     for c in cn.iterfind(f"{_3MF_CORE_NS}component"):
                         comps.append((c.get("objectid"),
                                       normalize_part(c.get(f"{_3MF_PROD_NS}path")),
-                                      _xform(c.get("transform"))))
+                                      _units.scale_translation(_xform(c.get("transform")), factor[fname])))
                 objs[oid] = (verts, comps)
             parsed[fname] = objs
 
@@ -405,7 +427,7 @@ def _measure_uncached(path: str):
                 continue
             if not points:
                 continue
-            xform = _xform(it["transform"])
+            xform = _units.scale_translation(_xform(it["transform"]), factor.get(root_file, 1.0))
             # the placed bounds are those of what PRINTS; an object made only of helper volumes has nothing
             # that prints, and keeps its full extent rather than vanishing from the checks
             measured = printing or points

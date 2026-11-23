@@ -109,7 +109,7 @@ def _complexity(triangles: int | None) -> str | None:
     return "high"
 
 
-def project_info(path: str, placement_aware: bool = False) -> dict:
+def project_info(path: str, placement_aware: bool = False, convert_units: bool = False) -> dict:
     """Rich, read-only insights for a design. Builds on the Doctor diagnosis and
     adds real geometry + material detail. Never raises on geometry — returns what
     it can and leaves the rest null.
@@ -134,7 +134,7 @@ def project_info(path: str, placement_aware: bool = False) -> dict:
         pass  # geometry/materials are best-effort; diagnosis still stands
 
     # SIZE and PLACEMENT are different facts and are kept apart here.
-    #   object_sizes_mm  how big each object is (per object, in file units; millimetres only when geometry_basis is established, before any build item
+    #   object_sizes_mm  how big each object is (per object, in file units unless `convert_units` (the Bed-Fit Doctor) converts each part from its own 3MF unit to millimetres; before any build item
     #                    moves, turns or scales it). Says nothing about where anything sits.
     #   placed           where each instance sits and on which plate (placed bounds).
     #   dimensions_mm    kept for existing readers: the overall extents of all the mesh data
@@ -155,13 +155,13 @@ def project_info(path: str, placement_aware: bool = False) -> dict:
     else:
         try:
             from . import geometry, plate_placement
-            placed_items, unresolved, sizes = geometry.measure(path)
+            placed_items, unresolved, sizes = geometry.measure(path, mm=convert_units)
             object_sizes = [{"object_id": s["object_id"], "part": s["part"],
                              "instance_count": s["instance_count"],
                              "dimensions_mm": {k: round(v, 1) for k, v in s["dimensions"].items()}}
                             for s in sizes]
             unmeasured = len(unresolved)
-            placed = plate_placement.placed_instances(path, measured=(placed_items, unresolved))
+            placed = plate_placement.placed_instances(path, measured=(placed_items, unresolved), converted=convert_units)
         except Exception:
             placed = {"available": False, "basis": "placed_bounds", "instances": [],
                       "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
