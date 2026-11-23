@@ -161,7 +161,7 @@ def project_info(path: str, placement_aware: bool = False, convert_units: bool =
                              "dimensions_mm": {k: round(v, 1) for k, v in s["dimensions"].items()}}
                             for s in sizes]
             unmeasured = len(unresolved)
-            placed = plate_placement.placed_instances(path, measured=(placed_items, unresolved))
+            placed = plate_placement.placed_instances(path, measured=(placed_items, unresolved), converted=convert_units)
         except Exception:
             placed = {"available": False, "basis": "placed_bounds", "instances": [],
                       "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,

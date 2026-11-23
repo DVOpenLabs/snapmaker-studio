@@ -231,3 +231,59 @@ def test_the_other_callers_still_read_the_numbers_as_written(tmp_path):
     assert item["dimensions"] == {"x": 10.0, "y": 20.0, "z": 30.0}
     assert project_info(p, placement_aware=True)["object_sizes_mm"][0]["dimensions_mm"]["x"] == 10.0
     assert project_info(p, placement_aware=True, convert_units=True)["object_sizes_mm"][0]["dimensions_mm"]["x"] == 254.0
+
+
+# --- independent review of PR 153 head 8510301 (Sol): the part an item names, and one exact unit rule ------------
+
+def test_an_unreadable_transform_in_the_part_a_build_item_names_is_never_measured_as_identity(tmp_path):
+    """Root object 1 is a clean mesh, but the item names object 1 in a SUB part whose component transform is
+    unreadable. geometry.measure follows the named part, so the basis must validate that same part."""
+    sub = ('<object id="2" type="model">' + _mesh_xml(2) + '</object>'
+           '<object id="1" type="model"><components><component objectid="2" transform="not numbers"/>'
+           '</components></object>')
+    root = '<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+    item = f'<item objectid="1" p:path="/3D/Objects/sub.model" transform="{_TF_Z90_AT_100}"/>'
+    p = _write(tmp_path / "named_part.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter"),
+                                              "3D/Objects/sub.model": _model(sub, "", "millimeter")})
+    ext = geometry_basis.assess(p)["extents"]
+    assert ext["measurable"] is False and "transform_unreadable" in ext["blocked_by"]
+    fit = service.bed_fit(p)
+    assert fit["available"] is False and fit["status"] == "not_checked"
+
+
+@pytest.mark.parametrize("unit", [" millimeter ", "Millimeter", "MILLIMETER"])
+def test_a_millimetre_spelling_the_converter_would_not_recognise_does_not_authorise_a_rotated_verdict(tmp_path, unit):
+    p = make(tmp_path, "mmvar", unit=unit, items=(("1", _ROT_Z90),))
+    ext = geometry_basis.assess(p)["extents"]
+    assert ext["measurable"] is False and ext["blocked_by"] == ["unit_unrecognized"]
+    assert service.bed_fit(p)["status"] == "not_checked"
+
+
+# --- independent review of PR 153 head 8510301 (Opus): footprints must not overwrite converted bounds ----------
+
+def test_a_component_built_inch_project_is_not_sized_from_unconverted_footprints(tmp_path):
+    """Object 2 is built from object 1 by <components> (the normal Orca shape), so placement.read_objects has a
+    footprint for it, in file units. Rotated, so the size comes from the placed numbers: they must be the
+    converted ones (254 x 508 mm before the turn), never the inch numbers."""
+    root = ('<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+            '<object id="2" type="model"><components><component objectid="1"/></components></object>')
+    p = _write(tmp_path / "comp_inch.3mf", {"3D/3dmodel.model": _model(root, f'<item objectid="2" transform="{_TF_Z90_AT_100}"/>', "inch")})
+    fit = service.bed_fit(p)
+    assert fit["available"] is True
+    dims = fit["objects_by_size"][0]["dims_mm"]
+    assert max(dims["x"], dims["y"]) >= 500.0 and fit["overall_level"] != "ok"
+
+
+def test_a_centimetre_sub_part_placed_off_the_plate_is_reported_off_the_plate(tmp_path):
+    sub = {"3D/Objects/o.model": _model('<object id="1" type="model">' + _mesh_xml(1) + '</object>', "", "centimeter")}
+    root = ('<object id="2" type="model"><components>'
+            '<component p:path="/3D/Objects/o.model" objectid="1"/></components></object>')
+    parts = {"3D/3dmodel.model": _model(root, '<item objectid="2" transform="1 0 0 0 1 0 0 0 1 200 100 0"/>',
+                                        "millimeter")}
+    parts.update(sub)
+    p = _write(tmp_path / "cm_off.3mf", parts)
+    [item] = geometry.measure_items(p, mm=True)[0]
+    assert item["bounds"]["max"][0] == 300.0                      # 200 mm + 10 cm
+    from snapstudio_core import plate_placement as pp
+    placed = pp.assess(p, guarded=True)
+    assert [o["bounds_mm"]["max"][0] for o in placed["off_plate"]] == [300.0]     # the converted bound, not 215

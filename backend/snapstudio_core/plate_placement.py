@@ -222,7 +222,7 @@ def _fits_after(cluster: dict, bed: dict, offset: dict) -> bool:
             and cluster["max_y"] + offset["y"] <= bed["max_y"] - EDGE_MARGIN_MM + 1e-6)
 
 
-def _printable_only(path: str, items: list[dict]) -> list[dict]:
+def _printable_only(path: str, items: list[dict], converted: bool = False) -> list[dict]:
     """Bounds measured from the parts that print, where the project says which.
 
     A modifier, a negative volume or a support blocker is an instruction to the
@@ -233,8 +233,13 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     warn about a problem the printer does not have — and offer to move an
     arrangement that is already fine.
     """
-    from . import placement
+    from . import geometry, placement
 
+    # placement.read_objects reads every number as written and converts no unit. When the caller asked for
+    # millimetres (the guarded bed fit) and some part is NOT in millimetres, its footprints would put
+    # file-unit numbers over the converted ones, so the converted measurement stands as it is.
+    if converted and not geometry._unit_invariant(path):
+        return items
     try:
         read = placement.read_objects(path, keep_points=False)
     except Exception:
@@ -266,7 +271,7 @@ def _printable_only(path: str, items: list[dict]) -> list[dict]:
     return out
 
 
-def placed_instances(path: str, measured: tuple | None = None) -> dict:
+def placed_instances(path: str, measured: tuple | None = None, converted: bool = False) -> dict:
     """Where each build item sits, with the plate it belongs to: PLACED bounds.
 
     This is the placed counterpart of a size. It answers "where is each instance" and
@@ -288,7 +293,7 @@ def placed_instances(path: str, measured: tuple | None = None) -> dict:
                 "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
                 "reason": "Studio could not open this file as a 3MF project."}
     raw_items, geometry_unresolved = measured if measured is not None else geometry.measure_items(path)
-    items = _printable_only(path, raw_items)
+    items = _printable_only(path, raw_items, converted)
     if not items:
         return {"available": False, "basis": "placed_bounds", "instances": [],
                 "plate_count": 0, "plate_extents": [], "combined_extent_mm": None,
@@ -533,7 +538,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
     plate_count = (traits.get("plate_count") or {}).get("value") or 1
 
     measured, geometry_unresolved = geometry.measure_items(path, mm=as_placed_only)
-    items = _printable_only(path, measured)
+    items = _printable_only(path, measured, as_placed_only)
     if not items:
         return _unavailable(
             "Studio could not read where the objects sit in this project, so it "

@@ -195,6 +195,10 @@ def _compute(path: str) -> dict:
         declared = root.get("unit")
         declared_any = declared_any or declared is not None
         bad = _unit_reason(declared)
+        # the extents need an EXACT table key (geometry.measure's rule): " millimeter " or "Millimeter" is
+        # read as written, so the extents are not vouched for even though the legacy gate tolerates them
+        if declared is not None and not _units.resolve_unit(declared).recognized:
+            unrecognized_unit = True
         if bad is not None:
             reasons.add("unit_not_millimeter")
             declared_bad.append(bad)
@@ -214,26 +218,37 @@ def _compute(path: str) -> dict:
         # part, never in some other part that happens to reuse the id.
         return part if (part in index and oid in index[part]) else None
 
-    def walk(oid, prefer, matrix, chain, item_id):
+    ext_blocked: set = set()    # what stops the EXTENTS only (the legacy established gate is not changed by it)
+
+    def walk(oid, prefer, matrix, chain, item_id, extents_only=False):
         visits[0] += 1
         if visits[0] > _MAX_VISITS or len(chain) > _MAX_DEPTH:
-            unchecked.setdefault(item_id, set()).add("structure_unresolved")
+            if extents_only:
+                ext_blocked.add("structure_unresolved")
+            else:
+                unchecked.setdefault(item_id, set()).add("structure_unresolved")
             return
         where = locate(oid, prefer)
         if where is None or (where, oid) in chain:
-            unchecked.setdefault(item_id, set()).add("structure_unresolved")
+            if extents_only:
+                ext_blocked.add("structure_unresolved")
+            else:
+                unchecked.setdefault(item_id, set()).add("structure_unresolved")
             return
         has_mesh, comps = index[where][oid]
-        if has_mesh:
+        if has_mesh and not extents_only:
             code = _classify(matrix)
             if code:
                 unchecked.setdefault(item_id, set()).add(code)
         for cid, cpath, ctf in comps:
             lin, status = _parse_transform(ctf)
             if status == "unreadable":
-                unchecked.setdefault(item_id, set()).add("transform_unreadable")
+                if extents_only:
+                    ext_blocked.add("transform_unreadable")
+                else:
+                    unchecked.setdefault(item_id, set()).add("transform_unreadable")
                 continue
-            walk(cid, cpath or where, _mul(lin, matrix), chain | {(where, oid)}, item_id)
+            walk(cid, cpath or where, _mul(lin, matrix), chain | {(where, oid)}, item_id, extents_only)
 
     items = list(parts[_ROOT_PART].iter(f"{_CORE}item"))
     item_scaled: list = []      # build items whose OWN transform scales or shears
@@ -253,6 +268,11 @@ def _compute(path: str) -> dict:
         elif own == "transform_rotated":
             item_rotated.append(key)
         walk(it.get("objectid"), _ROOT_PART, lin, frozenset(), key)
+        # geometry.measure follows the part the build item NAMES (p:path); validate that same part for the
+        # extents, so an unreadable transform in it can never be measured as identity
+        ipath = (it.get(f"{_PROD}path") or "").lstrip("/")
+        if ipath and ipath != _ROOT_PART:
+            walk(it.get("objectid"), ipath, lin, frozenset(), key, extents_only=True)
 
     for codes in unchecked.values():
         reasons |= codes
@@ -262,6 +282,7 @@ def _compute(path: str) -> dict:
     # own size is a different fact: it is exact too, unless a build item scales or shears it (then what
     # prints is not the object as modelled). Anything not followed or not recognised stays unmeasured.
     blocked = sorted((reasons & {"transform_unreadable", "structure_unresolved", "structure_unreadable"})
+                     | ext_blocked
                      | ({"unit_unrecognized"} if unrecognized_unit else set()))
     measurable = not blocked
     extents = {"measurable": measurable,
