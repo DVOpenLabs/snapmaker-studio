@@ -2099,10 +2099,16 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict
     from snapstudio_core import bed_fit as bf
     info = project_info(path, placement_aware=True)
     basis = info.get("geometry_basis")
+    measured_as_placed = False
     if not geometry_basis.is_established(basis):
-        # The numbers in the file are not the physical size: say "not checked", never "fits".
-        return {"schema_version": bf.SCHEMA_VERSION, "available": False,
-                **geometry_basis.not_checked(basis, "bed fit")}
+        if not geometry_basis.extents_measurable(basis):
+            # The numbers in the file are not the physical size and Studio cannot measure it another way:
+            # say "not checked", never "fits".
+            return {"schema_version": bf.SCHEMA_VERSION, "available": False,
+                    **geometry_basis.not_checked(basis, "bed fit")}
+        # Rotated, scaled or non-millimetre project whose structure Studio followed completely: the placed
+        # bounds are exact millimetres, so the verdict is built on those, and says so (see below).
+        measured_as_placed = True
     dims = info.get("dimensions_mm")
     object_count = info.get("objects") or 1
     multi = (info.get("colors") or 0) > 1
@@ -2141,13 +2147,21 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict
     # Two separate facts: how big each object is (size, per object) and where the instances sit
     # (placement, per instance and plate). A combined extent is neither, and is never used here.
     try:
-        placed = _assess_against(path, target)
+        placed = _assess_against(path, target, guarded=True)
     except Exception:
         placed = None
-    return bf.assess_objects(info.get("object_sizes_mm"), placed=placed,
-                             unmeasured=info.get("objects_unmeasured") or 0,
-                             bed=bed, bed_known=bed_known, profile=profile, object_count=object_count,
-                             multi_material=multi)
+    sizes = info.get("object_sizes_mm")
+    if measured_as_placed and not geometry_basis.size_exact(basis):
+        # A build item scales or shears its object, so the object as modelled is not what prints: use each
+        # instance as placed instead (exact), one entry per instance.
+        sizes = bf.sizes_as_placed(info.get("placed"))
+    out = bf.assess_objects(sizes, placed=placed,
+                            unmeasured=info.get("objects_unmeasured") or 0,
+                            bed=bed, bed_known=bed_known, profile=profile, object_count=object_count,
+                            multi_material=multi)
+    if measured_as_placed and out.get("available") is not False:
+        bf.annotate_guarded_basis(out, basis, as_placed=not geometry_basis.size_exact(basis))
+    return out
 
 
 def _printer_snapshot(host: str, port: int = 7125, limit: int = 50) -> dict:
@@ -2774,13 +2788,14 @@ def _placement_target(facts: dict) -> dict | None:
             "name": f"the {printer_profiles.display_name(profile)}'s", "height": float(volume["z"]) if volume.get("z") else None}
 
 
-def _assess_against(path: str, target: dict | None) -> dict | None:
+def _assess_against(path: str, target: dict | None, guarded: bool = False) -> dict | None:
     from snapstudio_core import plate_placement
 
     if target is None:
         return None
+    extra = {"guarded": True} if guarded else {}     # only the Bed-Fit Doctor opts in
     return plate_placement.assess(path, bed=target["bed"], bed_name=target["name"],
-                                  height_mm=target["height"])
+                                  height_mm=target["height"], **extra)
 
 
 _READY_ATTEMPTS = 3

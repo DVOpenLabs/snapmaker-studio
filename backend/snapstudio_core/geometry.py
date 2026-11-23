@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 from . import roles as _roles
+from . import units as _units
 from .container import ThreeMF
 from .fileid import file_identity, stat_identity  # noqa: F401  (the one content key; see fileid)
 from .config_io import load_model_settings
@@ -286,7 +287,13 @@ def _measure_uncached(path: str):
 
         # (part, object_id) -> (verts, [(component_objectid, component_part|None, component_xform)])
         parsed: dict[str, dict[str, tuple]] = {}
+        # Everything below is in millimetres. A part's own unit (3MF `unit`, default millimetre) scales its
+        # vertices; a transform's translation is in the unit of the part that holds it. A declared unit
+        # outside the six the format defines is not converted (factor 1.0): `geometry_basis` reports that
+        # case as not measurable, so no verdict is built on those numbers.
+        factor: dict[str, float] = {}
         for fname, raw in model_files.items():
+            factor[fname] = _units.read_unit(raw).factor
             root = load_model_settings(raw)
             objs: dict[str, tuple] = {}
             for ob in root.iter(f"{_3MF_CORE_NS}object"):
@@ -297,14 +304,15 @@ def _measure_uncached(path: str):
                     vn = mesh.find(f"{_3MF_CORE_NS}vertices")
                     if vn is not None:
                         for v in vn.iterfind(f"{_3MF_CORE_NS}vertex"):
-                            verts.append((float(v.get("x", 0)), float(v.get("y", 0)), float(v.get("z", 0))))
+                            verts.append((float(v.get("x", 0)) * factor[fname], float(v.get("y", 0)) * factor[fname],
+                                          float(v.get("z", 0)) * factor[fname]))
                 comps = []
                 cn = ob.find(f"{_3MF_CORE_NS}components")
                 if cn is not None:
                     for c in cn.iterfind(f"{_3MF_CORE_NS}component"):
                         comps.append((c.get("objectid"),
                                       normalize_part(c.get(f"{_3MF_PROD_NS}path")),
-                                      _xform(c.get("transform"))))
+                                      _units.scale_translation(_xform(c.get("transform")), factor[fname])))
                 objs[oid] = (verts, comps)
             parsed[fname] = objs
 
@@ -405,7 +413,7 @@ def _measure_uncached(path: str):
                 continue
             if not points:
                 continue
-            xform = _xform(it["transform"])
+            xform = _units.scale_translation(_xform(it["transform"]), factor.get(root_file, 1.0))
             # the placed bounds are those of what PRINTS; an object made only of helper volumes has nothing
             # that prints, and keeps its full extent rather than vanishing from the checks
             measured = printing or points

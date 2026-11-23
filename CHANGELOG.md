@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Bed fit (the Bed-Fit Doctor) now gives a verdict for projects that declare a unit other than millimetres and for projects whose build items are rotated, scaled or sheared, instead of "not checked". It reads each part in its own 3MF unit (micron, millimetre, centimetre, inch, foot, metre), applies every transform to the real vertices, and says on the result how it measured (`size_basis`: "measured_mm", or "as_placed" when a build item scales or shears its object, so each instance is sized as placed). A unit outside those six, a structure Studio cannot follow, or an unreadable transform stays "not checked". Not changed: the print-risk signals, first-layer checks, Scale Doctor and the readiness fit check still withhold their verdicts for these projects, and Studio does not save a corrected copy of one (no move is promised). Not checked against Snapmaker Orca's own plate layout. Refs #91.
+- The "N build items could not be measured" bed-fit finding now carries a condition id and a next step.
+
 ### Fixed
 
 - Preparing a multi-plate project from a printer with a different plate size now lays each plate's objects out on the U1's plate grid (translation only; rotation, scale and painting untouched), in both modes, which should stop Snapmaker Orca listing the objects on later plates as outside (Orca loading and slicing of these copies has not been verified). It is only done when every object lies inside the plate the project records for it; otherwise positions are left as they were and the prepared copy says why. A plate whose objects are larger than the U1 plate is reported as still not fitting. This change does not move prime towers: Studio reports a tower it can prove is outside the plate or that may sit on an object, and otherwise says it cannot tell. (Recommended mode still applies the U1 starter profile's tower position as before; the report now says whether the position came from the project or from the starter profile.) The copy's summary now shows what was moved.

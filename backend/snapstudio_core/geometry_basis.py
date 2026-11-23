@@ -16,6 +16,12 @@ presented as a measurement, so every consuming surface reports "not checked" wit
 same reason instead. Unknown stays unknown: this module never turns it into a failure,
 a zero dimension or a probability.
 
+`extents` (added for issue 91) is a separate, narrower fact: whether Studio can still MEASURE each placed
+item exactly in millimetres even though the size is not established in the sense above. `geometry.measure`
+converts every part from its own unit and applies every transform to the real vertices, so that holds when
+the whole structure was followed and every declared unit is one the 3MF format defines. Only the Bed-Fit
+Doctor consumes it; every other surface still reads `established`.
+
 Translations are deliberately not a failure: a placement offset does not change a part's
 extents, and an arrangement of several objects is still reported by the existing
 largest-object proxy ("the whole arrangement must fit" is already stated by bed fit).
@@ -29,6 +35,7 @@ import copy
 import math
 import os
 
+from . import units as _units
 from .config_io import load_model_settings
 from .container import ThreeMF
 
@@ -96,6 +103,13 @@ def _classify(m) -> str | None:
     return "transform_scaled"
 
 
+def _is_rigid(m, tol: float = 1e-6) -> bool:
+    """Orthonormal rows within `tol`: a rotation (or mirror), so an object keeps its size under it.
+    Much tighter than the label tolerance above: a shear that small is still not a rotation."""
+    gram = [sum(m[3 * i + k] * m[3 * j + k] for k in range(3)) for i in range(3) for j in range(3)]
+    return all(abs(gram[3 * i + j] - (1.0 if i == j else 0.0)) <= tol for i in range(3) for j in range(3))
+
+
 def _unit_reason(declared) -> str | None:
     if declared is None:
         return None                   # the 3MF default is millimetres
@@ -133,7 +147,9 @@ def _summary(reasons: list, declared_units: list, unchecked: list, total: int) -
 def _established(unit_source: str, unit: str | None) -> dict:
     return {"schema_version": SCHEMA_VERSION, "established": True, "reasons": [],
             "unit": {"unit": unit, "source": unit_source}, "objects_total": None,
-            "unchecked_objects": [], "summary": "", "withheld": []}
+            "unchecked_objects": [], "summary": "", "withheld": [],
+            "extents": {"measurable": True, "size_exact": True, "blocked_by": [], "converted_units": [],
+                        "items_rotated": [], "items_scaled": []}}
 
 
 def _read_parts(tm: ThreeMF):
@@ -173,6 +189,8 @@ def _compute(path: str) -> dict:
     reasons: set = set()
     declared_bad: list = []
     declared_any = False
+    unrecognized_unit = False
+    converted_units: set = set()
     for name, root in parts.items():
         declared = root.get("unit")
         declared_any = declared_any or declared is not None
@@ -180,6 +198,10 @@ def _compute(path: str) -> dict:
         if bad is not None:
             reasons.add("unit_not_millimeter")
             declared_bad.append(bad)
+            if _units.resolve_unit(str(declared).strip()).recognized:
+                converted_units.add(str(declared).strip())
+            else:
+                unrecognized_unit = True
 
     index = {name: _index_objects(root) for name, root in parts.items()}
     visits = [0]
@@ -212,6 +234,8 @@ def _compute(path: str) -> dict:
             walk(cid, cpath or where, _mul(lin, matrix), chain | {(where, oid)}, item_id)
 
     items = list(parts[_ROOT_PART].iter(f"{_CORE}item"))
+    item_scaled: list = []      # build items whose OWN transform scales or shears
+    item_rotated: list = []     # build items whose OWN transform rotates
     for n, it in enumerate(items):
         item_id = it.get("objectid") or f"item{n + 1}"
         key = f"{item_id}#{n + 1}"
@@ -219,24 +243,68 @@ def _compute(path: str) -> dict:
         if status == "unreadable":
             unchecked.setdefault(key, set()).add("transform_unreadable")
             continue
+        own = _classify(lin)
+        if own == "transform_rotated" and not _is_rigid(lin):
+            own = "transform_scaled"      # nearly orthonormal but not a rotation: treat it as a shear, as placed
+        if own == "transform_scaled":
+            item_scaled.append(key)
+        elif own == "transform_rotated":
+            item_rotated.append(key)
         walk(it.get("objectid"), _ROOT_PART, lin, frozenset(), key)
 
     for codes in unchecked.values():
         reasons |= codes
+    # What Studio CAN still measure exactly. `geometry.measure` applies every transform to the real
+    # vertices and converts each part from its own unit, so a placed item's bounds are exact when the
+    # structure was followed completely and every declared unit is one the format defines. An object's
+    # own size is a different fact: it is exact too, unless a build item scales or shears it (then what
+    # prints is not the object as modelled). Anything not followed or not recognised stays unmeasured.
+    blocked = sorted((reasons & {"transform_unreadable", "structure_unresolved", "structure_unreadable"})
+                     | ({"unit_unrecognized"} if unrecognized_unit else set()))
+    measurable = not blocked
+    extents = {"measurable": measurable,
+               "size_exact": measurable and not item_scaled,
+               "blocked_by": blocked,
+               "converted_units": sorted(converted_units),
+               "items_rotated": sorted(item_rotated),
+               "items_scaled": sorted(item_scaled)}
     return _not_established(sorted(reasons, key=_REASON_ORDER.index), declared_bad,
                             sorted(unchecked), len(items),
-                            "declared" if declared_any else "default")
+                            "declared" if declared_any else "default", extents)
 
 
 def _not_established(reasons: list, declared_units: list, unchecked: list, total: int,
-                     unit_source) -> dict:
+                     unit_source, extents: dict | None = None) -> dict:
     if not reasons:
         return _established(unit_source or "default", "millimeter")
+    # An unreadable or unfollowed file has no exact extents either: unknown stays unknown.
+    ext = extents if extents is not None else dict(_NO_EXTENTS)
     return {"schema_version": SCHEMA_VERSION, "established": False, "reasons": reasons,
             "unit": {"unit": None if declared_units else "millimeter", "source": unit_source or "unknown"},
             "objects_total": total or None, "unchecked_objects": unchecked,
             "summary": _summary(reasons, declared_units, unchecked, total),
-            "withheld": list(WITHHELD)}
+            "withheld": list(WITHHELD), "extents": ext}
+
+
+_NO_EXTENTS = {"measurable": False, "size_exact": False, "blocked_by": ["structure_unreadable"],
+               "converted_units": [], "items_rotated": [], "items_scaled": []}
+
+
+def extents_measurable(basis: dict | None) -> bool:
+    """True when the size is not 'established' in the legacy sense but Studio can still measure each placed
+    item EXACTLY in millimetres (every transform applied to the real vertices, every part converted from its
+    own recognised unit, the whole structure followed). Never true for a basis it does not recognise."""
+    if not isinstance(basis, dict) or basis.get("established"):
+        return False
+    ext = basis.get("extents")
+    return bool(isinstance(ext, dict) and ext.get("measurable") is True)
+
+
+def size_exact(basis: dict | None) -> bool:
+    """True when each object's own size, as modelled, is exact millimetres AND is the size that prints:
+    no build item scales or shears it."""
+    ext = (basis or {}).get("extents") if isinstance(basis, dict) else None
+    return bool(extents_measurable(basis) and isinstance(ext, dict) and ext.get("size_exact") is True)
 
 
 def assess(path: str) -> dict:

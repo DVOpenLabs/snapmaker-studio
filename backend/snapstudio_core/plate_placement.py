@@ -492,8 +492,13 @@ def _plate_fit(grouped: dict[int, list[dict]], bed: dict,
 
 
 def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
-           height_mm: float | None = None) -> dict:
+           height_mm: float | None = None, guarded: bool = False) -> dict:
     """Where every object sits relative to the bed. Read-only, never raises.
+
+    `guarded` is for the one caller (Bed-Fit Doctor) that states how it measured: with it, a rotated,
+    scaled or non-millimetre project whose whole structure Studio followed is judged from its exact
+    placed bounds, and no corrected copy is offered. Without it (preflight, the move writer, anything
+    else) such a project stays "not checked", exactly as before.
 
     `bed` is the printer's real printable rectangle when one has been read from a
     connected machine; without it the check falls back to the plate of the printer
@@ -513,10 +518,16 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
         return _unavailable("Studio could not open this file as a 3MF project.")
 
     basis = geometry_basis.assess(path)
+    as_placed_only = False
     if not geometry_basis.is_established(basis):
-        # Positions and heights are in the file's own numbers; with no established physical size they
-        # are never read against the plate, so there is no on-plate / over-height / below-plate verdict.
-        return dict(_unavailable(basis["summary"]), **geometry_basis.not_checked(basis, "placement check"))
+        if not (guarded and geometry_basis.extents_measurable(basis)):
+            # Positions and heights are not exact millimetres here; they are never read against the plate,
+            # so there is no on-plate / over-height / below-plate verdict.
+            return dict(_unavailable(basis["summary"]), **geometry_basis.not_checked(basis, "placement check"))
+        # Rotated, scaled or non-millimetre, with the whole structure followed: `geometry.measure_items`
+        # returns each item's bounds from the real transformed vertices in millimetres, so the verdict is
+        # exact. Saving a moved copy is not: the writer handles only established projects.
+        as_placed_only = True
 
     traits = project_traits.extract(path)
     plate_count = (traits.get("plate_count") or {}).get("value") or 1
@@ -601,7 +612,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
     # the file, so any move would be a guess.
     # Nor is a move offered while some instance could not be judged: the move would carry it
     # somewhere nobody has checked.
-    fixable = (not multi_plate) and bool(off_plate) and would_fit and not not_judged
+    fixable = (not multi_plate) and bool(off_plate) and would_fit and not not_judged and not as_placed_only
 
     # A repeated object is one object at several places; the sentence counts the places, so the
     # instance that is off the plate is never averaged away by the one that is not.
@@ -666,7 +677,8 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
         "items": reported,
         "off_plate": off_plate,
         "arrangement": {"width": round(span_x, 2), "depth": round(span_y, 2)},
-        "suggested_offset": offset if (would_fit and not multi_plate) else None,
+        "suggested_offset": offset if (would_fit and not multi_plate and not as_placed_only) else None,
+        "fix_withheld": as_placed_only,
         "plate_fit": plate_fit,
         "oversized_plates": oversized_plates,
         "unresolved_objects": unresolved,
