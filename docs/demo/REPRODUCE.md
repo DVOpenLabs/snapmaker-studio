@@ -1,6 +1,6 @@
 # Reproduce the Studio+ development-build demo
 
-> **This is a development build, not the released v1.7.0.** The features shown here (Creative import and Prepare, workspace checkpoint with Passport, and the Lumina-compatible service client) live on development branches. They are not in the v1.7.0 installer, and nothing here is a release candidate. The UI footer and `desktop/package.json` still say "1.7.0" because no version bump was made on these branches.
+> **This is a development build, not the released v1.7.0.** The features shown here (Creative import and Prepare, workspace checkpoint with Passport, and the Lumina-compatible service client) are on `main` but have not been released. They are not in the v1.7.0 installer, and nothing here is a release candidate. The UI footer and `desktop/package.json` still say "1.7.0" because no version bump has been made.
 
 Everything runs from source on your own machine, on loopback, with disposable synthetic files. No printer, no real Lumina service and no real project is involved or touched. Snapmaker Orca is never launched (the engine may read the bundled profile folders of an installed Orca, read-only).
 
@@ -10,14 +10,14 @@ Everything runs from source on your own machine, on loopback, with disposable sy
 - Not shown, not claimed: genuine tool exports, Snapmaker Orca opening or slicing, a real Lumina service, any physical U1 or other hardware.
 
 ## Source identity
-- **Demonstrated runs (2026-11-20).** The 18/18 and 12/12 results below were produced on a detached checkout of the landing branch `integ/codex-landing-20261114` (draft PR #150) with the drivers from this branch copied in unchanged:
-  - product commit `d7344ba` (final head of #150 at the time); an earlier identical pass was recorded at `ed4dab0`;
-  - driver commit `60ee42a` on `docs/demo-repro-20261102` (this branch). `tools/demo/studio-plus/` was byte-identical to it.
+- **Demonstrated runs (2026-11-21).** The 18/18 and 12/12 results below were produced on a clean detached checkout of `main` at the commit below, using the drivers in that same commit (`tools/demo/studio-plus/`):
+  - commit `40fbb2f84b6c349e64c11305f7ede263ad37f870` (`main` after PRs #150, #98 and #145 merged). Its `desktop/` and `backend/` source is identical to `544cfd5` (the #98 merge); the later commit adds only documentation, third-party notices and these drivers;
+  - an earlier pass on the pre-merge landing branch (draft #150 head `d7344ba`, with the drivers copied in) gave the same 18/18 and 12/12, 2026-11-20;
   - Platform: one Windows 11 machine, loopback only, synthetic files, headless Edge. Not a clean machine, not Linux/macOS.
-- #150 is a draft and is NOT merged to main. Until it merges, the product commit above exists only on that branch. Merge or re-pin before presenting it as a stable reference.
+- #150, #98 and #145 are merged into `main`; the commit above is on `main`. This file's own text changed after that commit, so the pin remains `40fbb2f`, not a later docs-only commit.
 - The older pin `22de80733f254c0a38fbca04986c154848e0bc69` (draft PR #144, since merged) is the build the first recipe was written against; it predates main and #150, and its drivers expected behaviour the current build changed (see A5 and B8 below).
 - Fixed since the earlier text of this file: the passport export directory-swap finding (R4-F1, PR #140) was fixed in #147 and is no longer open.
-- Check this branch adds only documentation and driver scripts relative to the product commit you run: `git diff --stat <product-commit> docs/demo-repro-20261102 -- docs/demo tools/demo/studio-plus`.
+- To confirm the drivers you run are the ones that produced these results: `git diff --stat 40fbb2f <your-commit> -- tools/demo/studio-plus`.
 
 ## Prerequisites (tested versions; other versions untested)
 | Item | Tested |
@@ -32,7 +32,7 @@ Everything runs from source on your own machine, on loopback, with disposable sy
 ```bash
 git clone https://github.com/DVOpenLabs/snapmaker-studio.git
 cd snapmaker-studio
-git checkout integ/codex-landing-20261114   # product source d7344ba (draft PR #150); then copy tools/demo/studio-plus/ from docs/demo-repro-20261102 (60ee42a). See "Source identity"
+git checkout 40fbb2f84b6c349e64c11305f7ede263ad37f870   # main; product source and drivers are both in this commit. See "Source identity"
 
 # backend (virtual environment recommended)
 python -m venv .venv                 # Windows: py -3.13 -m venv .venv
@@ -52,7 +52,7 @@ PYTHON="$PWD/.venv/bin/python" node tools/demo/studio-plus/run.mjs
 ```
 Options: `run.mjs ac` or `run.mjs b` run one part; `DEMO_OUT=<folder>` chooses where screenshots and `results-*.json` go (default `<temp>/studio-demo-out`); `EDGE_PATH` selects the browser. The exit code is non-zero if any step failed or the page logged an error. The drivers are a smoke check of the outcomes listed below, not a full test suite; observed on-screen text is also recorded in `results-*.json`.
 
-Expected result at product `d7344ba` with drivers `60ee42a`: Journeys A and C plus the sidebar sweep **18/18** steps, Journey B **12/12** steps, 0 page errors (run 2026-11-20). Limits: one Windows machine, loopback, synthetic fixtures and a mock printer; no clean-machine, Orca, real-Lumina or physical-U1 claim. Run the drivers against any other commit and the counts are unverified.
+Expected result at `40fbb2f` (product and drivers from the same commit): Journeys A and C plus the sidebar sweep **18/18** steps, Journey B **12/12** steps, 0 page errors (run 2026-11-21, exit 0, about 41 s). Limits: one Windows machine, loopback, synthetic fixtures and a mock printer; no clean-machine, Orca, real-Lumina or physical-U1 claim. Run the drivers against any other commit and the counts are unverified.
 
 ## What the journeys show (expected on-screen wording)
 **A. Prepare a supported creative project and see what changed.** Sidebar "Creative import", inspect `sample-kromacut.3mf`: "Looks like Kromacut", with "What Studio read", "Kept untouched", "Could not interpret" and "Original unchanged". "Prepare a U1 copy": "A new file was written" and "Export verification": Kept identical (5), Changed (1) `Metadata/project_settings.config`, Dropped (0), Added (0). The DitherForge Bambu-path sample prepares; the generic-path sample is inspect-only: choose the format "DitherForge" first (changing the format clears an earlier inspection), then inspect; the page says "Read as DitherForge (your choice)", Prepare is unavailable with the reason shown, and nothing is written (A5); an unknown-origin file and a missing file are refused.
