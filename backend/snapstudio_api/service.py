@@ -2097,7 +2097,7 @@ def bed_fit(path: str, host: str | None = None, port: int = 7125, snapshot: dict
     Read-only; works offline."""
     from snapstudio_core.intelligence import project_info
     from snapstudio_core import bed_fit as bf
-    info = project_info(path, placement_aware=True)
+    info = project_info(path, placement_aware=True, convert_units=True)
     basis = info.get("geometry_basis")
     measured_as_placed = False
     if not geometry_basis.is_established(basis):

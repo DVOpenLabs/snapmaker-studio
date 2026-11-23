@@ -312,10 +312,13 @@ def annotate_guarded_basis(out: dict, basis: dict, as_placed: bool) -> None:
         notes.append("Some items are rotated in the file; their extents are measured after the rotation, "
                      "as placed.")
     if as_placed:
-        notes.append("Some items are scaled or reshaped in the file, so each item is sized as placed, "
+        notes.append("Some items are rotated, scaled or reshaped in the file, so each item is sized as placed, "
                      "not as the object was modelled.")
     out["size_basis"] = "as_placed" if as_placed else "measured_mm"
-    out["geometry_basis"] = basis
+    # only what this verdict rests on: the legacy summary says the numbers are NOT converted/rotated, which
+    # is true of the other surfaces and would contradict this one
+    out["geometry_basis"] = {"schema_version": basis.get("schema_version"), "extents": ext,
+                             "reasons": basis.get("reasons")}
     if notes:
         out.setdefault("findings", []).append(_f("ok", "By size and placement: " + " ".join(notes)))
 

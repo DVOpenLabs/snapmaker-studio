@@ -532,7 +532,7 @@ def assess(path: str, bed: dict | None = None, bed_name: str | None = None,
     traits = project_traits.extract(path)
     plate_count = (traits.get("plate_count") or {}).get("value") or 1
 
-    measured, geometry_unresolved = geometry.measure_items(path)
+    measured, geometry_unresolved = geometry.measure_items(path, mm=as_placed_only)
     items = _printable_only(path, measured)
     if not items:
         return _unavailable(

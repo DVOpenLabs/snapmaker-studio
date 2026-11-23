@@ -30,7 +30,8 @@ def _ids(result):
                                        ("foot", (3048.0, 6096.0, 9144.0))])
 def test_every_unit_the_format_defines_is_converted_to_millimetres(tmp_path, unit, dims):
     p = make(tmp_path, unit, unit=unit)
-    [size] = geometry.object_sizes(p)
+    assert geometry.object_sizes(p)[0]["dimensions"]["x"] == 10.0     # default: as written, for every other caller
+    [size] = geometry.object_sizes(p, mm=True)
     assert (size["dimensions"]["x"], size["dimensions"]["y"], size["dimensions"]["z"]) == dims
     basis = geometry_basis.assess(p)
     assert basis["established"] is False and basis["extents"]["measurable"] is True
@@ -64,13 +65,13 @@ def test_each_part_uses_its_own_unit_and_a_translation_uses_the_unit_of_the_part
                                         "millimeter")}
     parts.update(sub)
     p = _write(tmp_path / "mixed_units.3mf", parts)
-    [item] = geometry.measure_items(p)[0]
+    [item] = geometry.measure_items(p, mm=True)[0]
     assert item["bounds"]["min"] == (100.0, 50.0, 0.0) and item["bounds"]["max"] == (200.0, 250.0, 300.0)
 
 
 def test_a_root_in_centimetres_reads_its_own_translation_as_centimetres(tmp_path):
     p = make(tmp_path, "cm", unit="centimeter", items=(("1", "1 0 0 0 1 0 0 0 1 10 5 0"),))
-    [item] = geometry.measure_items(p)[0]
+    [item] = geometry.measure_items(p, mm=True)[0]
     assert item["bounds"]["min"] == (100.0, 50.0, 0.0) and item["bounds"]["max"] == (200.0, 250.0, 300.0)
 
 
@@ -85,12 +86,13 @@ def test_millimetre_projects_are_measured_exactly_as_before(tmp_path):
 
 def test_a_rotated_item_is_judged_by_its_extents_after_the_rotation(tmp_path):
     p = make(tmp_path, "rot", items=(("1", _TF_Z90_AT_100),))
-    [inst] = project_info(p, placement_aware=True)["placed"]["instances"]
+    [inst] = project_info(p, placement_aware=True, convert_units=True)["placed"]["instances"]
     assert inst["dimensions_mm"] == {"x": 20.0, "y": 10.0, "z": 30.0}      # x and y swapped, not 10 x 20
     ext = geometry_basis.assess(p)["extents"]
-    assert ext["measurable"] is True and ext["size_exact"] is True and ext["items_rotated"] and not ext["items_scaled"]
+    assert ext["measurable"] is True and ext["size_exact"] is False and ext["items_rotated"] and not ext["items_scaled"]
     fit = service.bed_fit(p)
-    assert fit["available"] is True and fit["size_basis"] == "measured_mm"
+    assert fit["available"] is True and fit["size_basis"] == "as_placed"      # a rotated item is sized as placed too
+    assert fit["objects_by_size"][0]["dims_mm"] == {"x": 20.0, "y": 10.0, "z": 30.0}
     assert any("rotated" in f["text"] for f in fit["findings"])
 
 
@@ -196,3 +198,36 @@ def test_unmeasured_items_finding_has_an_id_and_an_action(tmp_path):
     fit = service.bed_fit(p)
     row = next(f for f in fit["findings"] if "could not be measured" in f["text"])
     assert row["id"] == "placement-not-judged" and "Snapmaker Orca" in row["action"]
+
+
+# --- independent review of PR 153 (Opus): one unit rule, rotated size, item part, scope ---------------------------
+
+@pytest.mark.parametrize("unit", [" inch ", "inch ", "Inch", "INCH", "inches"])
+def test_a_unit_the_converter_would_not_recognise_is_never_called_converted(tmp_path, unit):
+    """geometry.measure and geometry_basis must agree: an unrecognised value is left as written, so the
+    basis may not claim it was converted (it would report a 10 mm cube as 'fits' and say it was converted)."""
+    p = make(tmp_path, "pad", unit=unit)
+    ext = geometry_basis.assess(p)["extents"]
+    assert ext["measurable"] is False and ext["blocked_by"] == ["unit_unrecognized"] and not ext["converted_units"]
+    fit = service.bed_fit(p)
+    assert fit["available"] is False and fit["status"] == "not_checked"
+
+
+def test_a_rotation_that_is_not_a_quarter_turn_is_sized_as_placed(tmp_path):
+    # 45 degrees about Z: a 10 x 20 box is about 21.2 x 21.2 placed, not 10 x 20
+    c = 0.7071067811865476
+    p = make(tmp_path, "r45", items=(("1", f"{c} {c} 0 {-c} {c} 0 0 0 1 100 100 0"),))
+    fit = service.bed_fit(p)
+    assert fit["size_basis"] == "as_placed"
+    dims = fit["objects_by_size"][0]["dims_mm"]
+    assert abs(dims["x"] - 21.21) < 0.02 and abs(dims["y"] - 21.21) < 0.02 and dims["z"] == 30.0
+
+
+def test_the_other_callers_still_read_the_numbers_as_written(tmp_path):
+    """Unit conversion is opt-in (mm=True / convert_units=True); regrid, selfcheck and every other caller
+    of geometry.* and project_info are unchanged."""
+    p = make(tmp_path, "optin_units", unit="inch")
+    [item] = geometry.measure_items(p)[0]
+    assert item["dimensions"] == {"x": 10.0, "y": 20.0, "z": 30.0}
+    assert project_info(p, placement_aware=True)["object_sizes_mm"][0]["dimensions_mm"]["x"] == 10.0
+    assert project_info(p, placement_aware=True, convert_units=True)["object_sizes_mm"][0]["dimensions_mm"]["x"] == 254.0

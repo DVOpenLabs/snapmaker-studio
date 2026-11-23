@@ -198,8 +198,10 @@ def _compute(path: str) -> dict:
         if bad is not None:
             reasons.add("unit_not_millimeter")
             declared_bad.append(bad)
-            if _units.resolve_unit(str(declared).strip()).recognized:
-                converted_units.add(str(declared).strip())
+            # the SAME rule geometry.measure uses (units.read_unit): an exact table key, never trimmed or
+            # case-folded, so " inch " and "Inch" are unrecognised here exactly as they are there
+            if _units.resolve_unit(declared).recognized:
+                converted_units.add(declared)
             else:
                 unrecognized_unit = True
 
@@ -263,7 +265,7 @@ def _compute(path: str) -> dict:
                      | ({"unit_unrecognized"} if unrecognized_unit else set()))
     measurable = not blocked
     extents = {"measurable": measurable,
-               "size_exact": measurable and not item_scaled,
+               "size_exact": measurable and not item_scaled and not item_rotated,
                "blocked_by": blocked,
                "converted_units": sorted(converted_units),
                "items_rotated": sorted(item_rotated),
