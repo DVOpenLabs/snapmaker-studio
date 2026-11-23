@@ -305,6 +305,50 @@ def test_an_unreadable_transform_in_the_named_part_is_not_established_even_witho
     assert fit["available"] is False and fit["status"] == "not_checked"
 
 
+def test_a_dotted_named_part_path_is_validated_in_the_part_geometry_reads(tmp_path):
+    """Sol R1 (82285df): p:path '/3D/Objects/./sub.model' is the part geometry.normalize_part resolves; the basis
+    must walk that same part, and a blocker found only there must keep the legacy gate not established."""
+    sub = ('<object id="2" type="model">' + _mesh_xml(2) + '</object>'
+           '<object id="1" type="model"><components><component objectid="2" transform="not numbers"/>'
+           '</components></object>')
+    root = '<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+    item = '<item objectid="1" p:path="/3D/Objects/./sub.model" transform="1 0 0 0 1 0 0 0 1 100 100 0"/>'
+    p = _write(tmp_path / "dotted.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter"),
+                                          "3D/Objects/sub.model": _model(sub, "", "millimeter")})
+    basis = geometry_basis.assess(p)
+    assert basis["established"] is False and "transform_unreadable" in basis["reasons"]
+    fit = service.bed_fit(p)
+    assert fit["available"] is False and fit["status"] == "not_checked"
+
+
+def test_a_backslash_path_and_nan_transform_in_the_named_part_are_not_established(tmp_path):
+    for n, (path, tf) in enumerate([(r"\3D\Objects\sub.model", "not numbers"),
+                                    ("/3D/Objects/sub.model", "nan 0 0 0 1 0 0 0 1 0 0 0")]):
+        sub = ('<object id="2" type="model">' + _mesh_xml(2) + '</object>'
+               f'<object id="1" type="model"><components><component objectid="2" transform="{tf}"/>'
+               '</components></object>')
+        root = '<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+        item = f'<item objectid="1" p:path="{path}" transform="1 0 0 0 1 0 0 0 1 100 100 0"/>'
+        p = _write(tmp_path / f"bs{n}.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter"),
+                                              "3D/Objects/sub.model": _model(sub, "", "millimeter")})
+        assert geometry_basis.assess(p)["established"] is False
+        assert service.bed_fit(p)["status"] == "not_checked"
+
+
+def test_a_component_resolved_only_by_fallback_into_another_part_is_not_established(tmp_path):
+    a = '<object id="1" type="model"><components><component objectid="7"/></components></object>'
+    c = ('<object id="8" type="model">' + _mesh_xml(8) + '</object>'
+         '<object id="7" type="model"><components><component objectid="8" transform="not numbers"/>'
+         '</components></object>')
+    root = '<object id="1" type="model">' + _mesh_xml(1) + '</object>'
+    item = '<item objectid="1" p:path="/3D/Objects/a.model" transform="1 0 0 0 1 0 0 0 1 100 100 0"/>'
+    p = _write(tmp_path / "fallback.3mf", {"3D/3dmodel.model": _model(root, item, "millimeter"),
+                                            "3D/Objects/a.model": _model(a, "", "millimeter"),
+                                            "3D/Objects/c.model": _model(c, "", "millimeter")})
+    assert geometry_basis.assess(p)["established"] is False
+    assert service.bed_fit(p)["status"] == "not_checked"
+
+
 def test_footprints_never_overwrite_the_exact_bounds_of_a_guarded_project(tmp_path):
     """Sol F2: placement.read_objects recognises only vertices written x,y,z; a mixed-order mesh gives it a
     partial footprint. With every unit factor 1 it used to replace the exact transformed bounds."""

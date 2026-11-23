@@ -35,6 +35,7 @@ import copy
 import math
 import os
 
+from . import geometry as _geometry
 from . import units as _units
 from .config_io import load_model_settings
 from .container import ThreeMF
@@ -220,6 +221,7 @@ def _compute(path: str) -> dict:
         # part, never in some other part that happens to reuse the id.
         return part if (part in index and oid in index[part]) else None
 
+    comp_unresolved: list = []
     ext_blocked: set = set()    # what stops the EXTENTS only (the legacy established gate is not changed by it)
 
     def walk(oid, prefer, matrix, chain, item_id, extents_only=False):
@@ -234,6 +236,10 @@ def _compute(path: str) -> dict:
         if where is None or (where, oid) in chain:
             if extents_only:
                 ext_blocked.add("structure_unresolved")
+                if chain:
+                    # a COMPONENT the named part does not resolve: geometry.measure may still find it elsewhere
+                    # (its lookup falls back to any part), unvalidated, so the legacy gate must not pass it
+                    comp_unresolved.append(1)
             else:
                 unchecked.setdefault(item_id, set()).add("structure_unresolved")
             return
@@ -272,16 +278,19 @@ def _compute(path: str) -> dict:
         walk(it.get("objectid"), _ROOT_PART, lin, frozenset(), key)
         # geometry.measure follows the part the build item NAMES (p:path); validate that same part for the
         # extents, so an unreadable transform in it can never be measured as identity
-        ipath = (it.get(f"{_PROD}path") or "").lstrip("/")
-        if ipath and ipath != _ROOT_PART:
+        ipath = _geometry.normalize_part(it.get(f"{_PROD}path"))   # the SAME normalisation the measurement uses   # the SAME normalisation the measurement uses
+        if ipath is not None and ipath != _ROOT_PART:
             walk(it.get("objectid"), ipath, lin, frozenset(), key, extents_only=True)
 
     for codes in unchecked.values():
         reasons |= codes
+    # an unreadable transform inside the part a build item names is read as identity by every reader: the legacy
+    # gate may not call that established either. (An unresolved named part stays an extents-only blocker: that item
+    # is reported as unmeasured while the others keep their verdict.)
     if "transform_unreadable" in ext_blocked:
-        # an unreadable transform inside the part a build item names is measured as identity by every reader:
-        # the legacy gate may not call that established either
         reasons.add("transform_unreadable")
+    if comp_unresolved:
+        reasons.add("structure_unresolved")
     # What Studio CAN still measure exactly. `geometry.measure` applies every transform to the real
     # vertices and converts each part from its own unit, so a placed item's bounds are exact when the
     # structure was followed completely and every declared unit is one the format defines. An object's
